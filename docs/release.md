@@ -28,8 +28,8 @@ matrix:
 
 ```text
 ubuntu-latest  → linux-x86_64-cp314
-macos-14       → macos-arm64-cp314
-macos-13       → macos-x86_64-cp314
+macos-15       → macos-arm64-cp314
+macos-15-intel → macos-x86_64-cp314
 windows-latest → windows-x86_64-cp314
 ```
 
