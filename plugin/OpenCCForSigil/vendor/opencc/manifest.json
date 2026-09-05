@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "status": "phase0-skeleton-no-payloads",
+  "opencc_version": "1.4.2",
+  "distribution_name": "opencc",
+  "import_name": "opencc",
+  "opencc_upstream_tag": "ver.1.4.2",
+  "opencc_upstream_commit": "025f371dc76b598d77384fbdab90c937471844d8",
+  "tofu_policy": "native_default_include",
+  "provenance_source": "https://pypi.org/project/OpenCC/1.4.2/",
+  "python_compatibility": {
+    "implementation": "CPython",
+    "major": 3,
+    "minor": 14,
+    "abi": "cp314",
+    "production_baseline": "3.14.2",
+    "development_ci": "3.14.7",
+    "patch_participates_in_payload_selection": false
+  },
+  "payloads": [],
+  "config_data": {
+    "source": "official OpenCC 1.4.2 wheel/upstream release",
+    "manifest_sha256": null,
+    "files": {}
+  },
+  "notes": [
+    "Official Python Binding wheel payloads are intentionally absent until Phase 1.",
+    "Runtime must fail fast; it must not use system OpenCC or install dependencies."
+  ]
+}
