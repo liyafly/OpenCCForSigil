@@ -7,7 +7,11 @@ from typing import Any, List, Sequence, Tuple
 
 from core.preview import PreviewError, PreviewSession
 from core.workflow import PlannedDocument
-from opencc_backend.configs import V1_CONFIGS
+from opencc_backend.configs import (
+    BASE_CONFIG_BY_JIEBA,
+    JIEBA_CONFIG_BY_BASE,
+    V1_CONFIGS,
+)
 
 
 class UIUnavailableError(RuntimeError):
@@ -48,9 +52,9 @@ def choose_conversion_config(
 ) -> str | None:
     """Ask for an explicit conversion direction before building a plan.
 
-    This selector exposes the pinned upstream standard configs. Experimental
-    plugin-backed names such as ``s2t_jieba`` are deliberately not included.
-    The selected config is frozen into the ConversionPlan before Preview.
+    This selector exposes pinned upstream standard configs and, when the
+    selected payload proves the official native plugin is present, an advanced
+    Jieba checkbox. The selected concrete config is frozen into the plan.
     """
 
     qt_widgets = _load_qt_widgets()
@@ -67,7 +71,12 @@ def choose_conversion_config(
         import sys
 
         application = qt_widgets.QApplication(sys.argv)
-    dialog = _ConversionConfigDialog(qt_widgets, configs, default_config)
+    jieba_configs = {
+        base: plugin
+        for base, plugin in JIEBA_CONFIG_BY_BASE.items()
+        if plugin in available
+    }
+    dialog = _ConversionConfigDialog(qt_widgets, configs, default_config, jieba_configs)
     exec_method = getattr(dialog.dialog, "exec", None) or dialog.dialog.exec_
     exec_method()
     if owns_application:
@@ -257,8 +266,15 @@ class _PreviewDialog:
 
 
 class _ConversionConfigDialog:
-    def __init__(self, qt_widgets: Any, configs: Tuple[str, ...], default_config: str) -> None:
+    def __init__(
+        self,
+        qt_widgets: Any,
+        configs: Tuple[str, ...],
+        default_config: str,
+        jieba_configs: dict[str, str],
+    ) -> None:
         self._qt = qt_widgets
+        self._jieba_configs = jieba_configs
         self.accepted = False
         self.selected_config = None
         self.dialog = qt_widgets.QDialog()
@@ -276,10 +292,18 @@ class _ConversionConfigDialog:
         self.combo = qt_widgets.QComboBox()
         for config in configs:
             self.combo.addItem(CONVERSION_LABELS[config], config)
-        selected_index = self.combo.findData(default_config)
-        if selected_index >= 0:
-            self.combo.setCurrentIndex(selected_index)
         layout.addWidget(self.combo)
+
+        self.jieba_status = qt_widgets.QLabel()
+        self.jieba_status.setWordWrap(True)
+        layout.addWidget(self.jieba_status)
+        self.jieba_checkbox = qt_widgets.QCheckBox(
+            "高级：使用官方 native Jieba 分词插件"
+        )
+        self.jieba_checkbox.setToolTip(
+            "只使用当前 vendor payload 中经过哈希校验的官方 opencc-jieba 插件。"
+        )
+        layout.addWidget(self.jieba_checkbox)
 
         buttons = qt_widgets.QHBoxLayout()
         self.cancel_button = qt_widgets.QPushButton("Cancel")
@@ -289,8 +313,37 @@ class _ConversionConfigDialog:
         layout.addLayout(buttons)
         self.cancel_button.clicked.connect(self.dialog.reject)
         self.continue_button.clicked.connect(self._accept)
+        self.combo.currentIndexChanged.connect(self._update_jieba_state)
+        default_base = BASE_CONFIG_BY_JIEBA.get(default_config, default_config)
+        selected_index = self.combo.findData(default_base)
+        if selected_index >= 0:
+            self.combo.setCurrentIndex(selected_index)
+        self.jieba_checkbox.setChecked(default_config in self._jieba_configs.values())
+        self._update_jieba_state()
+
+    def _update_jieba_state(self) -> None:
+        base_config = str(self.combo.currentData())
+        plugin_config = self._jieba_configs.get(base_config)
+        if plugin_config is None:
+            self.jieba_checkbox.setChecked(False)
+            self.jieba_checkbox.setEnabled(False)
+        else:
+            self.jieba_checkbox.setEnabled(True)
+        if self._jieba_configs:
+            self.jieba_status.setText(
+                "已检测到官方 native opencc-jieba payload；仅支持对应的官方 Jieba config。"
+            )
+        else:
+            self.jieba_status.setText(
+                "未检测到官方 native opencc-jieba payload；当前仅提供标准 OpenCC config。"
+            )
 
     def _accept(self) -> None:
-        self.selected_config = str(self.combo.currentData())
+        base_config = str(self.combo.currentData())
+        self.selected_config = (
+            self._jieba_configs[base_config]
+            if self.jieba_checkbox.isChecked() and base_config in self._jieba_configs
+            else base_config
+        )
         self.accepted = True
         self.dialog.accept()

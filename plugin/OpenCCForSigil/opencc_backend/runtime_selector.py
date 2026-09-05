@@ -1,7 +1,10 @@
 """Exact runtime detection, payload verification, and safe module import."""
 
 from dataclasses import dataclass
+import hashlib
 import importlib
+import json
+import os
 from pathlib import Path
 import platform
 import re
@@ -11,7 +14,7 @@ from types import ModuleType
 from typing import Optional, Tuple
 
 from opencc_backend.errors import ImportOriginError, PayloadIntegrityError
-from opencc_backend.integrity import verify_tree_sha256
+from opencc_backend.integrity import verify_sha256, verify_tree_sha256
 from opencc_backend.manifest import PayloadRecord, RuntimeKey, VendorManifest
 
 
@@ -90,12 +93,14 @@ class RuntimeSelector:
         if not root.is_dir():
             raise PayloadIntegrityError(f"selected OpenCC payload is missing: {root}")
         verify_tree_sha256(root, payload.payload_sha256)
+        self._verify_native_plugins(payload, root)
         return runtime, payload, root
 
     def import_opencc(self) -> Tuple[ModuleType, RuntimeInfo, PayloadRecord, Path, str]:
         """Import the verified official module and return its relative origin."""
 
         runtime, payload, root = self.select()
+        self._prepare_payload_environment(payload, root)
         module = sys.modules.get("opencc")
         path_was_inserted = False
         if module is None:
@@ -117,6 +122,60 @@ class RuntimeSelector:
                 f"OpenCC version mismatch: manifest={self.manifest.opencc_version}, import={version}"
             )
         return module, runtime, payload, root, origin
+
+    def _verify_native_plugins(self, payload: PayloadRecord, root: Path) -> None:
+        for plugin in payload.native_plugins.values():
+            if plugin.upstream_version != self.manifest.opencc_version:
+                raise PayloadIntegrityError(
+                    f"native plugin {plugin.name} version does not match OpenCC payload"
+                )
+            if plugin.upstream_tag != self.manifest.upstream_tag:
+                raise PayloadIntegrityError(
+                    f"native plugin {plugin.name} upstream tag does not match OpenCC payload"
+                )
+            if plugin.upstream_commit != self.manifest.upstream_commit:
+                raise PayloadIntegrityError(
+                    f"native plugin {plugin.name} upstream commit does not match OpenCC payload"
+                )
+            plugin_dir = _payload_path(root, plugin.plugin_dir)
+            if not plugin_dir.is_dir():
+                raise PayloadIntegrityError(f"native plugin directory is missing: {plugin_dir}")
+            library = _payload_path(root, plugin.library_path)
+            if not library.is_file() or library.parent.resolve() != plugin_dir.resolve():
+                raise PayloadIntegrityError(f"native plugin library is missing: {library}")
+            verify_sha256(library, plugin.library_sha256)
+            for relative, expected in plugin.resource_hashes.items():
+                resource = _payload_path(root, relative)
+                if not resource.is_file():
+                    raise PayloadIntegrityError(f"native plugin resource is missing: {resource}")
+                verify_sha256(resource, expected)
+            manifest_hash = _canonical_hash(plugin.resource_hashes)
+            if manifest_hash != plugin.resource_manifest_sha256:
+                raise PayloadIntegrityError(
+                    f"native plugin resource manifest hash mismatch: {plugin.name}"
+                )
+            for config in plugin.config_names:
+                config_path = root / "opencc" / "clib" / "share" / "opencc" / f"{config}.json"
+                if not config_path.is_file():
+                    raise PayloadIntegrityError(f"native plugin config is missing: {config_path}")
+
+    def _prepare_payload_environment(self, payload: PayloadRecord, root: Path) -> None:
+        """Point OpenCC's optional plugin discovery only at the selected payload."""
+
+        data_dir = root / "opencc" / "clib" / "share" / "opencc"
+        if not data_dir.is_dir():
+            raise PayloadIntegrityError(f"OpenCC data directory is missing: {data_dir}")
+        plugin_dirs = tuple(
+            str(_payload_path(root, plugin.plugin_dir))
+            for plugin in payload.native_plugins.values()
+        )
+        os.environ["OPENCC_DATA_DIR"] = str(data_dir)
+        if plugin_dirs:
+            os.environ["OPENCC_SEGMENTATION_PLUGIN_PATH"] = os.pathsep.join(plugin_dirs)
+        else:
+            # Do not allow an inherited system/plugin-manager path to affect a
+            # standard config or satisfy a plugin config accidentally.
+            os.environ.pop("OPENCC_SEGMENTATION_PLUGIN_PATH", None)
 
 
 def _implementation_name() -> str:
@@ -167,3 +226,20 @@ def _verified_origin(module: ModuleType, payload_root: Path) -> str:
             f"opencc imported outside selected payload: {origin} (expected under {root})"
         )
     return origin.relative_to(root).as_posix()
+
+
+def _payload_path(root: Path, relative: str) -> Path:
+    candidate = Path(relative)
+    if candidate.is_absolute() or ".." in candidate.parts:
+        raise PayloadIntegrityError(f"payload path escapes selected vendor payload: {relative}")
+    resolved = (root / candidate).resolve()
+    if root.resolve() not in resolved.parents:
+        raise PayloadIntegrityError(f"payload path escapes selected vendor payload: {relative}")
+    return resolved
+
+
+def _canonical_hash(values: object) -> str:
+    if not isinstance(values, dict):
+        raise PayloadIntegrityError("native plugin resource hashes must be an object")
+    canonical = json.dumps(values, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()

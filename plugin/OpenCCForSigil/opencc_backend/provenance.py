@@ -25,6 +25,10 @@ class BackendProvenance:
     config_sha256: Optional[str] = None
     config_name: str = ""
     tofu_policy: str = "native_default_include"
+    segmentation: str = "mmseg"
+    native_plugin_name: Optional[str] = None
+    native_plugin_sha256: Optional[str] = None
+    native_plugin_resource_manifest_sha256: Optional[str] = None
 
     def as_dict(self) -> Dict[str, object]:
         return {
@@ -47,4 +51,8 @@ class BackendProvenance:
             "config_sha256": self.config_sha256,
             "config_name": self.config_name,
             "tofu_policy": self.tofu_policy,
+            "segmentation": self.segmentation,
+            "native_plugin_name": self.native_plugin_name,
+            "native_plugin_sha256": self.native_plugin_sha256,
+            "native_plugin_resource_manifest_sha256": self.native_plugin_resource_manifest_sha256,
         }

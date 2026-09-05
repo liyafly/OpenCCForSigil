@@ -4,12 +4,17 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 import zipfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _sha256_bytes(value: bytes) -> str:
+    return hashlib.sha256(value).hexdigest()
 
 
 def validate(artifact: Path) -> None:
@@ -61,6 +66,21 @@ def validate(artifact: Path) -> None:
                 raise SystemExit(f"OpenCC license is absent from payload: {prefix}")
             if not any(name.endswith(".dist-info/licenses/AUTHORS") for name in payload_names):
                 raise SystemExit(f"OpenCC authors notice is absent from payload: {prefix}")
+            native_plugins = payload.get("native_plugins")
+            plugin = native_plugins.get("opencc-jieba") if isinstance(native_plugins, dict) else None
+            if not isinstance(plugin, dict):
+                raise SystemExit(f"official native opencc-jieba record is absent: {prefix}")
+            library_path = prefix + str(plugin.get("library_path", ""))
+            if not library_path.startswith(prefix) or library_path not in names:
+                raise SystemExit(f"native opencc-jieba library is absent: {library_path}")
+            expected_library_hash = str(plugin.get("library_sha256", ""))
+            actual_library_hash = _sha256_bytes(archive.read(library_path))
+            if actual_library_hash.lower() != expected_library_hash.lower():
+                raise SystemExit(f"native opencc-jieba library hash mismatch: {library_path}")
+            for config in plugin.get("config_names", []):
+                config_name = prefix + "opencc/clib/share/opencc/" + str(config) + ".json"
+                if config_name not in names:
+                    raise SystemExit(f"native opencc-jieba config is absent: {config_name}")
     print(f"plugin artifact valid: {artifact}")
 
 

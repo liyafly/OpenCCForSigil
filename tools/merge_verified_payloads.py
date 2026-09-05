@@ -48,11 +48,20 @@ def _payload_id(record: Mapping[str, object]) -> str:
 def _copy_payload(source: Path, destination: Path) -> None:
     if destination.exists():
         if _sha256_tree(destination) != _sha256_tree(source):
-            raise SystemExit(f"conflicting payload already exists: {destination}")
+            backup = destination.with_name(f".{destination.name}.previous-{uuid.uuid4().hex}")
+            destination.rename(backup)
+            try:
+                _copy_payload(source, destination)
+            except Exception:
+                if destination.exists():
+                    shutil.rmtree(destination)
+                backup.rename(destination)
+                raise
+            shutil.rmtree(backup)
         return
     staging = Path(tempfile.mkdtemp(prefix=f".{destination.name}-", dir=destination.parent))
     try:
-        shutil.rmtree(staging)
+        staging.rmdir()
         shutil.copytree(source, staging, copy_function=shutil.copy2)
         staging.rename(destination)
     except Exception:

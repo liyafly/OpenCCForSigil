@@ -13,7 +13,7 @@ from core.workflow import ConversionWorkflow
 from document.tokenizer import TokenizerOptions
 from logging_ext.logger import SessionLogger
 from opencc_backend.backend import OpenCCBackend
-from opencc_backend.configs import V1_CONFIGS
+from opencc_backend.configs import SUPPORTED_CONFIGS, is_jieba_config
 from sigil.adapter import SigilBookAdapter
 from sigil.scope import Scope
 from sigil.storage import UserDataStore, resolve_user_data_dir
@@ -42,7 +42,10 @@ class Controller:
             )
             default_config = _preferred_config(preferences, str(profile["conversion"]))
             self.session.transition(SessionState.SCANNING)
-            backend = OpenCCBackend(default_config)
+            # Always preflight the stable standard backend first. An optional
+            # Jieba preference is resolved only after the selected payload has
+            # advertised and verified the native plugin capability.
+            backend = OpenCCBackend("s2t")
             self._run_backend_self_test(backend)
 
             if not _book_supports_conversion(self.bk):
@@ -73,7 +76,10 @@ class Controller:
             workflow = ConversionWorkflow(
                 SigilBookAdapter(self.bk),
                 backend,
-                ConvertRequest(selected_config),
+                ConvertRequest(
+                    selected_config,
+                    segmentation="jieba" if is_jieba_config(selected_config) else "mmseg",
+                ),
                 scope=Scope(str(profile["scope"])),
                 tokenizer_options=TokenizerOptions(
                     protected_elements=tuple(profile["protected_elements"]),
@@ -210,7 +216,7 @@ def _book_supports_conversion(book: Any) -> bool:
 
 def _preferred_config(preferences: Dict[str, object], fallback: str) -> str:
     candidate = preferences.get("last_conversion_config", fallback)
-    return candidate if isinstance(candidate, str) and candidate in V1_CONFIGS else fallback
+    return candidate if isinstance(candidate, str) and candidate in SUPPORTED_CONFIGS else fallback
 
 
 def _load_conservative_profile() -> Dict[str, object]:

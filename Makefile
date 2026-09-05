@@ -1,4 +1,4 @@
-.PHONY: install test lint verify-vendor differential check package artifact-check spec-bundle clean
+.PHONY: install test lint verify-vendor differential differential-jieba check package artifact-check spec-bundle clean
 
 install:
 	mise install
@@ -16,7 +16,10 @@ verify-vendor:
 differential:
 	mise exec -- uv run python tools/differential_test.py --corpus tests/fixtures/opencc_smoke.jsonl
 
-check: lint test verify-vendor differential
+differential-jieba:
+	mise exec -- uv run python tools/differential_jieba_test.py --corpus tests/fixtures/opencc_jieba_smoke.jsonl
+
+check: lint test verify-vendor differential differential-jieba
 	mise exec -- uv run python tools/build_plugin.py --check
 
 package:

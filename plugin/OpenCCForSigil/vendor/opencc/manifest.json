@@ -29,7 +29,7 @@
       "wheel_sha256": "2dd2f8c3f7e633d252753c8f69298d5f446e02d62a3cf9c6a3c18683b5346c89",
       "wheel_url": "https://files.pythonhosted.org/packages/19/0b/94de5296f99aa3a7e8e9ced388b0ada742b57394eb8cec8bc5ecc882af54/opencc-1.4.2-cp314-cp314-macosx_11_0_arm64.whl",
       "payload_path": "payloads/macos-arm64-cp314",
-      "payload_sha256": "d9970b16e082d1569891e8065ce026d8f9c42195e86f4331cc8e1292a939ec37",
+      "payload_sha256": "8772b53761950fe817891cef8fc718e0060ecd930eaaa95b98013b997ff973c0",
       "payload_runtime_test": "passed",
       "config_hashes": {
         "hk2s": "b5fb0d6447f1f111c02a99f405d678b40a97bf73de0a25000219878994a8da37",
@@ -47,13 +47,58 @@
         "t2tw": "bdaa75b82ec25daecb3ce376277e90c7c3388eb9345628650c66a804a2772a19",
         "tw2s": "9bf1810eea822bcdedc0b24b303348d859ecf8307f379c9c2d210428e0620ff9",
         "tw2sp": "f8cf900c1b456a7d2e8477f5bf146814071d28ad64ef37fbc0ae757930c167d5",
-        "tw2t": "5bc1991e12b35100b2df4b6b534bbaeeb18fbbabe5cd5c15c611736011225530"
+        "tw2t": "5bc1991e12b35100b2df4b6b534bbaeeb18fbbabe5cd5c15c611736011225530",
+        "s2t_jieba": "ef761b4d933f5d232cd1fd627c250a1b81be742fc3d7f787c28d6fdc9bd8dd79",
+        "s2tw_jieba": "a9bc1527b1d1439ae556ff551f087b1ae8b31d91d9adcd499743d3ad4a600b59",
+        "s2twp_jieba": "93d0497eb360e0c941f9196fda193f4fa1a0a0917af2d1625d163af0d3d99f8b",
+        "s2hk_jieba": "a05f8ccb661ed2eaa858ee19eccdaebb7ee489fd69b8b4402a19dca0c53f9fd0",
+        "s2hkp_jieba": "846cfb9077284fe439cba467f530d9ce5bf8433f7db69bdd66a84de9dea77f88",
+        "tw2sp_jieba": "67ba541557bba60e7272bce01ee38d2422557e84999413183a352d9c0cc3385c",
+        "hk2sp_jieba": "ab652c17f06e6aa928881732cd18c681097bea25be8c8350982ce9d959a0fb5c"
+      },
+      "native_plugins": {
+        "opencc-jieba": {
+          "name": "opencc-jieba",
+          "kind": "segmentation",
+          "upstream_version": "1.4.2",
+          "upstream_tag": "ver.1.4.2",
+          "upstream_commit": "025f371dc76b598d77384fbdab90c937471844d8",
+          "plugin_dir": "opencc/clib/lib/opencc/plugins",
+          "library_path": "opencc/clib/lib/opencc/plugins/libopencc-jieba.dylib",
+          "library_sha256": "10b9349ed128f14745a1ec15cd609b8ffca32db84bd9090708dff07f57c1eb9d",
+          "config_names": [
+            "s2t_jieba",
+            "s2tw_jieba",
+            "s2twp_jieba",
+            "s2hk_jieba",
+            "s2hkp_jieba",
+            "tw2sp_jieba",
+            "hk2sp_jieba"
+          ],
+          "resource_hashes": {
+            "opencc/clib/share/opencc/hk2sp_jieba.json": "ab652c17f06e6aa928881732cd18c681097bea25be8c8350982ce9d959a0fb5c",
+            "opencc/clib/share/opencc/jieba_dict/hmm_model.utf8": "f17790586ac86dd048c8adffed052c4bd2b28ed0682972c1275e59040c0589a7",
+            "opencc/clib/share/opencc/jieba_dict/idf.utf8": "dbd1e03d72b2263cc8d84a4304ed77677eed9e7deaf43a1a5133bbba9733b535",
+            "opencc/clib/share/opencc/jieba_dict/jieba.dict.utf8": "3ff771c3b5f64a03c16b42899511281d4cb48c19a4239f47fe2826b6b30d999f",
+            "opencc/clib/share/opencc/jieba_dict/jieba_merged.ocd2": "3d6e9e6614a95cae37ddf6d4995c8c9d338df9d26de377d6e61ccd18f81e9b78",
+            "opencc/clib/share/opencc/jieba_dict/stop_words.utf8": "b788b8a939d2e2fe079abd579ea98f12f9fb84370bfd0dddd81bb9381f7ab42c",
+            "opencc/clib/share/opencc/jieba_dict/user.dict.utf8": "4c0e0c6f1ad4ffc7ec08ae4f72c11bd0f205fb412be514129f989fb3172cf5de",
+            "opencc/clib/share/opencc/s2hk_jieba.json": "a05f8ccb661ed2eaa858ee19eccdaebb7ee489fd69b8b4402a19dca0c53f9fd0",
+            "opencc/clib/share/opencc/s2hkp_jieba.json": "846cfb9077284fe439cba467f530d9ce5bf8433f7db69bdd66a84de9dea77f88",
+            "opencc/clib/share/opencc/s2t_jieba.json": "ef761b4d933f5d232cd1fd627c250a1b81be742fc3d7f787c28d6fdc9bd8dd79",
+            "opencc/clib/share/opencc/s2tw_jieba.json": "a9bc1527b1d1439ae556ff551f087b1ae8b31d91d9adcd499743d3ad4a600b59",
+            "opencc/clib/share/opencc/s2twp_jieba.json": "93d0497eb360e0c941f9196fda193f4fa1a0a0917af2d1625d163af0d3d99f8b",
+            "opencc/clib/share/opencc/tw2sp_jieba.json": "67ba541557bba60e7272bce01ee38d2422557e84999413183a352d9c0cc3385c"
+          },
+          "resource_manifest_sha256": "877b8f21b725b474cc2c28c9efcd28ab426a6962019a96ddb22bf0b75e1c0291",
+          "build_profile": "official OpenCC plugins/jieba against same-release vendored static core"
+        }
       }
     }
   ],
   "config_data": {
-    "source": "official OpenCC 1.4.2 wheel payload: opencc/clib/share/opencc",
-    "manifest_sha256": "18a9ef9efb04a4026634a1eaa59970bf3873e539caf333939b2ab495aec2e145",
+    "source": "official OpenCC 1.4.2 wheel payload plus official opencc-jieba plugin resources",
+    "manifest_sha256": "5ed79dc0d46d3ccb4674a5002294b73c13ad8badf5e9f7761e7370ed2f39acb9",
     "files": {
       "opencc/clib/share/opencc/CJK_Compatibility_Ideographs.ocd2": "4b1faa6649012f524068ec18c0fb520ead343c11cbe0a8e4c8853ca61369d666",
       "opencc/clib/share/opencc/HKPhrases.ocd2": "2216e55024b7f2674245fe860452c7c378ecc0e145ca51dcd944de76a6c62687",
@@ -79,19 +124,32 @@
       "opencc/clib/share/opencc/TWVariantsRevPhrases.ocd2": "ae91cb45c12f737bde2b9e340c38efaa7e1868cf55e59a62cc8199de020113e2",
       "opencc/clib/share/opencc/hk2s.json": "b5fb0d6447f1f111c02a99f405d678b40a97bf73de0a25000219878994a8da37",
       "opencc/clib/share/opencc/hk2sp.json": "8a36e56922fa67aeaffb7d145520ed302276aaaf3ab05c092a10615eeda8a161",
+      "opencc/clib/share/opencc/hk2sp_jieba.json": "ab652c17f06e6aa928881732cd18c681097bea25be8c8350982ce9d959a0fb5c",
       "opencc/clib/share/opencc/hk2t.json": "e773001c761c5540c38a66baa378f2a8c65378fa09446186b1c4dd78815bccf3",
+      "opencc/clib/share/opencc/jieba_dict/hmm_model.utf8": "f17790586ac86dd048c8adffed052c4bd2b28ed0682972c1275e59040c0589a7",
+      "opencc/clib/share/opencc/jieba_dict/idf.utf8": "dbd1e03d72b2263cc8d84a4304ed77677eed9e7deaf43a1a5133bbba9733b535",
+      "opencc/clib/share/opencc/jieba_dict/jieba.dict.utf8": "3ff771c3b5f64a03c16b42899511281d4cb48c19a4239f47fe2826b6b30d999f",
+      "opencc/clib/share/opencc/jieba_dict/jieba_merged.ocd2": "3d6e9e6614a95cae37ddf6d4995c8c9d338df9d26de377d6e61ccd18f81e9b78",
+      "opencc/clib/share/opencc/jieba_dict/stop_words.utf8": "b788b8a939d2e2fe079abd579ea98f12f9fb84370bfd0dddd81bb9381f7ab42c",
+      "opencc/clib/share/opencc/jieba_dict/user.dict.utf8": "4c0e0c6f1ad4ffc7ec08ae4f72c11bd0f205fb412be514129f989fb3172cf5de",
       "opencc/clib/share/opencc/jp2t.json": "bf056ab3be0c2d0898873662a12d39f8528419a36bc3ad128854a1faefe2c713",
       "opencc/clib/share/opencc/s2hk.json": "b3a4b6c7f5fdd61c4f7e6eaa292d9a0e29eece584c35fe04fc124b1d9796051b",
+      "opencc/clib/share/opencc/s2hk_jieba.json": "a05f8ccb661ed2eaa858ee19eccdaebb7ee489fd69b8b4402a19dca0c53f9fd0",
       "opencc/clib/share/opencc/s2hkp.json": "d95e38c22f07d8bc1b6d2dd004c590f0881c781fff76b53bf5f9b639e7980619",
+      "opencc/clib/share/opencc/s2hkp_jieba.json": "846cfb9077284fe439cba467f530d9ce5bf8433f7db69bdd66a84de9dea77f88",
       "opencc/clib/share/opencc/s2t.json": "a188392af5ca23e1d602c5a93651f1d852fccdaa24c2b29abed7a0c8ac359048",
+      "opencc/clib/share/opencc/s2t_jieba.json": "ef761b4d933f5d232cd1fd627c250a1b81be742fc3d7f787c28d6fdc9bd8dd79",
       "opencc/clib/share/opencc/s2tw.json": "5830ee3440ba3dc6bf1e197205b4248e2d860b8a3680475db4419b0dbf96ac39",
+      "opencc/clib/share/opencc/s2tw_jieba.json": "a9bc1527b1d1439ae556ff551f087b1ae8b31d91d9adcd499743d3ad4a600b59",
       "opencc/clib/share/opencc/s2twp.json": "681dd1ff5f3a1efe93a6f56006ee7f58f767fa0366fd3a2ec6165c983e39415d",
+      "opencc/clib/share/opencc/s2twp_jieba.json": "93d0497eb360e0c941f9196fda193f4fa1a0a0917af2d1625d163af0d3d99f8b",
       "opencc/clib/share/opencc/t2hk.json": "8e2336420ed33b6991841921e930414919d922bd287677f5973564c85b6a3c9b",
       "opencc/clib/share/opencc/t2jp.json": "6ac813c83a0e57e9d4ff5fd968188ff9e8bc0564dbc833e77fca0c338d27d285",
       "opencc/clib/share/opencc/t2s.json": "96fe5cc374a80ccc49e3370006cce3aefe4af955868ae0b14fb3079ec695be4f",
       "opencc/clib/share/opencc/t2tw.json": "bdaa75b82ec25daecb3ce376277e90c7c3388eb9345628650c66a804a2772a19",
       "opencc/clib/share/opencc/tw2s.json": "9bf1810eea822bcdedc0b24b303348d859ecf8307f379c9c2d210428e0620ff9",
       "opencc/clib/share/opencc/tw2sp.json": "f8cf900c1b456a7d2e8477f5bf146814071d28ad64ef37fbc0ae757930c167d5",
+      "opencc/clib/share/opencc/tw2sp_jieba.json": "67ba541557bba60e7272bce01ee38d2422557e84999413183a352d9c0cc3385c",
       "opencc/clib/share/opencc/tw2t.json": "5bc1991e12b35100b2df4b6b534bbaeeb18fbbabe5cd5c15c611736011225530"
     }
   },

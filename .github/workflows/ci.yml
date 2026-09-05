@@ -34,8 +34,19 @@ jobs:
       - name: Install locked Python dependencies
         run: mise exec -- uv sync --locked
 
+      - name: Check out pinned OpenCC source for the official Jieba plugin
+        uses: actions/checkout@v4
+        with:
+          repository: BYVoid/OpenCC
+          ref: 025f371dc76b598d77384fbdab90c937471844d8
+          path: native_build/OpenCC
+          fetch-depth: 1
+
       - name: Vendor the exact official wheel for this runner
         run: mise exec -- uv run python tools/vendor_opencc.py --version 1.4.2
+
+      - name: Build and vendor the official native Jieba plugin
+        run: mise exec -- uv run python tools/build_opencc_jieba.py --source native_build/OpenCC
 
       - name: Verify manifest and payload integrity
         run: mise exec -- uv run python tools/verify_vendor.py
@@ -48,6 +59,9 @@ jobs:
 
       - name: Run official CLI/Python Binding differential corpus
         run: mise exec -- uv run python tools/differential_test.py --corpus tests/fixtures/opencc_smoke.jsonl
+
+      - name: Run official native Jieba CLI/Python Binding differential corpus
+        run: mise exec -- uv run python tools/differential_jieba_test.py --corpus tests/fixtures/opencc_jieba_smoke.jsonl
 
       - name: Export the target-tested payload
         run: mise exec -- uv run python tools/export_verified_payload.py --output native_build/artifacts/verified-payload
@@ -88,6 +102,9 @@ jobs:
       - name: Run the Linux target differential corpus
         run: mise exec -- uv run python tools/differential_test.py --corpus tests/fixtures/opencc_smoke.jsonl
 
+      - name: Run the Linux native Jieba differential corpus
+        run: mise exec -- uv run python tools/differential_jieba_test.py --corpus tests/fixtures/opencc_jieba_smoke.jsonl
+
       - name: Run repository tests
         run: mise exec -- uv run pytest
 
@@ -103,6 +120,6 @@ jobs:
           name: OpenCCForSigil-fat-plugin-${{ github.sha }}
           path: |
             dist/OpenCCForSigil_${{ github.sha }}.zip
-            dist/OpenCCForSigil_Spec_v1.3_bundle.zip
+            dist/OpenCCForSigil_Spec_v1.4_bundle.zip
           if-no-files-found: error
           retention-days: 14

@@ -23,6 +23,16 @@ EXPECTED_POLICY = {
     "development_ci": "3.14.7",
     "patch_participates_in_payload_selection": False,
 }
+JIEBA_PLUGIN_NAME = "opencc-jieba"
+JIEBA_CONFIGS = (
+    "s2t_jieba",
+    "s2tw_jieba",
+    "s2twp_jieba",
+    "s2hk_jieba",
+    "s2hkp_jieba",
+    "tw2sp_jieba",
+    "hk2sp_jieba",
+)
 
 
 def _files(root: Path) -> Iterable[Path]:
@@ -72,7 +82,111 @@ def _payload_root(payload_path: str) -> Path:
     return root
 
 
-def _validate_payload(record: Mapping[str, object], data_files: Mapping[str, str]) -> tuple[str, str]:
+def _safe_payload_path(root: Path, relative: str) -> Path:
+    candidate = Path(relative)
+    if candidate.is_absolute() or ".." in candidate.parts:
+        raise SystemExit(f"native plugin path escapes payload: {relative!r}")
+    resolved = (root / candidate).resolve()
+    if root.resolve() not in resolved.parents:
+        raise SystemExit(f"native plugin path escapes payload: {relative!r}")
+    return resolved
+
+
+def _validate_native_plugins(
+    record: Mapping[str, object],
+    root: Path,
+    data_files: Mapping[str, str],
+    *,
+    opencc_version: str,
+    upstream_tag: str,
+    upstream_commit: str,
+) -> None:
+    native_plugins = record.get("native_plugins")
+    if not isinstance(native_plugins, dict):
+        raise SystemExit("payload native_plugins must be an object")
+    plugin = native_plugins.get(JIEBA_PLUGIN_NAME)
+    if not isinstance(plugin, dict):
+        raise SystemExit(
+            f"payload must contain the official {JIEBA_PLUGIN_NAME} native plugin record"
+        )
+    required = {
+        "name",
+        "kind",
+        "upstream_version",
+        "upstream_tag",
+        "upstream_commit",
+        "plugin_dir",
+        "library_path",
+        "library_sha256",
+        "config_names",
+        "resource_hashes",
+        "resource_manifest_sha256",
+        "build_profile",
+    }
+    missing = sorted(required - set(plugin))
+    if missing:
+        raise SystemExit("native plugin missing keys: " + ", ".join(missing))
+    if plugin["name"] != JIEBA_PLUGIN_NAME or plugin["kind"] != "segmentation":
+        raise SystemExit("native plugin record is not the official segmentation plugin")
+    if (
+        plugin["upstream_version"],
+        plugin["upstream_tag"],
+        plugin["upstream_commit"],
+    ) != (opencc_version, upstream_tag, upstream_commit):
+        raise SystemExit("native plugin provenance does not match the OpenCC payload")
+    config_names = plugin["config_names"]
+    if config_names != list(JIEBA_CONFIGS):
+        raise SystemExit(
+            f"official {JIEBA_PLUGIN_NAME} config_names must be {list(JIEBA_CONFIGS)!r}"
+        )
+    plugin_dir = _safe_payload_path(root, str(plugin["plugin_dir"]))
+    library = _safe_payload_path(root, str(plugin["library_path"]))
+    if not plugin_dir.is_dir():
+        raise SystemExit(f"native plugin directory is missing: {plugin_dir}")
+    if not library.is_file() or library.parent.resolve() != plugin_dir.resolve():
+        raise SystemExit(f"native plugin library is missing or misplaced: {library}")
+    if library.suffix.lower() not in {".dll", ".dylib", ".so"}:
+        raise SystemExit(f"native plugin library has an unexpected suffix: {library}")
+    library_hash = plugin["library_sha256"]
+    if not isinstance(library_hash, str) or not HEX64.fullmatch(library_hash):
+        raise SystemExit("native plugin library_sha256 is missing or malformed")
+    if _sha256_file(library).lower() != library_hash.lower():
+        raise SystemExit(f"native plugin library hash mismatch: {library}")
+
+    resource_hashes = plugin["resource_hashes"]
+    if not isinstance(resource_hashes, dict) or not resource_hashes:
+        raise SystemExit("native plugin resource_hashes must be a non-empty object")
+    expected_resource_paths = {
+        f"opencc/clib/share/opencc/{config}.json" for config in JIEBA_CONFIGS
+    }
+    expected_resource_paths.update(
+        path for path in data_files if path.startswith("opencc/clib/share/opencc/jieba_dict/")
+    )
+    if set(resource_hashes) != expected_resource_paths:
+        raise SystemExit("native plugin resource list does not match official Jieba resources")
+    for relative, digest in resource_hashes.items():
+        if not isinstance(relative, str) or not isinstance(digest, str) or not HEX64.fullmatch(digest):
+            raise SystemExit(f"invalid native plugin resource hash for {relative!r}")
+        resource = _safe_payload_path(root, relative)
+        if not resource.is_file() or data_files.get(relative) != digest:
+            raise SystemExit(f"native plugin resource hash mismatch: {relative}")
+    manifest_hash = plugin["resource_manifest_sha256"]
+    if not isinstance(manifest_hash, str) or not HEX64.fullmatch(manifest_hash):
+        raise SystemExit("native plugin resource_manifest_sha256 is missing or malformed")
+    if _canonical_manifest_hash(resource_hashes) != manifest_hash:
+        raise SystemExit("native plugin resource manifest hash does not match resources")
+    if not isinstance(plugin["build_profile"], str) or not plugin["build_profile"].strip():
+        raise SystemExit("native plugin build_profile is missing")
+
+
+def _validate_payload(
+    record: Mapping[str, object],
+    data_files: Mapping[str, str],
+    *,
+    opencc_version: str,
+    upstream_tag: str,
+    upstream_commit: str,
+) -> tuple[str, str]:
     required = {
         "python_implementation",
         "python_version",
@@ -84,6 +198,7 @@ def _validate_payload(record: Mapping[str, object], data_files: Mapping[str, str
         "payload_path",
         "payload_sha256",
         "config_hashes",
+        "native_plugins",
     }
     missing = sorted(required - set(record))
     if missing:
@@ -117,6 +232,14 @@ def _validate_payload(record: Mapping[str, object], data_files: Mapping[str, str
         data_path = f"opencc/clib/share/opencc/{config}.json"
         if data_files.get(data_path) != digest:
             raise SystemExit(f"config hash does not match vendored data for {config!r}")
+    _validate_native_plugins(
+        record,
+        root,
+        data_files,
+        opencc_version=opencc_version,
+        upstream_tag=upstream_tag,
+        upstream_commit=upstream_commit,
+    )
     return str(record["python_abi"]), f"{record['os']}/{record['architecture']}"
 
 
@@ -173,7 +296,13 @@ def main() -> int:
         if identity in seen:
             raise SystemExit(f"duplicate payload runtime identity: {identity}")
         seen.add(identity)
-        _, location = _validate_payload(record, data_files)
+        _, location = _validate_payload(
+            record,
+            data_files,
+            opencc_version=str(payload["opencc_version"]),
+            upstream_tag=str(payload["opencc_upstream_tag"]),
+            upstream_commit=str(payload["opencc_upstream_commit"]),
+        )
         locations.append(location)
     print(f"official OpenCC payload manifest valid ({payload['status']}); payloads={len(locations)}")
     print("verified runtimes: " + ", ".join(sorted(locations)))

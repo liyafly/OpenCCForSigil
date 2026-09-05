@@ -9,6 +9,66 @@ from opencc_backend.errors import ManifestError, RuntimeSelectionError
 
 
 @dataclass(frozen=True)
+class NativePluginRecord:
+    """One manifest-approved native OpenCC plugin inside a wheel payload."""
+
+    name: str
+    kind: str
+    upstream_version: str
+    upstream_tag: str
+    upstream_commit: str
+    plugin_dir: str
+    library_path: str
+    library_sha256: str
+    config_names: Tuple[str, ...]
+    resource_hashes: Mapping[str, str]
+    resource_manifest_sha256: str
+    build_profile: str
+
+    @classmethod
+    def from_mapping(cls, name: str, value: Mapping[str, Any]) -> "NativePluginRecord":
+        required = (
+            "kind",
+            "upstream_version",
+            "upstream_tag",
+            "upstream_commit",
+            "plugin_dir",
+            "library_path",
+            "library_sha256",
+            "config_names",
+            "resource_hashes",
+            "resource_manifest_sha256",
+            "build_profile",
+        )
+        missing = [key for key in required if not value.get(key)]
+        if missing:
+            raise ManifestError(f"native plugin {name!r} missing keys: {', '.join(missing)}")
+        config_names = value.get("config_names")
+        if not isinstance(config_names, list) or not all(isinstance(item, str) for item in config_names):
+            raise ManifestError(f"native plugin {name!r} config_names must be a string list")
+        resource_hashes = value.get("resource_hashes")
+        if not isinstance(resource_hashes, dict) or not all(
+            isinstance(key, str) and isinstance(digest, str)
+            for key, digest in resource_hashes.items()
+        ):
+            raise ManifestError(f"native plugin {name!r} resource_hashes must be an object")
+        return cls(
+            name=name,
+            kind=str(value["kind"]),
+            upstream_version=str(value["upstream_version"]),
+            upstream_tag=str(value["upstream_tag"]),
+            upstream_commit=str(value["upstream_commit"]),
+            plugin_dir=str(value["plugin_dir"]),
+            library_path=str(value["library_path"]),
+            library_sha256=str(value["library_sha256"]),
+            config_names=tuple(config_names),
+            resource_hashes=dict(resource_hashes),
+            resource_manifest_sha256=str(value["resource_manifest_sha256"]),
+            build_profile=str(value["build_profile"]),
+        )
+
+
+@dataclass(frozen=True)
 class RuntimeKey:
     python_implementation: str
     python_major: int
@@ -34,6 +94,7 @@ class PayloadRecord:
     payload_path: str
     payload_sha256: str
     config_hashes: Mapping[str, str]
+    native_plugins: Mapping[str, NativePluginRecord]
 
     @classmethod
     def from_mapping(cls, value: Mapping[str, Any]) -> "PayloadRecord":
@@ -65,6 +126,16 @@ class PayloadRecord:
             raise ManifestError("invalid payload runtime fields") from exc
         if not isinstance(value.get("config_hashes", {}), dict):
             raise ManifestError("payload config_hashes must be an object")
+        native_plugins_raw = value.get("native_plugins", {})
+        if not isinstance(native_plugins_raw, dict):
+            raise ManifestError("payload native_plugins must be an object")
+        native_plugins = {
+            str(name): NativePluginRecord.from_mapping(str(name), record)
+            for name, record in native_plugins_raw.items()
+            if isinstance(record, dict)
+        }
+        if len(native_plugins) != len(native_plugins_raw):
+            raise ManifestError("payload native_plugins entries must be objects")
         return cls(
             runtime=runtime,
             wheel_name=str(value["wheel_name"]),
@@ -72,6 +143,7 @@ class PayloadRecord:
             payload_path=str(value["payload_path"]),
             payload_sha256=str(value["payload_sha256"]),
             config_hashes=dict(value.get("config_hashes", {})),
+            native_plugins=native_plugins,
         )
 
 
@@ -188,3 +260,6 @@ class VendorManifest:
 
     def config_hash(self, payload: PayloadRecord, config: str) -> Optional[str]:
         return payload.config_hashes.get(config)
+
+    def native_plugin(self, payload: PayloadRecord, name: str) -> Optional[NativePluginRecord]:
+        return payload.native_plugins.get(name)

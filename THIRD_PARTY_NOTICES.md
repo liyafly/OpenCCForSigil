@@ -11,3 +11,9 @@ runtime verification.
 
 Design references are cloned outside this repository under
 `../OpenCCForSigil-References/` and are not packaged or imported at runtime.
+
+The advanced Jieba option uses only the official BYVoid/OpenCC native
+`plugins/jieba` payload built from the pinned upstream commit. It is not a
+Python Jieba implementation and is not copied from the reference project.
+The plugin's `cppjieba` MIT notice is preserved at
+`plugin/OpenCCForSigil/resources/third_party/CPPJIEBA_LICENSE`.
