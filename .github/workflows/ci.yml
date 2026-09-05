@@ -166,8 +166,12 @@ jobs:
           RELEASE_SHA: ${{ github.sha }}
         run: |
           version="${RELEASE_TAG#v}"
-          plugin_zip="release-artifacts/dist/OpenCCForSigil_${RELEASE_SHA}.zip"
+          plugin_zip="$(find release-artifacts -type f -name "OpenCCForSigil_${RELEASE_SHA}.zip" -print -quit)"
+          spec_zip="$(find release-artifacts -type f -name 'OpenCCForSigil_Spec_v1.4_bundle.zip' -print -quit)"
+          test -n "$plugin_zip"
+          test -n "$spec_zip"
           test -f "$plugin_zip"
+          test -f "$spec_zip"
           python - "$plugin_zip" "$version" <<'PY'
           from pathlib import Path
           import sys
@@ -185,8 +189,9 @@ jobs:
               )
           PY
           mv "$plugin_zip" "release-artifacts/OpenCCForSigil_${version}.zip"
-          mv release-artifacts/dist/OpenCCForSigil_Spec_v1.4_bundle.zip \
-            "release-artifacts/OpenCCForSigil_Spec_v1.4_bundle.zip"
+          if [[ "$spec_zip" != "release-artifacts/OpenCCForSigil_Spec_v1.4_bundle.zip" ]]; then
+            mv "$spec_zip" "release-artifacts/OpenCCForSigil_Spec_v1.4_bundle.zip"
+          fi
 
       - name: Create GitHub prerelease
         env:
