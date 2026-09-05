@@ -139,6 +139,29 @@ def _opencc_cmake_dir(clib_root: Path) -> Path:
     )
 
 
+def _linux_static_core_link_flags(clib_root: Path) -> str:
+    """Keep every official static-core object available to the plugin DSO.
+
+    The Linux 1.4.2 wheel exposes OpenCC as a static archive.  Its standalone
+    plugin link otherwise leaves ``OpenSerializableFileUtf8`` unresolved
+    because that archive member is not referenced by the host extension's
+    exported symbol table.  Whole-archive is limited to this build-time link;
+    runtime still loads only the resulting official plugin payload.
+    """
+
+    candidates = (
+        clib_root / "lib64" / "libopencc.a",
+        clib_root / "lib" / "libopencc.a",
+    )
+    for library in candidates:
+        if library.is_file():
+            return f"-Wl,--whole-archive,{library},--no-whole-archive"
+    raise SystemExit(
+        "Linux wheel does not contain the official OpenCC static core: "
+        + ", ".join(str(candidate) for candidate in candidates)
+    )
+
+
 def _find_plugin(install_root: Path) -> Path:
     candidates = sorted(
         path
@@ -199,6 +222,10 @@ def _build_plugin(
     ]
     if runtime_os != "windows":
         configure.append(f"-DCMAKE_CXX_FLAGS_RELEASE=-ffile-prefix-map={source_root}=.")
+    if runtime_os == "linux":
+        configure.append(
+            "-DCMAKE_SHARED_LINKER_FLAGS=" + _linux_static_core_link_flags(clib_root)
+        )
     rpath = _cmake_rpath(runtime_os)
     if rpath is not None:
         configure.extend(
