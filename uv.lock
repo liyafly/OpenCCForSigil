@@ -22,7 +22,7 @@ wheels = [
 
 [[package]]
 name = "opencc-for-sigil"
-version = "0.1.0"
+version = "0.0.1b0"
 source = { virtual = "." }
 
 [package.dev-dependencies]

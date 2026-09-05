@@ -26,7 +26,7 @@ package:
 	mise exec -- uv run python tools/build_plugin.py
 
 artifact-check:
-	mise exec -- uv run python tools/validate_artifact.py dist/OpenCCForSigil_0.1.0.zip
+	mise exec -- uv run python tools/validate_artifact.py dist/OpenCCForSigil_0.0.1-beta.zip
 
 spec-bundle:
 	mise exec -- uv run python tools/build_spec_bundle.py

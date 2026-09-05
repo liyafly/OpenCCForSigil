@@ -144,3 +144,60 @@ jobs:
             dist/OpenCCForSigil_Spec_v1.4_bundle.zip
           if-no-files-found: error
           retention-days: 14
+
+  publish-release:
+    name: Publish tagged GitHub release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build-fat-plugin
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download the validated Fat Plugin artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: OpenCCForSigil-fat-plugin-${{ github.sha }}
+          path: release-artifacts
+
+      - name: Verify tag matches plugin metadata and prepare release assets
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_SHA: ${{ github.sha }}
+        run: |
+          version="${RELEASE_TAG#v}"
+          plugin_zip="release-artifacts/dist/OpenCCForSigil_${RELEASE_SHA}.zip"
+          test -f "$plugin_zip"
+          python - "$plugin_zip" "$version" <<'PY'
+          from pathlib import Path
+          import sys
+          import zipfile
+          import xml.etree.ElementTree as ET
+
+          archive_path = Path(sys.argv[1])
+          expected = sys.argv[2]
+          with zipfile.ZipFile(archive_path) as archive:
+              metadata = ET.fromstring(archive.read("OpenCCForSigil/plugin.xml"))
+          actual = metadata.findtext("version")
+          if actual != expected:
+              raise SystemExit(
+                  f"release tag version {expected!r} does not match plugin.xml {actual!r}"
+              )
+          PY
+          mv "$plugin_zip" "release-artifacts/OpenCCForSigil_${version}.zip"
+          mv release-artifacts/dist/OpenCCForSigil_Spec_v1.4_bundle.zip \
+            "release-artifacts/OpenCCForSigil_Spec_v1.4_bundle.zip"
+
+      - name: Create GitHub prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          version="${RELEASE_TAG#v}"
+          gh release create "$RELEASE_TAG" \
+            --verify-tag \
+            --title "OpenCCForSigil ${RELEASE_TAG}" \
+            --prerelease \
+            --generate-notes \
+            "release-artifacts/OpenCCForSigil_${version}.zip" \
+            "release-artifacts/OpenCCForSigil_Spec_v1.4_bundle.zip"

@@ -2235,7 +2235,7 @@ def run(bk):
   <author>...</author>
   <description>Professional Chinese conversion for EPUB using the official OpenCC Python Binding</description>
   <engine>python3.4</engine>
-  <version>0.1.0</version>
+  <version>0.0.1-beta</version>
   <autostart>true</autostart>
   <autoclose>false</autoclose>
   <oslist>osx,unx,win</oslist>
@@ -3009,7 +3009,7 @@ Release 分为 official wheel vendor validation 与 plugin package 两步。
 11. 构建：
 
 ```text
-OpenCCForSigil_0.1.0.zip
+OpenCCForSigil_0.0.1-beta.zip
 ```
 
 zip 内必须只有一个顶层目录：

@@ -1,6 +1,6 @@
 [project]
 name = "opencc-for-sigil"
-version = "0.1.0"
+version = "0.0.1b0"
 description = "A source-preserving official OpenCC Python Binding plugin for Sigil."
 requires-python = ">=3.14,<3.15"
 dependencies = []

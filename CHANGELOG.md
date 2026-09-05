@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.0.1-beta
+
+- First public beta release of the source-preserving Sigil conversion plugin.
+- Includes the official BYVoid/OpenCC Python Binding and target-built native
+  Jieba payloads in the GitHub Actions Fat Plugin artifact.
+- Supports CPython 3.14.x/cp314 with Sigil bundled Python 3.14.2 as the
+  production baseline and 3.14.7 as the development/CI baseline.
+
 ## Specification v1.3
 
 - Locked the sole production backend to the vendored BYVoid/OpenCC official Python Binding.

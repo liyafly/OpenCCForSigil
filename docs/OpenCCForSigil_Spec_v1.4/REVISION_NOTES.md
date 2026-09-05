@@ -106,7 +106,8 @@ Python 3.14.7 is the development/CI baseline. Patch versions are provenance
 only and never participate in payload compatibility selection. `3.14.7` must
 not be presented as the minimum runtime version.
 
-插件自身的发布版本仍遵循 §45 的 SemVer（当前 skeleton 为 `0.1.0`），与工程规范版本 `v1.4` 不混用。
+插件自身的发布版本仍遵循 §45 的 SemVer；当前公开 beta 为
+`0.0.1-beta`，与工程规范版本 `v1.4` 不混用。
 
 ## 7. v1.4 Native Jieba enablement
 

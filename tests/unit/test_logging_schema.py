@@ -4,7 +4,7 @@ from logging_ext.logger import SessionLogger
 
 
 def test_logger_writes_jsonl_event_and_summary(tmp_path):
-    logger = SessionLogger(tmp_path / "logs", plugin_version="0.1.0", session_id="session-1")
+    logger = SessionLogger(tmp_path / "logs", plugin_version="0.0.1-beta", session_id="session-1")
     logger.event("state_transition", from_state="idle", to_state="scanning")
     logger.summary({"status": "success"})
 

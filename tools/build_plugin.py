@@ -85,7 +85,7 @@ def main() -> int:
     parser.add_argument(
         "--output",
         type=Path,
-        default=ROOT / "dist" / "OpenCCForSigil_0.1.0.zip",
+        default=ROOT / "dist" / "OpenCCForSigil_0.0.1-beta.zip",
     )
     args = parser.parse_args()
     version = validate()
