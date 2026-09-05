@@ -21,7 +21,7 @@ class OpenCCBackend:
     """Only production conversion path allowed by the v1.3 specification."""
 
     def __init__(self, config: str, selector: Optional[RuntimeSelector] = None) -> None:
-        self.config = validate_config(config)
+        self._config = validate_config(config)
         self._selector = selector or RuntimeSelector()
         try:
             self._module, runtime, payload, root, import_origin = self._selector.import_opencc()
@@ -47,6 +47,12 @@ class OpenCCBackend:
 
     def available_configs(self) -> Tuple[str, ...]:
         return self._available_configs
+
+    @property
+    def config(self) -> str:
+        """Return the config frozen into this backend instance."""
+
+        return self._config
 
     def convert(self, text: str) -> str:
         if not isinstance(text, str):
