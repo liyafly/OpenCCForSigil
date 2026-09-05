@@ -1,4 +1,4 @@
-.PHONY: install test lint check package spec-bundle clean
+.PHONY: install test lint verify-vendor differential check package artifact-check spec-bundle clean
 
 install:
 	mise install
@@ -10,11 +10,20 @@ test:
 lint:
 	mise exec -- ruff check .
 
-check: lint test
+verify-vendor:
+	mise exec -- uv run python tools/verify_vendor.py
+
+differential:
+	mise exec -- uv run python tools/differential_test.py --corpus tests/fixtures/opencc_smoke.jsonl
+
+check: lint test verify-vendor differential
 	mise exec -- uv run python tools/build_plugin.py --check
 
 package:
 	mise exec -- uv run python tools/build_plugin.py
+
+artifact-check:
+	mise exec -- uv run python tools/validate_artifact.py dist/OpenCCForSigil_0.1.0.zip
 
 spec-bundle:
 	mise exec -- uv run python tools/build_spec_bundle.py

@@ -4,3 +4,5 @@
 *.xml text eol=lf
 *.json text eol=lf
 *.md text eol=lf
+# Official wheel payloads are integrity-addressed bytes; do not normalize them.
+plugin/OpenCCForSigil/vendor/opencc/payloads/** -text

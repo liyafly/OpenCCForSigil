@@ -1,0 +1,12 @@
+prefix=/Users/runner/work/OpenCC/OpenCC/build/lib.macosx-11.0-arm64-cpython-314/opencc/clib
+exec_prefix=${prefix}
+libdir=/Users/runner/work/OpenCC/OpenCC/build/lib.macosx-11.0-arm64-cpython-314/opencc/clib/lib
+includedir=/Users/runner/work/OpenCC/OpenCC/build/lib.macosx-11.0-arm64-cpython-314/opencc/clib/include
+plugindir=/Users/runner/work/OpenCC/OpenCC/build/lib.macosx-11.0-arm64-cpython-314/opencc/clib/lib/opencc/plugins
+
+Name: opencc
+Description: Open Chinese Convert
+Version: 1.4.2
+Requires:
+Libs: -L${libdir} -lopencc
+Cflags: -I${includedir}/opencc

@@ -335,6 +335,7 @@ V1 正式支持范围是 **CPython 3.14.x / `cp314`**，当前 Sigil 官方发�
 - Runtime 不得依赖用户 site-packages、Homebrew、Conda、pyenv 或系统 OpenCC；
 - wheel 内部可能包含 `.pyd`/`.so` 等官方 extension 文件，但 OpenCCForSigil 不把它们当作独立 `libopencc` binary 管理，不直接用 `ctypes` 加载，也不自行维护其 ABI/DLL/dylib/so 生命周期；
 - 发布前必须在 clean process 中验证 exact import、version、config discovery、smoke conversion 与 payload integrity；
+- vendored payload integrity hash 对应原始 wheel 提取内容；Runtime 必须禁止在 payload 内写入 Python bytecode cache，避免 `__pycache__` 污染 hash；
 - 若官方 wheel 缺少 CPython 3.14.x 的某个正式支持 OS/architecture runtime，发布必须阻塞，不能静默换后端。
 
 若未来因体积改成 platform-specific ZIP，版本、Python 代码、wheel/data provenance 与行为必须相同，只允许 payload 集合不同。
@@ -2047,8 +2048,10 @@ OpenCCForSigil/
 │
 ├── tools/
 │   ├── fetch_opencc_wheels.py
+│   ├── vendor_opencc.py
 │   ├── verify_vendor.py
 │   ├── build_plugin.py
+│   ├── validate_artifact.py
 │   ├── generate_golden.py
 │   ├── differential_test.py
 │   ├── inspect_opencc_release.py
@@ -2066,7 +2069,7 @@ OpenCCForSigil/
     └── deviations.md
 ```
 
-`vendor/opencc/payloads/*` 是唯一允许运行的 OpenCC Python Binding 来源；每个 payload 必须来自 manifest 所列官方 wheel。不得把 payload 内的 extension 拆出来当作独立 library，也不得从系统路径加载 OpenCC。
+`vendor/opencc/payloads/*` 是唯一允许运行的 OpenCC Python Binding 来源；每个 payload 必须来自 manifest 所列官方 wheel。不得把 payload 内的 extension 拆出来当作独立 library，也不得从系统路径加载 OpenCC。`resources/third_party/THIRD_PARTY_NOTICES.md` 与 wheel 内 license/authors notice 必须进入最终 ZIP。
 
 # 23. Sigil Plugin 根入口
 
@@ -2846,7 +2849,7 @@ Release 分为 official wheel vendor validation 与 plugin package 两步。
 
 ## 42.1 Official wheel payload build
 
-`tools/fetch_opencc_wheels.py` / `native_build/build_opencc.py`：
+`tools/fetch_opencc_wheels.py` / `tools/vendor_opencc.py` / `native_build/build_opencc.py`：
 
 1. 读取 pinned BYVoid/OpenCC tag/commit 与 PyPI `opencc` 版本；
 2. 查询官方 release/PyPI wheel metadata，按 exact CPython/OS/architecture 选择 wheel；
@@ -2855,7 +2858,7 @@ Release 分为 official wheel vendor validation 与 plugin package 两步。
 5. 计算 payload tree SHA-256，生成 wheel/payload/provenance manifest；
 6. 在 clean process 中 import `opencc`，检查 origin、version、CONFIGS 与 smoke conversion；
 7. 使用同一 upstream release 的官方 CLI 运行 canonical corpus；
-8. 输出 payload artifact + metadata。
+8. 输出 payload artifact + metadata；跨平台无法在当前 host import 时，必须显式标记未运行 target self-test，并在目标 runtime 验证后才可 release。
 
 ## 42.2 Plugin build
 
@@ -2868,8 +2871,9 @@ Release 分为 official wheel vendor validation 与 plugin package 两步。
 5. 生成 `vendor/opencc/manifest.json`；
 6. 运行 tests；
 7. 检查 plugin.xml；
-8. 解包自检；
-9. 构建：
+8. 校验 `THIRD_PARTY_NOTICES`、OpenCC license/authors notice、无 `.pyc`/`__pycache__`/开发文件；
+9. 解包自检；
+10. 构建：
 
 ```text
 OpenCCForSigil_0.1.0.zip

@@ -99,6 +99,9 @@ class RuntimeSelector:
         module = sys.modules.get("opencc")
         path_was_inserted = False
         if module is None:
+            # The vendored payload hash covers the extracted wheel contents.
+            # Runtime bytecode caches must never mutate that integrity surface.
+            sys.dont_write_bytecode = True
             sys.path.insert(0, str(root))
             path_was_inserted = True
             try:

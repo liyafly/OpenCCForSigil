@@ -1,0 +1,10 @@
+{"id":"basic-s2t","config":"s2t","source":"汉字与鼠标"}
+{"id":"basic-t2s","config":"t2s","source":"漢字與滑鼠"}
+{"id":"regional-s2tw","config":"s2tw","source":"鼠标"}
+{"id":"regional-s2twp","config":"s2twp","source":"鼠标"}
+{"id":"regional-s2hk","config":"s2hk","source":"鼠标"}
+{"id":"regional-s2hkp","config":"s2hkp","source":"鼠标"}
+{"id":"regional-t2tw","config":"t2tw","source":"滑鼠"}
+{"id":"regional-t2hk","config":"t2hk","source":"滑鼠"}
+{"id":"regional-tw2t","config":"tw2t","source":"滑鼠"}
+{"id":"regional-hk2t","config":"hk2t","source":"鼠標"}

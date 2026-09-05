@@ -1,7 +1,8 @@
 # Architecture
 
-This repository implements the Phase 0 skeleton from the engineering
-specification. The intended dependency direction is:
+This repository currently implements the safe plugin skeleton and the official
+OpenCC Binding runtime boundary from the engineering specification. The
+intended dependency direction is:
 
 ```text
 Sigil plugin.py
@@ -33,8 +34,10 @@ document and official binding payload phases are complete.
 - V1 formally supports CPython 3.14.x with ABI `cp314`; Sigil bundled Python
   3.14.2 is the production baseline and patch versions are provenance only.
 - RuntimeSelector verifies the exact CPython major/minor/OS/architecture/ABI
-  payload tree before importing `opencc`; 3.14.2 and 3.14.7 select the same
-  payload.
+  payload tree before importing `opencc`; the checked-in build host payload is
+  macOS arm64/cp314, and 3.14.2 and 3.14.7 select the same payload.
+- Build/Release uses `tools/vendor_opencc.py` to fetch exact official wheels,
+  verify SHA-256, extract unchanged payloads, and register config/data hashes.
 - There is no system module, PATH CLI, user site-packages, pip, or network
   fallback.
 - User data is stored outside the plugin installation directory.

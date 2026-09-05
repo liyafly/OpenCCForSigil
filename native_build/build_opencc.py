@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
-"""Official wheel payload build entry point reserved for Phase 1."""
+"""Compatibility entry point for the official wheel vendor pipeline."""
+
+import sys
+from pathlib import Path
 
 
-def main() -> int:
-    raise SystemExit(
-        "Phase 1 official wheel payload build is not implemented; no unverified payload is produced."
-    )
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "tools"))
+
+from vendor_opencc import main  # noqa: E402
 
 
 if __name__ == "__main__":

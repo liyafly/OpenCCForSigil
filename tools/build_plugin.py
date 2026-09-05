@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""Validate and package the Sigil plugin.
-
-Phase 0 packages source and the manifest skeleton only. Native artifact
-collection is deliberately a separate Phase 1 build step.
-"""
+"""Validate and package the Sigil plugin after Build/Release payload checks."""
 
 from __future__ import annotations
 
@@ -12,6 +8,9 @@ from pathlib import Path
 import re
 import zipfile
 import xml.etree.ElementTree as ET
+
+from verify_vendor import main as verify_vendor_manifest
+from validate_artifact import validate as validate_artifact
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -36,6 +35,7 @@ def validate() -> str:
         raise SystemExit("missing plugin.py")
     if not MANIFEST_FILE.is_file():
         raise SystemExit("missing vendor/opencc/manifest.json")
+    verify_vendor_manifest()
 
     root = ET.parse(PLUGIN_XML).getroot()
     if root.tag != "plugin":
@@ -74,6 +74,7 @@ def build(output: Path) -> Path:
         for path in _iter_package_files():
             relative = path.relative_to(PLUGIN_DIR)
             archive.write(path, Path("OpenCCForSigil") / relative)
+    validate_artifact(output)
     print(f"created {output} ({version})")
     return output
 

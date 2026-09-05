@@ -1,13 +1,13 @@
 # Third-party notices
 
-The Phase 0 skeleton does not ship native OpenCC binaries or dictionary data.
-
-The planned runtime dependency is the BYVoid/OpenCC official Python Binding
-distribution `opencc` `1.4.2`, imported only from a checked-in official wheel
-payload listed in `plugin/OpenCCForSigil/vendor/opencc/manifest.json` after
-wheel/payload hash verification. Wheel contents, OpenCC license, and any
-third-party notices will be added together in Phase 1 after the runtime matrix
-is established.
+The checked-in payload is the BYVoid/OpenCC official Python Binding
+distribution `opencc` `1.4.2`, imported only from the manifest-selected macOS
+arm64 / CPython 3.14 (`cp314`) wheel payload. Runtime never downloads or
+installs the dependency. The manifest records the exact wheel URL, wheel
+SHA-256, extracted payload tree hash, and config/data hashes. Wheel contents,
+the OpenCC license, and any third-party notices remain in the final plugin
+artifact. Additional Fat Plugin payloads require the same exact metadata and
+runtime verification.
 
 Design references are cloned outside this repository under
 `../OpenCCForSigil-References/` and are not packaged or imported at runtime.

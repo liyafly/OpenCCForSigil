@@ -6,7 +6,11 @@ on:
 
 jobs:
   checks:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Check out
         uses: actions/checkout@v4
@@ -14,9 +18,15 @@ jobs:
         uses: jdx/mise-action@v2
       - name: Install locked Python dependencies
         run: mise exec -- uv sync --locked
+      - name: Vendor and verify official OpenCC payload for this runner
+        run: mise exec -- uv run python tools/vendor_opencc.py --version 1.4.2
+      - name: Verify vendored payload manifest
+        run: mise exec -- uv run python tools/verify_vendor.py
       - name: Lint
         run: mise exec -- ruff check .
       - name: Test
         run: mise exec -- uv run pytest
+      - name: Official CLI/Python Binding differential test
+        run: mise exec -- uv run python tools/differential_test.py --corpus tests/fixtures/opencc_smoke.jsonl
       - name: Validate plugin package
         run: mise exec -- uv run python tools/build_plugin.py --check

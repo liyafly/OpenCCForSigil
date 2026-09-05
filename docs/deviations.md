@@ -1,9 +1,10 @@
 # Deviations
 
-No implementation deviation from the v1.3 engineering specification is
-recorded for Phase 0.
+No architecture deviation from the v1.3 engineering specification is recorded.
+The current implementation has completed the official-binding runtime boundary
+and checked in one verified macOS arm64/cp314 payload.
 
-The only deliberate incompleteness is that the official wheel payloads, document
-processor, UI, and conversion pipeline are not yet implemented. Their absence
-is represented explicitly in the manifest and is covered by the Phase 0
-package/readiness checks.
+The deliberate remaining scope is the complete multi-platform Fat Plugin
+payload set plus the document processor, UI, and conversion pipeline. The
+manifest and CI build each target platform from exact official wheels; no
+unverified platform payload is declared as released.

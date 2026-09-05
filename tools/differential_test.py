@@ -1,9 +1,146 @@
 #!/usr/bin/env python3
-"""Guarded entry point for official CLI vs Python Binding differential tests."""
+"""Compare the official OpenCC CLI oracle with the vendored Python Binding."""
+
+from __future__ import annotations
+
+import argparse
+import importlib
+import json
+from pathlib import Path
+import subprocess
+import sys
+from typing import Any, Iterable, Mapping
+
+
+ROOT = Path(__file__).resolve().parents[1]
+V1_CONFIGS = {
+    "s2t",
+    "t2s",
+    "s2tw",
+    "tw2s",
+    "s2twp",
+    "tw2sp",
+    "s2hk",
+    "hk2s",
+    "s2hkp",
+    "hk2sp",
+    "t2tw",
+    "t2hk",
+    "tw2t",
+    "hk2t",
+}
+
+
+def load_cases(path: Path) -> list[dict[str, str]]:
+    cases: list[dict[str, str]] = []
+    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        try:
+            value = json.loads(line)
+        except ValueError as exc:
+            raise SystemExit(f"invalid JSONL at {path}:{line_number}") from exc
+        if not isinstance(value, dict):
+            raise SystemExit(f"corpus case must be an object at {path}:{line_number}")
+        missing = [key for key in ("id", "config", "source") if not isinstance(value.get(key), str)]
+        if missing:
+            raise SystemExit(f"corpus case missing string fields at {path}:{line_number}: {missing}")
+        if value["config"] not in V1_CONFIGS:
+            raise SystemExit(f"corpus uses unsupported V1 config at {path}:{line_number}: {value['config']}")
+        cases.append({"id": value["id"], "config": value["config"], "source": value["source"]})
+    if not cases:
+        raise SystemExit(f"corpus is empty: {path}")
+    return cases
+
+
+def run_cli(cli: Path, config: str, source: str, config_root: Path | None = None) -> str:
+    config_argument = config
+    if config_root is not None:
+        config_path = config_root / f"{config}.json"
+        if not config_path.is_file():
+            raise RuntimeError(f"official CLI config is missing: {config_path}")
+        config_argument = str(config_path)
+    result = subprocess.run(
+        [str(cli), "--include-tofu-risk-dictionaries", "-c", config_argument],
+        input=source.encode("utf-8"),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    if result.returncode:
+        detail = result.stderr.decode("utf-8", errors="replace").strip()
+        raise RuntimeError(f"official OpenCC CLI failed for {config}: {detail}")
+    try:
+        return result.stdout.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise RuntimeError(f"official OpenCC CLI returned non-UTF-8 output for {config}") from exc
+
+
+def _resolve_payload(payload_root: Path | None) -> Path:
+    if payload_root is not None:
+        return payload_root.resolve()
+    sys.path.insert(0, str(ROOT / "plugin" / "OpenCCForSigil"))
+    from opencc_backend.runtime_selector import RuntimeSelector
+
+    _, _, root = RuntimeSelector().select()
+    return root
+
+
+def run_python_binding(payload_root: Path, cases: Iterable[Mapping[str, str]]) -> list[str]:
+    payload_root = payload_root.resolve()
+    sys.dont_write_bytecode = True
+    sys.path.insert(0, str(payload_root))
+    module = importlib.import_module("opencc")
+    origin = Path(str(module.__file__)).resolve()
+    if payload_root not in origin.parents:
+        raise RuntimeError(f"Python Binding imported outside selected payload: {origin}")
+    converters: dict[str, Any] = {}
+    outputs: list[str] = []
+    for case in cases:
+        config = case["config"]
+        converter = converters.setdefault(config, module.OpenCC(config))
+        outputs.append(converter.convert(case["source"]))
+    return outputs
+
+
+def compare(cli: Path, payload_root: Path, cases: list[dict[str, str]]) -> list[dict[str, object]]:
+    python_outputs = run_python_binding(payload_root, cases)
+    config_root = payload_root / "opencc" / "clib" / "share" / "opencc"
+    differences: list[dict[str, object]] = []
+    for case, python_output in zip(cases, python_outputs, strict=True):
+        cli_output = run_cli(cli, case["config"], case["source"], config_root)
+        if python_output != cli_output:
+            differences.append(
+                {
+                    "id": case["id"],
+                    "config": case["config"],
+                    "python_output": python_output,
+                    "cli_output": cli_output,
+                }
+            )
+    return differences
 
 
 def main() -> int:
-    print("Differential testing starts in Phase 1; no self-generated oracle is accepted.")
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--cli",
+        type=Path,
+        help="independent official OpenCC CLI executable; defaults to the selected payload's official CLI",
+    )
+    parser.add_argument("--corpus", type=Path, required=True, help="source-only JSONL corpus")
+    parser.add_argument("--payload-root", type=Path, help="exact vendored payload; defaults to runtime selection")
+    args = parser.parse_args()
+    cases = load_cases(args.corpus)
+    payload_root = _resolve_payload(args.payload_root)
+    cli = args.cli or payload_root / "opencc" / "clib" / "bin" / "opencc"
+    if not cli.is_file():
+        raise SystemExit(f"official CLI is missing: {cli}")
+    differences = compare(cli, payload_root, cases)
+    if differences:
+        print(json.dumps({"status": "blocking-difference", "differences": differences}, ensure_ascii=False, indent=2))
+        return 1
+    print(f"official CLI/Python Binding differential test passed ({len(cases)} cases; 100% equality)")
     return 0
 
 
