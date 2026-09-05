@@ -152,6 +152,10 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    # This job only downloads artifacts and has no checkout, so gh cannot
+    # resolve the repository from git remotes and needs GH_REPO instead.
+    env:
+      GH_REPO: ${{ github.repository }}
     steps:
       - name: Download the validated Fat Plugin artifact
         uses: actions/download-artifact@v5
