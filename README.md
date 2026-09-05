@@ -21,11 +21,11 @@ official OpenCC wheel payload for the current build host:
   single adapter commit boundary for `bk.writefile()`;
 - tests and a mise-pinned development toolchain.
 
-The first interactive conversion slice uses the conservative profile
-(`s2t`, all XHTML text, and `alt/title` attributes). It previews every
+The first interactive conversion slice lets the user explicitly choose `s2t`
+or `t2s` before planning (`s2t` is the initial default). It previews every
 planned change before any EPUB write. Script/style/code/pre content and
-protected attributes remain unchanged. Runtime must not fall back to a
-system OpenCC installation or invoke pip.
+protected attributes remain unchanged. Runtime must not fall back to a system
+OpenCC installation or invoke pip.
 
 V1 formally supports CPython 3.14.x with wheel ABI `cp314`; the current Sigil
 bundled Python 3.14.2 is the production baseline. The reproducible development

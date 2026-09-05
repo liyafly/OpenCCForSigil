@@ -19,6 +19,47 @@ class PreviewOutcome:
     previews: Tuple[PreviewSession, ...]
 
 
+CONVERSION_LABELS = {
+    "s2t": "简体 → 通用繁体 (s2t)",
+    "t2s": "繁体 → 简体 (t2s)",
+}
+
+
+def choose_conversion_config(
+    available_configs: Sequence[str],
+    *,
+    default_config: str = "s2t",
+) -> str | None:
+    """Ask for an explicit conversion direction before building a plan.
+
+    The first interactive slice intentionally exposes only the two
+    non-regional directions. The backend still validates the full upstream
+    config allowlist, so regional selectors can be added without changing the
+    planning or write boundary.
+    """
+
+    qt_widgets = _load_qt_widgets()
+    available = set(available_configs)
+    configs = tuple(config for config in ("s2t", "t2s") if config in available)
+    if not configs:
+        raise UIUnavailableError(
+            "no supported s2t/t2s config is available in the selected payload"
+        )
+
+    application = qt_widgets.QApplication.instance()
+    owns_application = application is None
+    if application is None:
+        import sys
+
+        application = qt_widgets.QApplication(sys.argv)
+    dialog = _ConversionConfigDialog(qt_widgets, configs, default_config)
+    exec_method = getattr(dialog.dialog, "exec", None) or dialog.dialog.exec_
+    exec_method()
+    if owns_application:
+        application.quit()
+    return dialog.selected_config if dialog.accepted else None
+
+
 def show_preview(planned: Sequence[PlannedDocument]) -> PreviewOutcome:
     """Show a preview and return the sessions containing user decisions."""
 
@@ -197,4 +238,44 @@ class _PreviewDialog:
             self._qt.QMessageBox.warning(self.dialog, "Preview incomplete", str(exc))
             return
         self.applied = True
+        self.dialog.accept()
+
+
+class _ConversionConfigDialog:
+    def __init__(self, qt_widgets: Any, configs: Tuple[str, ...], default_config: str) -> None:
+        self._qt = qt_widgets
+        self.accepted = False
+        self.selected_config = None
+        self.dialog = qt_widgets.QDialog()
+        self.dialog.setWindowTitle("OpenCCForSigil Conversion Direction")
+        self.dialog.setMinimumWidth(460)
+
+        layout = qt_widgets.QVBoxLayout(self.dialog)
+        label = qt_widgets.QLabel(
+            "Choose the conversion direction explicitly. OpenCCForSigil will not "
+            "guess or silently reverse it."
+        )
+        label.setWordWrap(True)
+        layout.addWidget(label)
+
+        self.combo = qt_widgets.QComboBox()
+        for config in configs:
+            self.combo.addItem(CONVERSION_LABELS[config], config)
+        selected_index = self.combo.findData(default_config)
+        if selected_index >= 0:
+            self.combo.setCurrentIndex(selected_index)
+        layout.addWidget(self.combo)
+
+        buttons = qt_widgets.QHBoxLayout()
+        self.cancel_button = qt_widgets.QPushButton("Cancel")
+        self.continue_button = qt_widgets.QPushButton("Continue to Preview")
+        buttons.addWidget(self.cancel_button)
+        buttons.addWidget(self.continue_button)
+        layout.addLayout(buttons)
+        self.cancel_button.clicked.connect(self.dialog.reject)
+        self.continue_button.clicked.connect(self._accept)
+
+    def _accept(self) -> None:
+        self.selected_config = str(self.combo.currentData())
+        self.accepted = True
         self.dialog.accept()

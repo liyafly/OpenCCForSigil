@@ -36,8 +36,12 @@ class Controller:
         backend: Optional[OpenCCBackend] = None
         try:
             profile = _load_conservative_profile()
+            preferences = self.storage.load_preferences(
+                default={"last_conversion_config": str(profile["conversion"])}
+            )
+            default_config = _preferred_config(preferences, str(profile["conversion"]))
             self.session.transition(SessionState.SCANNING)
-            backend = OpenCCBackend(str(profile["conversion"]))
+            backend = OpenCCBackend(default_config)
             self._run_backend_self_test(backend)
 
             if not _book_supports_conversion(self.bk):
@@ -45,11 +49,30 @@ class Controller:
                     message="BookContainer text API unavailable; preflight-only run",
                 )
 
+            from ui.preview_window import choose_conversion_config, show_preview
+
+            selected_config = choose_conversion_config(
+                backend.available_configs(), default_config=default_config
+            )
+            if selected_config is None:
+                self.session.cancel()
+                self.logger.summary(
+                    self._summary(status="cancelled", files_scanned=0, changes=0, files_changed=0)
+                )
+                return 1
+            self.storage.save_preferences(
+                {**preferences, "last_conversion_config": selected_config}
+            )
+            if selected_config != backend.config:
+                backend.close()
+                backend = OpenCCBackend(selected_config)
+                self._run_backend_self_test(backend)
+
             self.session.transition(SessionState.ANALYZING)
             workflow = ConversionWorkflow(
                 SigilBookAdapter(self.bk),
                 backend,
-                ConvertRequest(str(profile["conversion"])),
+                ConvertRequest(selected_config),
                 scope=Scope(str(profile["scope"])),
                 tokenizer_options=TokenizerOptions(
                     protected_elements=tuple(profile["protected_elements"]),
@@ -65,13 +88,11 @@ class Controller:
             self.logger.event(
                 "plan_built",
                 profile_id=profile["id"],
-                config=profile["conversion"],
+                config=selected_config,
                 files_scanned=len(planned),
                 changes=planned_change_count,
             )
             self.session.transition(SessionState.PLANNED)
-
-            from ui.preview_window import show_preview
 
             self.session.transition(SessionState.PREVIEWING)
             preview = show_preview(planned)
@@ -184,6 +205,11 @@ def _book_supports_conversion(book: Any) -> bool:
     return callable(getattr(book, "text_iter", None)) and callable(
         getattr(book, "readfile", None)
     )
+
+
+def _preferred_config(preferences: Dict[str, object], fallback: str) -> str:
+    candidate = preferences.get("last_conversion_config", fallback)
+    return candidate if candidate in {"s2t", "t2s"} else fallback
 
 
 def _load_conservative_profile() -> Dict[str, object]:
