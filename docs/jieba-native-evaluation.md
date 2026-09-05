@@ -47,6 +47,16 @@ The corresponding standard `s2twp` cases produced `城堡計程車兵` and
 selection. This is a segmentation effect from the official OpenCC plugin, not
 a custom conversion algorithm.
 
+The pinned upstream comparison corpus was also exercised through the isolated
+Python Binding payload: 20 cases and 43 config assertions. With the V1
+`include_tofu_risk_dictionaries=True` policy, the Python Binding and the
+independently built official CLI matched on all 43 assertions. The corpus has
+two review notes rather than silent fixes: its tofu case expects the CLI's
+default skip-tofu behavior, while V1 deliberately enables that dictionary; and
+one older standard `tw2sp` expected value says `慰借`, whereas both official
+1.4.2 executables produce `慰藉`. That corpus value must be reviewed and
+explicitly updated only as part of a visible golden-data change.
+
 ## Packaging finding
 
 Building the plugin as a normal standalone OpenCC shared-library plugin also
