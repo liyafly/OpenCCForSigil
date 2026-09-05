@@ -1,8 +1,9 @@
 """Top-level application controller.
 
-The controller owns orchestration and state. It deliberately does not import
-the UI, document processors, or official OpenCC backend. Phase 0 exposes a no-op path
-so installation can be tested without mutating a book.
+The controller owns orchestration and state. Phase 0 remains a no-op for book
+content, but it runs the official OpenCC backend preflight so a real Sigil
+installation exercises runtime selection, payload integrity, and import-origin
+verification without mutating an EPUB.
 """
 
 from pathlib import Path
@@ -11,6 +12,7 @@ from typing import Any, Optional
 from app.session import Session, SessionState
 from app.version import PLUGIN_VERSION
 from logging_ext.logger import SessionLogger
+from opencc_backend.backend import OpenCCBackend
 from sigil.storage import UserDataStore, resolve_user_data_dir
 
 
@@ -26,12 +28,23 @@ class Controller:
         self.session = Session(logger=self.logger, session_id=self.logger.session_id)
 
     def run(self) -> int:
-        """Run the safe Phase 0 no-op flow and return a Sigil status code."""
+        """Run the read-only Phase 0 flow and return a Sigil status code."""
 
         self.logger.event("run_started", state=self.session.state.value)
         try:
             self.session.transition(SessionState.SCANNING)
             self.session.transition(SessionState.ANALYZING)
+            backend = OpenCCBackend("s2t")
+            self_test = backend.self_test()
+            self.logger.event(
+                "backend_self_test",
+                passed=self_test.passed,
+                checks=self_test.checks,
+                provenance=backend.provenance().as_dict(),
+            )
+            backend.close()
+            if not self_test.passed:
+                raise RuntimeError(self_test.error or "official OpenCC backend self-test failed")
             self.session.transition(SessionState.PLANNED)
             self.logger.event(
                 "skeleton_noop",
