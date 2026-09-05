@@ -90,13 +90,26 @@ def run_cli(cli: Path, config: str, source: str, config_root: Path) -> str:
         input=source.encode("utf-8"),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        env=os.environ.copy(),
+        env=_cli_environment(config_root.parents[3]),
         check=False,
     )
     if result.returncode:
         detail = result.stderr.decode("utf-8", errors="replace").strip()
         raise RuntimeError(f"official OpenCC CLI failed for {config}: {detail}")
     return result.stdout.decode("utf-8")
+
+
+def _cli_environment(payload_root: Path) -> dict[str, str]:
+    environment = os.environ.copy()
+    runtime_dirs = (
+        payload_root / "opencc.libs",
+        payload_root / "opencc" / "clib" / "bin",
+    )
+    existing = environment.get("PATH", "")
+    environment["PATH"] = os.pathsep.join(
+        [str(path) for path in runtime_dirs if path.is_dir()] + [existing]
+    )
+    return environment
 
 
 def run_python_binding(payload_root: Path, cases: Iterable[Mapping[str, str]]) -> list[str]:

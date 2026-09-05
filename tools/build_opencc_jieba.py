@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -74,9 +75,14 @@ def _data_manifest(payload_root: Path) -> dict[str, str]:
     }
 
 
-def _run(command: list[str], *, cwd: Path | None = None) -> None:
+def _run(
+    command: list[str],
+    *,
+    cwd: Path | None = None,
+    env: Mapping[str, str] | None = None,
+) -> None:
     print("+", " ".join(command))
-    subprocess.run(command, cwd=cwd, check=True)
+    subprocess.run(command, cwd=cwd, env=env, check=True)
 
 
 def _source_commit(source_root: Path) -> str:
@@ -187,7 +193,20 @@ def _build_plugin(
                 "-DCMAKE_BUILD_WITH_INSTALL_RPATH=ON",
             ]
         )
-    _run(configure)
+    build_environment = os.environ.copy()
+    if runtime_os == "windows":
+        # Official Windows wheels keep the repaired MSVC runtime in
+        # ``opencc.libs``.  CMake must find and execute the wheel's
+        # ``opencc_dict.exe`` while generating the merged Jieba dictionary.
+        runtime_dirs = (
+            payload_root / "opencc.libs",
+            clib_root / "bin",
+        )
+        build_environment["PATH"] = os.pathsep.join(
+            [str(path) for path in runtime_dirs if path.is_dir()]
+            + [build_environment.get("PATH", "")]
+        )
+    _run(configure, env=build_environment)
     _run(
         [
             "cmake",
@@ -196,9 +215,13 @@ def _build_plugin(
             "--config",
             "Release",
             "--parallel",
-        ]
+        ],
+        env=build_environment,
     )
-    _run(["cmake", "--install", str(build_root / "cmake"), "--config", "Release"])
+    _run(
+        ["cmake", "--install", str(build_root / "cmake"), "--config", "Release"],
+        env=build_environment,
+    )
     plugin_library = _find_plugin(install_root)
     _strip_plugin(plugin_library, runtime_os)
     return plugin_library, install_root

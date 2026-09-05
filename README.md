@@ -2,7 +2,7 @@
 
 `OpenCCForSigil` is a Sigil `edit` plugin for source-preserving Chinese
 simplified/traditional and regional conversion. The implementation follows
-the stable engineering specification in `docs/OpenCCForSigil_Spec_v1.3/`.
+the stable engineering specification in `docs/OpenCCForSigil_Spec_v1.4/`.
 
 ## Current implementation status
 
@@ -14,6 +14,8 @@ official OpenCC wheel payload for the current build host:
 - user-data storage and JSONL logging boundaries;
 - the official OpenCC Python Binding and exact runtime-selector boundary;
 - a verified OpenCC 1.4.2 macOS arm64 / CPython 3.14 / `cp314` payload;
+- the official upstream native `opencc-jieba` plugin, its seven plugin configs,
+  and its Jieba resources in the macOS payload;
 - build-time wheel fetch, SHA-256, payload, config/data, and import checks;
 - an offset-preserving XHTML tokenizer and TextTarget/ConversionPlan pipeline;
 - Preview decisions with Accept this, Skip this, Accept all, and Skip all;
@@ -23,11 +25,12 @@ official OpenCC wheel payload for the current build host:
 
 The first interactive conversion slice lets the user explicitly choose a
 pinned standard OpenCC config before planning (`s2t` is the initial default;
-regional choices such as `tw2s` and `tw2sp` are available). It previews every
+regional choices such as `tw2s` and `tw2sp` are available). When the selected
+payload has passed the native-plugin checks, an advanced checkbox maps a
+standard direction to its official `*_jieba` config. It previews every
 planned change before any EPUB write. Script/style/code/pre content and
-protected attributes remain unchanged. Experimental `*_jieba` plugin configs
-are not exposed. Runtime must not fall back to a system OpenCC installation or
-invoke pip.
+protected attributes remain unchanged. Runtime must not fall back to a system
+OpenCC/plugin installation or invoke pip.
 
 V1 formally supports CPython 3.14.x with wheel ABI `cp314`; the current Sigil
 bundled Python 3.14.2 is the production baseline. The reproducible development
@@ -58,8 +61,8 @@ local Windows/Linux installation is not required.
 
 The generated ZIP has exactly one top-level directory, `OpenCCForSigil/`, as
 required by the Sigil plugin packaging contract. `make spec-bundle` generates
-the versioned v1.3 specification files and
-`dist/OpenCCForSigil_Spec_v1.3_bundle.zip`.
+the versioned v1.4 specification files and
+`dist/OpenCCForSigil_Spec_v1.4_bundle.zip`.
 
 ## Reference repositories
 

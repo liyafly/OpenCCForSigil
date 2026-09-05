@@ -36,9 +36,11 @@ the adapter is allowed to call `bk.writefile()`.
 
 The Preview UI supports `Accept this`, `Skip this`, `Accept all`, and `Skip
 all`. The selected config is saved as the next default, but every run still
-shows the explicit choice. Experimental `*_jieba` configs are not selectable
-until their official native plugin payloads and cross-platform tests are
-available. The core API also supports bulk filters by file, category, risk, or
+shows the explicit choice. When the selected payload advertises a verified
+official native plugin, the config dialog enables an advanced Jieba checkbox
+that maps a standard config to its concrete `*_jieba` config. It is not a
+generic segmentation selector, and an unavailable/invalid payload fails
+closed. The core API also supports bulk filters by file, category, risk, or
 rule source, so future review modes can narrow a bulk decision without
 changing the write boundary.
 
@@ -51,6 +53,9 @@ changing the write boundary.
 - RuntimeSelector verifies the exact CPython major/minor/OS/architecture/ABI
   payload tree before importing `opencc`; the checked-in build host payload is
   macOS arm64/cp314, and 3.14.2 and 3.14.7 select the same payload.
+- RuntimeSelector verifies optional `opencc-jieba` library/config/resource
+  hashes and sets plugin/data paths only inside the selected payload; it never
+  inherits a system plugin path.
 - Build/Release uses `tools/vendor_opencc.py` to fetch exact official wheels,
   verify SHA-256, extract unchanged payloads, and register config/data hashes.
 - There is no system module, PATH CLI, user site-packages, pip, or network

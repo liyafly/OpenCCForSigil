@@ -9,7 +9,7 @@ import zipfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SPEC_VERSION = "1.3"
+SPEC_VERSION = "1.4"
 SPEC_DIR = ROOT / "docs" / f"OpenCCForSigil_Spec_v{SPEC_VERSION}"
 FILES = {
     "OpenCCForSigil_Engineering_Spec.md": "OpenCCForSigil_Engineering_Spec.md",

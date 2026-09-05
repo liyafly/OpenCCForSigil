@@ -27,6 +27,14 @@ preview decisions, and the single write boundary. Later phases add broader
 document, structural, golden, and performance suites; they should not be
 collapsed into one plugin smoke test.
 
-The native Jieba assessment is intentionally separate from the V1 smoke suite:
+The native Jieba suite is a separate advanced-payload gate:
 [`jieba-native-evaluation.md`](jieba-native-evaluation.md) records the pinned
-upstream build and the remaining cross-platform release gates.
+upstream build. Run it with:
+
+```sh
+mise exec -- uv run python tools/differential_jieba_test.py \
+  --corpus tests/fixtures/opencc_jieba_smoke.jsonl
+```
+
+The Python Binding and matching official CLI must be 100% equal. The GitHub
+matrix runs this on each native Windows/macOS/Linux payload before assembly.

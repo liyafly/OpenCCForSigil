@@ -4,9 +4,10 @@ The checked-in payload is the BYVoid/OpenCC official Python Binding
 distribution `opencc` `1.4.2`, imported only from the manifest-selected macOS
 arm64 / CPython 3.14 (`cp314`) wheel payload. Runtime never downloads or
 installs the dependency. The manifest records the exact wheel URL, wheel
-SHA-256, extracted payload tree hash, and config/data hashes. Wheel contents,
-the OpenCC license, and any third-party notices remain in the final plugin
-artifact. Additional Fat Plugin payloads require the same exact metadata and
+SHA-256, extracted payload tree hash, config/data hashes, and the optional
+official `opencc-jieba` native plugin/resource hashes. Wheel contents, the
+OpenCC license, and third-party notices remain in the final plugin artifact.
+Additional Fat Plugin payloads require the same exact metadata and target
 runtime verification.
 
 Design references are cloned outside this repository under

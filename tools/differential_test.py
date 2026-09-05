@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import importlib
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -62,11 +63,13 @@ def run_cli(cli: Path, config: str, source: str, config_root: Path | None = None
         if not config_path.is_file():
             raise RuntimeError(f"official CLI config is missing: {config_path}")
         config_argument = str(config_path)
+    environment = _cli_environment(config_root.parents[3] if config_root is not None else cli.parent.parent.parent)
     result = subprocess.run(
         [str(cli), "--include-tofu-risk-dictionaries", "-c", config_argument],
         input=source.encode("utf-8"),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        env=environment,
         check=False,
     )
     if result.returncode:
@@ -76,6 +79,19 @@ def run_cli(cli: Path, config: str, source: str, config_root: Path | None = None
         return result.stdout.decode("utf-8")
     except UnicodeDecodeError as exc:
         raise RuntimeError(f"official OpenCC CLI returned non-UTF-8 output for {config}") from exc
+
+
+def _cli_environment(payload_root: Path) -> dict[str, str]:
+    environment = os.environ.copy()
+    runtime_dirs = (
+        payload_root / "opencc.libs",
+        payload_root / "opencc" / "clib" / "bin",
+    )
+    existing = environment.get("PATH", "")
+    environment["PATH"] = os.pathsep.join(
+        [str(path) for path in runtime_dirs if path.is_dir()] + [existing]
+    )
+    return environment
 
 
 def _resolve_payload(payload_root: Path | None) -> Path:

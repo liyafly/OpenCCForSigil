@@ -1,9 +1,9 @@
 # Official native `opencc-jieba` evaluation
 
 Status: `BUILD-TIME VERIFIED` on macOS arm64 with OpenCC upstream `ver.1.4.2`
-(commit `025f371dc76b598d77384fbdab90c937471844d8`). This document records an
-evaluation only; it does not change the V1 production backend or expose Jieba
-in the V1 UI.
+(commit `025f371dc76b598d77384fbdab90c937471844d8`). v1.4 exposes this
+capability only as a manifest-detected advanced option; the production backend
+is still the official Python Binding and the option remains fail-closed.
 
 ## What was verified
 
@@ -80,12 +80,14 @@ The payload manifest extension will also need to record at least:
 - compiler/build profile and loader-path policy;
 - OpenCC and cppjieba license/notice provenance.
 
-## V1 decision
+## Current enablement gate
 
-Jieba remains excluded from the current V1 release. Only macOS arm64 has been
-built and exercised locally; Windows, Linux, macOS x86_64, code signing,
-artifact merging, and full native plugin differential tests still need to pass
-before a single Fat Plugin can expose `*_jieba` configs safely.
+The checked-in macOS arm64 payload is enabled because its official native
+library, configs, dictionary resources, manifest hashes, Python Binding smoke
+tests, and official CLI differential corpus all pass. Windows, Linux, and
+macOS x86_64 must each be built and tested by the GitHub Actions matrix before
+their payloads can enter the Fat Plugin. A payload that has not passed its own
+target-runner tests cannot expose `*_jieba` configs.
 
 For the current user-facing workflow:
 
@@ -93,14 +95,14 @@ For the current user-facing workflow:
 - use `s2twp` for Simplified → Taiwan Traditional with Taiwan phrase conversion;
 - use `s2t`/`t2s` when only generic conversion is wanted.
 
-This keeps the V1 rule that Jieba is not a hidden toggle and does not weaken the
-official Python Binding, preview, source-span, transaction, or provenance
-invariants.
+The advanced option is a concrete config mapping, not a hidden global toggle;
+for example `s2t` maps to `s2t_jieba`. This does not weaken the official Python
+Binding, preview, source-span, transaction, or provenance invariants.
 
-## Enablement gate for a future version
+## Fat Plugin release gate
 
-Jieba can be promoted only after the GitHub release matrix builds the official
-upstream plugin against every target payload and verifies, in clean processes:
+The GitHub release matrix must build the official upstream plugin against every
+target payload and verify, in clean processes:
 
 1. exact plugin/config/resource manifest selection;
 2. native loader origin and integrity;
