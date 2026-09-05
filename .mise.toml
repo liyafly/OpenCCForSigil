@@ -1,0 +1,12 @@
+# Development/CI toolchain. V1 production compatibility is CPython 3.14.x
+# with ABI cp314; Sigil's production baseline is 3.14.2. The local toolchain
+# uses 3.14.7, while patch versions remain provenance only.
+
+[tools]
+python = "3.14.7"
+uv = "0.12.9"
+ruff = "0.16.6"
+
+[env]
+# Keep uv's project environment on the same interpreter that mise exposes.
+UV_PYTHON = "3.14.7"

@@ -1,0 +1,1 @@
+"""Rule schema validation boundary."""

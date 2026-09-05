@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+      - name: Install mise toolchain
+        uses: jdx/mise-action@v2
+      - name: Install locked Python dependencies
+        run: mise exec -- uv sync --locked
+      - name: Lint
+        run: mise exec -- ruff check .
+      - name: Test
+        run: mise exec -- uv run pytest
+      - name: Validate plugin package
+        run: mise exec -- uv run python tools/build_plugin.py --check

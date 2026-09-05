@@ -1,0 +1,2 @@
+# Compatibility export for environments that do not use uv.
+pytest==8.4.2

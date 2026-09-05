@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="OpenCC for Sigil">
+  <rect width="128" height="128" rx="20" fill="#2563eb"/>
+  <path d="M28 34h72v12H28zm0 24h72v12H28zm0 24h48v12H28z" fill="#fff"/>
+  <circle cx="91" cy="88" r="13" fill="#fbbf24"/>
+</svg>

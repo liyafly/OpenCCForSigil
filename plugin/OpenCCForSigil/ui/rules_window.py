@@ -1,0 +1,1 @@
+"""Rule manager window boundary."""

@@ -1,0 +1,47 @@
+# macOS / editor noise
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Python bytecode and local environments
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.venv/
+venv/
+env/
+ENV/
+
+# Test, coverage, and static-analysis output
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Build and distribution output
+build/
+dist/
+*.egg-info/
+*.zip
+native_build/artifacts/
+native_build/work/
+
+# Local-only configuration overrides
+.mise.local.toml
+.tool-versions.local
+.env
+.env.*
+!.env.example
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+
+# Keep the pinned lockfile and checked-in vendor manifest tracked.
+!uv.lock
+!plugin/OpenCCForSigil/vendor/opencc/manifest.json

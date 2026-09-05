@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<plugin>
+  <name>OpenCCForSigil</name>
+  <type>edit</type>
+  <author>OpenCCForSigil Contributors</author>
+  <description>Professional Chinese conversion for EPUB using the official OpenCC Python Binding</description>
+  <engine>python3.4</engine>
+  <version>0.1.0</version>
+  <autostart>true</autostart>
+  <autoclose>false</autoclose>
+  <oslist>osx,unx,win</oslist>
+</plugin>

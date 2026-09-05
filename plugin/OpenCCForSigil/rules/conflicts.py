@@ -1,0 +1,1 @@
+"""Rule conflict reporting boundary."""
