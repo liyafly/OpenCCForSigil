@@ -107,7 +107,7 @@ class OpenCCBackend:
             wheel_sha256=self._payload.wheel_sha256,
             payload_sha256=self._payload.payload_sha256,
             import_origin=self._import_origin,
-            data_manifest_sha256=_config_data_hash(manifest.config_data),
+            data_manifest_sha256=_config_data_hash(self._payload.config_data),
             config_sha256=manifest.config_hash(self._payload, self.config),
             config_name=self.config,
             tofu_policy=manifest.tofu_policy,

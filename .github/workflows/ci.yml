@@ -52,7 +52,7 @@ jobs:
         run: mise exec -- uv run python tools/verify_vendor.py
 
       - name: Lint
-        run: mise exec -- ruff check .
+        run: mise exec -- ruff check plugin tests tools
 
       - name: Test backend and plugin contracts
         run: mise exec -- uv run pytest

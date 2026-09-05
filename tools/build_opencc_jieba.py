@@ -117,10 +117,26 @@ def _safe_payload_path(payload_root: Path, relative: str) -> Path:
 def _platform_paths(payload_root: Path, runtime_os: str) -> tuple[Path, Path]:
     if runtime_os == "windows":
         plugin_dir = payload_root / "opencc" / "clib" / "bin" / "plugins"
+    elif (payload_root / "opencc" / "clib" / "lib64").is_dir():
+        plugin_dir = payload_root / "opencc" / "clib" / "lib64" / "opencc" / "plugins"
     else:
         plugin_dir = payload_root / "opencc" / "clib" / "lib" / "opencc" / "plugins"
     share_dir = payload_root / "opencc" / "clib" / "share" / "opencc"
     return plugin_dir, share_dir
+
+
+def _opencc_cmake_dir(clib_root: Path) -> Path:
+    candidates = (
+        clib_root / "lib" / "cmake" / "opencc",
+        clib_root / "lib64" / "cmake" / "opencc",
+    )
+    for candidate in candidates:
+        if candidate.is_dir():
+            return candidate
+    raise SystemExit(
+        "wheel does not contain the official OpenCC CMake package: "
+        + ", ".join(str(candidate) for candidate in candidates)
+    )
 
 
 def _find_plugin(install_root: Path) -> Path:
@@ -165,9 +181,7 @@ def _build_plugin(
     if not (plugin_source / "CMakeLists.txt").is_file():
         raise SystemExit(f"official OpenCC Jieba plugin source is missing: {plugin_source}")
     clib_root = payload_root / "opencc" / "clib"
-    opencc_dir = clib_root / "lib" / "cmake" / "opencc"
-    if not opencc_dir.is_dir():
-        raise SystemExit(f"wheel does not contain the official OpenCC CMake package: {opencc_dir}")
+    opencc_dir = _opencc_cmake_dir(clib_root)
 
     install_root = build_root / "install"
     configure = [
@@ -328,13 +342,21 @@ def build(source_root: Path, payload_root: Path) -> None:
         },
     }
     data_files = _data_manifest(payload_root)
-    manifest["config_data"] = {
+    record["config_data"] = {
         "source": (
             f"official OpenCC {manifest['opencc_version']} wheel payload plus official "
             "opencc-jieba plugin resources"
         ),
         "manifest_sha256": _canonical_hash(data_files),
         "files": data_files,
+    }
+    manifest["config_data"] = {
+        "source": "per-payload official OpenCC wheel/config/data provenance",
+        "payloads": {
+            str(item["payload_path"]): item["config_data"]
+            for item in manifest.get("payloads", [])
+            if isinstance(item, dict) and isinstance(item.get("config_data"), dict)
+        },
     }
     record["payload_sha256"] = _sha256_tree(payload_root)
     temporary = MANIFEST_PATH.with_name(f".{MANIFEST_PATH.name}.{uuid.uuid4().hex}.tmp")

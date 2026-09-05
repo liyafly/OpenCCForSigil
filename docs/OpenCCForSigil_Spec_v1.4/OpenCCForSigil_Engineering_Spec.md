@@ -294,6 +294,11 @@ OS + architecture
       "wheel_sha256": "...",
       "payload_path": "payloads/macos-arm64-cp314",
       "payload_sha256": "...",
+      "config_data": {
+        "source": "same official OpenCC wheel payload",
+        "manifest_sha256": "...",
+        "files": {}
+      },
       "native_plugins": {
         "opencc-jieba": {
           "library_path": "opencc/clib/lib/opencc/plugins/libopencc-jieba.dylib",
@@ -304,13 +309,19 @@ OS + architecture
     }
   ],
   "config_data": {
-    "source": "same official OpenCC 1.4.2 wheel/upstream release",
-    "files": {}
+    "source": "per-payload official OpenCC wheel/config/data provenance",
+    "payloads": {
+      "payloads/macos-arm64-cp314": {
+        "manifest_sha256": "..."
+      }
+    }
   }
 }
 ```
 
 `wheel_sha256` 是下载 provenance；`payload_sha256` 是 Runtime 对实际导入目录执行的完整树 hash。manifest 中不得只写“最新版”，不得只从文件名推断 ABI 或版本。V1 manifest 必须固定 Python policy 为 `CPython 3.14.x / cp314`，并记录生产基准 `3.14.2` 与开发/CI 基线 `3.14.7`；patch 版本不得成为 payload key。Phase 0 可以没有 payload，但必须明确标记为空并在 Runtime fail fast。
+
+每个 payload 必须独立记录其 `config_data.files` 与 `config_data.manifest_sha256`。不同平台的官方 wheel 即使来自同一 OpenCC release，也可能包含不同字节的 config JSON 或不同目录布局；Fat Plugin 不得用一个跨平台 data hash 代替逐 payload 校验。
 
 ## 4.3 Official wheel vendor 与平台策略
 

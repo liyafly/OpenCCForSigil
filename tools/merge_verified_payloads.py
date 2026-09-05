@@ -79,8 +79,6 @@ def merge(artifact_root: Path, vendor_root: Path = VENDOR_ROOT) -> int:
     records: dict[tuple[object, ...], dict[str, object]] = {}
     for record in manifest.get("payloads", []):
         records[_identity(record)] = dict(record)
-    reference_config_data = manifest.get("config_data")
-
     for export_path in exports:
         exported = json.loads(export_path.read_text(encoding="utf-8"))
         if exported.get("schema_version") != 1:
@@ -105,7 +103,7 @@ def merge(artifact_root: Path, vendor_root: Path = VENDOR_ROOT) -> int:
         if exported.get("opencc_upstream_commit") != manifest.get("opencc_upstream_commit"):
             raise SystemExit(f"OpenCC upstream commit mismatch in payload artifact: {export_path}")
         config_data = exported.get("config_data")
-        if config_data != reference_config_data:
+        if config_data != record.get("config_data"):
             raise SystemExit(f"config/data provenance mismatch in payload artifact: {export_path}")
 
         payload_id = _payload_id(record)
@@ -125,6 +123,14 @@ def merge(artifact_root: Path, vendor_root: Path = VENDOR_ROOT) -> int:
     manifest["payloads"] = sorted(
         records.values(), key=lambda item: (str(item["os"]), str(item["architecture"]), str(item["python_abi"]))
     )
+    manifest["config_data"] = {
+        "source": "per-payload official OpenCC wheel/config/data provenance",
+        "payloads": {
+            str(item["payload_path"]): item["config_data"]
+            for item in manifest["payloads"]
+            if isinstance(item.get("config_data"), dict)
+        },
+    }
     temporary = manifest_path.with_name(f".{manifest_path.name}.{uuid.uuid4().hex}.tmp")
     temporary.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     temporary.replace(manifest_path)

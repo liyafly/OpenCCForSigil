@@ -29,6 +29,7 @@ dist/
 *.zip
 native_build/artifacts/
 native_build/work/
+native_build/OpenCC/
 
 # Local-only configuration overrides
 .mise.local.toml

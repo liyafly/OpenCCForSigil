@@ -23,6 +23,7 @@ line-length = 100
 target-version = "py314"
 exclude = [
     "plugin/OpenCCForSigil/vendor",
+    "native_build/OpenCC",
 ]
 
 [tool.ruff.lint]

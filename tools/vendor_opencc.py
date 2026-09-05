@@ -392,6 +392,11 @@ def vendor(version: str, wheel_name: str | None, skip_import_test: bool) -> Path
         "payload_sha256": payload_sha256,
         "payload_runtime_test": "skipped-cross-platform" if skip_import_test else "passed",
         "config_hashes": config_hashes,
+        "config_data": {
+            "source": f"official OpenCC {version} wheel payload: opencc/clib/share/opencc",
+            "manifest_sha256": data_manifest_sha256,
+            "files": files,
+        },
     }
     payloads = [
         item for item in manifest.get("payloads", [])
@@ -408,9 +413,12 @@ def vendor(version: str, wheel_name: str | None, skip_import_test: bool) -> Path
     manifest["status"] = "phase1-payload-verified"
     manifest["payloads"] = payloads
     manifest["config_data"] = {
-        "source": f"official OpenCC {version} wheel payload: opencc/clib/share/opencc",
-        "manifest_sha256": data_manifest_sha256,
-        "files": files,
+        "source": "per-payload official OpenCC wheel/config/data provenance",
+        "payloads": {
+            str(item["payload_path"]): item["config_data"]
+            for item in payloads
+            if isinstance(item, dict) and isinstance(item.get("config_data"), dict)
+        },
     }
     _write_manifest(manifest)
     print(f"registered official OpenCC payload {payload_id}")

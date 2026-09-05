@@ -59,7 +59,7 @@ def export(output: Path) -> Path:
             "architecture": runtime.architecture,
         },
         "record": record,
-        "config_data": manifest.get("config_data", {}),
+        "config_data": record.get("config_data", {}),
         "opencc_version": manifest.get("opencc_version"),
         "opencc_upstream_tag": manifest.get("opencc_upstream_tag"),
         "opencc_upstream_commit": manifest.get("opencc_upstream_commit"),

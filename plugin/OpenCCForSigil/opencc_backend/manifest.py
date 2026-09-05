@@ -94,6 +94,7 @@ class PayloadRecord:
     payload_path: str
     payload_sha256: str
     config_hashes: Mapping[str, str]
+    config_data: Mapping[str, Any]
     native_plugins: Mapping[str, NativePluginRecord]
 
     @classmethod
@@ -126,6 +127,9 @@ class PayloadRecord:
             raise ManifestError("invalid payload runtime fields") from exc
         if not isinstance(value.get("config_hashes", {}), dict):
             raise ManifestError("payload config_hashes must be an object")
+        config_data = value.get("config_data", {})
+        if not isinstance(config_data, dict):
+            raise ManifestError("payload config_data must be an object")
         native_plugins_raw = value.get("native_plugins", {})
         if not isinstance(native_plugins_raw, dict):
             raise ManifestError("payload native_plugins must be an object")
@@ -143,6 +147,7 @@ class PayloadRecord:
             payload_path=str(value["payload_path"]),
             payload_sha256=str(value["payload_sha256"]),
             config_hashes=dict(value.get("config_hashes", {})),
+            config_data=dict(config_data),
             native_plugins=native_plugins,
         )
 

@@ -181,7 +181,6 @@ def _validate_native_plugins(
 
 def _validate_payload(
     record: Mapping[str, object],
-    data_files: Mapping[str, str],
     *,
     opencc_version: str,
     upstream_tag: str,
@@ -198,6 +197,7 @@ def _validate_payload(
         "payload_path",
         "payload_sha256",
         "config_hashes",
+        "config_data",
         "native_plugins",
     }
     missing = sorted(required - set(record))
@@ -215,6 +215,17 @@ def _validate_payload(
     if not isinstance(record["config_hashes"], dict):
         raise SystemExit("payload config_hashes must be an object")
     payload_path = str(record["payload_path"])
+    config_data = record["config_data"]
+    if not isinstance(config_data, dict):
+        raise SystemExit("payload config_data must be an object")
+    expected_data_files = config_data.get("files")
+    expected_data_hash = config_data.get("manifest_sha256")
+    if not isinstance(expected_data_files, dict) or not expected_data_files:
+        raise SystemExit(f"payload config_data.files must contain hashes: {payload_path}")
+    if not isinstance(expected_data_hash, str) or not HEX64.fullmatch(expected_data_hash):
+        raise SystemExit(f"payload config_data.manifest_sha256 is malformed: {payload_path}")
+    if _canonical_manifest_hash(expected_data_files) != expected_data_hash:
+        raise SystemExit(f"payload config_data.manifest_sha256 does not match: {payload_path}")
     root = _payload_root(payload_path)
     if not root.is_dir():
         raise SystemExit(f"vendored payload is missing: {root}")
@@ -224,18 +235,18 @@ def _validate_payload(
             f"payload SHA-256 mismatch for {payload_path}: expected {record['payload_sha256']}, got {actual_payload_hash}"
         )
     actual_data_files = _data_manifest(root)
-    if actual_data_files != data_files:
+    if actual_data_files != expected_data_files:
         raise SystemExit(f"payload data/config files differ from the manifest: {payload_path}")
     for config, digest in record["config_hashes"].items():
         if not isinstance(config, str) or not isinstance(digest, str) or not HEX64.fullmatch(digest):
             raise SystemExit(f"invalid config hash for {config!r}")
         data_path = f"opencc/clib/share/opencc/{config}.json"
-        if data_files.get(data_path) != digest:
+        if actual_data_files.get(data_path) != digest:
             raise SystemExit(f"config hash does not match vendored data for {config!r}")
     _validate_native_plugins(
         record,
         root,
-        data_files,
+        actual_data_files,
         opencc_version=opencc_version,
         upstream_tag=upstream_tag,
         upstream_commit=upstream_commit,
@@ -273,16 +284,12 @@ def main() -> int:
         raise SystemExit("manifest Python compatibility policy is not CPython 3.14.x/cp314")
     if not isinstance(payload["payloads"], list) or not payload["payloads"]:
         raise SystemExit("manifest must contain at least one verified official OpenCC payload")
-    if not isinstance(payload["config_data"], dict):
+    config_data = payload["config_data"]
+    if not isinstance(config_data, dict):
         raise SystemExit("manifest config_data must be an object")
-    data_files = payload["config_data"].get("files")
-    data_manifest_sha256 = payload["config_data"].get("manifest_sha256")
-    if not isinstance(data_files, dict) or not data_files:
-        raise SystemExit("manifest config_data.files must contain vendored data hashes")
-    if not isinstance(data_manifest_sha256, str) or not HEX64.fullmatch(data_manifest_sha256):
-        raise SystemExit("manifest config_data.manifest_sha256 is missing or malformed")
-    if _canonical_manifest_hash(data_files) != data_manifest_sha256:
-        raise SystemExit("manifest config_data.manifest_sha256 does not match config_data.files")
+    config_payloads = config_data.get("payloads")
+    if not isinstance(config_payloads, dict):
+        raise SystemExit("manifest config_data.payloads must contain per-payload provenance")
 
     seen: set[tuple[object, ...]] = set()
     locations: list[str] = []
@@ -296,9 +303,11 @@ def main() -> int:
         if identity in seen:
             raise SystemExit(f"duplicate payload runtime identity: {identity}")
         seen.add(identity)
+        payload_path = str(record.get("payload_path", ""))
+        if config_payloads.get(payload_path) != record.get("config_data"):
+            raise SystemExit(f"manifest config_data does not match payload: {payload_path}")
         _, location = _validate_payload(
             record,
-            data_files,
             opencc_version=str(payload["opencc_version"]),
             upstream_tag=str(payload["opencc_upstream_tag"]),
             upstream_commit=str(payload["opencc_upstream_commit"]),
