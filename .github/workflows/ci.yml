@@ -48,6 +48,17 @@ jobs:
       - name: Build and vendor the official native Jieba plugin
         run: mise exec -- uv run python tools/build_opencc_jieba.py --source native_build/OpenCC
 
+      - name: Inspect Linux native plugin linkage
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          plugin="$(find plugin/OpenCCForSigil/vendor/opencc/payloads -name 'libopencc-jieba.so' -type f -print -quit)"
+          test -n "$plugin"
+          file "$plugin"
+          ldd "$plugin"
+          ldd -r "$plugin"
+          nm -D --defined-only "$plugin" | grep opencc_get_segmentation_plugin_v2
+
       - name: Verify manifest and payload integrity
         run: mise exec -- uv run python tools/verify_vendor.py
 

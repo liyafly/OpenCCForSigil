@@ -28,7 +28,7 @@ def test_manifest_is_official_binding_only_and_payload_is_exact():
 
 
 def test_unmatched_runtime_fails_without_fallback():
-    runtime = RuntimeKey("CPython", 3, 14, "cp314", "windows", "x86_64")
+    runtime = RuntimeKey("CPython", 3, 14, "cp314", "test-os", "test-arch")
     with pytest.raises(RuntimeSelectionError, match="no exact vendored OpenCC payload"):
         RuntimeSelector().manifest.select(runtime)
 
