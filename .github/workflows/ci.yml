@@ -58,6 +58,16 @@ jobs:
           ldd "$plugin"
           ldd -r "$plugin"
           nm -D --defined-only "$plugin" | grep opencc_get_segmentation_plugin_v2
+          set +e
+          LD_DEBUG=libs mise exec -- uv run python - <<'PY' 2>&1 | grep -E 'libopencc-jieba|not found|cannot|error' | tail -120
+          import sys
+          sys.path.insert(0, "plugin/OpenCCForSigil")
+          from opencc_backend.runtime_selector import RuntimeSelector
+
+          module, _, _, _, _ = RuntimeSelector().import_opencc()
+          module.OpenCC("s2t_jieba").convert("汉字")
+          PY
+          exit 0
 
       - name: Verify manifest and payload integrity
         run: mise exec -- uv run python tools/verify_vendor.py
