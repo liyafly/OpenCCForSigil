@@ -28,6 +28,8 @@ V1_CONFIGS = {
     "t2hk",
     "tw2t",
     "hk2t",
+    "t2jp",
+    "jp2t",
 }
 
 

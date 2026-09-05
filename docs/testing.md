@@ -26,3 +26,7 @@ configs, the independent CLI smoke corpus, source-preserving target spans,
 preview decisions, and the single write boundary. Later phases add broader
 document, structural, golden, and performance suites; they should not be
 collapsed into one plugin smoke test.
+
+The native Jieba assessment is intentionally separate from the V1 smoke suite:
+[`jieba-native-evaluation.md`](jieba-native-evaluation.md) records the pinned
+upstream build and the remaining cross-platform release gates.

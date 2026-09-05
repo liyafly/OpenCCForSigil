@@ -7,6 +7,7 @@ from typing import Any, List, Sequence, Tuple
 
 from core.preview import PreviewError, PreviewSession
 from core.workflow import PlannedDocument
+from opencc_backend.configs import V1_CONFIGS
 
 
 class UIUnavailableError(RuntimeError):
@@ -21,8 +22,23 @@ class PreviewOutcome:
 
 CONVERSION_LABELS = {
     "s2t": "简体 → 通用繁体 (s2t)",
-    "t2s": "繁体 → 简体 (t2s)",
+    "s2tw": "简体 → 台湾繁体字形 (s2tw)",
+    "s2twp": "简体 → 台湾繁体 + 台湾词汇 (s2twp)",
+    "s2hk": "简体 → 香港繁体字形 (s2hk)",
+    "s2hkp": "简体 → 香港繁体 + 香港词汇 (s2hkp)",
+    "t2s": "通用繁体 → 简体 (t2s)",
+    "tw2s": "台湾繁体 → 简体字形 (tw2s)",
+    "tw2sp": "台湾繁体 → 简体 + 词汇 (tw2sp)",
+    "hk2s": "香港繁体 → 简体字形 (hk2s)",
+    "hk2sp": "香港繁体 → 简体 + 词汇 (hk2sp)",
+    "t2tw": "通用繁体 → 台湾繁体 (t2tw)",
+    "t2hk": "通用繁体 → 香港繁体 (t2hk)",
+    "tw2t": "台湾繁体 → 通用繁体 (tw2t)",
+    "hk2t": "香港繁体 → 通用繁体 (hk2t)",
+    "t2jp": "繁体 → 日文新字体 (t2jp)",
+    "jp2t": "日文新字体 → 通用繁体 (jp2t)",
 }
+CONFIG_SELECTION_ORDER = tuple(config for config in V1_CONFIGS if config in CONVERSION_LABELS)
 
 
 def choose_conversion_config(
@@ -32,18 +48,17 @@ def choose_conversion_config(
 ) -> str | None:
     """Ask for an explicit conversion direction before building a plan.
 
-    The first interactive slice intentionally exposes only the two
-    non-regional directions. The backend still validates the full upstream
-    config allowlist, so regional selectors can be added without changing the
-    planning or write boundary.
+    This selector exposes the pinned upstream standard configs. Experimental
+    plugin-backed names such as ``s2t_jieba`` are deliberately not included.
+    The selected config is frozen into the ConversionPlan before Preview.
     """
 
     qt_widgets = _load_qt_widgets()
     available = set(available_configs)
-    configs = tuple(config for config in ("s2t", "t2s") if config in available)
+    configs = tuple(config for config in CONFIG_SELECTION_ORDER if config in available)
     if not configs:
         raise UIUnavailableError(
-            "no supported s2t/t2s config is available in the selected payload"
+            "no supported standard OpenCC config is available in the selected payload"
         )
 
     application = qt_widgets.QApplication.instance()

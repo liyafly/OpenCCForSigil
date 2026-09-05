@@ -13,6 +13,7 @@ from core.workflow import ConversionWorkflow
 from document.tokenizer import TokenizerOptions
 from logging_ext.logger import SessionLogger
 from opencc_backend.backend import OpenCCBackend
+from opencc_backend.configs import V1_CONFIGS
 from sigil.adapter import SigilBookAdapter
 from sigil.scope import Scope
 from sigil.storage import UserDataStore, resolve_user_data_dir
@@ -209,7 +210,7 @@ def _book_supports_conversion(book: Any) -> bool:
 
 def _preferred_config(preferences: Dict[str, object], fallback: str) -> str:
     candidate = preferences.get("last_conversion_config", fallback)
-    return candidate if candidate in {"s2t", "t2s"} else fallback
+    return candidate if isinstance(candidate, str) and candidate in V1_CONFIGS else fallback
 
 
 def _load_conservative_profile() -> Dict[str, object]:

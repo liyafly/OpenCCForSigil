@@ -15,3 +15,7 @@ REVISION_NOTES.md
 The v1.3 Production Backend is the vendored BYVoid/OpenCC official Python
 Binding (`opencc.OpenCC`). The v1.2 direct `ctypes`/shared-library design is
 historical only.
+
+The official native `opencc-jieba` evaluation is recorded in
+[`jieba-native-evaluation.md`](jieba-native-evaluation.md). It is not a V1
+runtime dependency or UI option.

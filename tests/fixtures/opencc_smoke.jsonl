@@ -5,6 +5,12 @@
 {"id":"regional-s2hk","config":"s2hk","source":"鼠标"}
 {"id":"regional-s2hkp","config":"s2hkp","source":"鼠标"}
 {"id":"regional-t2tw","config":"t2tw","source":"滑鼠"}
+{"id":"regional-tw2s","config":"tw2s","source":"滑鼠與奶茶"}
+{"id":"regional-tw2sp","config":"tw2sp","source":"奶茶店慰藉著旅者的味蕾"}
 {"id":"regional-t2hk","config":"t2hk","source":"滑鼠"}
+{"id":"regional-hk2s","config":"hk2s","source":"鼠標與滑鼠"}
+{"id":"regional-hk2sp","config":"hk2sp","source":"鼠標與滑鼠"}
 {"id":"regional-tw2t","config":"tw2t","source":"滑鼠"}
 {"id":"regional-hk2t","config":"hk2t","source":"鼠標"}
+{"id":"regional-t2jp","config":"t2jp","source":"臺灣與漢字"}
+{"id":"regional-jp2t","config":"jp2t","source":"台湾と漢字"}

@@ -252,7 +252,24 @@ if root not in origin.parents:
     raise SystemExit(f"opencc imported outside payload: {origin}")
 if str(getattr(module, "__version__", "")) != expected_version:
     raise SystemExit(f"unexpected OpenCC version: {getattr(module, '__version__', None)!r}")
-required = {"s2t", "t2s", "s2tw", "tw2s", "s2twp", "tw2sp", "s2hk", "hk2s", "s2hkp", "hk2sp", "t2tw", "t2hk", "tw2t", "hk2t"}
+required = {
+    "s2t",
+    "t2s",
+    "s2tw",
+    "tw2s",
+    "s2twp",
+    "tw2sp",
+    "s2hk",
+    "hk2s",
+    "s2hkp",
+    "hk2sp",
+    "t2tw",
+    "tw2t",
+    "t2hk",
+    "hk2t",
+    "t2jp",
+    "jp2t",
+}
 available = {str(item).removesuffix(".json") for item in module.CONFIGS}
 if not required <= available:
     raise SystemExit(f"missing V1 configs: {sorted(required - available)}")

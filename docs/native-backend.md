@@ -22,3 +22,8 @@ validation, clean-process import/origin checks on the target runtime,
 config-load smoke tests, and canonical CLI differential tests have passed. The
 package's native extension remains an official wheel payload; OpenCCForSigil
 does not load it with ctypes or manage its C/C++ lifetime directly.
+
+The official upstream native `opencc-jieba` plugin was evaluated separately.
+See [`jieba-native-evaluation.md`](jieba-native-evaluation.md). It remains out
+of the V1 payload and UI until every release target has a verified plugin,
+resource, loader-path, license, and differential-test artifact.

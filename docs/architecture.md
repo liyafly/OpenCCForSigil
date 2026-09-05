@@ -21,8 +21,8 @@ EPUB structure, rules, or UI.
 
 ## Conversion workflow
 
-The first interactive profile runs an explicit direction chooser (`s2t` or
-`t2s`) before the workflow:
+The first interactive profile runs an explicit standard-config chooser (for
+example `s2t`, `t2s`, `tw2s`, or `tw2sp`) before the workflow:
 
 ```text
 SCAN → ANALYZE → PLAN → PREVIEW → APPLY TO STAGE → VERIFY → COMMIT
@@ -35,10 +35,12 @@ to an in-memory copy; structural and planned-span verification must pass before
 the adapter is allowed to call `bk.writefile()`.
 
 The Preview UI supports `Accept this`, `Skip this`, `Accept all`, and `Skip
-all`. The selected direction is saved as the next default, but every run still
-shows the explicit choice. The core API also supports bulk filters by file,
-category, risk, or rule source, so future review modes can narrow a bulk
-decision without changing the write boundary.
+all`. The selected config is saved as the next default, but every run still
+shows the explicit choice. Experimental `*_jieba` configs are not selectable
+until their official native plugin payloads and cross-platform tests are
+available. The core API also supports bulk filters by file, category, risk, or
+rule source, so future review modes can narrow a bulk decision without
+changing the write boundary.
 
 ## Runtime boundaries
 
