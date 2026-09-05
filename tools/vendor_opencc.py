@@ -26,7 +26,10 @@ from urllib.request import Request, urlopen
 import uuid
 import zipfile
 
-from fetch_opencc_wheels import fetch_metadata
+try:
+    from fetch_opencc_wheels import fetch_metadata
+except ModuleNotFoundError:  # Imported from the repository test suite.
+    from tools.fetch_opencc_wheels import fetch_metadata
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -157,7 +160,12 @@ def _runtime_from_wheel(filename: str) -> tuple[str, int, int, str, str, str]:
 
     if platform_tag.startswith("macosx_"):
         os_name = "macos"
-        architecture = platform_tag.rsplit("_", 1)[-1]
+        if platform_tag.endswith("_x86_64"):
+            architecture = "x86_64"
+        elif platform_tag.endswith("_arm64"):
+            architecture = "arm64"
+        else:
+            raise RuntimeError(f"unsupported macOS wheel architecture: {filename}")
     elif platform_tag.startswith("win_"):
         os_name = "windows"
         architecture = "x86_64" if platform_tag == "win_amd64" else platform_tag.rsplit("_", 1)[-1]
