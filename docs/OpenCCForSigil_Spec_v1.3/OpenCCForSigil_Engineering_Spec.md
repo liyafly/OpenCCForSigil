@@ -2049,6 +2049,8 @@ OpenCCForSigil/
 ├── tools/
 │   ├── fetch_opencc_wheels.py
 │   ├── vendor_opencc.py
+│   ├── export_verified_payload.py
+│   ├── merge_verified_payloads.py
 │   ├── verify_vendor.py
 │   ├── build_plugin.py
 │   ├── validate_artifact.py
@@ -2890,6 +2892,14 @@ OpenCCForSigil/
 ```
 
 正式 release 不允许在用户机器上下载、安装或编译 OpenCC；所有 payload 必须在 Build/Release 阶段进入 ZIP。
+
+## 42.3 GitHub-hosted native matrix
+
+当维护者没有 Windows/Linux/macOS 多平台设备时，GitHub Actions MUST 使用
+native hosted runners 完成 payload 验证。每个 matrix job 只能上传自己在
+目标 runner 上通过 self-test 与 official CLI differential 的 payload
+artifact；汇总 job 才能合并 manifest 并构建 Fat Plugin。仅完成 extraction
+或 `--skip-import-test` 的 payload 不得进入 release ZIP。
 
 # 43. Dependency 供应链
 

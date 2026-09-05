@@ -44,6 +44,11 @@ make package
 make spec-bundle
 ```
 
+GitHub Actions builds the native payload matrix on hosted Ubuntu, macOS, and
+Windows runners, then assembles the verified Fat Plugin artifact. See
+[`docs/release.md`](docs/release.md) for the matrix and artifact workflow; a
+local Windows/Linux installation is not required.
+
 The generated ZIP has exactly one top-level directory, `OpenCCForSigil/`, as
 required by the Sigil plugin packaging contract. `make spec-bundle` generates
 the versioned v1.3 specification files and

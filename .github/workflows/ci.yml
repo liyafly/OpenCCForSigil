@@ -1,32 +1,108 @@
-name: CI
+name: CI and Fat Plugin build
 
 on:
   push:
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
-  checks:
+  build-payload:
+    name: Verify ${{ matrix.id }} payload
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-14, windows-latest]
-    runs-on: ${{ matrix.os }}
+        include:
+          - id: linux-x86_64
+            runner: ubuntu-latest
+          - id: macos-arm64
+            runner: macos-14
+          - id: macos-x86_64
+            runner: macos-13
+          - id: windows-x86_64
+            runner: windows-latest
+    runs-on: ${{ matrix.runner }}
     steps:
       - name: Check out
         uses: actions/checkout@v4
+
       - name: Install mise toolchain
         uses: jdx/mise-action@v2
+
       - name: Install locked Python dependencies
         run: mise exec -- uv sync --locked
-      - name: Vendor and verify official OpenCC payload for this runner
+
+      - name: Vendor the exact official wheel for this runner
         run: mise exec -- uv run python tools/vendor_opencc.py --version 1.4.2
-      - name: Verify vendored payload manifest
+
+      - name: Verify manifest and payload integrity
         run: mise exec -- uv run python tools/verify_vendor.py
+
       - name: Lint
         run: mise exec -- ruff check .
-      - name: Test
+
+      - name: Test backend and plugin contracts
         run: mise exec -- uv run pytest
-      - name: Official CLI/Python Binding differential test
+
+      - name: Run official CLI/Python Binding differential corpus
         run: mise exec -- uv run python tools/differential_test.py --corpus tests/fixtures/opencc_smoke.jsonl
-      - name: Validate plugin package
-        run: mise exec -- uv run python tools/build_plugin.py --check
+
+      - name: Export the target-tested payload
+        run: mise exec -- uv run python tools/export_verified_payload.py --output native_build/artifacts/verified-payload
+
+      - name: Upload target-tested payload
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencc-payload-${{ matrix.id }}
+          path: native_build/artifacts/verified-payload
+          if-no-files-found: error
+          retention-days: 14
+
+  build-fat-plugin:
+    name: Assemble and validate Fat Plugin
+    needs: build-payload
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Install mise toolchain
+        uses: jdx/mise-action@v2
+
+      - name: Install locked Python dependencies
+        run: mise exec -- uv sync --locked
+
+      - name: Download all target-tested payload artifacts
+        uses: actions/download-artifact@v5
+        with:
+          path: native_build/artifacts
+
+      - name: Merge target-tested payloads into the Fat Plugin tree
+        run: mise exec -- uv run python tools/merge_verified_payloads.py --artifact-root native_build/artifacts
+
+      - name: Verify the merged manifest and every payload
+        run: mise exec -- uv run python tools/verify_vendor.py
+
+      - name: Run the Linux target differential corpus
+        run: mise exec -- uv run python tools/differential_test.py --corpus tests/fixtures/opencc_smoke.jsonl
+
+      - name: Run repository tests
+        run: mise exec -- uv run pytest
+
+      - name: Build and validate the Fat Plugin ZIP
+        run: mise exec -- uv run python tools/build_plugin.py --output dist/OpenCCForSigil_${{ github.sha }}.zip
+
+      - name: Build the specification bundle
+        run: mise exec -- uv run python tools/build_spec_bundle.py
+
+      - name: Upload final artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenCCForSigil-fat-plugin-${{ github.sha }}
+          path: |
+            dist/OpenCCForSigil_${{ github.sha }}.zip
+            dist/OpenCCForSigil_Spec_v1.3_bundle.zip
+          if-no-files-found: error
+          retention-days: 14
