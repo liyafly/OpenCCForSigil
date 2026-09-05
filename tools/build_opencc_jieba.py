@@ -139,27 +139,59 @@ def _opencc_cmake_dir(clib_root: Path) -> Path:
     )
 
 
-def _linux_static_core_link_flags(clib_root: Path) -> str:
-    """Keep every official static-core object available to the plugin DSO.
-
-    The Linux 1.4.2 wheel exposes OpenCC as a static archive.  Its standalone
-    plugin link otherwise leaves ``OpenSerializableFileUtf8`` unresolved
-    because that archive member is not referenced by the host extension's
-    exported symbol table.  Whole-archive is limited to this build-time link;
-    runtime still loads only the resulting official plugin payload.
-    """
-
+def _linux_static_core_library(clib_root: Path) -> Path:
     candidates = (
         clib_root / "lib64" / "libopencc.a",
         clib_root / "lib" / "libopencc.a",
     )
     for library in candidates:
         if library.is_file():
-            return f"-Wl,--whole-archive,{library},--no-whole-archive"
+            return library
     raise SystemExit(
         "Linux wheel does not contain the official OpenCC static core: "
         + ", ".join(str(candidate) for candidate in candidates)
     )
+
+
+def _linux_static_core_abi_define(clib_root: Path) -> str:
+    """Match the compiler ABI used by the official Linux static core.
+
+    The official 1.4.2 Linux wheel is built with the pre-C++11 libstdc++ ABI,
+    while current GCC defaults to the C++11 ABI.  The distinction is visible
+    in the exported ``OpenSerializableFileUtf8`` symbol and must be detected
+    from the selected official archive instead of being guessed from the host.
+    """
+
+    library = _linux_static_core_library(clib_root)
+    result = subprocess.run(
+        ["nm", "-C", "--defined-only", str(library)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode:
+        detail = result.stderr.strip() or result.stdout.strip()
+        raise SystemExit(f"could not inspect Linux OpenCC static core ABI: {detail}")
+    symbols = result.stdout
+    if "OpenSerializableFileUtf8(std::__cxx11::basic_string" in symbols:
+        return "-D_GLIBCXX_USE_CXX11_ABI=1"
+    if "OpenSerializableFileUtf8(std::string const&, char const*)" in symbols:
+        return "-D_GLIBCXX_USE_CXX11_ABI=0"
+    raise SystemExit(
+        "could not determine the Linux OpenCC static core libstdc++ ABI from "
+        f"{library}"
+    )
+
+
+def _linux_static_core_link_flags(clib_root: Path) -> str:
+    """Keep every official static-core object available to the plugin DSO.
+
+    Whole-archive is limited to this build-time link; runtime still loads only
+    the resulting official plugin payload.
+    """
+
+    library = _linux_static_core_library(clib_root)
+    return f"-Wl,--whole-archive,{library},--no-whole-archive"
 
 
 def _find_plugin(install_root: Path) -> Path:
@@ -221,7 +253,10 @@ def _build_plugin(
         "-DBUILD_SHARED_LIBS=OFF",
     ]
     if runtime_os != "windows":
-        configure.append(f"-DCMAKE_CXX_FLAGS_RELEASE=-ffile-prefix-map={source_root}=.")
+        release_flags = [f"-ffile-prefix-map={source_root}=."]
+        if runtime_os == "linux":
+            release_flags.append(_linux_static_core_abi_define(clib_root))
+        configure.append("-DCMAKE_CXX_FLAGS_RELEASE=" + " ".join(release_flags))
     if runtime_os == "linux":
         configure.append(
             "-DCMAKE_SHARED_LINKER_FLAGS=" + _linux_static_core_link_flags(clib_root)
