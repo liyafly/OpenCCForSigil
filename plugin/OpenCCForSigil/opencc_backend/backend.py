@@ -122,6 +122,7 @@ class OpenCCBackend:
         )
 
     def self_test(self) -> SelfTestResult:
+        error: Optional[str] = None
         checks: Dict[str, bool] = {
             "manifest": True,
             "payload": self._payload_root.is_dir(),
@@ -144,14 +145,15 @@ class OpenCCBackend:
                     isinstance(self._module.OpenCC(config).convert("汉字"), str)
                     for config in self._jieba_plugin.config_names
                 )
-        except Exception:
+        except Exception as exc:
+            error = f"self-test failed: {exc}"
             checks["config"] = False
             checks["s2t_smoke"] = False
             if self._jieba_plugin is not None:
                 checks["native_jieba_payload"] = False
                 checks["native_jieba_smoke"] = False
         passed = all(checks.values())
-        return SelfTestResult(passed=passed, checks=checks, error=None if passed else "self-test failed")
+        return SelfTestResult(passed=passed, checks=checks, error=None if passed else error)
 
     def comparison_configs(self, config: str) -> Tuple[str, ...]:
         return comparison_configs(config)
