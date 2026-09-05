@@ -1,8 +1,7 @@
 """Log retention boundary.
 
-Retention is intentionally not invoked by the Phase 0 no-op path. The
-deletion policy will be implemented together with user-configurable history
-retention and explicit cleanup UI.
+Retention remains a separate policy service; conversion does not delete old
+history as a side effect of a session.
 """
 
 

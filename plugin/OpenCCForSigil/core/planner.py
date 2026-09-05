@@ -70,9 +70,9 @@ def build_conversion_plan(
 
 
 def plan_not_implemented() -> None:
-    """Keep the Phase 0 boundary explicit until document targets exist."""
+    """Retain the old placeholder name without hiding the implemented API."""
 
-    raise NotImplementedError("ConversionPlan construction starts in Phase 1/2")
+    raise NotImplementedError("Use build_conversion_plan(...) to construct a ConversionPlan")
 
 
 def _absolute_change(

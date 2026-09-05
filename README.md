@@ -15,11 +15,16 @@ official OpenCC wheel payload for the current build host:
 - the official OpenCC Python Binding and exact runtime-selector boundary;
 - a verified OpenCC 1.4.2 macOS arm64 / CPython 3.14 / `cp314` payload;
 - build-time wheel fetch, SHA-256, payload, config/data, and import checks;
-- package validation and a no-op run path that never calls `bk.writefile()`;
+- an offset-preserving XHTML tokenizer and TextTarget/ConversionPlan pipeline;
+- Preview decisions with Accept this, Skip this, Accept all, and Skip all;
+- staging, structural verification, source-SHA256 concurrency checks, and a
+  single adapter commit boundary for `bk.writefile()`;
 - tests and a mise-pinned development toolchain.
 
-Document tokenization and UI behavior remain reserved for later phases. The
-entry point still does not mutate an EPUB; runtime must not fall back to a
+The first interactive conversion slice uses the conservative profile
+(`s2t`, all XHTML text, and `alt/title` attributes). It previews every
+planned change before any EPUB write. Script/style/code/pre content and
+protected attributes remain unchanged. Runtime must not fall back to a
 system OpenCC installation or invoke pip.
 
 V1 formally supports CPython 3.14.x with wheel ABI `cp314`; the current Sigil

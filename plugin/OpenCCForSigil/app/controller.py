@@ -1,18 +1,20 @@
-"""Top-level application controller.
+"""Top-level application controller."""
 
-The controller owns orchestration and state. Phase 0 remains a no-op for book
-content, but it runs the official OpenCC backend preflight so a real Sigil
-installation exercises runtime selection, payload integrity, and import-origin
-verification without mutating an EPUB.
-"""
+from __future__ import annotations
 
+import json
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 
 from app.session import Session, SessionState
 from app.version import PLUGIN_VERSION
+from core.models import ConvertRequest
+from core.workflow import ConversionWorkflow
+from document.tokenizer import TokenizerOptions
 from logging_ext.logger import SessionLogger
 from opencc_backend.backend import OpenCCBackend
+from sigil.adapter import SigilBookAdapter
+from sigil.scope import Scope
 from sigil.storage import UserDataStore, resolve_user_data_dir
 
 
@@ -28,38 +30,95 @@ class Controller:
         self.session = Session(logger=self.logger, session_id=self.logger.session_id)
 
     def run(self) -> int:
-        """Run the read-only Phase 0 flow and return a Sigil status code."""
+        """Run preflight, preview, staging, verification, and commit."""
 
         self.logger.event("run_started", state=self.session.state.value)
+        backend: Optional[OpenCCBackend] = None
         try:
+            profile = _load_conservative_profile()
             self.session.transition(SessionState.SCANNING)
+            backend = OpenCCBackend(str(profile["conversion"]))
+            self._run_backend_self_test(backend)
+
+            if not _book_supports_conversion(self.bk):
+                return self._complete_noop(
+                    message="BookContainer text API unavailable; preflight-only run",
+                )
+
             self.session.transition(SessionState.ANALYZING)
-            backend = OpenCCBackend("s2t")
-            self_test = backend.self_test()
-            self.logger.event(
-                "backend_self_test",
-                passed=self_test.passed,
-                checks=self_test.checks,
-                provenance=backend.provenance().as_dict(),
+            workflow = ConversionWorkflow(
+                SigilBookAdapter(self.bk),
+                backend,
+                ConvertRequest(str(profile["conversion"])),
+                scope=Scope(str(profile["scope"])),
+                tokenizer_options=TokenizerOptions(
+                    protected_elements=tuple(profile["protected_elements"]),
+                    convert_attributes=tuple(profile["attributes"]),
+                    svg_text=bool(profile["svg_text"]),
+                    mathml=bool(profile["mathml"]),
+                ),
+                session_id=self.session.session_id,
+                profile_id=str(profile["id"]),
             )
-            backend.close()
-            if not self_test.passed:
-                raise RuntimeError(self_test.error or "official OpenCC backend self-test failed")
+            planned = workflow.plan()
+            planned_change_count = sum(len(item.plan.changes) for item in planned)
+            self.logger.event(
+                "plan_built",
+                profile_id=profile["id"],
+                config=profile["conversion"],
+                files_scanned=len(planned),
+                changes=planned_change_count,
+            )
             self.session.transition(SessionState.PLANNED)
+
+            from ui.preview_window import show_preview
+
+            self.session.transition(SessionState.PREVIEWING)
+            preview = show_preview(planned)
+            if not preview.accepted:
+                self.session.cancel()
+                self.logger.summary(
+                    self._summary(
+                        status="cancelled",
+                        files_scanned=len(planned),
+                        changes=planned_change_count,
+                        files_changed=0,
+                    )
+                )
+                return 1
+
+            finalized = workflow.finalize(preview.previews)
+            accepted_change_count = sum(len(plan.changes) for _, plan in finalized)
             self.logger.event(
-                "skeleton_noop",
-                message="Phase 0 skeleton completed without modifying the book",
+                "preview_completed",
+                accepted_changes=accepted_change_count,
+                planned_changes=planned_change_count,
             )
-            self.session.complete_noop()
+
+            self.session.transition(SessionState.APPLYING_TO_STAGE)
+            staged = workflow.stage(finalized)
+            self.session.transition(SessionState.VERIFYING)
+            verification = workflow.verify(staged)
+            self.logger.event(
+                "verification_completed",
+                files_verified=len(verification),
+                passed=all(result.passed for result in verification),
+            )
+            self.session.transition(SessionState.COMMITTING)
+            workflow.commit(staged)
+            self.session.complete()
+            self.logger.event(
+                "commit_completed",
+                files_changed=len(staged),
+                changes=accepted_change_count,
+            )
             self.logger.summary(
-                {
-                    "plugin_version": PLUGIN_VERSION,
-                    "status": "success",
-                    "state": self.session.state.value,
-                    "files_scanned": 0,
-                    "files_changed": 0,
-                    "changes": 0,
-                }
+                self._summary(
+                    status="success",
+                    files_scanned=len(planned),
+                    changes=accepted_change_count,
+                    files_changed=len(staged),
+                )
             )
             return 0
         except Exception:
@@ -71,10 +130,80 @@ class Controller:
                 self.session.transition(SessionState.FAILED)
             self.logger.exception("controller_failed")
             self.logger.summary(
-                {
-                    "plugin_version": PLUGIN_VERSION,
-                    "status": "failed",
-                    "state": self.session.state.value,
-                }
+                self._summary(status="failed", files_scanned=0, changes=0, files_changed=0)
             )
             raise
+        finally:
+            if backend is not None:
+                backend.close()
+
+    def _run_backend_self_test(self, backend: OpenCCBackend) -> None:
+        self_test = backend.self_test()
+        self.logger.event(
+            "backend_self_test",
+            passed=self_test.passed,
+            checks=self_test.checks,
+            provenance=backend.provenance().as_dict(),
+        )
+        if not self_test.passed:
+            raise RuntimeError(self_test.error or "official OpenCC backend self-test failed")
+
+    def _complete_noop(
+        self,
+        *,
+        message: str,
+    ) -> int:
+        self.session.transition(SessionState.ANALYZING)
+        self.session.transition(SessionState.PLANNED)
+        self.logger.event("skeleton_noop", message=message)
+        self.session.complete_noop()
+        self.logger.summary(
+            self._summary(status="success", files_scanned=0, changes=0, files_changed=0)
+        )
+        return 0
+
+    def _summary(
+        self,
+        *,
+        status: str,
+        files_scanned: int,
+        changes: int,
+        files_changed: int,
+    ) -> Dict[str, object]:
+        return {
+            "plugin_version": PLUGIN_VERSION,
+            "status": status,
+            "state": self.session.state.value,
+            "files_scanned": files_scanned,
+            "files_changed": files_changed,
+            "changes": changes,
+        }
+
+
+def _book_supports_conversion(book: Any) -> bool:
+    return callable(getattr(book, "text_iter", None)) and callable(
+        getattr(book, "readfile", None)
+    )
+
+
+def _load_conservative_profile() -> Dict[str, object]:
+    profile_path = (
+        Path(__file__).resolve().parents[1] / "resources" / "defaults" / "conservative.json"
+    )
+    with profile_path.open("r", encoding="utf-8") as handle:
+        profile = json.load(handle)
+    if not isinstance(profile, dict):
+        raise ValueError("conservative profile must be a JSON object")
+    required = {
+        "id",
+        "conversion",
+        "scope",
+        "attributes",
+        "protected_elements",
+        "svg_text",
+        "mathml",
+    }
+    missing = sorted(required - profile.keys())
+    if missing:
+        raise ValueError("conservative profile missing keys: " + ", ".join(missing))
+    return profile

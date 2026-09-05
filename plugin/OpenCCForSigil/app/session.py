@@ -1,9 +1,4 @@
-"""Explicit conversion session state machine.
-
-The Phase 0 controller only exercises the safe no-op path. The transition
-table is already explicit so later UI work cannot replace it with unrelated
-boolean flags.
-"""
+"""Explicit conversion session state machine."""
 
 from __future__ import annotations
 
@@ -42,7 +37,6 @@ _ALLOWED_TRANSITIONS: Dict[SessionState, Set[SessionState]] = {
         SessionState.CANCELLED,
         SessionState.FAILED,
     },
-    # COMPLETED is allowed here only for the Phase 0 no-op path.
     SessionState.PLANNED: {
         SessionState.PREVIEWING,
         SessionState.COMPLETED,
@@ -101,6 +95,20 @@ class Session:
             )
 
     def complete_noop(self) -> None:
-        """Complete the Phase 0 run without staging or writing book content."""
+        """Complete a preflight-only run when a conversion adapter is unavailable."""
 
         self.transition(SessionState.COMPLETED)
+
+    def complete(self) -> None:
+        """Complete a verified commit path."""
+
+        if self.state is not SessionState.COMMITTING:
+            raise ValueError("only a committing session can complete")
+        self.transition(SessionState.COMPLETED)
+
+    def cancel(self) -> None:
+        """Cancel before any commit occurs."""
+
+        if SessionState.CANCELLED not in _ALLOWED_TRANSITIONS[self.state]:
+            raise ValueError(f"cannot cancel session in state {self.state.value}")
+        self.transition(SessionState.CANCELLED)

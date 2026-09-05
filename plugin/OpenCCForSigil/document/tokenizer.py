@@ -16,6 +16,22 @@ from core.models import TextTarget
 
 DEFAULT_PROTECTED_ELEMENTS = ("script", "style", "code", "pre")
 DEFAULT_PROTECTED_ATTRIBUTES = ("id", "href", "src", "class", "style")
+VOID_ELEMENTS = (
+    "area",
+    "base",
+    "br",
+    "col",
+    "embed",
+    "hr",
+    "img",
+    "input",
+    "link",
+    "meta",
+    "param",
+    "source",
+    "track",
+    "wbr",
+)
 
 
 @dataclass(frozen=True)
@@ -143,6 +159,9 @@ def tokenize_xhtml(source: str, options: Optional[TokenizerOptions] = None) -> T
             cursor = text_end
             continue
 
+        if not _looks_like_markup(source, cursor):
+            cursor += 1
+            continue
         if source.startswith("<!--", cursor):
             cursor = _find_or_end(source, "-->", cursor + 4)
             continue
@@ -179,7 +198,7 @@ def tokenize_xhtml(source: str, options: Optional[TokenizerOptions] = None) -> T
                                 attribute_name=attribute.name,
                             )
                         )
-            if not tag.self_closing:
+            if not tag.self_closing and tag.name not in VOID_ELEMENTS:
                 stack.append(tag.name)
         else:
             _pop_stack(stack, tag.name)
@@ -254,6 +273,15 @@ def _find_closing_tag(source: str, start: int, name: str) -> int:
 def _is_closing_tag_at(source: str, start: int, name: str) -> bool:
     prefix = source[start : start + len(name) + 2]
     return prefix.lower() == "</" + name
+
+
+def _looks_like_markup(source: str, start: int) -> bool:
+    if start + 1 >= len(source):
+        return False
+    character = source[start + 1]
+    if character in {"!", "?", "/"}:
+        return True
+    return character.isalpha() or character == ":"
 
 
 def _find_markup_end(source: str, start: int, bracket_aware: bool = False) -> int:

@@ -1,7 +1,6 @@
 """Narrow Sigil BookContainer adapter.
 
-Only this adapter's commit method is allowed to call `bk.writefile()` in the
-finished implementation. Phase 0 never calls it.
+Only this adapter's commit method is allowed to call `bk.writefile()`.
 """
 
 from typing import Any, Iterable, Iterator, Protocol, Tuple

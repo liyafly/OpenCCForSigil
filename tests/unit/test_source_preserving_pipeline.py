@@ -146,3 +146,24 @@ def test_book_workflow_does_not_write_until_verify_then_commit():
     workflow.commit(staged)
     assert len(book.writes) == 1
     assert "漢字與鼠標" in book.writes[0][1]
+
+
+def test_rejected_changes_are_not_written_back_to_sigil():
+    book = FakeBook("<p>汉字与鼠标</p>")
+    workflow = ConversionWorkflow(
+        SigilBookAdapter(book),
+        OpenCCBackend("s2t"),
+        ConvertRequest("s2t"),
+        session_id="session-1",
+        profile_id="conservative",
+    )
+
+    previews = workflow.preview()
+    assert previews[0].reject_all() == len(previews[0].changes)
+    finalized = workflow.finalize(previews)
+    staged = workflow.stage(finalized)
+    workflow.verify(staged)
+    workflow.commit(staged)
+
+    assert staged == ()
+    assert book.writes == []

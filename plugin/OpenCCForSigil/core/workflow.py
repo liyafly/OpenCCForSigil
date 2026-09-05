@@ -100,6 +100,8 @@ class ConversionWorkflow:
     ) -> Tuple[StagedFile, ...]:
         staged = []
         for planned, selected_plan in finalized:
+            if not selected_plan.changes:
+                continue
             staged.append(
                 self.staging.stage(
                     planned.source.file_id,

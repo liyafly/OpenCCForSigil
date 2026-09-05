@@ -8,7 +8,7 @@ from document.tokenizer import TokenizerOptions, tokenize_xhtml
 
 
 def verification_passed(file_id: str) -> VerificationResult:
-    """Return a neutral result for the empty Phase 0 staging set."""
+    """Return a neutral result for an empty staging set."""
 
     return VerificationResult(file_id=file_id, passed=True)
 
