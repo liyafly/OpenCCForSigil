@@ -26,6 +26,7 @@ except ModuleNotFoundError:  # Imported as tools.verify_vendor by the test suite
 ROOT = Path(__file__).resolve().parents[1]
 VENDOR_ROOT = ROOT / "plugin" / "OpenCCForSigil" / "vendor" / "opencc"
 MANIFEST = VENDOR_ROOT / "manifest.json"
+PAYLOAD_LOCK = ROOT / "native_build" / "payload-lock.json"
 HEX64 = re.compile(r"^[0-9a-fA-F]{64}$")
 EXPECTED_POLICY = {
     "implementation": "CPython",
@@ -103,6 +104,32 @@ def _safe_payload_path(root: Path, relative: str) -> Path:
     if root.resolve() not in resolved.parents:
         raise SystemExit(f"native plugin path escapes payload: {relative!r}")
     return resolved
+
+
+def _validate_lock_record(record: Mapping[str, object], lock: Mapping[str, object]) -> None:
+    entries = lock.get("wheels")
+    if not isinstance(entries, list):
+        raise SystemExit("payload lock wheels must be a list")
+    filename = str(record.get("wheel_name", ""))
+    matches = [
+        entry for entry in entries if isinstance(entry, dict) and entry.get("filename") == filename
+    ]
+    if len(matches) != 1:
+        raise SystemExit(f"manifest wheel is absent or duplicated in payload lock: {filename}")
+    locked = matches[0]
+    for record_key, lock_key in (
+        ("wheel_sha256", "sha256"),
+        ("wheel_url", "url"),
+        ("python_implementation", "python_implementation"),
+        ("python_version", "python_version"),
+        ("python_abi", "python_abi"),
+        ("os", "os"),
+        ("architecture", "architecture"),
+    ):
+        if record.get(record_key) != locked.get(lock_key):
+            raise SystemExit(
+                f"manifest wheel differs from payload lock for {filename}: {record_key}"
+            )
 
 
 def _validate_native_plugins(
@@ -267,11 +294,28 @@ def _validate_payload(
     return str(record["python_abi"]), f"{record['os']}/{record['architecture']}"
 
 
-def validate_manifest(*, require_runtimes: bool = False, manifest_path: Path = MANIFEST) -> int:
+def validate_manifest(
+    *,
+    require_runtimes: bool = False,
+    manifest_path: Path = MANIFEST,
+    lock_path: Path = PAYLOAD_LOCK,
+) -> int:
     try:
         payload = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         raise SystemExit(f"cannot read vendor manifest: {manifest_path}") from exc
+    try:
+        lock = json.loads(lock_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise SystemExit(f"cannot read payload lock: {lock_path}") from exc
+    if lock.get("schema_version") != 1:
+        raise SystemExit("unsupported payload lock schema")
+    if (
+        lock.get("opencc_version") != payload.get("opencc_version")
+        or lock.get("opencc_upstream_tag") != payload.get("opencc_upstream_tag")
+        or lock.get("opencc_upstream_commit") != payload.get("opencc_upstream_commit")
+    ):
+        raise SystemExit("payload lock provenance does not match the vendor manifest")
     required = {
         "schema_version",
         "status",
@@ -313,6 +357,7 @@ def validate_manifest(*, require_runtimes: bool = False, manifest_path: Path = M
         if identity in seen:
             raise SystemExit(f"duplicate payload runtime identity: {identity}")
         seen.add(identity)
+        _validate_lock_record(record, lock)
         payload_path = str(record.get("payload_path", ""))
         if config_payloads.get(payload_path) != record.get("config_data"):
             raise SystemExit(f"manifest config_data does not match payload: {payload_path}")
