@@ -163,6 +163,54 @@ def test_book_workflow_does_not_write_until_verify_then_commit():
     assert "漢字與鼠標" in book.writes[0][1]
 
 
+def test_workflow_reports_stage_and_verify_progress_and_reuses_source_tokens(monkeypatch):
+    book = FakeBook("<p>汉字与鼠标</p>")
+    workflow = ConversionWorkflow(
+        SigilBookAdapter(book),
+        OpenCCBackend("s2t"),
+        ConvertRequest("s2t"),
+        session_id="session-1",
+        profile_id="conservative",
+    )
+
+    planned = workflow.plan()
+    previews = workflow.preview()
+    previews[0].accept_all()
+    finalized = workflow.finalize(previews)
+    events = []
+    staged = workflow.stage(
+        finalized,
+        progress=lambda phase, index, total, href: events.append(
+            (phase, index, total, href)
+        ),
+    )
+
+    import core.verifier as verifier
+
+    original_tokenize = verifier.tokenize_xhtml
+    tokenized_sources = []
+
+    def record_tokenize(source, options=None):
+        tokenized_sources.append(source)
+        return original_tokenize(source, options)
+
+    monkeypatch.setattr(verifier, "tokenize_xhtml", record_tokenize)
+    verification = workflow.verify(
+        staged,
+        progress=lambda phase, index, total, href: events.append(
+            (phase, index, total, href)
+        ),
+    )
+
+    assert planned[0].tokenized.source == book.source
+    assert verification[0].passed
+    assert events == [
+        ("staging", 1, 1, "Text/chapter.xhtml"),
+        ("verifying", 1, 1, "Text/chapter.xhtml"),
+    ]
+    assert tokenized_sources == [staged[0].converted]
+
+
 def test_rejected_changes_are_not_written_back_to_sigil():
     book = FakeBook("<p>汉字与鼠标</p>")
     workflow = ConversionWorkflow(

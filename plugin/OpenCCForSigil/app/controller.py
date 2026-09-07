@@ -38,6 +38,7 @@ class Controller:
         planned = ()
         staged = ()
         planned_change_count = 0
+        files_without_changes = 0
         accepted_change_count = 0
         skipped_change_count = 0
         try:
@@ -169,6 +170,7 @@ class Controller:
                 if progress is not None:
                     progress.close()
             planned_change_count = sum(len(item.plan.changes) for item in planned)
+            files_without_changes = sum(not item.plan.changes for item in planned)
             self.logger.event(
                 "plan_built",
                 profile_id=profile["id"],
@@ -188,6 +190,7 @@ class Controller:
                         files_scanned=len(planned),
                         changes=planned_change_count,
                         files_changed=0,
+                        files_without_changes=files_without_changes,
                     )
                 )
                 return 1
@@ -202,9 +205,25 @@ class Controller:
             )
 
             self.session.transition(SessionState.APPLYING_TO_STAGE)
-            staged = workflow.stage(finalized)
-            self.session.transition(SessionState.VERIFYING)
-            verification = workflow.verify(staged)
+            post_preview_progress = create_progress_reporter(len(planned))
+            try:
+                # Staging and verification happen before the write boundary;
+                # keep the user informed without offering a cancellation
+                # action that cannot safely interrupt these phases.
+                disable_cancel = getattr(post_preview_progress, "disable_cancel", None)
+                if callable(disable_cancel):
+                    disable_cancel()
+                staged = workflow.stage(
+                    finalized,
+                    progress=post_preview_progress.update,
+                )
+                self.session.transition(SessionState.VERIFYING)
+                verification = workflow.verify(
+                    staged,
+                    progress=post_preview_progress.update,
+                )
+            finally:
+                post_preview_progress.close()
             self.logger.event(
                 "verification_completed",
                 files_verified=len(verification),
@@ -224,6 +243,7 @@ class Controller:
                     files_scanned=len(planned),
                     changes=accepted_change_count,
                     files_changed=len(staged),
+                    files_without_changes=files_without_changes,
                     skipped_changes=skipped_change_count,
                 )
             )
@@ -234,6 +254,8 @@ class Controller:
                 files_changed=len(staged),
                 accepted_changes=accepted_change_count,
                 skipped_changes=skipped_change_count,
+                files_not_written=max(0, len(planned) - len(staged)),
+                files_without_changes=files_without_changes,
             )
             return 0
         except WorkflowCommitError as exc:
@@ -260,6 +282,7 @@ class Controller:
                     files_scanned=len(planned),
                     changes=accepted,
                     files_changed=files_changed,
+                    files_without_changes=files_without_changes,
                     skipped_changes=max(0, planned_change_count - accepted),
                     failed_file=exc.failed_file_id,
                     committed_file_ids=sorted(committed),
@@ -272,6 +295,8 @@ class Controller:
                 files_changed=files_changed,
                 accepted_changes=accepted,
                 skipped_changes=max(0, planned_change_count - accepted),
+                files_not_written=max(0, len(planned) - files_changed),
+                files_without_changes=files_without_changes,
                 failed_file=exc.failed_file_id,
             )
             raise
@@ -323,6 +348,7 @@ class Controller:
         files_scanned: int,
         changes: int,
         files_changed: int,
+        files_without_changes: int = 0,
         skipped_changes: int = 0,
         failed_file: Optional[str] = None,
         committed_file_ids: Optional[list[str]] = None,
@@ -333,6 +359,8 @@ class Controller:
             "state": self.session.state.value,
             "files_scanned": files_scanned,
             "files_changed": files_changed,
+            "files_not_written": max(0, files_scanned - files_changed),
+            "files_without_changes": max(0, files_without_changes),
             "changes": changes,
             "skipped_changes": skipped_changes,
         }

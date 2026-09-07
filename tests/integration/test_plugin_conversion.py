@@ -153,3 +153,60 @@ def test_controller_normalizes_null_ui_preferences_before_merging(monkeypatch, t
     saved = json.loads((data_dir / "preferences.json").read_text(encoding="utf-8"))
     assert isinstance(saved["ui"], dict)
     assert saved["ui"]["language"] == "en"
+
+
+def test_controller_reports_unwritten_no_change_files_separately(monkeypatch, tmp_path):
+    class AllFilesBook:
+        def __init__(self):
+            self.files = {
+                "already-simplified": "<p>汉字</p>",
+                "needs-conversion": "<p>漢字</p>",
+            }
+            self.writes = []
+
+        def text_iter(self):
+            for file_id in self.files:
+                yield file_id, f"Text/{file_id}.xhtml"
+
+        def selected_iter(self):
+            for file_id in self.files:
+                yield "manifest", file_id
+
+        def readfile(self, file_id):
+            return self.files[file_id]
+
+        def writefile(self, file_id, data):
+            self.writes.append((file_id, data))
+
+    book = AllFilesBook()
+    result_calls = []
+    monkeypatch.setattr(
+        "ui.preview_window.choose_scope",
+        lambda adapter, initial_language: ScopeOutcome(
+            accepted=True,
+            selection=TargetSelection(
+                Scope.ALL_XHTML, tuple(book.files)
+            ),
+            language=initial_language,
+        ),
+    )
+    monkeypatch.setattr(
+        "ui.preview_window.choose_conversion_config",
+        lambda available_configs, default_config: "t2s",
+    )
+    monkeypatch.setattr("ui.preview_window.show_preview", _accept_all_preview)
+    monkeypatch.setattr(
+        "ui.preview_window.create_progress_reporter", lambda _total: _NoProgress()
+    )
+    monkeypatch.setattr(
+        "ui.preview_window.show_result",
+        lambda **values: result_calls.append(values),
+    )
+
+    assert Controller(book, data_dir=tmp_path / "plugin-data").run() == 0
+
+    assert [file_id for file_id, _data in book.writes] == ["needs-conversion"]
+    assert result_calls[-1]["files_scanned"] == 2
+    assert result_calls[-1]["files_changed"] == 1
+    assert result_calls[-1]["files_not_written"] == 1
+    assert result_calls[-1]["files_without_changes"] == 1

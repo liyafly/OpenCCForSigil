@@ -9,7 +9,7 @@ from core.models import ConversionPlan, ConvertRequest
 from core.planner import build_conversion_plan
 from core.preview import PreviewSession
 from core.staging import StagedFile, StagingArea, source_sha256
-from core.verifier import verify_staging
+from core.verifier import verify_staged_file
 from document.tokenizer import TokenizedDocument, TokenizerOptions, tokenize_xhtml
 from opencc_backend.backend import OpenCCBackend
 from sigil.adapter import CommitError, CommitResult, SigilBookAdapter
@@ -152,9 +152,15 @@ class ConversionWorkflow:
     def stage(
         self,
         finalized: Iterable[Tuple[PlannedDocument, ConversionPlan]],
+        *,
+        progress: Optional[Callable[[str, int, int, str], None]] = None,
     ) -> Tuple[StagedFile, ...]:
+        finalized_files = tuple(finalized)
         staged = []
-        for planned, selected_plan in finalized:
+        total = len(finalized_files)
+        for index, (planned, selected_plan) in enumerate(finalized_files, start=1):
+            if progress is not None:
+                progress("staging", index, total, planned.source.href)
             if not selected_plan.changes:
                 continue
             staged.append(
@@ -166,9 +172,30 @@ class ConversionWorkflow:
             )
         return tuple(staged)
 
-    def verify(self, staged: Optional[Iterable[StagedFile]] = None):
+    def verify(
+        self,
+        staged: Optional[Iterable[StagedFile]] = None,
+        *,
+        progress: Optional[Callable[[str, int, int, str], None]] = None,
+    ):
         files = tuple(staged) if staged is not None else tuple(self.staging.values())
-        self._verification = verify_staging(files, tokenizer_options=self.tokenizer_options)
+        planned_by_id = {item.source.file_id: item for item in self._planned}
+        results = []
+        total = len(files)
+        for index, staged_file in enumerate(files, start=1):
+            if progress is not None:
+                planned = planned_by_id.get(staged_file.file_id)
+                href = planned.source.href if planned is not None else staged_file.file_id
+                progress("verifying", index, total, href)
+            planned = planned_by_id.get(staged_file.file_id)
+            results.append(
+                verify_staged_file(
+                    staged_file,
+                    tokenizer_options=self.tokenizer_options,
+                    original_document=planned.tokenized if planned is not None else None,
+                )
+            )
+        self._verification = tuple(results)
         if not all(result.passed for result in self._verification):
             raise WorkflowError("structural verification failed; commit is blocked")
         return self._verification

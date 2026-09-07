@@ -1,10 +1,10 @@
 """Structural and planned-span verification boundary."""
 
-from typing import Iterable, Tuple
+from typing import Iterable, Mapping, Tuple
 
 from core.models import StagedFile, VerificationResult
 from core.staging import StagingError, apply_changes, source_sha256
-from document.tokenizer import TokenizerOptions, tokenize_xhtml
+from document.tokenizer import TokenizedDocument, TokenizerOptions, tokenize_xhtml
 
 
 def verification_passed(file_id: str) -> VerificationResult:
@@ -17,6 +17,7 @@ def verify_staged_file(
     staged_file: StagedFile,
     *,
     tokenizer_options: TokenizerOptions | None = None,
+    original_document: TokenizedDocument | None = None,
 ) -> VerificationResult:
     """Verify a staged file before the Sigil adapter is allowed to commit it."""
 
@@ -36,7 +37,12 @@ def verify_staged_file(
     except UnicodeEncodeError:
         diagnostics.append("INVALID_UTF8")
 
-    original_doc = tokenize_xhtml(staged_file.original, tokenizer_options)
+    if original_document is None or original_document.source != staged_file.original:
+        original_doc = tokenize_xhtml(staged_file.original, tokenizer_options)
+    else:
+        # The workflow already tokenized the immutable source while building
+        # the plan. Reuse that document and tokenize only the staged output.
+        original_doc = original_document
     converted_doc = tokenize_xhtml(staged_file.converted, tokenizer_options)
     if original_doc.structural_signature != converted_doc.structural_signature:
         diagnostics.append("XHTML_STRUCTURE_CHANGED")
@@ -55,9 +61,14 @@ def verify_staging(
     staged_files: Iterable[StagedFile],
     *,
     tokenizer_options: TokenizerOptions | None = None,
+    original_documents: Mapping[str, TokenizedDocument] | None = None,
 ) -> Tuple[VerificationResult, ...]:
     return tuple(
-        verify_staged_file(staged_file, tokenizer_options=tokenizer_options)
+        verify_staged_file(
+            staged_file,
+            tokenizer_options=tokenizer_options,
+            original_document=(original_documents or {}).get(staged_file.file_id),
+        )
         for staged_file in staged_files
     )
 

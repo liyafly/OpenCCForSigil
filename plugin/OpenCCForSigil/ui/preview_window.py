@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, List, Sequence, Tuple
+from typing import Any, Sequence, Tuple
 
 from core.preview import PreviewError, PreviewSession
+from core.models import TokenChange
 from core.workflow import PlannedDocument
 from opencc_backend.configs import (
     BASE_CONFIG_BY_JIEBA,
@@ -39,21 +40,43 @@ class ProgressReporter:
     def __init__(self, qt_widgets: Any, total: int) -> None:
         self._qt = qt_widgets
         self._cancelled = False
+        self._total = max(int(total), 1)
         self.dialog = qt_widgets.QProgressDialog(
-            "", _translator.text("common.cancel"), 0, total
+            "", _translator.text("common.cancel"), 0, self._total
         )
         self.dialog.setWindowTitle(_translator.text("progress.title"))
+        # Qt's default minimum duration is intentionally conservative and can
+        # leave a synchronous conversion looking frozen for several seconds.
+        # This operation already has real file boundaries, so render the
+        # progress window immediately and paint its initial state before the
+        # first read/conversion begins.
+        set_minimum_duration = getattr(self.dialog, "setMinimumDuration", None)
+        if callable(set_minimum_duration):
+            set_minimum_duration(0)
         self.dialog.setAutoClose(False)
         self.dialog.setAutoReset(False)
         self.dialog.canceled.connect(self._mark_cancelled)
+        self.dialog.setMaximum(self._total)
+        self.dialog.setValue(0)
+        self.dialog.setLabelText(
+            _translator.text(
+                "progress.status",
+                phase=_translator.text("progress.phase.analyzing"),
+                index=0,
+                total=max(int(total), 0),
+                file="…",
+            )
+        )
         self.dialog.show()
+        self._process_events()
 
     def _mark_cancelled(self) -> None:
         self._cancelled = True
 
     def update(self, phase: str, index: int, total: int, href: str) -> None:
-        self.dialog.setMaximum(max(total, 1))
-        self.dialog.setValue(index)
+        self._total = max(int(total), 1)
+        self.dialog.setMaximum(self._total)
+        self.dialog.setValue(min(max(int(index), 0), self._total))
         self.dialog.setLabelText(
             _translator.text(
                 "progress.status",
@@ -63,14 +86,27 @@ class ProgressReporter:
                 file=href,
             )
         )
-        self._qt.QApplication.processEvents()
+        self._process_events()
 
     def cancelled(self) -> bool:
-        self._qt.QApplication.processEvents()
+        self._process_events()
         return self._cancelled
+
+    def disable_cancel(self) -> None:
+        """Remove the cancel affordance for a non-cancellable phase."""
+
+        set_cancel_button = getattr(self.dialog, "setCancelButton", None)
+        if callable(set_cancel_button):
+            set_cancel_button(None)
+        self._cancelled = False
 
     def close(self) -> None:
         self.dialog.close()
+
+    def _process_events(self) -> None:
+        process_events = getattr(self._qt.QApplication, "processEvents", None)
+        if callable(process_events):
+            process_events()
 
 
 _translator = Translator("en")
@@ -209,17 +245,27 @@ def show_result(
     files_changed: int,
     accepted_changes: int,
     skipped_changes: int,
+    files_not_written: int | None = None,
+    files_without_changes: int = 0,
     failed_file: str | None = None,
 ) -> None:
     """Show a concise localized terminal result after the write boundary."""
 
     qt_widgets = _load_qt_widgets()
     _ensure_application(qt_widgets)
+    not_written = (
+        max(files_scanned - files_changed, 0)
+        if files_not_written is None
+        else max(int(files_not_written), 0)
+    )
     if status == "partial_failure":
         message = _translator.text(
             "result.partial",
             changed=files_changed,
+            files=files_scanned,
             accepted=accepted_changes,
+            not_written=not_written,
+            unchanged=max(int(files_without_changes), 0),
             failed_file=failed_file or "?",
         )
         method = getattr(qt_widgets.QMessageBox, "warning")
@@ -231,6 +277,8 @@ def show_result(
             "result.skipped",
             files=files_scanned,
             skipped=skipped_changes,
+            not_written=not_written,
+            unchanged=max(int(files_without_changes), 0),
         )
         method = getattr(qt_widgets.QMessageBox, "information")
     elif accepted_changes == 0:
@@ -243,6 +291,8 @@ def show_result(
             files=files_scanned,
             accepted=accepted_changes,
             skipped=skipped_changes,
+            not_written=not_written,
+            unchanged=max(int(files_without_changes), 0),
         )
         method = getattr(qt_widgets.QMessageBox, "information")
     method(None, _translator.text("app.title"), message)
@@ -287,7 +337,14 @@ class _PreviewDialog:
         self._qt = qt_widgets
         self._planned = planned
         self._previews = previews
-        self._entries: List[Tuple[PreviewSession, str]] = []
+        # Plans are immutable, so the preview rows never change identity.  A
+        # cached change object avoids doing a linear ``next(...)`` lookup for
+        # every row every time a bulk decision refreshes the list.
+        self._entries: Tuple[Tuple[PreviewSession, TokenChange], ...] = tuple(
+            (preview, change)
+            for preview in previews
+            for change in preview.changes
+        )
         self.applied = False
 
         self.dialog = qt_widgets.QDialog()
@@ -344,21 +401,25 @@ class _PreviewDialog:
         self.cancel_button.clicked.connect(self.dialog.reject)
 
     def _refresh(self) -> None:
-        self._entries = [
-            (preview, change.change_id)
-            for preview in self._previews
-            for change in preview.changes
-        ]
         current_row = self.list_widget.currentRow()
         self.list_widget.blockSignals(True)
-        self.list_widget.clear()
-        for preview, change_id in self._entries:
-            change = next(item for item in preview.changes if item.change_id == change_id)
-            decision = preview.decision(change_id)
-            prefix = "?" if decision is None else "✓" if decision.value.startswith("accept") else "×"
-            text = f"{prefix} {change.file_id}: {change.source!r} → {change.target!r}"
-            self.list_widget.addItem(text)
-        self.list_widget.blockSignals(False)
+        set_updates_enabled = getattr(self.list_widget, "setUpdatesEnabled", None)
+        if callable(set_updates_enabled):
+            set_updates_enabled(False)
+        try:
+            if self.list_widget.count() != len(self._entries):
+                self.list_widget.clear()
+                for preview, change in self._entries:
+                    self.list_widget.addItem(self._entry_text(preview, change))
+            else:
+                for index, (preview, change) in enumerate(self._entries):
+                    item = self.list_widget.item(index)
+                    if item is not None:
+                        item.setText(self._entry_text(preview, change))
+        finally:
+            if callable(set_updates_enabled):
+                set_updates_enabled(True)
+            self.list_widget.blockSignals(False)
 
         if self._entries:
             row = current_row if 0 <= current_row < len(self._entries) else 0
@@ -366,6 +427,12 @@ class _PreviewDialog:
         else:
             self.detail.setPlainText(_translator.text("preview.no_changes"))
         self._update_summary()
+
+    @staticmethod
+    def _entry_text(preview: PreviewSession, change: TokenChange) -> str:
+        decision = preview.decision(change.change_id)
+        prefix = "?" if decision is None else "✓" if decision.value.startswith("accept") else "×"
+        return f"{prefix} {change.file_id}: {change.source!r} → {change.target!r}"
 
     def _update_summary(self) -> None:
         totals = {"total": 0, "accepted": 0, "rejected": 0, "undecided": 0}
@@ -391,8 +458,7 @@ class _PreviewDialog:
         if row < 0 or row >= len(self._entries):
             self.detail.clear()
             return
-        preview, change_id = self._entries[row]
-        change = next(item for item in preview.changes if item.change_id == change_id)
+        preview, change = self._entries[row]
         self.detail.setPlainText(
             f"{_translator.text('preview.rule')}: {change.rule_source}\n"
             f"{_translator.text('preview.category')}: {change.category}    "
@@ -412,14 +478,14 @@ class _PreviewDialog:
         entry = self._current_entry()
         if entry is None:
             return
-        entry[0].accept_this(entry[1])
+        entry[0].accept_this(entry[1].change_id)
         self._refresh()
 
     def _reject_this(self) -> None:
         entry = self._current_entry()
         if entry is None:
             return
-        entry[0].reject_this(entry[1])
+        entry[0].reject_this(entry[1].change_id)
         self._refresh()
 
     def _accept_file(self) -> None:
@@ -684,11 +750,16 @@ class _ScopeDialog:
 
     def _set_visible(self, checked: bool) -> None:
         state = self._qt.Qt.Checked if checked else self._qt.Qt.Unchecked
-        for index in range(self.list_widget.count()):
-            item = self.list_widget.item(index)
-            if not item.isHidden():
-                item.setCheckState(state)
+        self.list_widget.blockSignals(True)
+        try:
+            for index in range(self.list_widget.count()):
+                item = self.list_widget.item(index)
+                if not item.isHidden():
+                    item.setCheckState(state)
+        finally:
+            self.list_widget.blockSignals(False)
         self._refresh_count()
+        self._update_analyze_enabled()
 
     def _refresh_count(self) -> None:
         total = self.list_widget.count()

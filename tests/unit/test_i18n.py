@@ -45,3 +45,97 @@ def test_dialogs_share_one_qapplication_instance():
     assert first is second
     assert preview_window._application is first
     assert FakeApplication.created == 1
+
+
+def test_progress_reporter_paints_initial_state_immediately():
+    events = []
+
+    class Signal:
+        def connect(self, callback):
+            self.callback = callback
+
+    class FakeApplication:
+        @staticmethod
+        def processEvents():
+            events.append("process-events")
+
+    class FakeProgressDialog:
+        def __init__(self, *_args):
+            self.canceled = Signal()
+            self.minimum_duration = None
+            self.value = None
+            self.maximum = None
+            self.label = None
+
+        def setWindowTitle(self, _title):
+            pass
+
+        def setMinimumDuration(self, value):
+            self.minimum_duration = value
+
+        def setAutoClose(self, _value):
+            pass
+
+        def setAutoReset(self, _value):
+            pass
+
+        def setMaximum(self, value):
+            self.maximum = value
+
+        def setValue(self, value):
+            self.value = value
+
+        def setLabelText(self, value):
+            self.label = value
+
+        def show(self):
+            events.append("show")
+
+        def close(self):
+            pass
+
+    class FakeQt:
+        QApplication = FakeApplication
+        QProgressDialog = FakeProgressDialog
+
+    reporter = preview_window.ProgressReporter(FakeQt, 3)
+
+    assert reporter.dialog.minimum_duration == 0
+    assert reporter.dialog.maximum == 3
+    assert reporter.dialog.value == 0
+    assert "0/3" in reporter.dialog.label
+    assert events == ["show", "process-events"]
+
+
+def test_result_dialog_explains_files_without_a_write(monkeypatch):
+    messages = []
+
+    class MessageBox:
+        @staticmethod
+        def information(_parent, _title, message):
+            messages.append(message)
+
+        @staticmethod
+        def warning(_parent, _title, message):
+            messages.append(message)
+
+    class FakeQt:
+        QMessageBox = MessageBox
+
+    monkeypatch.setattr(preview_window, "_load_qt_widgets", lambda: FakeQt)
+    monkeypatch.setattr(preview_window, "_ensure_application", lambda _qt: None)
+    preview_window.set_ui_language("zh-Hans")
+
+    preview_window.show_result(
+        status="success",
+        files_scanned=38,
+        files_changed=37,
+        accepted_changes=37,
+        skipped_changes=0,
+        files_without_changes=1,
+    )
+
+    assert messages == [
+        "已分析 38 个文件，实际写回 37 个；应用 37 项变更，跳过 0 项；其中 1 个没有可转换内容，1 个没有写回。"
+    ]
+    preview_window.set_ui_language("en")
