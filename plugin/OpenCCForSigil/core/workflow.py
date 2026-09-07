@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable, Optional, Tuple
+from typing import Callable, Iterable, Optional, Tuple
 
 from core.models import ConversionPlan, ConvertRequest
 from core.planner import build_conversion_plan
@@ -13,11 +13,15 @@ from core.verifier import verify_staging
 from document.tokenizer import TokenizedDocument, TokenizerOptions, tokenize_xhtml
 from opencc_backend.backend import OpenCCBackend
 from sigil.adapter import SigilBookAdapter
-from sigil.scope import Scope
+from sigil.scope import Scope, TargetSelection
 
 
 class WorkflowError(RuntimeError):
     """Raised when a workflow phase cannot safely continue."""
+
+
+class WorkflowCancelled(WorkflowError):
+    """Raised at a safe file boundary when the user cancels analysis."""
 
 
 @dataclass(frozen=True)
@@ -44,6 +48,7 @@ class ConversionWorkflow:
         request: ConvertRequest,
         *,
         scope: Scope = Scope.ALL_XHTML,
+        targets: Optional[TargetSelection] = None,
         tokenizer_options: Optional[TokenizerOptions] = None,
         session_id: str = "",
         profile_id: str = "",
@@ -52,6 +57,7 @@ class ConversionWorkflow:
         self.backend = backend
         self.request = request
         self.scope = scope
+        self.targets = targets
         self.tokenizer_options = tokenizer_options or TokenizerOptions()
         self.session_id = session_id
         self.profile_id = profile_id
@@ -60,19 +66,45 @@ class ConversionWorkflow:
         self.staging = StagingArea()
         self._verification = ()
 
-    def scan(self) -> Tuple[SourceDocument, ...]:
-        self._sources = tuple(
-            SourceDocument(file_id=file_id, href=href, source=self.adapter.read(file_id))
-            for file_id, href in self.adapter.text_files(self.scope)
+    def scan(
+        self,
+        *,
+        progress: Optional[Callable[[str, int, int, str], None]] = None,
+        cancelled: Optional[Callable[[], bool]] = None,
+    ) -> Tuple[SourceDocument, ...]:
+        target_files = tuple(
+            self.adapter.text_files_for_targets(self.targets)
+            if self.targets is not None
+            else self.adapter.text_files(self.scope)
         )
+        sources = []
+        total = len(target_files)
+        for index, (file_id, href) in enumerate(target_files, start=1):
+            if cancelled is not None and cancelled():
+                raise WorkflowCancelled("analysis cancelled")
+            if progress is not None:
+                progress("analyzing", index, total, href)
+            sources.append(SourceDocument(file_id=file_id, href=href, source=self.adapter.read(file_id)))
+        self._sources = tuple(sources)
         return self._sources
 
-    def plan(self) -> Tuple[PlannedDocument, ...]:
+    def plan(
+        self,
+        *,
+        progress: Optional[Callable[[str, int, int, str], None]] = None,
+        cancelled: Optional[Callable[[], bool]] = None,
+    ) -> Tuple[PlannedDocument, ...]:
         if not self._sources:
-            self.scan()
-        self._planned = tuple(
-            self._plan_document(source_document) for source_document in self._sources
-        )
+            self.scan(progress=progress, cancelled=cancelled)
+        planned = []
+        total = len(self._sources)
+        for index, source_document in enumerate(self._sources, start=1):
+            if cancelled is not None and cancelled():
+                raise WorkflowCancelled("analysis cancelled")
+            if progress is not None:
+                progress("planning", index, total, source_document.href)
+            planned.append(self._plan_document(source_document))
+        self._planned = tuple(planned)
         return self._planned
 
     def preview(self) -> Tuple[PreviewSession, ...]:
@@ -153,4 +185,5 @@ __all__ = [
     "PlannedDocument",
     "SourceDocument",
     "WorkflowError",
+    "WorkflowCancelled",
 ]
