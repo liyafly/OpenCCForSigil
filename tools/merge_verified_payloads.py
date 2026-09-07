@@ -12,6 +12,19 @@ import tempfile
 from typing import Iterable, Mapping
 import uuid
 
+try:
+    from runtime_matrix import (
+        SUPPORTED_RUNTIME_IDENTITIES,
+        format_runtime_identity,
+        runtime_identity,
+    )
+except ModuleNotFoundError:  # Imported as tools.merge_verified_payloads by tests.
+    from tools.runtime_matrix import (
+        SUPPORTED_RUNTIME_IDENTITIES,
+        format_runtime_identity,
+        runtime_identity,
+    )
+
 
 ROOT = Path(__file__).resolve().parents[1]
 VENDOR_ROOT = ROOT / "plugin" / "OpenCCForSigil" / "vendor" / "opencc"
@@ -69,7 +82,12 @@ def _copy_payload(source: Path, destination: Path) -> None:
         raise
 
 
-def merge(artifact_root: Path, vendor_root: Path = VENDOR_ROOT) -> int:
+def merge(
+    artifact_root: Path,
+    vendor_root: Path = VENDOR_ROOT,
+    *,
+    require_runtimes: bool = False,
+) -> int:
     manifest_path = vendor_root / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     exports = sorted(artifact_root.rglob("record.json"))
@@ -77,8 +95,10 @@ def merge(artifact_root: Path, vendor_root: Path = VENDOR_ROOT) -> int:
         raise SystemExit(f"no verified payload artifacts found under {artifact_root}")
 
     records: dict[tuple[object, ...], dict[str, object]] = {}
-    for record in manifest.get("payloads", []):
-        records[_identity(record)] = dict(record)
+    artifact_identities: set[tuple[object, ...]] = set()
+    if not require_runtimes:
+        for record in manifest.get("payloads", []):
+            records[runtime_identity(record)] = dict(record)
     for export_path in exports:
         exported = json.loads(export_path.read_text(encoding="utf-8"))
         if exported.get("schema_version") != 1:
@@ -88,6 +108,13 @@ def merge(artifact_root: Path, vendor_root: Path = VENDOR_ROOT) -> int:
             raise SystemExit(f"payload artifact record is malformed: {export_path}")
         if record.get("payload_runtime_test") != "passed":
             raise SystemExit(f"payload artifact was not target-runtime tested: {export_path}")
+        identity = runtime_identity(record)
+        if identity in artifact_identities:
+            raise SystemExit(
+                "duplicate verified payload artifact runtime: "
+                + format_runtime_identity(identity)
+            )
+        artifact_identities.add(identity)
         payload_source = export_path.parent / "payload"
         if not payload_source.is_dir():
             raise SystemExit(f"payload directory is missing beside record: {export_path}")
@@ -112,7 +139,26 @@ def merge(artifact_root: Path, vendor_root: Path = VENDOR_ROOT) -> int:
             raise SystemExit(f"payload path does not match runtime identity: {export_path}")
         destination = vendor_root / expected_path
         _copy_payload(payload_source, destination)
-        records[_identity(record)] = dict(record)
+        records[identity] = dict(record)
+
+    if require_runtimes:
+        expected = set(SUPPORTED_RUNTIME_IDENTITIES)
+        actual = set(records)
+        missing = expected - actual
+        unexpected = actual - expected
+        if missing or unexpected:
+            details = []
+            if missing:
+                details.append(
+                    "missing="
+                    + ",".join(format_runtime_identity(item) for item in sorted(missing, key=str))
+                )
+            if unexpected:
+                details.append(
+                    "unexpected="
+                    + ",".join(format_runtime_identity(item) for item in sorted(unexpected, key=str))
+                )
+            raise SystemExit("verified payload runtime matrix mismatch: " + "; ".join(details))
 
     for payload_root in sorted((vendor_root / "payloads").glob("*/opencc/clib/bin")):
         for executable in payload_root.iterdir():
@@ -143,8 +189,13 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--artifact-root", type=Path, required=True)
     parser.add_argument("--vendor-root", type=Path, default=VENDOR_ROOT)
+    parser.add_argument(
+        "--require-runtimes",
+        action="store_true",
+        help="require every supported Fat Plugin runtime identity",
+    )
     args = parser.parse_args()
-    return merge(args.artifact_root, args.vendor_root.resolve())
+    return merge(args.artifact_root, args.vendor_root.resolve(), require_runtimes=args.require_runtimes)
 
 
 if __name__ == "__main__":

@@ -9,6 +9,19 @@ from pathlib import Path
 import re
 from typing import Iterable, Mapping
 
+try:
+    from runtime_matrix import (
+        SUPPORTED_RUNTIME_IDENTITIES,
+        format_runtime_identity,
+        runtime_identity,
+    )
+except ModuleNotFoundError:  # Imported as tools.verify_vendor by the test suite.
+    from tools.runtime_matrix import (
+        SUPPORTED_RUNTIME_IDENTITIES,
+        format_runtime_identity,
+        runtime_identity,
+    )
+
 
 ROOT = Path(__file__).resolve().parents[1]
 VENDOR_ROOT = ROOT / "plugin" / "OpenCCForSigil" / "vendor" / "opencc"
@@ -254,11 +267,11 @@ def _validate_payload(
     return str(record["python_abi"]), f"{record['os']}/{record['architecture']}"
 
 
-def main() -> int:
+def validate_manifest(*, require_runtimes: bool = False, manifest_path: Path = MANIFEST) -> int:
     try:
-        payload = json.loads(MANIFEST.read_text(encoding="utf-8"))
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
-        raise SystemExit(f"cannot read vendor manifest: {MANIFEST}") from exc
+        raise SystemExit(f"cannot read vendor manifest: {manifest_path}") from exc
     required = {
         "schema_version",
         "status",
@@ -296,10 +309,7 @@ def main() -> int:
     for record in payload["payloads"]:
         if not isinstance(record, dict):
             raise SystemExit("manifest payload entries must be objects")
-        identity = tuple(
-            record.get(key)
-            for key in ("python_implementation", "python_version", "python_abi", "os", "architecture")
-        )
+        identity = runtime_identity(record)
         if identity in seen:
             raise SystemExit(f"duplicate payload runtime identity: {identity}")
         seen.add(identity)
@@ -313,9 +323,39 @@ def main() -> int:
             upstream_commit=str(payload["opencc_upstream_commit"]),
         )
         locations.append(location)
+    if require_runtimes:
+        expected = set(SUPPORTED_RUNTIME_IDENTITIES)
+        missing = expected - seen
+        unexpected = seen - expected
+        if missing or unexpected:
+            details = []
+            if missing:
+                details.append(
+                    "missing="
+                    + ",".join(format_runtime_identity(item) for item in sorted(missing, key=str))
+                )
+            if unexpected:
+                details.append(
+                    "unexpected="
+                    + ",".join(format_runtime_identity(item) for item in sorted(unexpected, key=str))
+                )
+            raise SystemExit("manifest runtime matrix mismatch: " + "; ".join(details))
     print(f"official OpenCC payload manifest valid ({payload['status']}); payloads={len(locations)}")
     print("verified runtimes: " + ", ".join(sorted(locations)))
     return 0
+
+
+def main() -> int:
+    import argparse
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--require-runtimes",
+        action="store_true",
+        help="require every supported Fat Plugin runtime identity",
+    )
+    args = parser.parse_args()
+    return validate_manifest(require_runtimes=args.require_runtimes)
 
 
 if __name__ == "__main__":
