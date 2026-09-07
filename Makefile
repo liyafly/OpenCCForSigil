@@ -1,5 +1,7 @@
 .PHONY: install test lint verify-vendor differential differential-jieba check package artifact-check spec-bundle clean
 
+PLUGIN_VERSION := $(shell awk -F'"' '/^PLUGIN_VERSION/ {print $$2}' plugin/OpenCCForSigil/app/version.py)
+
 install:
 	mise install
 	mise exec -- uv sync --locked
@@ -26,7 +28,7 @@ package:
 	mise exec -- uv run python tools/build_plugin.py
 
 artifact-check:
-	mise exec -- uv run python tools/validate_artifact.py dist/OpenCCForSigil_0.0.1-beta.zip
+	mise exec -- uv run python tools/validate_artifact.py dist/OpenCCForSigil_$(PLUGIN_VERSION).zip
 
 spec-bundle:
 	mise exec -- uv run python tools/build_spec_bundle.py

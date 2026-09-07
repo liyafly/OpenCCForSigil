@@ -108,14 +108,15 @@ def main() -> int:
     parser.add_argument(
         "--output",
         type=Path,
-        default=ROOT / "dist" / "OpenCCForSigil_0.0.1-beta.zip",
+        help="output ZIP path (defaults to dist/OpenCCForSigil_<plugin version>.zip)",
     )
     args = parser.parse_args()
     version = validate(require_runtimes=args.require_runtimes)
     if args.check:
         print(f"plugin metadata valid ({version})")
         return 0
-    build(args.output, require_runtimes=args.require_runtimes)
+    output = args.output or ROOT / "dist" / f"OpenCCForSigil_{version}.zip"
+    build(output, require_runtimes=args.require_runtimes)
     return 0
 
 

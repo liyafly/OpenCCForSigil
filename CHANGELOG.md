@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.0.2-beta
+
+- Closed the scoped conversion UI review findings: every text-capable host now
+  requires an explicit XHTML target selection, with metadata-only inventory,
+  empty-selection protection, localized three-language controls, and accurate
+  counts.
+- Added cancellation checkpoints around progress callbacks, retained the Qt
+  application owner, and ran repository and differential tests on every CI
+  platform even when native payloads come from cache.
+- Completed no-change and all-skipped previews without writes, and report
+  partial write failures with the files already handed to Sigil.
+
 ## 0.0.1-beta
 
 - First public beta release of the source-preserving Sigil conversion plugin.
