@@ -103,6 +103,13 @@ class Controller:
             if callable(getattr(self.bk, "selected_iter", None)):
                 scope_outcome = choose_scope(adapter, initial_language=language)
                 if not scope_outcome.accepted or scope_outcome.selection is None:
+                    self.storage.save_preferences(
+                        {
+                            **preferences,
+                            "last_conversion_config": selected_config,
+                            "ui": {**ui_preferences, "language": scope_outcome.language},
+                        }
+                    )
                     self.session.cancel()
                     self.logger.summary(
                         self._summary(status="cancelled", files_scanned=0, changes=0, files_changed=0)

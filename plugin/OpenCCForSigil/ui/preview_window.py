@@ -160,7 +160,7 @@ def choose_scope(adapter: Any, *, initial_language: str = "en") -> ScopeOutcome:
     if owns_application:
         application.quit()
     if not dialog.accepted:
-        return ScopeOutcome(False, None, language)
+        return ScopeOutcome(False, None, dialog.language)
     _translator.set_language(dialog.language)
     selection = resolve_target_selection(
         inventory, dialog.scope, dialog.selected_ids()
@@ -500,7 +500,8 @@ class _ScopeDialog:
         layout = qt_widgets.QVBoxLayout(self.dialog)
 
         language_row = qt_widgets.QHBoxLayout()
-        language_row.addWidget(qt_widgets.QLabel(translator.text("language.label")))
+        self.language_label = qt_widgets.QLabel(translator.text("language.label"))
+        language_row.addWidget(self.language_label)
         self.language_combo = qt_widgets.QComboBox()
         for code in SUPPORTED_LANGUAGES:
             self.language_combo.addItem(LANGUAGE_LABELS[code], code)
@@ -567,8 +568,22 @@ class _ScopeDialog:
     def _language_changed(self) -> None:
         code = str(self.language_combo.currentData())
         self.language = code
-        # A language change applies to the next dialog invocation as well.
         self._translator.set_language(code)
+        self.dialog.setWindowTitle(self._translator.text("scope.title"))
+        self.language_label.setText(self._translator.text("language.label"))
+        self.single_radio.setText(self._translator.text("scope.single"))
+        self.selected_radio.setText(self._translator.text("scope.selected"))
+        self.all_radio.setText(self._translator.text("scope.all"))
+        self.filter_edit.setPlaceholderText(self._translator.text("scope.filter"))
+        self.select_visible.setText(self._translator.text("scope.select_visible"))
+        self.clear_visible.setText(self._translator.text("scope.clear_visible"))
+        self.count_label.setText(
+            self._translator.text(
+                "scope.selected_count",
+                selected=len(self._checked_ids()),
+                total=self.list_widget.count(),
+            )
+        )
 
     def _checked_ids(self) -> Tuple[str, ...]:
         checked = self._qt.Qt.Checked
