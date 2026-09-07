@@ -44,7 +44,17 @@ def sha256_tree(root: Path) -> str:
 
 
 def _files(root: Path) -> Iterable[Path]:
-    return (path for path in root.rglob("*") if path.is_file())
+    # Match the deterministic packager: interpreter bytecode is a local
+    # runtime cache, never part of the shipped payload or its integrity
+    # identity. Importing vendored Python modules during tests must therefore
+    # not change the hash of an otherwise identical payload.
+    return (
+        path
+        for path in root.rglob("*")
+        if path.is_file()
+        and "__pycache__" not in path.parts
+        and path.suffix not in {".pyc", ".pyo"}
+    )
 
 
 def verify_tree_sha256(root: Path, expected: str) -> str:

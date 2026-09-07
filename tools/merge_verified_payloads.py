@@ -32,7 +32,13 @@ MANIFEST_PATH = VENDOR_ROOT / "manifest.json"
 
 
 def _files(root: Path) -> Iterable[Path]:
-    return (path for path in root.rglob("*") if path.is_file())
+    return (
+        path
+        for path in root.rglob("*")
+        if path.is_file()
+        and "__pycache__" not in path.parts
+        and path.suffix not in {".pyc", ".pyo"}
+    )
 
 
 def _sha256_tree(root: Path) -> str:
