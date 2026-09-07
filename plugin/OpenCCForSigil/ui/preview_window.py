@@ -56,7 +56,11 @@ class ProgressReporter:
         self.dialog.setValue(index)
         self.dialog.setLabelText(
             _translator.text(
-                "progress.status", phase=phase, index=index, total=total, file=href
+                "progress.status",
+                phase=_translator.text(f"progress.phase.{phase}"),
+                index=index,
+                total=total,
+                file=href,
             )
         )
         self._qt.QApplication.processEvents()
@@ -115,16 +119,9 @@ def choose_conversion_config(
     available = set(available_configs)
     configs = tuple(config for config in CONFIG_SELECTION_ORDER if config in available)
     if not configs:
-        raise UIUnavailableError(
-            "no supported standard OpenCC config is available in the selected payload"
-        )
+        raise UIUnavailableError(_translator.text("error.no_config"))
 
-    application = qt_widgets.QApplication.instance()
-    owns_application = application is None
-    if application is None:
-        import sys
-
-        application = qt_widgets.QApplication(sys.argv)
+    _ensure_application(qt_widgets)
     jieba_configs = {
         base: plugin
         for base, plugin in JIEBA_CONFIG_BY_BASE.items()
@@ -135,8 +132,6 @@ def choose_conversion_config(
     )
     exec_method = getattr(dialog.dialog, "exec", None) or dialog.dialog.exec_
     exec_method()
-    if owns_application:
-        application.quit()
     return dialog.selected_config if dialog.accepted else None
 
 
@@ -148,17 +143,10 @@ def choose_scope(adapter: Any, *, initial_language: str = "en") -> ScopeOutcome:
     language = initial_language or _translator.language
     _translator.set_language(language)
     qt_widgets = _load_qt_widgets()
-    application = qt_widgets.QApplication.instance()
-    owns_application = application is None
-    if application is None:
-        import sys
-
-        application = qt_widgets.QApplication(sys.argv)
+    _ensure_application(qt_widgets)
     dialog = _ScopeDialog(qt_widgets, inventory, selected_ids, language, _translator)
     exec_method = getattr(dialog.dialog, "exec", None) or dialog.dialog.exec_
     exec_method()
-    if owns_application:
-        application.quit()
     if not dialog.accepted:
         return ScopeOutcome(False, None, dialog.language)
     _translator.set_language(dialog.language)
@@ -172,11 +160,7 @@ def create_progress_reporter(total: int) -> ProgressReporter:
     """Create a progress reporter using Sigil's already available Qt runtime."""
 
     qt_widgets = _load_qt_widgets()
-    application = qt_widgets.QApplication.instance()
-    if application is None:
-        import sys
-
-        application = qt_widgets.QApplication(sys.argv)
+    _ensure_application(qt_widgets)
     return ProgressReporter(qt_widgets, total)
 
 
@@ -192,18 +176,22 @@ def show_preview(planned: Sequence[PlannedDocument]) -> PreviewOutcome:
 
     qt_widgets = _load_qt_widgets()
     previews = tuple(PreviewSession(item.plan) for item in planned)
+    _ensure_application(qt_widgets)
+    dialog = _PreviewDialog(qt_widgets, planned, previews)
+    exec_method = getattr(dialog.dialog, "exec", None) or dialog.dialog.exec_
+    exec_method()
+    return PreviewOutcome(accepted=dialog.applied, previews=previews)
+
+
+def _ensure_application(qt_widgets: Any) -> Any:
+    """Return the one process-level QApplication used by every plugin dialog."""
+
     application = qt_widgets.QApplication.instance()
-    owns_application = application is None
     if application is None:
         import sys
 
         application = qt_widgets.QApplication(sys.argv)
-    dialog = _PreviewDialog(qt_widgets, planned, previews)
-    exec_method = getattr(dialog.dialog, "exec", None) or dialog.dialog.exec_
-    exec_method()
-    if owns_application:
-        application.quit()
-    return PreviewOutcome(accepted=dialog.applied, previews=previews)
+    return application
 
 
 def _load_qt_widgets() -> Any:
@@ -219,7 +207,7 @@ def _load_qt_widgets() -> Any:
             QtWidgets.Qt = QtCore.Qt
             return QtWidgets
         except ImportError as exc:
-            raise UIUnavailableError("Sigil bundled Qt runtime is unavailable") from exc
+            raise UIUnavailableError(_translator.text("error.ui_unavailable")) from exc
 
 
 class _PreviewDialog:
@@ -328,10 +316,12 @@ class _PreviewDialog:
         preview, change_id = self._entries[row]
         change = next(item for item in preview.changes if item.change_id == change_id)
         self.detail.setPlainText(
-            f"Rule: {change.rule_source}\n"
-            f"Category: {change.category}    Risk: {change.risk}\n"
-            f"Before: {change.context_before}{change.source}{change.context_after}\n"
-            f"Change: {change.source!r} → {change.target!r}"
+            f"{_translator.text('preview.rule')}: {change.rule_source}\n"
+            f"{_translator.text('preview.category')}: {change.category}    "
+            f"{_translator.text('preview.risk')}: {change.risk}\n"
+            f"{_translator.text('preview.before')}: "
+            f"{change.context_before}{change.source}{change.context_after}\n"
+            f"{_translator.text('preview.change')}: {change.source!r} → {change.target!r}"
         )
 
     def _current_entry(self):
@@ -429,9 +419,7 @@ class _ConversionConfigDialog:
         self.jieba_status.setWordWrap(True)
         layout.addWidget(self.jieba_status)
         self.jieba_checkbox = qt_widgets.QCheckBox(self._translator.text("config.jieba"))
-        self.jieba_checkbox.setToolTip(
-            "只使用当前 vendor payload 中经过哈希校验的官方 opencc-jieba 插件。"
-        )
+        self.jieba_checkbox.setToolTip(self._translator.text("config.jieba_tooltip"))
         layout.addWidget(self.jieba_checkbox)
 
         buttons = qt_widgets.QHBoxLayout()
@@ -594,10 +582,7 @@ class _ScopeDialog:
         )
 
     def selected_ids(self) -> Tuple[str, ...]:
-        ids = self._checked_ids()
-        if self.single_radio.isChecked():
-            return ids[:1]
-        return ids
+        return self._checked_ids()
 
     def _refresh_list(self) -> None:
         query = self.filter_edit.text().strip().lower()
@@ -638,8 +623,12 @@ class _ScopeDialog:
             selection = resolve_target_selection(self._inventory, scope, self.selected_ids())
             if selection.empty:
                 raise ScopeSelectionError(self._translator.text("scope.none"))
-        except ScopeSelectionError as exc:
-            self._qt.QMessageBox.warning(self.dialog, self._translator.text("scope.title"), str(exc))
+        except ScopeSelectionError:
+            self._qt.QMessageBox.warning(
+                self.dialog,
+                self._translator.text("scope.title"),
+                self._translator.text("error.scope_invalid"),
+            )
             return
         self.scope = scope
         self.accepted = True

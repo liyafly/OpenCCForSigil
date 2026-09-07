@@ -14,6 +14,7 @@ FILES = (
 def test_all_scope_preserves_text_iter_order():
     selection = resolve_target_selection(FILES, Scope.ALL_XHTML)
     assert selection.file_ids == ("a", "nested-a", "b")
+    assert resolve_target_selection((), Scope.ALL_XHTML).empty
 
 
 def test_selected_scope_uses_manifest_ids_and_rejects_empty():
@@ -62,3 +63,12 @@ def test_adapter_inventory_and_selection_are_metadata_only():
         ("b", "Text/b.xhtml"),
     )
     assert book.reads == []
+
+
+def test_empty_book_browser_selection_never_expands_to_all():
+    book = MetadataBook()
+    book.selected_iter = lambda: iter(())
+    adapter = SigilBookAdapter(book)
+    assert tuple(adapter.selected_ids()) == ()
+    with pytest.raises(ScopeSelectionError):
+        resolve_target_selection(adapter.text_file_inventory(), Scope.SELECTED, ())
