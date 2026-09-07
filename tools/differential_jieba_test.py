@@ -71,6 +71,19 @@ def _configure_plugin_environment(payload_root: Path) -> Path:
     return data_root
 
 
+def _convert_cases(module: Any, cases: Iterable[Mapping[str, str]]) -> list[str]:
+    """Convert cases while constructing one native converter per config."""
+
+    converters: dict[str, Any] = {}
+    outputs: list[str] = []
+    for case in cases:
+        config = case["config"]
+        if config not in converters:
+            converters[config] = module.OpenCC(config)
+        outputs.append(converters[config].convert(case["source"]))
+    return outputs
+
+
 def _resolve_payload(payload_root: Path | None) -> Path:
     if payload_root is not None:
         return payload_root.resolve()
@@ -121,13 +134,7 @@ def run_python_binding(payload_root: Path, cases: Iterable[Mapping[str, str]]) -
     origin = Path(str(module.__file__)).resolve()
     if payload_root not in origin.parents:
         raise RuntimeError(f"Python Binding imported outside selected payload: {origin}")
-    converters: dict[str, Any] = {}
-    outputs: list[str] = []
-    for case in cases:
-        config = case["config"]
-        converter = converters.setdefault(config, module.OpenCC(config))
-        outputs.append(converter.convert(case["source"]))
-    return outputs
+    return _convert_cases(module, cases)
 
 
 def compare(cli: Path, payload_root: Path, cases: list[dict[str, str]]) -> list[dict[str, object]]:

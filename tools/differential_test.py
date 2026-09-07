@@ -116,7 +116,12 @@ def run_python_binding(payload_root: Path, cases: Iterable[Mapping[str, str]]) -
     outputs: list[str] = []
     for case in cases:
         config = case["config"]
-        converter = converters.setdefault(config, module.OpenCC(config))
+        # Do not use dict.setdefault here: its default expression is evaluated
+        # before the lookup, which reconstructs a native converter on every
+        # case even when this configuration was already cached.
+        if config not in converters:
+            converters[config] = module.OpenCC(config)
+        converter = converters[config]
         outputs.append(converter.convert(case["source"]))
     return outputs
 

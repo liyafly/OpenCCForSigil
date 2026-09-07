@@ -253,10 +253,13 @@ def _build_plugin(
         "-DBUILD_SHARED_LIBS=OFF",
     ]
     if runtime_os != "windows":
-        release_flags = [f"-ffile-prefix-map={source_root}=."]
+        # Put reproducibility and ABI flags in the general flag set.  Setting
+        # CMAKE_CXX_FLAGS_RELEASE here would replace CMake's default Release
+        # optimization flags (typically -O3 and -DNDEBUG).
+        extra_flags = [f"-ffile-prefix-map={source_root}=."]
         if runtime_os == "linux":
-            release_flags.append(_linux_static_core_abi_define(clib_root))
-        configure.append("-DCMAKE_CXX_FLAGS_RELEASE=" + " ".join(release_flags))
+            extra_flags.append(_linux_static_core_abi_define(clib_root))
+        configure.append("-DCMAKE_CXX_FLAGS=" + " ".join(extra_flags))
     if runtime_os == "linux":
         configure.append(
             "-DCMAKE_SHARED_LINKER_FLAGS=" + _linux_static_core_link_flags(clib_root)
