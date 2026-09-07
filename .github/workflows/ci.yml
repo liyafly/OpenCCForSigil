@@ -5,6 +5,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.ref_type == 'branch' }}
+
 permissions:
   contents: read
 
@@ -34,7 +38,20 @@ jobs:
       - name: Install locked Python dependencies
         run: mise exec -- uv sync --locked
 
+      - name: Restore target-tested payload cache
+        id: payload-cache
+        if: github.event_name != 'pull_request'
+        uses: actions/cache@v4
+        with:
+          path: native_build/artifacts/verified-payload
+          key: opencc-payload-${{ matrix.id }}-${{ hashFiles('native_build/payload-lock.json', 'tools/vendor_opencc.py', 'tools/build_opencc_jieba.py', 'plugin/OpenCCForSigil/vendor/opencc/manifest.json') }}
+
+      - name: Merge cached target-tested payload
+        if: steps.payload-cache.outputs.cache-hit == 'true'
+        run: mise exec -- uv run python tools/merge_verified_payloads.py --artifact-root native_build/artifacts/verified-payload
+
       - name: Check out pinned OpenCC source for the official Jieba plugin
+        if: steps.payload-cache.outputs.cache-hit != 'true'
         uses: actions/checkout@v4
         with:
           repository: BYVoid/OpenCC
@@ -43,13 +60,15 @@ jobs:
           fetch-depth: 1
 
       - name: Vendor the exact official wheel for this runner
+        if: steps.payload-cache.outputs.cache-hit != 'true'
         run: mise exec -- uv run python tools/vendor_opencc.py --version 1.4.2
 
       - name: Build and vendor the official native Jieba plugin
+        if: steps.payload-cache.outputs.cache-hit != 'true'
         run: mise exec -- uv run python tools/build_opencc_jieba.py --source native_build/OpenCC
 
       - name: Inspect Linux native plugin linkage
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && steps.payload-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
           plugin="$(find plugin/OpenCCForSigil/vendor/opencc/payloads -name 'libopencc-jieba.so' -type f -print -quit)"
@@ -73,15 +92,19 @@ jobs:
         run: mise exec -- uv run python tools/verify_vendor.py
 
       - name: Lint
+        if: steps.payload-cache.outputs.cache-hit != 'true'
         run: mise exec -- ruff check plugin tests tools
 
       - name: Test backend and plugin contracts
+        if: steps.payload-cache.outputs.cache-hit != 'true'
         run: mise exec -- uv run pytest
 
       - name: Run official CLI/Python Binding differential corpus
+        if: steps.payload-cache.outputs.cache-hit != 'true'
         run: mise exec -- uv run python tools/differential_test.py --corpus tests/fixtures/opencc_smoke.jsonl
 
       - name: Run official native Jieba CLI/Python Binding differential corpus
+        if: steps.payload-cache.outputs.cache-hit != 'true'
         run: mise exec -- uv run python tools/differential_jieba_test.py --corpus tests/fixtures/opencc_jieba_smoke.jsonl
 
       - name: Export the target-tested payload
@@ -115,10 +138,13 @@ jobs:
           path: native_build/artifacts
 
       - name: Merge target-tested payloads into the Fat Plugin tree
-        run: mise exec -- uv run python tools/merge_verified_payloads.py --artifact-root native_build/artifacts
+        run: mise exec -- uv run python tools/merge_verified_payloads.py --artifact-root native_build/artifacts --require-runtimes
 
       - name: Verify the merged manifest and every payload
-        run: mise exec -- uv run python tools/verify_vendor.py
+        run: mise exec -- uv run python tools/verify_vendor.py --require-runtimes
+
+      - name: Lint the assembled source once
+        run: mise exec -- ruff check plugin tests tools
 
       - name: Run the Linux target differential corpus
         run: mise exec -- uv run python tools/differential_test.py --corpus tests/fixtures/opencc_smoke.jsonl
@@ -130,7 +156,10 @@ jobs:
         run: mise exec -- uv run pytest
 
       - name: Build and validate the Fat Plugin ZIP
-        run: mise exec -- uv run python tools/build_plugin.py --output dist/OpenCCForSigil_${{ github.sha }}.zip
+        run: mise exec -- uv run python tools/build_plugin.py --require-runtimes --output dist/OpenCCForSigil_${{ github.sha }}.zip
+
+      - name: Revalidate the exact final ZIP
+        run: mise exec -- uv run python tools/validate_artifact.py --require-runtimes dist/OpenCCForSigil_${{ github.sha }}.zip
 
       - name: Build the specification bundle
         run: mise exec -- uv run python tools/build_spec_bundle.py
