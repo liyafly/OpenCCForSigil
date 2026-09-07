@@ -128,7 +128,7 @@ from opencc_backend.runtime_selector import RuntimeSelector
 
 RuntimeSelector(manifest_path=Path(os.environ['MANIFEST'])).import_opencc()
 module = importlib.import_module('opencc.cli')
-print(json.dumps({'origin': str(Path(module.__file__).relative_to(Path(os.environ['PAYLOAD']))),
+print(json.dumps({'origin': Path(module.__file__).relative_to(Path(os.environ['PAYLOAD'])).as_posix(),
                   'loader': type(module.__spec__.loader).__name__}, ensure_ascii=False))
 """,
         marker=marker_path,
