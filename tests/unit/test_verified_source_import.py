@@ -101,7 +101,7 @@ from pathlib import Path
 from opencc_backend.runtime_selector import RuntimeSelector
 
 module, _, _, _, origin = RuntimeSelector(manifest_path=Path(os.environ['MANIFEST'])).import_opencc()
-print(json.dumps({'origin': origin, 'result': module.OpenCC('s2t').convert('汉字')}, ensure_ascii=False))
+print(json.dumps({'origin': origin, 'result': module.OpenCC('s2t').convert('汉字')}, ensure_ascii=True))
 """,
         marker=marker_path,
     )
@@ -129,7 +129,7 @@ from opencc_backend.runtime_selector import RuntimeSelector
 RuntimeSelector(manifest_path=Path(os.environ['MANIFEST'])).import_opencc()
 module = importlib.import_module('opencc.cli')
 print(json.dumps({'origin': Path(module.__file__).relative_to(Path(os.environ['PAYLOAD'])).as_posix(),
-                  'loader': type(module.__spec__.loader).__name__}, ensure_ascii=False))
+                  'loader': type(module.__spec__.loader).__name__}, ensure_ascii=True))
 """,
         marker=marker_path,
         payload=payload_root,
@@ -210,7 +210,7 @@ sys.modules.update({'opencc': fake_opencc, 'opencc.clib': fake_clib,
                     'opencc.clib.opencc_clib': fake_native, 'opencc_clib': fake_top_level})
 
 module, _, _, _, origin = RuntimeSelector(manifest_path=Path(os.environ['MANIFEST'])).import_opencc()
-print(json.dumps({'origin': origin, 'result': module.OpenCC('s2t').convert('汉字')}, ensure_ascii=False))
+print(json.dumps({'origin': origin, 'result': module.OpenCC('s2t').convert('汉字')}, ensure_ascii=True))
 """,
         payload=payload_root,
     )
@@ -233,7 +233,7 @@ native = sys.modules['opencc.clib.opencc_clib']
 second, _, _, _, _ = RuntimeSelector(manifest_path=Path(__import__('os').environ['MANIFEST'])).import_opencc()
 print(json.dumps({'same_package': first is second,
                   'same_native': native is sys.modules['opencc.clib.opencc_clib'],
-                  'result': second.OpenCC('s2t').convert('汉字')}, ensure_ascii=False))
+                  'result': second.OpenCC('s2t').convert('汉字')}, ensure_ascii=True))
 """,
     )
     assert result.returncode == 0, result.stderr
