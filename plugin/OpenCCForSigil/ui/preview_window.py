@@ -12,6 +12,8 @@ from opencc_backend.configs import (
     JIEBA_CONFIG_BY_BASE,
     V1_CONFIGS,
 )
+from sigil.scope import Scope, ScopeSelectionError, TargetSelection, TextFile, resolve_target_selection
+from ui.i18n import LANGUAGE_LABELS, SUPPORTED_LANGUAGES, Translator
 
 
 class UIUnavailableError(RuntimeError):
@@ -22,6 +24,58 @@ class UIUnavailableError(RuntimeError):
 class PreviewOutcome:
     accepted: bool
     previews: Tuple[PreviewSession, ...]
+
+
+@dataclass(frozen=True)
+class ScopeOutcome:
+    accepted: bool
+    selection: TargetSelection | None
+    language: str
+
+
+class ProgressReporter:
+    """A lightweight progress view driven by workflow file boundaries."""
+
+    def __init__(self, qt_widgets: Any, total: int) -> None:
+        self._qt = qt_widgets
+        self._cancelled = False
+        self.dialog = qt_widgets.QProgressDialog(
+            "", _translator.text("common.cancel"), 0, total
+        )
+        self.dialog.setWindowTitle(_translator.text("progress.title"))
+        self.dialog.setAutoClose(False)
+        self.dialog.setAutoReset(False)
+        self.dialog.canceled.connect(self._mark_cancelled)
+        self.dialog.show()
+
+    def _mark_cancelled(self) -> None:
+        self._cancelled = True
+
+    def update(self, phase: str, index: int, total: int, href: str) -> None:
+        self.dialog.setMaximum(max(total, 1))
+        self.dialog.setValue(index)
+        self.dialog.setLabelText(
+            _translator.text(
+                "progress.status", phase=phase, index=index, total=total, file=href
+            )
+        )
+        self._qt.QApplication.processEvents()
+
+    def cancelled(self) -> bool:
+        self._qt.QApplication.processEvents()
+        return self._cancelled
+
+    def close(self) -> None:
+        self.dialog.close()
+
+
+_translator = Translator("en")
+
+
+def set_ui_language(language: str) -> None:
+    """Set the language used by all dialogs in this plugin invocation."""
+
+    _translator.set_language(language)
 
 
 CONVERSION_LABELS = {
@@ -76,12 +130,61 @@ def choose_conversion_config(
         for base, plugin in JIEBA_CONFIG_BY_BASE.items()
         if plugin in available
     }
-    dialog = _ConversionConfigDialog(qt_widgets, configs, default_config, jieba_configs)
+    dialog = _ConversionConfigDialog(
+        qt_widgets, configs, default_config, jieba_configs, translator=_translator
+    )
     exec_method = getattr(dialog.dialog, "exec", None) or dialog.dialog.exec_
     exec_method()
     if owns_application:
         application.quit()
     return dialog.selected_config if dialog.accepted else None
+
+
+def choose_scope(adapter: Any, *, initial_language: str = "en") -> ScopeOutcome:
+    """Choose a frozen XHTML target set after enumerating metadata only."""
+
+    inventory = tuple(adapter.text_file_inventory())
+    selected_ids = _selected_xhtml_ids(adapter, inventory)
+    language = initial_language or _translator.language
+    _translator.set_language(language)
+    qt_widgets = _load_qt_widgets()
+    application = qt_widgets.QApplication.instance()
+    owns_application = application is None
+    if application is None:
+        import sys
+
+        application = qt_widgets.QApplication(sys.argv)
+    dialog = _ScopeDialog(qt_widgets, inventory, selected_ids, language, _translator)
+    exec_method = getattr(dialog.dialog, "exec", None) or dialog.dialog.exec_
+    exec_method()
+    if owns_application:
+        application.quit()
+    if not dialog.accepted:
+        return ScopeOutcome(False, None, language)
+    _translator.set_language(dialog.language)
+    selection = resolve_target_selection(
+        inventory, dialog.scope, dialog.selected_ids()
+    )
+    return ScopeOutcome(True, selection, dialog.language)
+
+
+def create_progress_reporter(total: int) -> ProgressReporter:
+    """Create a progress reporter using Sigil's already available Qt runtime."""
+
+    qt_widgets = _load_qt_widgets()
+    application = qt_widgets.QApplication.instance()
+    if application is None:
+        import sys
+
+        application = qt_widgets.QApplication(sys.argv)
+    return ProgressReporter(qt_widgets, total)
+
+
+def _selected_xhtml_ids(adapter: Any, inventory: Tuple[TextFile, ...]) -> Tuple[str, ...]:
+    selected_iter = getattr(adapter, "selected_ids", None)
+    if callable(selected_iter):
+        return tuple(file_id for file_id in selected_iter() if file_id in {f.file_id for f in inventory})
+    return ()
 
 
 def show_preview(planned: Sequence[PlannedDocument]) -> PreviewOutcome:
@@ -105,13 +208,15 @@ def show_preview(planned: Sequence[PlannedDocument]) -> PreviewOutcome:
 
 def _load_qt_widgets() -> Any:
     try:
-        from PySide6 import QtWidgets
+        from PySide6 import QtCore, QtWidgets
 
+        QtWidgets.Qt = QtCore.Qt
         return QtWidgets
     except ImportError:
         try:
-            from PyQt5 import QtWidgets
+            from PyQt5 import QtCore, QtWidgets
 
+            QtWidgets.Qt = QtCore.Qt
             return QtWidgets
         except ImportError as exc:
             raise UIUnavailableError("Sigil bundled Qt runtime is unavailable") from exc
@@ -126,7 +231,7 @@ class _PreviewDialog:
         self.applied = False
 
         self.dialog = qt_widgets.QDialog()
-        self.dialog.setWindowTitle("OpenCCForSigil Preview")
+        self.dialog.setWindowTitle(_translator.text("preview.title"))
         self.dialog.resize(900, 620)
         self._build()
         self._refresh()
@@ -148,15 +253,19 @@ class _PreviewDialog:
         layout.addWidget(self.detail)
 
         buttons = qt.QHBoxLayout()
-        self.accept_this_button = qt.QPushButton("Accept this")
-        self.reject_this_button = qt.QPushButton("Skip this")
-        self.accept_all_button = qt.QPushButton("Accept all")
-        self.reject_all_button = qt.QPushButton("Skip all")
-        self.apply_button = qt.QPushButton("Apply accepted changes")
-        self.cancel_button = qt.QPushButton("Cancel")
+        self.accept_this_button = qt.QPushButton(_translator.text("preview.accept_this"))
+        self.reject_this_button = qt.QPushButton(_translator.text("preview.skip_this"))
+        self.accept_file_button = qt.QPushButton(_translator.text("preview.accept_file"))
+        self.reject_file_button = qt.QPushButton(_translator.text("preview.skip_file"))
+        self.accept_all_button = qt.QPushButton(_translator.text("preview.accept_all"))
+        self.reject_all_button = qt.QPushButton(_translator.text("preview.skip_all"))
+        self.apply_button = qt.QPushButton(_translator.text("preview.apply"))
+        self.cancel_button = qt.QPushButton(_translator.text("common.cancel"))
         for button in (
             self.accept_this_button,
             self.reject_this_button,
+            self.accept_file_button,
+            self.reject_file_button,
             self.accept_all_button,
             self.reject_all_button,
             self.apply_button,
@@ -167,6 +276,8 @@ class _PreviewDialog:
 
         self.accept_this_button.clicked.connect(self._accept_this)
         self.reject_this_button.clicked.connect(self._reject_this)
+        self.accept_file_button.clicked.connect(self._accept_file)
+        self.reject_file_button.clicked.connect(self._reject_file)
         self.accept_all_button.clicked.connect(self._accept_all)
         self.reject_all_button.clicked.connect(self._reject_all)
         self.apply_button.clicked.connect(self._apply)
@@ -193,7 +304,7 @@ class _PreviewDialog:
             row = current_row if 0 <= current_row < len(self._entries) else 0
             self.list_widget.setCurrentRow(row)
         else:
-            self.detail.setPlainText("No conversion changes were found.")
+            self.detail.setPlainText(_translator.text("preview.no_changes"))
         self._update_summary()
 
     def _update_summary(self) -> None:
@@ -201,13 +312,12 @@ class _PreviewDialog:
         for preview in self._previews:
             for key, value in preview.summary().items():
                 totals[key] += value
-        self.summary.setText(
-            "Changes: {total}   Accepted: {accepted}   Skipped: {rejected}   "
-            "Undecided: {undecided}".format(**totals)
-        )
+        self.summary.setText(_translator.text("preview.summary", files=len(self._previews), **totals))
         has_current = bool(self._entries)
         self.accept_this_button.setEnabled(has_current)
         self.reject_this_button.setEnabled(has_current)
+        self.accept_file_button.setEnabled(has_current)
+        self.reject_file_button.setEnabled(has_current)
         self.accept_all_button.setEnabled(totals["undecided"] > 0)
         self.reject_all_button.setEnabled(totals["undecided"] > 0)
 
@@ -244,6 +354,20 @@ class _PreviewDialog:
         entry[0].reject_this(entry[1])
         self._refresh()
 
+    def _accept_file(self) -> None:
+        entry = self._current_entry()
+        if entry is None:
+            return
+        entry[0].accept_all()
+        self._refresh()
+
+    def _reject_file(self) -> None:
+        entry = self._current_entry()
+        if entry is None:
+            return
+        entry[0].reject_all()
+        self._refresh()
+
     def _accept_all(self) -> None:
         for preview in self._previews:
             preview.accept_all()
@@ -258,8 +382,8 @@ class _PreviewDialog:
         try:
             for preview in self._previews:
                 preview.finalize()
-        except PreviewError as exc:
-            self._qt.QMessageBox.warning(self.dialog, "Preview incomplete", str(exc))
+        except PreviewError:
+            self._qt.QMessageBox.warning(self.dialog, _translator.text("preview.title"), _translator.text("preview.incomplete"))
             return
         self.applied = True
         self.dialog.accept()
@@ -272,42 +396,47 @@ class _ConversionConfigDialog:
         configs: Tuple[str, ...],
         default_config: str,
         jieba_configs: dict[str, str],
+        *,
+        translator: Translator,
     ) -> None:
         self._qt = qt_widgets
         self._jieba_configs = jieba_configs
+        self._translator = translator
         self.accepted = False
         self.selected_config = None
         self.dialog = qt_widgets.QDialog()
-        self.dialog.setWindowTitle("OpenCCForSigil Conversion Direction")
+        self.dialog.setWindowTitle(self._translator.text("config.title"))
         self.dialog.setMinimumWidth(460)
 
         layout = qt_widgets.QVBoxLayout(self.dialog)
         label = qt_widgets.QLabel(
-            "Choose the conversion direction explicitly. OpenCCForSigil will not "
-            "guess or silently reverse it."
+            self._translator.text("config.explanation")
         )
         label.setWordWrap(True)
         layout.addWidget(label)
 
         self.combo = qt_widgets.QComboBox()
         for config in configs:
-            self.combo.addItem(CONVERSION_LABELS[config], config)
+            self.combo.addItem(
+                self._translator.text(f"config.{config}")
+                if self._translator.text(f"config.{config}") != f"config.{config}"
+                else CONVERSION_LABELS[config],
+                config,
+            )
         layout.addWidget(self.combo)
 
         self.jieba_status = qt_widgets.QLabel()
         self.jieba_status.setWordWrap(True)
         layout.addWidget(self.jieba_status)
-        self.jieba_checkbox = qt_widgets.QCheckBox(
-            "高级：使用官方 native Jieba 分词插件"
-        )
+        self.jieba_checkbox = qt_widgets.QCheckBox(self._translator.text("config.jieba"))
         self.jieba_checkbox.setToolTip(
             "只使用当前 vendor payload 中经过哈希校验的官方 opencc-jieba 插件。"
         )
         layout.addWidget(self.jieba_checkbox)
 
         buttons = qt_widgets.QHBoxLayout()
-        self.cancel_button = qt_widgets.QPushButton("Cancel")
-        self.continue_button = qt_widgets.QPushButton("Continue to Preview")
+        self.cancel_button = qt_widgets.QPushButton(self._translator.text("common.cancel"))
+        self.continue_button = qt_widgets.QPushButton(self._translator.text("config.continue"))
         buttons.addWidget(self.cancel_button)
         buttons.addWidget(self.continue_button)
         layout.addLayout(buttons)
@@ -331,11 +460,11 @@ class _ConversionConfigDialog:
             self.jieba_checkbox.setEnabled(True)
         if self._jieba_configs:
             self.jieba_status.setText(
-                "已检测到官方 native opencc-jieba payload；仅支持对应的官方 Jieba config。"
+                self._translator.text("config.jieba_available")
             )
         else:
             self.jieba_status.setText(
-                "未检测到官方 native opencc-jieba payload；当前仅提供标准 OpenCC config。"
+                self._translator.text("config.jieba_unavailable")
             )
 
     def _accept(self) -> None:
@@ -345,5 +474,158 @@ class _ConversionConfigDialog:
             if self.jieba_checkbox.isChecked() and base_config in self._jieba_configs
             else base_config
         )
+        self.accepted = True
+        self.dialog.accept()
+
+
+class _ScopeDialog:
+    """Qt view for selecting targets; all content reads happen after it closes."""
+
+    def __init__(
+        self,
+        qt_widgets: Any,
+        inventory: Tuple[TextFile, ...],
+        initial_ids: Tuple[str, ...],
+        language: str,
+        translator: Translator,
+    ) -> None:
+        self._qt = qt_widgets
+        self._inventory = inventory
+        self._translator = translator
+        self.accepted = False
+        self.language = language
+        self.dialog = qt_widgets.QDialog()
+        self.dialog.setWindowTitle(translator.text("scope.title"))
+        self.dialog.resize(700, 560)
+        layout = qt_widgets.QVBoxLayout(self.dialog)
+
+        language_row = qt_widgets.QHBoxLayout()
+        language_row.addWidget(qt_widgets.QLabel(translator.text("language.label")))
+        self.language_combo = qt_widgets.QComboBox()
+        for code in SUPPORTED_LANGUAGES:
+            self.language_combo.addItem(LANGUAGE_LABELS[code], code)
+        self.language_combo.setCurrentIndex(max(0, self.language_combo.findData(language)))
+        self.language_combo.currentIndexChanged.connect(self._language_changed)
+        language_row.addWidget(self.language_combo)
+        language_row.addStretch(1)
+        layout.addLayout(language_row)
+
+        self.single_radio = qt_widgets.QRadioButton(translator.text("scope.single"))
+        self.selected_radio = qt_widgets.QRadioButton(translator.text("scope.selected"))
+        self.all_radio = qt_widgets.QRadioButton(translator.text("scope.all"))
+        self.selected_radio.setChecked(True)
+        radio_row = qt_widgets.QHBoxLayout()
+        for radio in (self.single_radio, self.selected_radio, self.all_radio):
+            radio_row.addWidget(radio)
+            radio.toggled.connect(self._refresh_enabled)
+        layout.addLayout(radio_row)
+
+        self.filter_edit = qt_widgets.QLineEdit()
+        self.filter_edit.setPlaceholderText(translator.text("scope.filter"))
+        self.filter_edit.textChanged.connect(self._refresh_list)
+        layout.addWidget(self.filter_edit)
+        self.list_widget = qt_widgets.QListWidget()
+        layout.addWidget(self.list_widget)
+        action_row = qt_widgets.QHBoxLayout()
+        self.select_visible = qt_widgets.QPushButton(translator.text("scope.select_visible"))
+        self.clear_visible = qt_widgets.QPushButton(translator.text("scope.clear_visible"))
+        action_row.addWidget(self.select_visible)
+        action_row.addWidget(self.clear_visible)
+        action_row.addStretch(1)
+        layout.addLayout(action_row)
+        self.count_label = qt_widgets.QLabel()
+        layout.addWidget(self.count_label)
+
+        button_row = qt_widgets.QHBoxLayout()
+        cancel = qt_widgets.QPushButton(translator.text("common.cancel"))
+        continue_button = qt_widgets.QPushButton(translator.text("scope.analyze"))
+        button_row.addStretch(1)
+        button_row.addWidget(cancel)
+        button_row.addWidget(continue_button)
+        layout.addLayout(button_row)
+        cancel.clicked.connect(self.dialog.reject)
+        continue_button.clicked.connect(self._accept)
+        self.select_visible.clicked.connect(lambda: self._set_visible(True))
+        self.clear_visible.clicked.connect(lambda: self._set_visible(False))
+
+        initial = set(initial_ids)
+        for item in inventory:
+            row = qt_widgets.QListWidgetItem(item.href)
+            row.setData(qt_widgets.Qt.UserRole, item.file_id)
+            row.setFlags(row.flags() | qt_widgets.Qt.ItemIsUserCheckable)
+            row.setCheckState(
+                qt_widgets.Qt.Checked if item.file_id in initial else qt_widgets.Qt.Unchecked
+            )
+            self.list_widget.addItem(row)
+        if len(initial_ids) == 1:
+            self.single_radio.setChecked(True)
+        elif not initial_ids:
+            self.selected_radio.setChecked(True)
+        self._refresh_enabled()
+        self._refresh_count()
+
+    def _language_changed(self) -> None:
+        code = str(self.language_combo.currentData())
+        self.language = code
+        # A language change applies to the next dialog invocation as well.
+        self._translator.set_language(code)
+
+    def _checked_ids(self) -> Tuple[str, ...]:
+        checked = self._qt.Qt.Checked
+        return tuple(
+            self.list_widget.item(index).data(self._qt.Qt.UserRole)
+            for index in range(self.list_widget.count())
+            if self.list_widget.item(index).checkState() == checked
+        )
+
+    def selected_ids(self) -> Tuple[str, ...]:
+        ids = self._checked_ids()
+        if self.single_radio.isChecked():
+            return ids[:1]
+        return ids
+
+    def _refresh_list(self) -> None:
+        query = self.filter_edit.text().strip().lower()
+        for index in range(self.list_widget.count()):
+            item = self.list_widget.item(index)
+            item.setHidden(bool(query) and query not in item.text().lower())
+        self._refresh_count()
+
+    def _set_visible(self, checked: bool) -> None:
+        state = self._qt.Qt.Checked if checked else self._qt.Qt.Unchecked
+        for index in range(self.list_widget.count()):
+            item = self.list_widget.item(index)
+            if not item.isHidden():
+                item.setCheckState(state)
+        self._refresh_count()
+
+    def _refresh_count(self) -> None:
+        total = self.list_widget.count()
+        selected = len(self._checked_ids())
+        self.count_label.setText(
+            self._translator.text("scope.selected_count", selected=selected, total=total)
+        )
+
+    def _refresh_enabled(self) -> None:
+        if not hasattr(self, "filter_edit"):
+            return
+        custom = self.single_radio.isChecked() or self.selected_radio.isChecked()
+        self.filter_edit.setEnabled(custom)
+        self.list_widget.setEnabled(custom)
+        self.select_visible.setEnabled(custom)
+        self.clear_visible.setEnabled(custom)
+
+    def _accept(self) -> None:
+        try:
+            scope = Scope.SINGLE if self.single_radio.isChecked() else (
+                Scope.ALL_XHTML if self.all_radio.isChecked() else Scope.SELECTED
+            )
+            selection = resolve_target_selection(self._inventory, scope, self.selected_ids())
+            if selection.empty:
+                raise ScopeSelectionError(self._translator.text("scope.none"))
+        except ScopeSelectionError as exc:
+            self._qt.QMessageBox.warning(self.dialog, self._translator.text("scope.title"), str(exc))
+            return
+        self.scope = scope
         self.accepted = True
         self.dialog.accept()

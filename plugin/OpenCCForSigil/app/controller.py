@@ -9,7 +9,7 @@ from typing import Any, Dict, Optional
 from app.session import Session, SessionState
 from app.version import PLUGIN_VERSION
 from core.models import ConvertRequest
-from core.workflow import ConversionWorkflow
+from core.workflow import ConversionWorkflow, WorkflowCancelled
 from document.tokenizer import TokenizerOptions
 from logging_ext.logger import SessionLogger
 from opencc_backend.backend import OpenCCBackend
@@ -38,7 +38,10 @@ class Controller:
         try:
             profile = _load_conservative_profile()
             preferences = self.storage.load_preferences(
-                default={"last_conversion_config": str(profile["conversion"])}
+                default={
+                    "last_conversion_config": str(profile["conversion"]),
+                    "ui": {},
+                }
             )
             default_config = _preferred_config(preferences, str(profile["conversion"]))
             self.session.transition(SessionState.SCANNING)
@@ -53,7 +56,20 @@ class Controller:
                     message="BookContainer text API unavailable; preflight-only run",
                 )
 
-            from ui.preview_window import choose_conversion_config, show_preview
+            from ui.i18n import choose_language
+            from ui.preview_window import (
+                choose_conversion_config,
+                choose_scope,
+                create_progress_reporter,
+                set_ui_language,
+                show_preview,
+            )
+
+            ui_preferences = preferences.get("ui", {})
+            explicit_language = ui_preferences.get("language") if isinstance(ui_preferences, dict) else None
+            host_language = getattr(self.bk, "sigil_ui_lang", None)
+            language = choose_language(explicit_language, host_language)
+            set_ui_language(language)
 
             selected_config = choose_conversion_config(
                 backend.available_configs(), default_config=default_config
@@ -65,22 +81,52 @@ class Controller:
                 )
                 return 1
             self.storage.save_preferences(
-                {**preferences, "last_conversion_config": selected_config}
+                {
+                    **preferences,
+                    "last_conversion_config": selected_config,
+                    "ui": {**ui_preferences, "language": language}
+                    if isinstance(ui_preferences, dict)
+                    else {"language": language},
+                }
             )
             if selected_config != backend.config:
                 backend.close()
                 backend = OpenCCBackend(selected_config)
                 self._run_backend_self_test(backend)
 
+            adapter = SigilBookAdapter(self.bk)
+            # selected_iter is a Book Browser selection, not the current editor
+            # tab. Only expose the scoped chooser when the host supports it;
+            # old test doubles and old hosts retain the profile compatibility path.
+            targets = None
+            run_scope = Scope(str(profile["scope"]))
+            if callable(getattr(self.bk, "selected_iter", None)):
+                scope_outcome = choose_scope(adapter, initial_language=language)
+                if not scope_outcome.accepted or scope_outcome.selection is None:
+                    self.session.cancel()
+                    self.logger.summary(
+                        self._summary(status="cancelled", files_scanned=0, changes=0, files_changed=0)
+                    )
+                    return 1
+                targets = scope_outcome.selection
+                language = scope_outcome.language
+                self.storage.save_preferences(
+                    {
+                        **preferences,
+                        "last_conversion_config": selected_config,
+                        "ui": {**ui_preferences, "language": language},
+                    }
+                )
             self.session.transition(SessionState.ANALYZING)
             workflow = ConversionWorkflow(
-                SigilBookAdapter(self.bk),
+                adapter,
                 backend,
                 ConvertRequest(
                     selected_config,
                     segmentation="jieba" if is_jieba_config(selected_config) else "mmseg",
                 ),
-                scope=Scope(str(profile["scope"])),
+                scope=run_scope,
+                targets=targets,
                 tokenizer_options=TokenizerOptions(
                     protected_elements=tuple(profile["protected_elements"]),
                     convert_attributes=tuple(profile["attributes"]),
@@ -90,7 +136,21 @@ class Controller:
                 session_id=self.session.session_id,
                 profile_id=str(profile["id"]),
             )
-            planned = workflow.plan()
+            progress = create_progress_reporter(len(targets.file_ids)) if targets is not None else None
+            try:
+                planned = workflow.plan(
+                    progress=progress.update if progress is not None else None,
+                    cancelled=progress.cancelled if progress is not None else None,
+                )
+            except WorkflowCancelled:
+                self.session.cancel()
+                self.logger.summary(
+                    self._summary(status="cancelled", files_scanned=0, changes=0, files_changed=0)
+                )
+                return 1
+            finally:
+                if progress is not None:
+                    progress.close()
             planned_change_count = sum(len(item.plan.changes) for item in planned)
             self.logger.event(
                 "plan_built",

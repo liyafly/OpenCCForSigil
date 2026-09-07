@@ -21,6 +21,11 @@ official OpenCC wheel payload for the current build host:
 - Preview decisions with Accept this, Skip this, Accept all, and Skip all;
 - staging, structural verification, source-SHA256 concurrency checks, and a
   single adapter commit boundary for `bk.writefile()`;
+- three-language UI catalogs (简体中文, English, 繁體中文), remembered in
+  plugin preferences;
+- an explicit XHTML target picker for one file, Book Browser-selected files,
+  or all XHTML resources, followed by file-level preview and cancellable
+  analysis progress;
 - tests and a mise-pinned development toolchain.
 
 The first interactive conversion slice lets the user explicitly choose a
@@ -31,6 +36,13 @@ standard direction to its official `*_jieba` config. It previews every
 planned change before any EPUB write. Script/style/code/pre content and
 protected attributes remain unchanged. Runtime must not fall back to a system
 OpenCC/plugin installation or invoke pip.
+
+The target picker uses manifest IDs and keeps the selection frozen for the
+whole run. Sigil's `selected_iter()` is the Book Browser selection; it is not
+treated as the active editor tab. If a host does not expose that iterator, the
+legacy profile scope remains available and the plugin does not claim to know
+which editor tab is active. The plugin reads XHTML bodies only after the user
+confirms the target set.
 
 V1 formally supports CPython 3.14.x with wheel ABI `cp314`; the current Sigil
 bundled Python 3.14.2 is the production baseline. The reproducible development
