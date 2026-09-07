@@ -11,6 +11,8 @@
   platform even when native payloads come from cache.
 - Completed no-change and all-skipped previews without writes, and report
   partial write failures with the files already handed to Sigil.
+- Enforced verified source-only imports for official OpenCC modules so unchecked
+  cached bytecode cannot bypass payload integrity checks.
 
 ## 0.0.1-beta
 

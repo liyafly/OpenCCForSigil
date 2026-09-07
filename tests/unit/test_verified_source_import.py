@@ -147,6 +147,11 @@ def test_ignored_cache_tree_cannot_supply_an_opencc_submodule(tmp_path: Path):
     marker_path = tmp_path / "cache-tree-executed"
     cache_tree = payload_root / "opencc" / "__pycache__"
     cache_tree.mkdir()
+    (cache_tree / "__init__.py").write_text(
+        "from pathlib import Path\n"
+        f"Path({str(marker_path)!r}).write_text('executed', encoding='utf-8')\n",
+        encoding="utf-8",
+    )
     (cache_tree / "evil.py").write_text(
         "from pathlib import Path\n"
         f"Path({str(marker_path)!r}).write_text('executed', encoding='utf-8')\n",
