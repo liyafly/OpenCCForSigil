@@ -36,5 +36,22 @@ mise exec -- uv run python tools/differential_jieba_test.py \
   --corpus tests/fixtures/opencc_jieba_smoke.jsonl
 ```
 
+For a release candidate, require the complete Fat Plugin matrix and validate
+the archive after it is assembled:
+
+```sh
+mise exec -- uv run python tools/verify_vendor.py --require-runtimes
+mise exec -- uv run python tools/build_plugin.py --require-runtimes \
+  --output dist/OpenCCForSigil_release.zip
+mise exec -- uv run python tools/validate_artifact.py --require-runtimes \
+  dist/OpenCCForSigil_release.zip
+```
+
+The package builder fixes ZIP member order, timestamps, and executable modes.
+`tests/integration/test_package.py` checks that two builds from the same tree
+are byte-for-byte identical. The final archive validator recomputes each
+payload tree hash from ZIP contents, so a successful pre-package manifest check
+cannot hide a packaging omission or mutation.
+
 The Python Binding and matching official CLI must be 100% equal. The GitHub
 matrix runs this on each native Windows/macOS/Linux payload before assembly.

@@ -59,6 +59,12 @@ Windows runners, then assembles the verified Fat Plugin artifact. See
 [`docs/release.md`](docs/release.md) for the matrix and artifact workflow; a
 local Windows/Linux installation is not required.
 
+The official wheel set is pinned in `native_build/payload-lock.json`. Push and
+manual CI runs reuse previously target-tested payloads from a verified cache;
+when the cache is absent, the locked wheels and native build are reproduced on
+the matching hosted runners. The release job requires all four supported
+runtime payloads and rechecks their hashes from the final ZIP.
+
 The generated ZIP has exactly one top-level directory, `OpenCCForSigil/`, as
 required by the Sigil plugin packaging contract. `make spec-bundle` generates
 the versioned v1.4 specification files and
