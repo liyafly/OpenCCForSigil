@@ -29,4 +29,3 @@ def runtime_identity(record: Mapping[str, object]) -> tuple[object, ...]:
 
 def format_runtime_identity(identity: tuple[object, ...]) -> str:
     return "/".join(str(value) for value in identity)
-
