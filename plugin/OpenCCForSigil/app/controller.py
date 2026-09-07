@@ -9,7 +9,7 @@ from typing import Any, Dict, Optional
 from app.session import Session, SessionState
 from app.version import PLUGIN_VERSION
 from core.models import ConvertRequest
-from core.workflow import ConversionWorkflow, WorkflowCancelled
+from core.workflow import ConversionWorkflow, WorkflowCancelled, WorkflowCommitError
 from document.tokenizer import TokenizerOptions
 from logging_ext.logger import SessionLogger
 from opencc_backend.backend import OpenCCBackend
@@ -35,6 +35,11 @@ class Controller:
 
         self.logger.event("run_started", state=self.session.state.value)
         backend: Optional[OpenCCBackend] = None
+        planned = ()
+        staged = ()
+        planned_change_count = 0
+        accepted_change_count = 0
+        skipped_change_count = 0
         try:
             profile = _load_conservative_profile()
             preferences = self.storage.load_preferences(
@@ -62,19 +67,47 @@ class Controller:
                 choose_scope,
                 create_progress_reporter,
                 set_ui_language,
+                show_result,
                 show_preview,
             )
 
-            ui_preferences = preferences.get("ui", {})
-            explicit_language = ui_preferences.get("language") if isinstance(ui_preferences, dict) else None
+            raw_ui_preferences = preferences.get("ui")
+            # Corrupt or legacy preference files must not make a conversion
+            # crash while merging the UI namespace.  Preserve valid unknown UI
+            # keys, but normalize every other value to an empty mapping.
+            ui_preferences = dict(raw_ui_preferences) if isinstance(raw_ui_preferences, dict) else {}
+            explicit_language = ui_preferences.get("language")
             host_language = getattr(self.bk, "sigil_ui_lang", None)
             language = choose_language(explicit_language, host_language)
             set_ui_language(language)
 
+            adapter = SigilBookAdapter(self.bk)
+            # Text-capable hosts always get an explicit scope chooser.  A host
+            # without selected_iter simply opens it with no initial checks; it
+            # must never silently widen the run to ALL_XHTML.
+            scope_outcome = choose_scope(adapter, initial_language=language)
+            language = scope_outcome.language
+            set_ui_language(language)
+            scope_preferences = {
+                **preferences,
+                "ui": {**ui_preferences, "language": language},
+            }
+            if not scope_outcome.accepted or scope_outcome.selection is None:
+                self.storage.save_preferences(scope_preferences)
+                self.session.cancel()
+                self.logger.summary(
+                    self._summary(status="cancelled", files_scanned=0, changes=0, files_changed=0)
+                )
+                return 1
+            targets = scope_outcome.selection
+
+            # The language choice is now settled before the direction dialog
+            # is constructed, including on a first launch with no preference.
             selected_config = choose_conversion_config(
                 backend.available_configs(), default_config=default_config
             )
             if selected_config is None:
+                self.storage.save_preferences(scope_preferences)
                 self.session.cancel()
                 self.logger.summary(
                     self._summary(status="cancelled", files_scanned=0, changes=0, files_changed=0)
@@ -84,9 +117,7 @@ class Controller:
                 {
                     **preferences,
                     "last_conversion_config": selected_config,
-                    "ui": {**ui_preferences, "language": language}
-                    if isinstance(ui_preferences, dict)
-                    else {"language": language},
+                    "ui": {**ui_preferences, "language": language},
                 }
             )
             if selected_config != backend.config:
@@ -94,36 +125,7 @@ class Controller:
                 backend = OpenCCBackend(selected_config)
                 self._run_backend_self_test(backend)
 
-            adapter = SigilBookAdapter(self.bk)
-            # selected_iter is a Book Browser selection, not the current editor
-            # tab. Only expose the scoped chooser when the host supports it;
-            # old test doubles and old hosts retain the profile compatibility path.
-            targets = None
             run_scope = Scope(str(profile["scope"]))
-            if callable(getattr(self.bk, "selected_iter", None)):
-                scope_outcome = choose_scope(adapter, initial_language=language)
-                if not scope_outcome.accepted or scope_outcome.selection is None:
-                    self.storage.save_preferences(
-                        {
-                            **preferences,
-                            "last_conversion_config": selected_config,
-                            "ui": {**ui_preferences, "language": scope_outcome.language},
-                        }
-                    )
-                    self.session.cancel()
-                    self.logger.summary(
-                        self._summary(status="cancelled", files_scanned=0, changes=0, files_changed=0)
-                    )
-                    return 1
-                targets = scope_outcome.selection
-                language = scope_outcome.language
-                self.storage.save_preferences(
-                    {
-                        **preferences,
-                        "last_conversion_config": selected_config,
-                        "ui": {**ui_preferences, "language": language},
-                    }
-                )
             self.session.transition(SessionState.ANALYZING)
             workflow = ConversionWorkflow(
                 adapter,
@@ -153,6 +155,14 @@ class Controller:
                 self.session.cancel()
                 self.logger.summary(
                     self._summary(status="cancelled", files_scanned=0, changes=0, files_changed=0)
+                )
+                _show_result_safely(
+                    show_result,
+                    status="cancelled",
+                    files_scanned=0,
+                    files_changed=0,
+                    accepted_changes=0,
+                    skipped_changes=0,
                 )
                 return 1
             finally:
@@ -184,6 +194,7 @@ class Controller:
 
             finalized = workflow.finalize(preview.previews)
             accepted_change_count = sum(len(plan.changes) for _, plan in finalized)
+            skipped_change_count = planned_change_count - accepted_change_count
             self.logger.event(
                 "preview_completed",
                 accepted_changes=accepted_change_count,
@@ -213,9 +224,57 @@ class Controller:
                     files_scanned=len(planned),
                     changes=accepted_change_count,
                     files_changed=len(staged),
+                    skipped_changes=skipped_change_count,
                 )
             )
+            _show_result_safely(
+                show_result,
+                status="success",
+                files_scanned=len(planned),
+                files_changed=len(staged),
+                accepted_changes=accepted_change_count,
+                skipped_changes=skipped_change_count,
+            )
             return 0
+        except WorkflowCommitError as exc:
+            if self.session.state not in {
+                SessionState.COMPLETED,
+                SessionState.CANCELLED,
+                SessionState.FAILED,
+            }:
+                self.session.transition(SessionState.FAILED)
+            committed = set(exc.committed_file_ids)
+            files_changed = len(committed)
+            accepted = sum(
+                len(item.plan.changes) for item in staged if item.file_id in committed
+            )
+            self.logger.exception("controller_commit_failed", exc)
+            self.logger.event(
+                "commit_partial_failure",
+                committed_file_ids=sorted(committed),
+                failed_file_id=exc.failed_file_id,
+            )
+            self.logger.summary(
+                self._summary(
+                    status="partial_failure",
+                    files_scanned=len(planned),
+                    changes=accepted,
+                    files_changed=files_changed,
+                    skipped_changes=max(0, planned_change_count - accepted),
+                    failed_file=exc.failed_file_id,
+                    committed_file_ids=sorted(committed),
+                )
+            )
+            _show_result_safely(
+                show_result,
+                status="partial_failure",
+                files_scanned=len(planned),
+                files_changed=files_changed,
+                accepted_changes=accepted,
+                skipped_changes=max(0, planned_change_count - accepted),
+                failed_file=exc.failed_file_id,
+            )
+            raise
         except Exception:
             if self.session.state not in {
                 SessionState.COMPLETED,
@@ -264,15 +323,35 @@ class Controller:
         files_scanned: int,
         changes: int,
         files_changed: int,
+        skipped_changes: int = 0,
+        failed_file: Optional[str] = None,
+        committed_file_ids: Optional[list[str]] = None,
     ) -> Dict[str, object]:
-        return {
+        summary: Dict[str, object] = {
             "plugin_version": PLUGIN_VERSION,
             "status": status,
             "state": self.session.state.value,
             "files_scanned": files_scanned,
             "files_changed": files_changed,
             "changes": changes,
+            "skipped_changes": skipped_changes,
         }
+        if failed_file is not None:
+            summary["failed_file"] = failed_file
+        if committed_file_ids is not None:
+            summary["committed_file_ids"] = committed_file_ids
+        return summary
+
+
+def _show_result_safely(show_result: Any, **values: object) -> None:
+    """Keep headless/test hosts usable when Qt cannot show a result dialog."""
+
+    try:
+        show_result(**values)
+    except Exception:
+        # Result presentation is best effort after the write boundary has
+        # completed; the structured session summary remains authoritative.
+        return
 
 
 def _book_supports_conversion(book: Any) -> bool:

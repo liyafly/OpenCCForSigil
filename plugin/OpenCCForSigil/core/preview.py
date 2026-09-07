@@ -81,11 +81,30 @@ class PreviewSession:
     def reject_this(self, change_id: str) -> None:
         self._set(change_id, PreviewDecision.REJECT_THIS)
 
-    def accept_all(self, scope: Optional[PreviewFilter] = None) -> int:
-        return self._set_all(PreviewDecision.ACCEPT_ALL, scope)
+    def accept_all(
+        self,
+        scope: Optional[PreviewFilter] = None,
+        *,
+        overwrite: bool = False,
+    ) -> int:
+        """Accept matching changes.
 
-    def reject_all(self, scope: Optional[PreviewFilter] = None) -> int:
-        return self._set_all(PreviewDecision.REJECT_ALL, scope)
+        Core callers keep the original undecided-only behavior by default.
+        The UI passes ``overwrite=True`` for an explicit repeat of a bulk
+        action, which lets users reverse an earlier per-item decision.
+        """
+
+        return self._set_all(PreviewDecision.ACCEPT_ALL, scope, overwrite=overwrite)
+
+    def reject_all(
+        self,
+        scope: Optional[PreviewFilter] = None,
+        *,
+        overwrite: bool = False,
+    ) -> int:
+        """Reject matching changes; see :meth:`accept_all` for overwrite semantics."""
+
+        return self._set_all(PreviewDecision.REJECT_ALL, scope, overwrite=overwrite)
 
     def cancel(self) -> None:
         raise PreviewError("preview cancelled by user")
@@ -133,8 +152,18 @@ class PreviewSession:
         self._require_change(change_id)
         self._decisions[change_id] = decision
 
-    def _set_all(self, decision: PreviewDecision, scope: Optional[PreviewFilter]) -> int:
-        selected = self.undecided(scope)
+    def _set_all(
+        self,
+        decision: PreviewDecision,
+        scope: Optional[PreviewFilter],
+        *,
+        overwrite: bool = False,
+    ) -> int:
+        selected = (
+            tuple(change for change in self._changes.values() if scope is None or scope.matches(change))
+            if overwrite
+            else self.undecided(scope)
+        )
         for change in selected:
             self._decisions[change.change_id] = decision
         return len(selected)

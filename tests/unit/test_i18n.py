@@ -43,4 +43,5 @@ def test_dialogs_share_one_qapplication_instance():
     first = preview_window._ensure_application(FakeQt)
     second = preview_window._ensure_application(FakeQt)
     assert first is second
+    assert preview_window._application is first
     assert FakeApplication.created == 1

@@ -2,6 +2,7 @@ import pytest
 
 from sigil.scope import Scope, ScopeSelectionError, TargetSelection, TextFile, resolve_target_selection
 from sigil.adapter import SigilBookAdapter
+from ui.preview_window import _selected_xhtml_ids_and_ignored
 
 
 FILES = (
@@ -72,3 +73,18 @@ def test_empty_book_browser_selection_never_expands_to_all():
     assert tuple(adapter.selected_ids()) == ()
     with pytest.raises(ScopeSelectionError):
         resolve_target_selection(adapter.text_file_inventory(), Scope.SELECTED, ())
+
+
+def test_missing_selection_api_and_non_xhtml_selection_are_safe():
+    inventory = (TextFile("chapter", "Text/chapter.xhtml"),)
+
+    class NoSelectionApi:
+        pass
+
+    assert _selected_xhtml_ids_and_ignored(NoSelectionApi(), inventory) == ((), 0)
+
+    class MixedSelection:
+        def selected_ids(self):
+            return iter(("chapter", "cover"))
+
+    assert _selected_xhtml_ids_and_ignored(MixedSelection(), inventory) == (("chapter",), 1)

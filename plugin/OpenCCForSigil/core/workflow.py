@@ -12,7 +12,7 @@ from core.staging import StagedFile, StagingArea, source_sha256
 from core.verifier import verify_staging
 from document.tokenizer import TokenizedDocument, TokenizerOptions, tokenize_xhtml
 from opencc_backend.backend import OpenCCBackend
-from sigil.adapter import SigilBookAdapter
+from sigil.adapter import CommitError, CommitResult, SigilBookAdapter
 from sigil.scope import Scope, TargetSelection
 
 
@@ -22,6 +22,16 @@ class WorkflowError(RuntimeError):
 
 class WorkflowCancelled(WorkflowError):
     """Raised at a safe file boundary when the user cancels analysis."""
+
+
+class WorkflowCommitError(WorkflowError):
+    """A commit failed after the adapter handed some files to Sigil."""
+
+    def __init__(self, error: CommitError) -> None:
+        self.failed_file_id = error.file_id
+        self.committed_file_ids = error.committed_file_ids
+        self.cause = error.cause
+        super().__init__(str(error))
 
 
 @dataclass(frozen=True)
@@ -84,7 +94,16 @@ class ConversionWorkflow:
                 raise WorkflowCancelled("analysis cancelled")
             if progress is not None:
                 progress("analyzing", index, total, href)
-            sources.append(SourceDocument(file_id=file_id, href=href, source=self.adapter.read(file_id)))
+            # A progress callback pumps Qt events.  Cancellation can therefore
+            # arrive during the callback, including for the final file.  Check
+            # again before touching the book body and once more after the read
+            # so a cancel request cannot fall through into preview.
+            if cancelled is not None and cancelled():
+                raise WorkflowCancelled("analysis cancelled")
+            source = self.adapter.read(file_id)
+            sources.append(SourceDocument(file_id=file_id, href=href, source=source))
+            if cancelled is not None and cancelled():
+                raise WorkflowCancelled("analysis cancelled")
         self._sources = tuple(sources)
         return self._sources
 
@@ -103,7 +122,11 @@ class ConversionWorkflow:
                 raise WorkflowCancelled("analysis cancelled")
             if progress is not None:
                 progress("planning", index, total, source_document.href)
+            if cancelled is not None and cancelled():
+                raise WorkflowCancelled("analysis cancelled")
             planned.append(self._plan_document(source_document))
+            if cancelled is not None and cancelled():
+                raise WorkflowCancelled("analysis cancelled")
         self._planned = tuple(planned)
         return self._planned
 
@@ -150,10 +173,10 @@ class ConversionWorkflow:
             raise WorkflowError("structural verification failed; commit is blocked")
         return self._verification
 
-    def commit(self, staged: Optional[Iterable[StagedFile]] = None) -> None:
+    def commit(self, staged: Optional[Iterable[StagedFile]] = None) -> CommitResult:
         files = tuple(staged) if staged is not None else tuple(self.staging.values())
         if not files:
-            return
+            return CommitResult()
         if not self._verification or not all(result.passed for result in self._verification):
             raise WorkflowError("verify must pass before commit")
         for staged_file in files:
@@ -162,9 +185,12 @@ class ConversionWorkflow:
                 raise WorkflowError(
                     f"source changed after preview; rescan required: {staged_file.file_id}"
                 )
-        self.adapter.commit(
-            (staged_file.file_id, staged_file.converted) for staged_file in files
-        )
+        try:
+            return self.adapter.commit(
+                (staged_file.file_id, staged_file.converted) for staged_file in files
+            )
+        except CommitError as exc:
+            raise WorkflowCommitError(exc) from exc
 
     def _plan_document(self, source_document: SourceDocument) -> PlannedDocument:
         tokenized = tokenize_xhtml(source_document.source, self.tokenizer_options)
@@ -186,4 +212,5 @@ __all__ = [
     "SourceDocument",
     "WorkflowError",
     "WorkflowCancelled",
+    "WorkflowCommitError",
 ]

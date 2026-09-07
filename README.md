@@ -40,9 +40,9 @@ OpenCC/plugin installation or invoke pip.
 The target picker uses manifest IDs and keeps the selection frozen for the
 whole run. Sigil's `selected_iter()` is the Book Browser selection; it is not
 treated as the active editor tab. If a host does not expose that iterator, the
-legacy profile scope remains available and the plugin does not claim to know
-which editor tab is active. The plugin reads XHTML bodies only after the user
-confirms the target set.
+same picker opens with no initial checks so the user must choose the targets
+explicitly. The plugin reads XHTML bodies only after the user confirms the
+target set.
 
 V1 formally supports CPython 3.14.x with wheel ABI `cp314`; the current Sigil
 bundled Python 3.14.2 is the production baseline. The reproducible development

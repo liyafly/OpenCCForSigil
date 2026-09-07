@@ -139,12 +139,19 @@ def choose_scope(adapter: Any, *, initial_language: str = "en") -> ScopeOutcome:
     """Choose a frozen XHTML target set after enumerating metadata only."""
 
     inventory = tuple(adapter.text_file_inventory())
-    selected_ids = _selected_xhtml_ids(adapter, inventory)
+    selected_ids, ignored_non_xhtml = _selected_xhtml_ids_and_ignored(adapter, inventory)
     language = initial_language or _translator.language
     _translator.set_language(language)
     qt_widgets = _load_qt_widgets()
     _ensure_application(qt_widgets)
-    dialog = _ScopeDialog(qt_widgets, inventory, selected_ids, language, _translator)
+    dialog = _ScopeDialog(
+        qt_widgets,
+        inventory,
+        selected_ids,
+        language,
+        _translator,
+        ignored_non_xhtml=ignored_non_xhtml,
+    )
     exec_method = getattr(dialog.dialog, "exec", None) or dialog.dialog.exec_
     exec_method()
     if not dialog.accepted:
@@ -165,10 +172,22 @@ def create_progress_reporter(total: int) -> ProgressReporter:
 
 
 def _selected_xhtml_ids(adapter: Any, inventory: Tuple[TextFile, ...]) -> Tuple[str, ...]:
+    return _selected_xhtml_ids_and_ignored(adapter, inventory)[0]
+
+
+def _selected_xhtml_ids_and_ignored(
+    adapter: Any,
+    inventory: Tuple[TextFile, ...],
+) -> Tuple[Tuple[str, ...], int]:
     selected_iter = getattr(adapter, "selected_ids", None)
-    if callable(selected_iter):
-        return tuple(file_id for file_id in selected_iter() if file_id in {f.file_id for f in inventory})
-    return ()
+    if not callable(selected_iter):
+        return (), 0
+    known_ids = {item.file_id for item in inventory}
+    selected = tuple(selected_iter())
+    return (
+        tuple(file_id for file_id in selected if file_id in known_ids),
+        sum(file_id not in known_ids for file_id in selected),
+    )
 
 
 def show_preview(planned: Sequence[PlannedDocument]) -> PreviewOutcome:
@@ -183,14 +202,67 @@ def show_preview(planned: Sequence[PlannedDocument]) -> PreviewOutcome:
     return PreviewOutcome(accepted=dialog.applied, previews=previews)
 
 
+def show_result(
+    *,
+    status: str,
+    files_scanned: int,
+    files_changed: int,
+    accepted_changes: int,
+    skipped_changes: int,
+    failed_file: str | None = None,
+) -> None:
+    """Show a concise localized terminal result after the write boundary."""
+
+    qt_widgets = _load_qt_widgets()
+    _ensure_application(qt_widgets)
+    if status == "partial_failure":
+        message = _translator.text(
+            "result.partial",
+            changed=files_changed,
+            accepted=accepted_changes,
+            failed_file=failed_file or "?",
+        )
+        method = getattr(qt_widgets.QMessageBox, "warning")
+    elif status == "cancelled":
+        message = _translator.text("result.cancelled")
+        method = getattr(qt_widgets.QMessageBox, "information")
+    elif accepted_changes == 0 and skipped_changes:
+        message = _translator.text(
+            "result.skipped",
+            files=files_scanned,
+            skipped=skipped_changes,
+        )
+        method = getattr(qt_widgets.QMessageBox, "information")
+    elif accepted_changes == 0:
+        message = _translator.text("result.noop", files=files_scanned)
+        method = getattr(qt_widgets.QMessageBox, "information")
+    else:
+        message = _translator.text(
+            "result.done",
+            changed=files_changed,
+            files=files_scanned,
+            accepted=accepted_changes,
+            skipped=skipped_changes,
+        )
+        method = getattr(qt_widgets.QMessageBox, "information")
+    method(None, _translator.text("app.title"), message)
+
+
+_application: Any = None
+
+
 def _ensure_application(qt_widgets: Any) -> Any:
     """Return the one process-level QApplication used by every plugin dialog."""
 
+    global _application
     application = qt_widgets.QApplication.instance()
     if application is None:
         import sys
 
         application = qt_widgets.QApplication(sys.argv)
+    # Keep a strong module-level reference.  Some Qt bindings only retain a
+    # weak ownership handle for an application created from Python.
+    _application = application
     return application
 
 
@@ -306,8 +378,14 @@ class _PreviewDialog:
         self.reject_this_button.setEnabled(has_current)
         self.accept_file_button.setEnabled(has_current)
         self.reject_file_button.setEnabled(has_current)
-        self.accept_all_button.setEnabled(totals["undecided"] > 0)
-        self.reject_all_button.setEnabled(totals["undecided"] > 0)
+        # An explicit repeat of a bulk action is allowed to reverse prior
+        # per-item decisions, so both global buttons stay available while the
+        # preview contains changes.  Applying remains blocked until every
+        # change has a decision, including a preview with no changes.
+        has_entries = bool(self._entries)
+        self.accept_all_button.setEnabled(has_entries)
+        self.reject_all_button.setEnabled(has_entries)
+        self.apply_button.setEnabled(totals["undecided"] == 0)
 
     def _show_current(self, row: int) -> None:
         if row < 0 or row >= len(self._entries):
@@ -348,27 +426,30 @@ class _PreviewDialog:
         entry = self._current_entry()
         if entry is None:
             return
-        entry[0].accept_all()
+        entry[0].accept_all(overwrite=True)
         self._refresh()
 
     def _reject_file(self) -> None:
         entry = self._current_entry()
         if entry is None:
             return
-        entry[0].reject_all()
+        entry[0].reject_all(overwrite=True)
         self._refresh()
 
     def _accept_all(self) -> None:
         for preview in self._previews:
-            preview.accept_all()
+            preview.accept_all(overwrite=True)
         self._refresh()
 
     def _reject_all(self) -> None:
         for preview in self._previews:
-            preview.reject_all()
+            preview.reject_all(overwrite=True)
         self._refresh()
 
     def _apply(self) -> None:
+        if any(preview.undecided() for preview in self._previews):
+            self._update_summary()
+            return
         try:
             for preview in self._previews:
                 preview.finalize()
@@ -476,12 +557,15 @@ class _ScopeDialog:
         initial_ids: Tuple[str, ...],
         language: str,
         translator: Translator,
+        *,
+        ignored_non_xhtml: int = 0,
     ) -> None:
         self._qt = qt_widgets
         self._inventory = inventory
         self._translator = translator
         self.accepted = False
         self.language = language
+        self.ignored_non_xhtml = max(0, ignored_non_xhtml)
         self.dialog = qt_widgets.QDialog()
         self.dialog.setWindowTitle(translator.text("scope.title"))
         self.dialog.resize(700, 560)
@@ -524,16 +608,19 @@ class _ScopeDialog:
         layout.addLayout(action_row)
         self.count_label = qt_widgets.QLabel()
         layout.addWidget(self.count_label)
+        self.ignored_label = qt_widgets.QLabel()
+        self.ignored_label.setWordWrap(True)
+        layout.addWidget(self.ignored_label)
 
         button_row = qt_widgets.QHBoxLayout()
-        cancel = qt_widgets.QPushButton(translator.text("common.cancel"))
-        continue_button = qt_widgets.QPushButton(translator.text("scope.analyze"))
+        self.cancel_button = qt_widgets.QPushButton(translator.text("common.cancel"))
+        self.analyze_button = qt_widgets.QPushButton(translator.text("scope.analyze"))
         button_row.addStretch(1)
-        button_row.addWidget(cancel)
-        button_row.addWidget(continue_button)
+        button_row.addWidget(self.cancel_button)
+        button_row.addWidget(self.analyze_button)
         layout.addLayout(button_row)
-        cancel.clicked.connect(self.dialog.reject)
-        continue_button.clicked.connect(self._accept)
+        self.cancel_button.clicked.connect(self.dialog.reject)
+        self.analyze_button.clicked.connect(self._accept)
         self.select_visible.clicked.connect(lambda: self._set_visible(True))
         self.clear_visible.clicked.connect(lambda: self._set_visible(False))
 
@@ -546,12 +633,19 @@ class _ScopeDialog:
                 qt_widgets.Qt.Checked if item.file_id in initial else qt_widgets.Qt.Unchecked
             )
             self.list_widget.addItem(row)
+        self.list_widget.itemChanged.connect(self._item_changed)
         if len(initial_ids) == 1:
             self.single_radio.setChecked(True)
         elif not initial_ids:
             self.selected_radio.setChecked(True)
         self._refresh_enabled()
         self._refresh_count()
+
+    def _item_changed(self, _item: Any) -> None:
+        """Refresh counts and validity for direct checkbox changes."""
+
+        self._refresh_count()
+        self._update_analyze_enabled()
 
     def _language_changed(self) -> None:
         code = str(self.language_combo.currentData())
@@ -565,13 +659,10 @@ class _ScopeDialog:
         self.filter_edit.setPlaceholderText(self._translator.text("scope.filter"))
         self.select_visible.setText(self._translator.text("scope.select_visible"))
         self.clear_visible.setText(self._translator.text("scope.clear_visible"))
-        self.count_label.setText(
-            self._translator.text(
-                "scope.selected_count",
-                selected=len(self._checked_ids()),
-                total=self.list_widget.count(),
-            )
-        )
+        self.cancel_button.setText(self._translator.text("common.cancel"))
+        self.analyze_button.setText(self._translator.text("scope.analyze"))
+        self._refresh_count()
+        self._update_analyze_enabled()
 
     def _checked_ids(self) -> Tuple[str, ...]:
         checked = self._qt.Qt.Checked
@@ -601,10 +692,25 @@ class _ScopeDialog:
 
     def _refresh_count(self) -> None:
         total = self.list_widget.count()
-        selected = len(self._checked_ids())
-        self.count_label.setText(
-            self._translator.text("scope.selected_count", selected=selected, total=total)
-        )
+        if self.all_radio.isChecked():
+            self.count_label.setText(
+                self._translator.text("scope.all_count", total=total)
+            )
+        else:
+            selected = len(self._checked_ids())
+            self.count_label.setText(
+                self._translator.text("scope.selected_count", selected=selected, total=total)
+            )
+        if self.ignored_non_xhtml:
+            self.ignored_label.setText(
+                self._translator.text(
+                    "scope.ignored_non_xhtml", count=self.ignored_non_xhtml
+                )
+            )
+            self.ignored_label.show()
+        else:
+            self.ignored_label.clear()
+            self.ignored_label.hide()
 
     def _refresh_enabled(self) -> None:
         if not hasattr(self, "filter_edit"):
@@ -614,8 +720,22 @@ class _ScopeDialog:
         self.list_widget.setEnabled(custom)
         self.select_visible.setEnabled(custom)
         self.clear_visible.setEnabled(custom)
+        self._refresh_count()
+        self._update_analyze_enabled()
+
+    def _update_analyze_enabled(self) -> None:
+        if not hasattr(self, "analyze_button"):
+            return
+        count = len(self._checked_ids())
+        valid = bool(self._inventory)
+        if self.single_radio.isChecked():
+            valid = count == 1
+        elif self.selected_radio.isChecked():
+            valid = count > 0
+        self.analyze_button.setEnabled(valid)
 
     def _accept(self) -> None:
+        checked_count = len(self.selected_ids())
         try:
             scope = Scope.SINGLE if self.single_radio.isChecked() else (
                 Scope.ALL_XHTML if self.all_radio.isChecked() else Scope.SELECTED
@@ -624,10 +744,15 @@ class _ScopeDialog:
             if selection.empty:
                 raise ScopeSelectionError(self._translator.text("scope.none"))
         except ScopeSelectionError:
+            message_key = (
+                "error.scope_exactly_one"
+                if self.single_radio.isChecked() and checked_count != 1
+                else "scope.none"
+            )
             self._qt.QMessageBox.warning(
                 self.dialog,
                 self._translator.text("scope.title"),
-                self._translator.text("error.scope_invalid"),
+                self._translator.text(message_key),
             )
             return
         self.scope = scope

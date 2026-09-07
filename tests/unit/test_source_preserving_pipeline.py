@@ -8,10 +8,11 @@ from core.staging import StagingArea, StagingError
 from core.verifier import verify_staged_file
 from core.models import ConvertRequest
 from core.planner import build_conversion_plan
-from core.workflow import ConversionWorkflow
+from core.workflow import ConversionWorkflow, WorkflowCancelled, WorkflowCommitError
 from document.tokenizer import tokenize_xhtml
 from opencc_backend.backend import OpenCCBackend
 from sigil.adapter import SigilBookAdapter
+from sigil.scope import Scope, TargetSelection
 
 
 def _plan(source: str) -> ConversionPlan:
@@ -95,6 +96,20 @@ def test_preview_accept_all_can_finalize_every_change_without_mutating_original_
     assert plan.changes
 
 
+def test_preview_ui_bulk_overwrite_can_reverse_an_existing_decision():
+    plan = _plan("<p>汉字与鼠标</p>")
+    preview = PreviewSession(plan)
+
+    first = preview.changes[0]
+    preview.reject_this(first.change_id)
+    assert preview.accept_all() == len(plan.changes) - 1
+    assert preview.decision(first.change_id).value == "reject_this"
+
+    assert preview.accept_all(overwrite=True) == len(plan.changes)
+    assert preview.decision(first.change_id).value == "accept_all"
+    assert len(preview.finalize().changes) == len(plan.changes)
+
+
 def test_staging_rejects_source_drift_and_overlapping_changes():
     source = "汉字"
     change = TokenChange("汉", "漢", SourceSpan(0, 1), "OpenCC:s2t", change_id="one")
@@ -167,3 +182,72 @@ def test_rejected_changes_are_not_written_back_to_sigil():
 
     assert staged == ()
     assert book.writes == []
+
+
+class MultiFileBook:
+    def __init__(self, *, fail_on: str | None = None):
+        self.sources = {
+            "a": "<p>汉字</p>",
+            "b": "<p>鼠标</p>",
+        }
+        self.reads = []
+        self.writes = []
+        self.fail_on = fail_on
+
+    def text_iter(self):
+        yield "a", "Text/a.xhtml"
+        yield "b", "Text/b.xhtml"
+
+    def readfile(self, file_id):
+        self.reads.append(file_id)
+        return self.sources[file_id]
+
+    def writefile(self, file_id, data):
+        if file_id == self.fail_on:
+            raise OSError("controlled write failure")
+        self.writes.append((file_id, data))
+
+
+def test_workflow_cancellation_after_progress_callback_reads_nothing():
+    book = MultiFileBook()
+    workflow = ConversionWorkflow(
+        SigilBookAdapter(book),
+        OpenCCBackend("s2t"),
+        ConvertRequest("s2t"),
+        targets=TargetSelection(Scope.SINGLE, ("a",)),
+    )
+    cancelled = False
+
+    def progress(_phase, _index, _total, _href):
+        nonlocal cancelled
+        cancelled = True
+
+    with pytest.raises(WorkflowCancelled):
+        workflow.plan(progress=progress, cancelled=lambda: cancelled)
+
+    assert book.reads == []
+    assert book.writes == []
+
+
+def test_workflow_reports_partial_write_boundary_failure():
+    book = MultiFileBook(fail_on="b")
+    workflow = ConversionWorkflow(
+        SigilBookAdapter(book),
+        OpenCCBackend("s2t"),
+        ConvertRequest("s2t"),
+        targets=TargetSelection(Scope.ALL_XHTML, ("a", "b")),
+    )
+    workflow.plan()
+    previews = workflow.preview()
+    for preview in previews:
+        preview.accept_all()
+    finalized = workflow.finalize(previews)
+    staged = workflow.stage(finalized)
+    workflow.verify(staged)
+
+    with pytest.raises(WorkflowCommitError) as raised:
+        workflow.commit(staged)
+
+    assert book.writes and book.writes[0][0] == "a"
+    assert raised.value.committed_file_ids == ("a",)
+    assert raised.value.failed_file_id == "b"

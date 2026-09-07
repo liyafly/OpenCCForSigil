@@ -3,6 +3,7 @@
 Only this adapter's commit method is allowed to call `bk.writefile()`.
 """
 
+from dataclasses import dataclass
 from typing import Any, Iterable, Iterator, Protocol, Tuple
 
 from sigil.scope import Scope, TargetSelection, TextFile
@@ -17,6 +18,28 @@ class BookContainer(Protocol):
 
     def text_iter(self) -> Iterable[Tuple[str, str]]:
         ...
+
+
+@dataclass(frozen=True)
+class CommitResult:
+    """Files successfully handed to Sigil's write boundary."""
+
+    committed_file_ids: Tuple[str, ...] = ()
+
+
+class CommitError(RuntimeError):
+    """A write failed after zero or more files had already been committed."""
+
+    def __init__(
+        self,
+        file_id: str,
+        committed_file_ids: Iterable[str],
+        cause: BaseException,
+    ) -> None:
+        self.file_id = file_id
+        self.committed_file_ids = tuple(committed_file_ids)
+        self.cause = cause
+        super().__init__(f"writefile failed for {file_id}: {cause}")
 
 
 class SigilBookAdapter:
@@ -77,6 +100,15 @@ class SigilBookAdapter:
             item = by_id[file_id]
             yield item.file_id, item.href
 
-    def commit(self, staged_files: Iterable[Tuple[str, str]]) -> None:
+    def commit(self, staged_files: Iterable[Tuple[str, str]]) -> CommitResult:
+        committed: list[str] = []
         for file_id, data in staged_files:
-            self._bk.writefile(file_id, data)
+            try:
+                self._bk.writefile(file_id, data)
+            except Exception as exc:
+                raise CommitError(file_id, committed, exc) from exc
+            committed.append(file_id)
+        return CommitResult(tuple(committed))
+
+
+__all__ = ["BookContainer", "CommitError", "CommitResult", "SigilBookAdapter"]

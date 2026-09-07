@@ -92,19 +92,15 @@ jobs:
         run: mise exec -- uv run python tools/verify_vendor.py
 
       - name: Lint
-        if: steps.payload-cache.outputs.cache-hit != 'true'
         run: mise exec -- ruff check plugin tests tools
 
       - name: Test backend and plugin contracts
-        if: steps.payload-cache.outputs.cache-hit != 'true'
         run: mise exec -- uv run pytest
 
       - name: Run official CLI/Python Binding differential corpus
-        if: steps.payload-cache.outputs.cache-hit != 'true'
         run: mise exec -- uv run python tools/differential_test.py --corpus tests/fixtures/opencc_smoke.jsonl
 
       - name: Run official native Jieba CLI/Python Binding differential corpus
-        if: steps.payload-cache.outputs.cache-hit != 'true'
         run: mise exec -- uv run python tools/differential_jieba_test.py --corpus tests/fixtures/opencc_jieba_smoke.jsonl
 
       - name: Export the target-tested payload
