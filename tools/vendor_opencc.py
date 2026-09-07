@@ -35,6 +35,7 @@ except ModuleNotFoundError:  # Imported from the repository test suite.
 ROOT = Path(__file__).resolve().parents[1]
 VENDOR_ROOT = ROOT / "plugin" / "OpenCCForSigil" / "vendor" / "opencc"
 MANIFEST_PATH = VENDOR_ROOT / "manifest.json"
+PAYLOAD_LOCK_PATH = ROOT / "native_build" / "payload-lock.json"
 WHEEL_CACHE = ROOT / "native_build" / "work" / "wheels"
 USER_AGENT = "OpenCCForSigil-build/0.1 (+official-wheel-vendor)"
 V1_CONFIGS = (
@@ -226,6 +227,33 @@ def _select_wheel(wheels: list[Mapping[str, Any]], wheel_name: str | None) -> Ma
     return selected
 
 
+def _verify_locked_wheel(selected: Mapping[str, Any], *, lock_path: Path) -> None:
+    """Require PyPI metadata to match the repository's immutable wheel lock."""
+
+    try:
+        lock = json.loads(lock_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise RuntimeError(f"cannot read payload lock: {lock_path}") from exc
+    if lock.get("schema_version") != 1:
+        raise RuntimeError(f"unsupported payload lock schema: {lock_path}")
+    entries = lock.get("wheels")
+    if not isinstance(entries, list):
+        raise RuntimeError(f"payload lock wheels must be a list: {lock_path}")
+    filename = str(selected.get("filename", ""))
+    matches = [
+        entry for entry in entries if isinstance(entry, dict) and entry.get("filename") == filename
+    ]
+    if len(matches) != 1:
+        raise RuntimeError(f"wheel is absent or duplicated in payload lock: {filename}")
+    locked = matches[0]
+    for key in ("url", "sha256", "size"):
+        if selected.get(key) != locked.get(key):
+            raise RuntimeError(
+                f"PyPI metadata differs from payload lock for {filename}: "
+                f"{key} expected {locked.get(key)!r}, got {selected.get(key)!r}"
+            )
+
+
 def _verify_wheel_metadata(wheel_root: Path, version: str) -> None:
     metadata_files = sorted(wheel_root.glob("*.dist-info/METADATA"))
     if len(metadata_files) != 1:
@@ -341,7 +369,13 @@ def _write_manifest(manifest: dict[str, Any]) -> None:
     temporary.replace(MANIFEST_PATH)
 
 
-def vendor(version: str, wheel_name: str | None, skip_import_test: bool) -> Path:
+def vendor(
+    version: str,
+    wheel_name: str | None,
+    skip_import_test: bool,
+    *,
+    lock_path: Path = PAYLOAD_LOCK_PATH,
+) -> Path:
     manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
     if manifest.get("opencc_version") != version:
         raise RuntimeError(
@@ -359,6 +393,7 @@ def vendor(version: str, wheel_name: str | None, skip_import_test: bool) -> Path
         if str(item.get("filename", "")).endswith(".whl")
     ]
     selected = _select_wheel(wheels, wheel_name)
+    _verify_locked_wheel(selected, lock_path=lock_path)
     filename = str(selected["filename"])
     _, major, minor, abi, os_name, architecture = _runtime_from_wheel(filename)
     payload_id = f"{os_name}-{architecture}-{abi}"
@@ -443,8 +478,14 @@ def main() -> int:
         action="store_true",
         help="allow cross-platform packaging when the native payload cannot run on this build host",
     )
+    parser.add_argument(
+        "--lock",
+        type=Path,
+        default=PAYLOAD_LOCK_PATH,
+        help="exact official wheel metadata lock file",
+    )
     args = parser.parse_args()
-    vendor(args.version, args.wheel_name, args.skip_import_test)
+    vendor(args.version, args.wheel_name, args.skip_import_test, lock_path=args.lock.resolve())
     return 0
 
 

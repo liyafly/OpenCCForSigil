@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "asset_revision": "native-opencc-1.4.2-cp314-r1",
+  "opencc_version": "1.4.2",
+  "opencc_upstream_tag": "ver.1.4.2",
+  "opencc_upstream_commit": "025f371dc76b598d77384fbdab90c937471844d8",
+  "python_compatibility": {
+    "implementation": "CPython",
+    "version": "3.14",
+    "abi": "cp314"
+  },
+  "wheels": [
+    {
+      "python_implementation": "CPython",
+      "python_version": "3.14",
+      "python_abi": "cp314",
+      "os": "linux",
+      "architecture": "x86_64",
+      "filename": "opencc-1.4.2-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+      "size": 2446514,
+      "sha256": "d054897f2e597d663410b9dc20b9e79d9410a893b9578ef3eaf3f6eef5fbcb52",
+      "url": "https://files.pythonhosted.org/packages/c1/f4/9402bf733bd685b6a54a86d4f6ba3893e03088e0816080b5b95b63a94fda/opencc-1.4.2-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.whl"
+    },
+    {
+      "python_implementation": "CPython",
+      "python_version": "3.14",
+      "python_abi": "cp314",
+      "os": "macos",
+      "architecture": "arm64",
+      "filename": "opencc-1.4.2-cp314-cp314-macosx_11_0_arm64.whl",
+      "size": 2051838,
+      "sha256": "2dd2f8c3f7e633d252753c8f69298d5f446e02d62a3cf9c6a3c18683b5346c89",
+      "url": "https://files.pythonhosted.org/packages/19/0b/94de5296f99aa3a7e8e9ced388b0ada742b57394eb8cec8bc5ecc882af54/opencc-1.4.2-cp314-cp314-macosx_11_0_arm64.whl"
+    },
+    {
+      "python_implementation": "CPython",
+      "python_version": "3.14",
+      "python_abi": "cp314",
+      "os": "macos",
+      "architecture": "x86_64",
+      "filename": "opencc-1.4.2-cp314-cp314-macosx_10_15_x86_64.whl",
+      "size": 2150039,
+      "sha256": "0b14d64943de6c3575ae1e863dbbf4a3c6c7e7ce7e90f85772b2ec4dc24a5aca",
+      "url": "https://files.pythonhosted.org/packages/fd/66/6198bde333ecc6151d7ee3e25c6d5ba2b9494130c1739e943e03ad459830/opencc-1.4.2-cp314-cp314-macosx_10_15_x86_64.whl"
+    },
+    {
+      "python_implementation": "CPython",
+      "python_version": "3.14",
+      "python_abi": "cp314",
+      "os": "windows",
+      "architecture": "x86_64",
+      "filename": "opencc-1.4.2-cp314-cp314-win_amd64.whl",
+      "size": 2954295,
+      "sha256": "06f215590050d8504ceb713be0c822dd00b14095fd10a0b66f689bab40821119",
+      "url": "https://files.pythonhosted.org/packages/92/8b/60963db0f968623ce7ce002f7480c083ebf8732314efc03c4f87a2d8f1d5/opencc-1.4.2-cp314-cp314-win_amd64.whl"
+    }
+  ]
+}
