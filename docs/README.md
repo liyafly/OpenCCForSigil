@@ -37,6 +37,7 @@ BYVoid/OpenCC official Python Binding (`opencc.OpenCC`); the v1.2 direct
 | Record an implementation/specification deviation | [`deviations.md`](deviations.md) |
 | Read the project license and third-party license boundary | [`licensing.md`](licensing.md) |
 | Review the progress, packaging, and license changes | [`review-2026-09-08.md`](review-2026-09-08.md) |
+| Reproduce patch performance measurements and review remaining UI work | [`performance-interaction-followup.md`](performance-interaction-followup.md) |
 | Review the v0.0.2-beta UI acceptance record | [`release-review-v0.0.2-beta.md`](release-review-v0.0.2-beta.md) |
 | Read the scoped UI design decisions | [`ui-interaction-optimization-plan.md`](ui-interaction-optimization-plan.md) |
 

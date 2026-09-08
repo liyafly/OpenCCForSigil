@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Assemble source patches with a single join, update only the selected preview
+  row for individual decisions, and finalize accepted plans once in the workflow.
+
 - Release CI now publishes only the installable Fat Plugin ZIP; normative
   documentation stays source-controlled and is no longer built or uploaded as
   a second ZIP.

@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Sequence, Tuple
 
-from core.preview import PreviewError, PreviewSession
+from core.preview import PreviewSession
 from core.models import TokenChange
 from core.workflow import PlannedDocument
 from opencc_backend.configs import (
@@ -479,14 +479,26 @@ class _PreviewDialog:
         if entry is None:
             return
         entry[0].accept_this(entry[1].change_id)
-        self._refresh()
+        self._refresh_current()
 
     def _reject_this(self) -> None:
         entry = self._current_entry()
         if entry is None:
             return
         entry[0].reject_this(entry[1].change_id)
-        self._refresh()
+        self._refresh_current()
+
+    def _refresh_current(self) -> None:
+        row = self.list_widget.currentRow()
+        if row < 0 or row >= len(self._entries):
+            self._update_summary()
+            return
+        item = self.list_widget.item(row)
+        if item is not None:
+            preview, change = self._entries[row]
+            item.setText(self._entry_text(preview, change))
+        self._show_current(row)
+        self._update_summary()
 
     def _accept_file(self) -> None:
         entry = self._current_entry()
@@ -515,12 +527,6 @@ class _PreviewDialog:
     def _apply(self) -> None:
         if any(preview.undecided() for preview in self._previews):
             self._update_summary()
-            return
-        try:
-            for preview in self._previews:
-                preview.finalize()
-        except PreviewError:
-            self._qt.QMessageBox.warning(self.dialog, _translator.text("preview.title"), _translator.text("preview.incomplete"))
             return
         self.applied = True
         self.dialog.accept()
