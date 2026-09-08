@@ -1,6 +1,6 @@
 # v0.0.1-beta → HEAD 审查采纳与 Luna 修改方案
 
-日期：2026-09-08。初始核对 HEAD：`9f353e1`。状态：A–F 已实施并独立提交；E 保留严格校验并补充计数证据，未引入没有原子快照保证的整树缓存。剩余 G 版本发布治理与 payload 瘦身专项，本轮不 push/tag/release。
+日期：2026-09-08。审查起点 HEAD：`9f353e1`。状态：A–F 已实施并独立提交；E 保留严格校验并补充计数证据，未引入没有原子快照保证的整树缓存。剩余 G 版本发布治理与 payload 瘦身专项，本轮不 push/tag/release。
 
 ## 结论
 
@@ -162,20 +162,20 @@ CI 完整矩阵必须使用 `--require-runtimes`，不能用本机单平台结�
 
 | 批次 | Commit | 实际结果 |
 | --- | --- | --- |
-| A | `4adaa09` | 三语文案明确 `files_not_written` 包含 `files_without_changes`；N/W/U/NW 覆盖测试通过 |
-| B | `79cbb75` | 归档资源、CI ref/lock/manifest 闸和流式 ZIP hash 校验完成；21 项 validator/provenance/package 定向测试通过 |
+| A | `4adaa09`, `da2b349` | 三语文案明确 `files_not_written` 包含 `files_without_changes`，并覆盖 0/1/多数量单复数；N/W/U/NW 覆盖测试通过 |
+| B | `79cbb75`, `da2b349` | 归档资源、CI ref/lock/manifest 闸和流式 ZIP hash 校验完成；三语 i18n 必需运行时键校验补齐；21 项 validator/provenance/package 定向测试通过 |
 | C | `46da6c3` | native runfiles 回退 fail-closed、公开 spec 工厂和六项随包 notice 完成；B/C 合计 34 项定向测试通过 |
-| D | `228a7fa` | 阶段重置/同阶段单调进度、父对象与模态范围、窗口幂等关闭和运行态重入闸完成；23 项 UI/workflow 定向测试通过 |
+| D | `228a7fa`, `da2b349`, `cc357ba` | 阶段重置/同阶段单调进度、每文件开始/完成边界、父对象与模态范围、窗口幂等关闭和运行态重入闸完成；UI/workflow 定向测试通过 |
 | E | `4aba543` | 冷导入 5 次全树 hash，热导入入口 1 次；延迟篡改拒绝，导入故障后下一次完整冷导入（总计 11 次）；13 项 source-import 测试通过。未采用无原子快照的整树缓存 |
 | F | `6fb2d85` | 移除无人调用的 preview/verifier 辅助和恒定条件，保留 workflow scope 兼容入口；27 项范围/workflow/插件定向测试通过 |
 
-各批次 Ruff 与 `git diff --check` 均通过；主会话另已报告 `make check` 66 项通过（95.19 秒）、vendor/OpenCC/Jieba 配置校验、`uv lock --check`、构建及归档 validator 通过。以上自动化与 fake Qt 结果来自本机 macOS arm64 / CPython 3.14.7；真实 Qt、真实 Sigil 宿主重入行为以及 Windows、Linux、macOS Intel 四平台仍未验证。
+各批次 Ruff 与 `git diff --check` 均通过；最终 HEAD `cc357ba` 的 `make check` 通过 118 项测试（123.62 秒），并通过 vendor/OpenCC/Jieba 配置校验、`uv lock --check`、`build_plugin` 内置校验及 `/tmp/OpenCCForSigil_review_candidate.zip` 的归档 validator。该本机归档使用 `--require-runtimes` 会按预期拒绝缺少的 Linux x86_64、macOS x86_64 和 Windows x86_64 payload；CI 的四平台 Fat Plugin 闸仍需多 runner 产物。另运行 `tools/benchmark_staging.py`，三个固定样本新旧输出一致。以上自动化与 fake Qt 结果来自本机 macOS arm64 / CPython 3.14.7；真实 Qt、真实 Sigil 宿主重入行为以及 Windows、Linux、macOS Intel 四平台仍未验证。
 
 本轮剩余 G 版本与发布治理、payload 瘦身专项。E 的安全优化可在建立一次调用内的原子源码快照并继续校验 native 实际文件后另行设计；当前保持延迟导入与 native loader 的逐次校验。
 
 ## 核对来源
 
-- 当前仓库 HEAD `9f353e1`：controller、workflow、runtime_selector、validate_artifact、CI、现有测试和 pinned wheel 源码。
+- 审查起点 HEAD `9f353e1` 至最终 HEAD `cc357ba`：controller、workflow、runtime_selector、validate_artifact、CI、现有测试和 pinned wheel 源码。
 - 本地 Sigil API guide：`../OpenCCForSigil-References/plugin-api-guide/src/OEBPS/Text/sigil_python_plugins.xhtml`，独立进程说明。
 - [Qt WindowModality](https://doc.qt.io/qt-6/qt.html#WindowModality-enum)：窗口与应用模态范围。
 - [Qt QProgressDialog setValue](https://doc.qt.io/qt-6/qprogressdialog.html#value-prop)：模态进度更新的事件处理行为。

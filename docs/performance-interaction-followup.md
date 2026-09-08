@@ -24,7 +24,7 @@
 
 ## 验证结果（2026-09-08）
 
-主会话在本机完成 `make check`：66 项测试通过（95.19 秒），并通过 Ruff、vendor 校验、OpenCC 标准配置 16/16、Jieba 配置 10/10、`uv lock --check` 及 `build_plugin` 内置校验；复核归档为 `/tmp/OpenCCForSigil_performance_review.zip`。Astra 独立审查未发现阻塞问题。
+最终 HEAD `cc357ba` 在本机完成 `make check`：118 项测试通过（123.62 秒），并通过 Ruff、vendor 校验、OpenCC 标准配置 16/16、Jieba 配置 10/10、`uv lock --check` 及 `build_plugin` 内置校验；复核归档为 `/tmp/OpenCCForSigil_review_candidate.zip`，无矩阵要求的归档 validator 通过。该本机归档用 `--require-runtimes` 会按预期报告缺少 Linux x86_64、macOS x86_64 和 Windows x86_64 payload；四平台归档闸需 CI 多 runner 产物。`tools/benchmark_staging.py` 本次三个固定样本仍断言新旧输出一致。Astra 独立审查未发现阻塞问题。
 
 验证环境仅为 macOS arm64。真实 Qt 交互以及 Windows、Linux、macOS Intel 的四平台兼容性仍未验证；合成基准和自动化测试不能替代这些宿主验收。
 
