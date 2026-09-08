@@ -116,7 +116,7 @@ Qt `show()` 本身不代表必须 modeless；modality 可以独立设置。当�
 
 ## G：版本与发布
 
-当前 HEAD 相对 v0.0.2-beta 多 5 个提交，版本仍 0.0.2-beta，且 CHANGELOG 有 Unreleased；这属于尚未发布开发状态，不必每次提交都 bump。
+审查时 HEAD 相对 v0.0.2-beta 多 5 个提交，版本仍 0.0.2-beta，且 CHANGELOG 有 Unreleased；这属于当时尚未发布的开发状态，不必每次提交都 bump。
 
 真正准备下一版时同步 `app/version.py`、`plugin.xml`、`pyproject.toml`、lock 元数据（若包含本项目）、CHANGELOG，并用 tag↔metadata 校验。候选小版本可为 `0.0.3-beta`，须由用户实际发布安排确定；本方案不授权打 tag/push/release。
 

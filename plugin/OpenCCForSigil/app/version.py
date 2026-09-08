@@ -1,7 +1,7 @@
 """Single source of truth for the plugin version."""
 
 PLUGIN_NAME = "OpenCCForSigil"
-PLUGIN_VERSION = "0.0.2-beta"
+PLUGIN_VERSION = "0.0.3-beta"
 SUPPORTED_PYTHON_IMPLEMENTATION = "CPython"
 SUPPORTED_PYTHON_MAJOR = 3
 SUPPORTED_PYTHON_MINOR = 14

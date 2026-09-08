@@ -2,19 +2,27 @@
 
 ## Unreleased
 
+- Future changes will be listed here.
+
+## 0.0.3-beta
+
 - Assemble source patches with a single join, update only the selected preview
   row for individual decisions, and finalize accepted plans once in the workflow.
-
+- Report analyzed, written, skipped, unchanged, and unwritten files with
+  localized singular/plural wording while preserving the existing summary
+  fields and their subset semantics.
+- Validate bundled runtime resources, all required i18n keys, payload provenance,
+  streaming payload hashes, and the four-runtime Fat Plugin release contract;
+  reject bytecode and incomplete archives.
+- Close the official OpenCC native runfiles fallback, verify import origins, and
+  ship the pinned native dependency notices for the packaged payload.
+- Show progress by explicit analysis, planning, staging, and verification
+  phases with reset boundaries, operation-complete counts, safe cancellation
+  checks, and guarded preview re-entry.
 - Release CI now publishes only the installable Fat Plugin ZIP; normative
   documentation stays source-controlled and is no longer built or uploaded as
-  a second ZIP.
-- Consolidated the maintained documentation entry points under
-  [`docs/README.md`](docs/README.md).
-- Added an Apache-2.0 project license, package-level notice, and a documented
-  boundary for the bundled OpenCC and cppjieba licenses.
-- Improved the conversion UI with immediate progress rendering, linear preview
-  refresh, source-token reuse between planning and verification, and explicit
-  counts for analyzed files, written files, and files with no proposed changes.
+  a second ZIP. Consolidated maintainer documentation and the Apache-2.0
+  project/package notice boundary remain in the repository.
 
 ## 0.0.2-beta
 
