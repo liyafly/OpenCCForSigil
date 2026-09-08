@@ -157,16 +157,11 @@ jobs:
       - name: Revalidate the exact final ZIP
         run: mise exec -- uv run python tools/validate_artifact.py --require-runtimes dist/OpenCCForSigil_${{ github.sha }}.zip
 
-      - name: Build the specification bundle
-        run: mise exec -- uv run python tools/build_spec_bundle.py
-
       - name: Upload final artifacts
         uses: actions/upload-artifact@v4
         with:
           name: OpenCCForSigil-fat-plugin-${{ github.sha }}
-          path: |
-            dist/OpenCCForSigil_${{ github.sha }}.zip
-            dist/OpenCCForSigil_Spec_v1.4_bundle.zip
+          path: dist/OpenCCForSigil_${{ github.sha }}.zip
           if-no-files-found: error
           retention-days: 14
 
@@ -196,11 +191,8 @@ jobs:
         run: |
           version="${RELEASE_TAG#v}"
           plugin_zip="$(find release-artifacts -type f -name "OpenCCForSigil_${RELEASE_SHA}.zip" -print -quit)"
-          spec_zip="$(find release-artifacts -type f -name 'OpenCCForSigil_Spec_v1.4_bundle.zip' -print -quit)"
           test -n "$plugin_zip"
-          test -n "$spec_zip"
           test -f "$plugin_zip"
-          test -f "$spec_zip"
           python - "$plugin_zip" "$version" <<'PY'
           from pathlib import Path
           import sys
@@ -218,9 +210,6 @@ jobs:
               )
           PY
           mv "$plugin_zip" "release-artifacts/OpenCCForSigil_${version}.zip"
-          if [[ "$spec_zip" != "release-artifacts/OpenCCForSigil_Spec_v1.4_bundle.zip" ]]; then
-            mv "$spec_zip" "release-artifacts/OpenCCForSigil_Spec_v1.4_bundle.zip"
-          fi
 
       - name: Create GitHub prerelease
         env:
@@ -233,5 +222,4 @@ jobs:
             --title "OpenCCForSigil ${RELEASE_TAG}" \
             --prerelease \
             --generate-notes \
-            "release-artifacts/OpenCCForSigil_${version}.zip" \
-            "release-artifacts/OpenCCForSigil_Spec_v1.4_bundle.zip"
+            "release-artifacts/OpenCCForSigil_${version}.zip"

@@ -2181,7 +2181,6 @@ OpenCCForSigil/
 │   ├── differential_test.py
 │   ├── inspect_opencc_release.py
 │   ├── update_opencc.py
-│   ├── build_spec_bundle.py
 │   └── inspect_log.py
 │
 └── docs/

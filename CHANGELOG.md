@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- Release CI now publishes only the installable Fat Plugin ZIP; normative
+  documentation stays source-controlled and is no longer built or uploaded as
+  a second ZIP.
+- Consolidated the maintained documentation entry points under
+  [`docs/README.md`](docs/README.md).
+- Added an Apache-2.0 project license, package-level notice, and a documented
+  boundary for the bundled OpenCC and cppjieba licenses.
+- Improved the conversion UI with immediate progress rendering, linear preview
+  refresh, source-token reuse between planning and verification, and explicit
+  counts for analyzed files, written files, and files with no proposed changes.
+
 ## 0.0.2-beta
 
 - Closed the scoped conversion UI review findings: every text-capable host now

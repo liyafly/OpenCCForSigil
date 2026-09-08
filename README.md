@@ -2,7 +2,11 @@
 
 `OpenCCForSigil` is a Sigil `edit` plugin for source-preserving Chinese
 simplified/traditional and regional conversion. The implementation follows
-the stable engineering specification in `docs/OpenCCForSigil_Spec_v1.4/`.
+the stable engineering specification in `docs/OpenCCForSigil_Spec_v1.4/`. The
+documentation entry point is [`docs/README.md`](docs/README.md). The
+project-authored source is licensed under [Apache-2.0](LICENSE); bundled
+dependencies retain the notices described in
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 
 ## Current implementation status
 
@@ -63,7 +67,6 @@ Run checks:
 ```sh
 make check
 make package
-make spec-bundle
 ```
 
 GitHub Actions builds the native payload matrix on hosted Ubuntu, macOS, and
@@ -77,10 +80,18 @@ when the cache is absent, the locked wheels and native build are reproduced on
 the matching hosted runners. The release job requires all four supported
 runtime payloads and rechecks their hashes from the final ZIP.
 
+For future workflow runs, the CI job uploads one Actions artifact named
+`OpenCCForSigil-fat-plugin-${{ github.sha }}` containing
+`OpenCCForSigil_${{ github.sha }}.zip`. On a tagged run, the publish job verifies
+that artifact, renames the product ZIP to `OpenCCForSigil_<version>.zip`, and
+uploads that version-named file as the release's one product asset. GitHub may
+also expose its automatically generated source archives for the tag; those are
+source snapshots rather than installable plugin assets.
+
 The generated ZIP has exactly one top-level directory, `OpenCCForSigil/`, as
-required by the Sigil plugin packaging contract. `make spec-bundle` generates
-the versioned v1.4 specification files and
-`dist/OpenCCForSigil_Spec_v1.4_bundle.zip`.
+required by the Sigil plugin packaging contract. Normative and maintainer
+documentation stays in the repository under `docs/`; it is not copied into
+`dist/` or generated as a documentation ZIP.
 
 ## Reference repositories
 
