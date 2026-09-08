@@ -38,13 +38,17 @@ jobs:
       - name: Install locked Python dependencies
         run: mise exec -- uv sync --locked
 
+      - name: Check pinned OpenCC provenance before cache restore
+        id: upstream
+        run: mise exec -- uv run python tools/check_upstream_provenance.py
+
       - name: Restore target-tested payload cache
         id: payload-cache
         if: github.event_name != 'pull_request'
         uses: actions/cache@v4
         with:
           path: native_build/artifacts/verified-payload
-          key: opencc-payload-${{ matrix.id }}-${{ hashFiles('native_build/payload-lock.json', 'tools/vendor_opencc.py', 'tools/build_opencc_jieba.py', 'plugin/OpenCCForSigil/vendor/opencc/manifest.json') }}
+          key: opencc-payload-${{ matrix.id }}-${{ hashFiles('.github/workflows/ci.yml', 'native_build/payload-lock.json', 'tools/vendor_opencc.py', 'tools/build_opencc_jieba.py', 'tools/check_upstream_provenance.py', 'tools/export_verified_payload.py', 'tools/merge_verified_payloads.py', 'plugin/OpenCCForSigil/vendor/opencc/manifest.json') }}
 
       - name: Merge cached target-tested payload
         if: steps.payload-cache.outputs.cache-hit == 'true'
@@ -55,7 +59,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: BYVoid/OpenCC
-          ref: 025f371dc76b598d77384fbdab90c937471844d8
+          ref: ${{ steps.upstream.outputs.commit }}
           path: native_build/OpenCC
           fetch-depth: 1
 

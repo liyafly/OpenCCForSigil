@@ -8,6 +8,7 @@ import hashlib
 import json
 from pathlib import Path
 from pathlib import PurePosixPath
+import re
 import zipfile
 
 try:
@@ -26,6 +27,35 @@ except ModuleNotFoundError:  # Imported as tools.validate_artifact by tests.
 
 ROOT = Path(__file__).resolve().parents[1]
 
+_PROFILE_REQUIRED_FIELDS = {
+    "schema_version",
+    "id",
+    "conversion",
+    "segmentation",
+    "scope",
+    "attributes",
+    "protected_elements",
+    "svg_text",
+    "mathml",
+}
+_PROFILE_SCOPES = {"single", "all_xhtml", "spine", "selected"}
+_I18N_LANGUAGES = ("en", "zh-Hans", "zh-Hant")
+_PLACEHOLDER = re.compile(r"{([A-Za-z_][A-Za-z0-9_]*)}")
+
+_REQUIRED_MEMBERS = {
+    "OpenCCForSigil/plugin.xml",
+    "OpenCCForSigil/plugin.py",
+    "OpenCCForSigil/LICENSE",
+    "OpenCCForSigil/NOTICE",
+    "OpenCCForSigil/resources/defaults/conservative.json",
+    "OpenCCForSigil/resources/i18n/en.json",
+    "OpenCCForSigil/resources/i18n/zh-Hans.json",
+    "OpenCCForSigil/resources/i18n/zh-Hant.json",
+    "OpenCCForSigil/resources/third_party/CPPJIEBA_LICENSE",
+    "OpenCCForSigil/vendor/opencc/manifest.json",
+    "OpenCCForSigil/resources/third_party/THIRD_PARTY_NOTICES.md",
+}
+
 
 def _sha256_bytes(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
@@ -33,7 +63,7 @@ def _sha256_bytes(value: bytes) -> str:
 
 def _zip_tree_hash(archive: zipfile.ZipFile, prefix: str) -> str:
     digest = hashlib.sha256()
-    files: list[tuple[str, bytes]] = []
+    files: list[tuple[str, str]] = []
     for name in archive.namelist():
         if not name.startswith(prefix):
             continue
@@ -42,13 +72,80 @@ def _zip_tree_hash(archive: zipfile.ZipFile, prefix: str) -> str:
             continue
         if relative.endswith("/"):
             raise SystemExit(f"payload contains an explicit directory entry: {name}")
-        files.append((relative, archive.read(name)))
-    for relative, value in sorted(files):
+        files.append((relative, name))
+    for relative, name in sorted(files):
         digest.update(relative.encode("utf-8"))
         digest.update(b"\0")
-        digest.update(value)
+        with archive.open(name) as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
         digest.update(b"\0")
     return digest.hexdigest()
+
+
+def _read_json_member(archive: zipfile.ZipFile, name: str) -> object:
+    try:
+        return json.loads(archive.read(name).decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        raise SystemExit(f"invalid JSON resource: {name}") from exc
+
+
+def _validate_profile(profile: object, name: str) -> None:
+    if not isinstance(profile, dict):
+        raise SystemExit(f"profile resource must be a JSON object: {name}")
+    missing = sorted(_PROFILE_REQUIRED_FIELDS - set(profile))
+    if missing:
+        raise SystemExit(f"profile resource missing keys ({name}): {', '.join(missing)}")
+    if not isinstance(profile["id"], str) or not profile["id"]:
+        raise SystemExit(f"profile resource has an invalid id: {name}")
+    if profile["schema_version"] != 1:
+        raise SystemExit(f"profile resource has an unsupported schema version: {name}")
+    if not isinstance(profile["conversion"], str) or not profile["conversion"]:
+        raise SystemExit(f"profile resource has an invalid conversion: {name}")
+    if profile["segmentation"] not in {"mmseg", "jieba"}:
+        raise SystemExit(f"profile resource has an invalid segmentation: {name}")
+    if not isinstance(profile["scope"], str) or profile["scope"] not in _PROFILE_SCOPES:
+        raise SystemExit(f"profile resource has an invalid scope: {name}")
+    for key in ("attributes", "protected_elements"):
+        value = profile[key]
+        if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+            raise SystemExit(f"profile resource has an invalid {key}: {name}")
+    for key in ("svg_text", "mathml"):
+        if not isinstance(profile[key], bool):
+            raise SystemExit(f"profile resource has an invalid {key}: {name}")
+
+
+def _validate_i18n(catalogs: dict[str, object], names: dict[str, str]) -> None:
+    parsed: dict[str, dict[str, str]] = {}
+    for language in _I18N_LANGUAGES:
+        name = names[language]
+        catalog = catalogs[language]
+        if not isinstance(catalog, dict) or not all(
+            isinstance(key, str) and isinstance(value, str) for key, value in catalog.items()
+        ):
+            raise SystemExit(f"i18n resource must map string keys to string values: {name}")
+        parsed[language] = catalog
+    expected_keys = set(parsed["en"])
+    for language, catalog in parsed.items():
+        if set(catalog) != expected_keys:
+            raise SystemExit(f"i18n resource keys differ from en: {names[language]}")
+        for key in expected_keys:
+            expected = set(_PLACEHOLDER.findall(parsed["en"][key]))
+            actual = set(_PLACEHOLDER.findall(catalog[key]))
+            if actual != expected:
+                raise SystemExit(f"i18n resource placeholders differ: {names[language]}:{key}")
+
+
+def _validate_runtime_resources(archive: zipfile.ZipFile) -> None:
+    profile_name = "OpenCCForSigil/resources/defaults/conservative.json"
+    _validate_profile(_read_json_member(archive, profile_name), profile_name)
+    catalogs = {}
+    names = {}
+    for language in _I18N_LANGUAGES:
+        name = f"OpenCCForSigil/resources/i18n/{language}.json"
+        names[language] = name
+        catalogs[language] = _read_json_member(archive, name)
+    _validate_i18n(catalogs, names)
 
 
 def _validate_relative_name(name: str) -> None:
@@ -77,28 +174,24 @@ def validate(artifact: Path, *, require_runtimes: bool = False) -> None:
         if top_levels != {"OpenCCForSigil"}:
             raise SystemExit(f"unexpected plugin ZIP top-level entries: {sorted(top_levels)}")
         forbidden = (
-            ".pyc",
-            "/__pycache__/",
             "/native_build/",
             "/.git/",
             "/dist/",
         )
-        bad = [name for name in names if any(token in name for token in forbidden)]
+        bad = [
+            name
+            for name in names
+            if PurePosixPath(name).suffix.lower() in {".pyc", ".pyo"}
+            or "__pycache__" in PurePosixPath(name).parts
+            or any(token in name for token in forbidden)
+        ]
         if bad:
             raise SystemExit("development-only files in plugin artifact: " + ", ".join(bad[:5]))
 
-        required = {
-            "OpenCCForSigil/plugin.xml",
-            "OpenCCForSigil/plugin.py",
-            "OpenCCForSigil/LICENSE",
-            "OpenCCForSigil/NOTICE",
-            "OpenCCForSigil/resources/third_party/CPPJIEBA_LICENSE",
-            "OpenCCForSigil/vendor/opencc/manifest.json",
-            "OpenCCForSigil/resources/third_party/THIRD_PARTY_NOTICES.md",
-        }
-        missing = sorted(required - set(names))
+        missing = sorted(_REQUIRED_MEMBERS - set(names))
         if missing:
             raise SystemExit("plugin artifact missing required files: " + ", ".join(missing))
+        _validate_runtime_resources(archive)
 
         manifest = json.loads(archive.read("OpenCCForSigil/vendor/opencc/manifest.json"))
         payloads = manifest.get("payloads", [])
