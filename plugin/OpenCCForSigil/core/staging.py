@@ -43,13 +43,18 @@ class StagingArea:
 
 
 def apply_changes(source: str, changes: Sequence[TokenChange]) -> str:
-    """Apply frozen non-overlapping source patches from right to left."""
+    """Apply frozen non-overlapping source patches in one linear assembly."""
 
-    _validate_source_changes(source, changes)
-    result = source
-    for change in sorted(changes, key=lambda item: (item.span.start, item.span.end), reverse=True):
-        result = result[: change.span.start] + change.target + result[change.span.end :]
-    return result
+    ordered_changes = sorted(changes, key=lambda item: (item.span.start, item.span.end))
+    _validate_ordered_source_changes(source, ordered_changes)
+    fragments: list[str] = []
+    cursor = 0
+    for change in ordered_changes:
+        fragments.append(source[cursor : change.span.start])
+        fragments.append(change.target)
+        cursor = change.span.end
+    fragments.append(source[cursor:])
+    return "".join(fragments)
 
 
 def source_sha256(source: str) -> str:
@@ -57,9 +62,18 @@ def source_sha256(source: str) -> str:
 
 
 def _validate_source_changes(source: str, changes: Sequence[TokenChange]) -> None:
+    _validate_ordered_source_changes(
+        source,
+        sorted(changes, key=lambda item: (item.span.start, item.span.end)),
+    )
+
+
+def _validate_ordered_source_changes(
+    source: str, changes: Sequence[TokenChange]
+) -> None:
     previous_start = -1
     previous_end = -1
-    for change in sorted(changes, key=lambda item: (item.span.start, item.span.end)):
+    for change in changes:
         span = change.span
         if span.end > len(source):
             raise StagingError(f"change span exceeds source length: {span}")
