@@ -151,3 +151,7 @@ def test_preview_dialog_apply_blocks_undecided_and_accepts_decided_without_final
     assert dialog.applied is True
     assert dialog.dialog.accept_calls == 1
     assert finalize_calls == []
+    assert dialog.apply_button.enabled is False
+
+    dialog._apply()
+    assert dialog.dialog.accept_calls == 1

@@ -37,14 +37,27 @@ class ScopeOutcome:
 class ProgressReporter:
     """A lightweight progress view driven by workflow file boundaries."""
 
-    def __init__(self, qt_widgets: Any, total: int) -> None:
+    def __init__(self, qt_widgets: Any, total: int, parent: Any = None) -> None:
         self._qt = qt_widgets
         self._cancelled = False
+        self._closed = False
+        self._phase = "analyzing"
         self._total = max(int(total), 1)
+        self._value = 0
         self.dialog = qt_widgets.QProgressDialog(
-            "", _translator.text("common.cancel"), 0, self._total
+            "", _translator.text("common.cancel"), 0, self._total, parent
         )
         self.dialog.setWindowTitle(_translator.text("progress.title"))
+        # A parent supplied by a future plugin-owned QWidget scopes modality to
+        # that window.  The current entry point has no stable host QWidget, so
+        # the unparented dialog is application-modal only within this plugin's
+        # QApplication; Sigil runs plugins in a separate process.
+        set_window_modality = getattr(self.dialog, "setWindowModality", None)
+        qt = getattr(qt_widgets, "Qt", None)
+        modality_name = "WindowModal" if parent is not None else "ApplicationModal"
+        modality = getattr(qt, modality_name, None)
+        if callable(set_window_modality) and modality is not None:
+            set_window_modality(modality)
         # Qt's default minimum duration is intentionally conservative and can
         # leave a synchronous conversion looking frozen for several seconds.
         # This operation already has real file boundaries, so render the
@@ -74,14 +87,30 @@ class ProgressReporter:
         self._cancelled = True
 
     def update(self, phase: str, index: int, total: int, href: str) -> None:
-        self._total = max(int(total), 1)
-        self.dialog.setMaximum(self._total)
-        self.dialog.setValue(min(max(int(index), 0), self._total))
+        phase = str(phase)
+        phase_total = max(int(total), 1)
+        if phase != self._phase:
+            # Each workflow phase owns its own count.  Reset to zero before
+            # painting the first item so a shorter phase never looks like a
+            # backwards jump in one global counter.
+            self._phase = phase
+            self._total = phase_total
+            self._value = 0
+            self.dialog.setMaximum(self._total)
+            self.dialog.setValue(0)
+        elif phase_total != self._total:
+            self._total = phase_total
+            self._value = min(self._value, self._total)
+            self.dialog.setMaximum(self._total)
+
+        requested = max(int(index), 0)
+        self._value = min(max(requested, self._value), self._total)
+        self.dialog.setValue(self._value)
         self.dialog.setLabelText(
             _translator.text(
                 "progress.status",
-                phase=_translator.text(f"progress.phase.{phase}"),
-                index=index,
+                phase=_translator.text(f"progress.phase.{self._phase}"),
+                index=self._value,
                 total=total,
                 file=href,
             )
@@ -101,6 +130,9 @@ class ProgressReporter:
         self._cancelled = False
 
     def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
         self.dialog.close()
 
     def _process_events(self) -> None:
@@ -199,12 +231,12 @@ def choose_scope(adapter: Any, *, initial_language: str = "en") -> ScopeOutcome:
     return ScopeOutcome(True, selection, dialog.language)
 
 
-def create_progress_reporter(total: int) -> ProgressReporter:
+def create_progress_reporter(total: int, parent: Any = None) -> ProgressReporter:
     """Create a progress reporter using Sigil's already available Qt runtime."""
 
     qt_widgets = _load_qt_widgets()
     _ensure_application(qt_widgets)
-    return ProgressReporter(qt_widgets, total)
+    return ProgressReporter(qt_widgets, total, parent)
 
 
 def _selected_xhtml_ids(adapter: Any, inventory: Tuple[TextFile, ...]) -> Tuple[str, ...]:
@@ -525,10 +557,15 @@ class _PreviewDialog:
         self._refresh()
 
     def _apply(self) -> None:
+        if self.applied:
+            return
         if any(preview.undecided() for preview in self._previews):
             self._update_summary()
             return
         self.applied = True
+        # Disable before accepting the dialog so a queued/re-entrant click
+        # cannot submit the same preview twice.
+        self.apply_button.setEnabled(False)
         self.dialog.accept()
 
 

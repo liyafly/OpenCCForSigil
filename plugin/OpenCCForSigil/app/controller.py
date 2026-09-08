@@ -29,8 +29,21 @@ class Controller:
         paths = self.storage.ensure_layout()
         self.logger = SessionLogger(paths.logs, plugin_version=PLUGIN_VERSION)
         self.session = Session(logger=self.logger, session_id=self.logger.session_id)
+        self._running = False
 
     def run(self) -> int:
+        """Run one invocation, rejecting re-entrant or terminal sessions."""
+
+        if self._running or self.session.state is not SessionState.IDLE:
+            self.logger.event("run_reentry_blocked", state=self.session.state.value)
+            return 1
+        self._running = True
+        try:
+            return self._run_once()
+        finally:
+            self._running = False
+
+    def _run_once(self) -> int:
         """Run preflight, preview, staging, verification, and commit."""
 
         self.logger.event("run_started", state=self.session.state.value)
