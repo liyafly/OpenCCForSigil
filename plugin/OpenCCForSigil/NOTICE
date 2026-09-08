@@ -4,6 +4,6 @@ Copyright 2026 OpenCCForSigil contributors.
 Project-authored plugin source is licensed under the Apache License, Version
 2.0; see LICENSE in this directory.
 
-Bundled OpenCC and cppjieba components retain their original licenses. Their
-notices are shipped under resources/third_party/ and inside the vendored
-OpenCC payloads.
+Bundled OpenCC, its native dependency components, and cppjieba retain their
+original licenses. Their notices are shipped under resources/third_party/ and
+inside the vendored OpenCC payloads.

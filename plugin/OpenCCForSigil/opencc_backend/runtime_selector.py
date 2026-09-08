@@ -362,24 +362,34 @@ class _SourceOnlyLoader(importlib_abc.Loader):
         source_path: Path,
         payload_root: Path,
         verify_payload: Callable[[], object],
+        *,
+        fail_closed: bool = False,
     ) -> None:
         self.name = fullname
         self.source_path = source_path
         self.payload_root = payload_root.resolve()
         self._verify_payload = verify_payload
+        self._fail_closed = fail_closed
 
     def create_module(self, spec: object) -> None:
         return None
 
     def exec_module(self, module: ModuleType) -> None:
         self._verify_payload()
-        source = self.source_path.read_bytes()
-        code = compile(source, str(self.source_path), "exec", dont_inherit=True)
-        # The custom loader never writes or reads a cache.  Clearing this
-        # attribute also prevents later code from mistaking the module for a
-        # normal cache-backed source import.
-        module.__cached__ = None
-        exec(code, module.__dict__)
+        try:
+            source = self.source_path.read_bytes()
+            code = compile(source, str(self.source_path), "exec", dont_inherit=True)
+            # The custom loader never writes or reads a cache.  Clearing this
+            # attribute also prevents later code from mistaking the module for a
+            # normal cache-backed source import.
+            module.__cached__ = None
+            exec(code, module.__dict__)
+        except Exception as exc:
+            if self._fail_closed:
+                raise PayloadIntegrityError(
+                    f"required OpenCC package failed during import: {self.source_path}"
+                ) from exc
+            raise
         _VERIFIED_MODULES[module] = self.payload_root
 
 
@@ -412,11 +422,25 @@ class _VerifiedExtensionLoader(machinery.ExtensionFileLoader):
 
     def create_module(self, spec: object) -> Optional[ModuleType]:
         self._verify_payload()
-        return super().create_module(spec)
+        try:
+            return super().create_module(spec)
+        except PayloadIntegrityError:
+            raise
+        except Exception as exc:
+            raise PayloadIntegrityError(
+                f"required OpenCC native module failed to initialize: {self.path}"
+            ) from exc
 
     def exec_module(self, module: ModuleType) -> None:
         self._verify_payload()
-        super().exec_module(module)
+        try:
+            super().exec_module(module)
+        except PayloadIntegrityError:
+            raise
+        except Exception as exc:
+            raise PayloadIntegrityError(
+                f"required OpenCC native module failed to load: {self.path}"
+            ) from exc
         _VERIFIED_MODULES[module] = self.payload_root
 
 
@@ -449,6 +473,11 @@ class _PayloadImportFinder(importlib_abc.MetaPathFinder):
             return _blocked_spec(fullname)
         candidate = self.package_root.joinpath(*parts[1:])
         if not _is_within(self.payload_root, candidate):
+            if fullname in _REQUIRED_OPENCC_MODULES:
+                return _integrity_failure_spec(
+                    fullname,
+                    f"required OpenCC module escapes selected payload: {candidate}",
+                )
             return _blocked_spec(fullname)
 
         source_path = candidate / "__init__.py" if candidate.is_dir() else candidate.with_suffix(".py")
@@ -458,6 +487,7 @@ class _PayloadImportFinder(importlib_abc.MetaPathFinder):
                 source_path,
                 self.payload_root,
                 self._verify_payload,
+                fail_closed=fullname == "opencc.clib",
             )
             search_locations = [str(candidate)] if candidate.is_dir() else None
             spec = spec_from_file_location(
@@ -472,16 +502,31 @@ class _PayloadImportFinder(importlib_abc.MetaPathFinder):
             return spec
 
         extension_path = _extension_path(candidate)
-        if extension_path is not None and _is_within(self.payload_root, extension_path):
+        if extension_path is not None:
+            if not _is_within(self.payload_root, extension_path):
+                return _integrity_failure_spec(
+                    fullname,
+                    f"required OpenCC native module escapes selected payload: {extension_path}",
+                )
             loader = _VerifiedExtensionLoader(
                 fullname,
                 extension_path,
                 self.payload_root,
                 self._verify_payload,
             )
-            spec = machinery.ModuleSpec(fullname, loader, origin=str(extension_path))
-            spec._set_fileattr = True
+            spec = spec_from_file_location(fullname, str(extension_path), loader=loader)
+            if spec is None:
+                return _integrity_failure_spec(
+                    fullname,
+                    f"required OpenCC native module has no import spec: {extension_path}",
+                )
             return spec
+
+        if fullname in _REQUIRED_OPENCC_MODULES:
+            return _integrity_failure_spec(
+                fullname,
+                f"required OpenCC module is missing from selected payload: {candidate}",
+            )
 
         # Returning a blocking spec, instead of None, prevents PathFinder from
         # discovering an otherwise sourceless .pyc under the package path.
@@ -490,6 +535,31 @@ class _PayloadImportFinder(importlib_abc.MetaPathFinder):
 
 def _blocked_spec(fullname: str) -> machinery.ModuleSpec:
     return machinery.ModuleSpec(fullname, _BlockedImportLoader(fullname), origin="blocked")
+
+
+class _IntegrityFailureLoader(importlib_abc.Loader):
+    """Raise a project-owned error before official fallback code can run."""
+
+    def __init__(self, fullname: str, message: str) -> None:
+        self.name = fullname
+        self._message = message
+
+    def create_module(self, spec: object) -> None:
+        raise PayloadIntegrityError(self._message)
+
+    def exec_module(self, module: ModuleType) -> None:
+        raise PayloadIntegrityError(self._message)
+
+
+def _integrity_failure_spec(fullname: str, message: str) -> machinery.ModuleSpec:
+    return machinery.ModuleSpec(
+        fullname,
+        _IntegrityFailureLoader(fullname, message),
+        origin="invalid",
+    )
+
+
+_REQUIRED_OPENCC_MODULES = {"opencc.clib", "opencc.clib.opencc_clib"}
 
 
 def _extension_path(stem: Path) -> Optional[Path]:

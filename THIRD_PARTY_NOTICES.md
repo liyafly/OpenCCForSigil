@@ -20,5 +20,22 @@ Design references are cloned outside this repository under
 The advanced Jieba option uses only the official BYVoid/OpenCC native
 `plugins/jieba` payload built from the pinned upstream commit. It is not a
 Python Jieba implementation and is not copied from the reference project.
-The plugin's `cppjieba` MIT notice is preserved at
-`plugin/OpenCCForSigil/resources/third_party/CPPJIEBA_LICENSE`.
+The complete package notice index is preserved at
+`plugin/OpenCCForSigil/resources/third_party/THIRD_PARTY_NOTICES.md`.
+
+The pinned OpenCC source commit also supplies the native dependency inputs
+listed below. Their complete notices are in the package resource directory and
+are required by `tools/validate_artifact.py`:
+
+| Component | Pinned input and shipped use | Notice |
+| --- | --- | --- |
+| marisa-trie 0.3.1 | `BYVoid/OpenCC@025f371dc76b598d77384fbdab90c937471844d8`, `deps/marisa-0.3.1`; shipped core/static tools | `MARISA_COPYING.md` (BSD-2-Clause OR LGPL-2.1-or-later) |
+| darts-clone 0.32h | `BYVoid/OpenCC@025f371dc76b598d77384fbdab90c937471844d8`, `deps/darts-clone-0.32h`; shipped core/static tools | `DARTS_CLONE_COPYING.md` (BSD-2-Clause) |
+| rapidjson 1.1.0 | `BYVoid/OpenCC@025f371dc76b598d77384fbdab90c937471844d8`, `deps/rapidjson-1.1.0`; shipped native components | `RAPIDJSON_LICENSE.txt` |
+| tclap 1.2.5 | `BYVoid/OpenCC@025f371dc76b598d77384fbdab90c937471844d8`, `deps/tclap-1.2.5`; shipped CLI tools | `TCLAP_COPYING` (MIT) |
+| pybind11 2.13.1 | `BYVoid/OpenCC@025f371dc76b598d77384fbdab90c937471844d8`, `deps/pybind11-2.13.1`; shipped `opencc_clib` extension | `PYBIND11_LICENSE` (BSD-3-Clause) |
+| cppjieba | `BYVoid/OpenCC@025f371dc76b598d77384fbdab90c937471844d8`, `plugins/jieba/deps/cppjieba`; optional shipped Jieba plugin | `CPPJIEBA_LICENSE` (MIT) |
+
+Google Test and Google Benchmark are present only as pinned OpenCC build/test
+dependencies and are not present in the shipped payloads, so they are not
+runtime dependencies or required package notices.

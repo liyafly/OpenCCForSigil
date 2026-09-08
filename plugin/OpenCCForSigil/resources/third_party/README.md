@@ -19,3 +19,8 @@ manifest-approved payloads.
 The optional advanced Jieba payload is built from the pinned official
 `BYVoid/OpenCC/plugins/jieba` source and includes the `cppjieba` MIT notice in
 `CPPJIEBA_LICENSE`. It is not a Python Jieba implementation.
+
+The complete dependency index and notices for the native payload are in
+`THIRD_PARTY_NOTICES.md`. It records the pinned OpenCC dependency inputs,
+including marisa-trie, darts-clone, RapidJSON, TCLAP, pybind11, and cppjieba;
+the artifact validator requires each shipped component notice.

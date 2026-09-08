@@ -13,6 +13,7 @@ import sys
 import pytest
 
 from app.errors import DataIntegrityError
+from opencc_backend.integrity import sha256_tree
 from opencc_backend.runtime_selector import RuntimeSelector
 
 
@@ -82,6 +83,48 @@ def _run_import_subprocess(manifest_path: Path, script: str, **variables: Path) 
         text=True,
         env=environment,
         check=False,
+    )
+
+
+def _rewrite_selected_record(manifest_path: Path, payload_root: Path) -> None:
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    for payload in manifest["payloads"]:
+        if payload["payload_path"] == "payload":
+            payload["payload_sha256"] = sha256_tree(payload_root)
+            payload["native_plugins"] = {}
+            break
+    else:
+        raise AssertionError("rewritten test payload is absent from manifest")
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+
+def _run_import_with_runfiles_probe(
+    manifest_path: Path,
+    marker_path: Path,
+    script: str,
+    **variables: Path,
+) -> subprocess.CompletedProcess[str]:
+    return _run_import_subprocess(
+        manifest_path,
+        """
+import importlib.util
+from pathlib import Path
+import os
+
+marker = Path(os.environ['MARKER'])
+original_spec_from_file_location = importlib.util.spec_from_file_location
+
+def probe(name, location, *args, **kwargs):
+    location_path = Path(location)
+    if name == 'opencc_clib' and any(part in {'src', 'pyd'} for part in location_path.parts):
+        marker.write_text('runfiles probe executed', encoding='utf-8')
+    return original_spec_from_file_location(name, location, *args, **kwargs)
+
+importlib.util.spec_from_file_location = probe
+"""
+        + script,
+        marker=marker_path,
+        **variables,
     )
 
 
@@ -260,3 +303,116 @@ def test_native_tampering_still_fails_integrity_check(tmp_path: Path):
 
     with pytest.raises(DataIntegrityError, match="payload SHA-256 mismatch"):
         RuntimeSelector(manifest_path=manifest_path).select()
+
+
+def test_missing_native_cannot_fall_back_to_runfiles(tmp_path: Path):
+    manifest_path, payload_root = _copy_selected_payload(tmp_path)
+    native_path = next((payload_root / "opencc" / "clib").glob("opencc_clib.*"))
+    native_path.unlink()
+    _rewrite_selected_record(manifest_path, payload_root)
+
+    runfiles_root = payload_root.parent
+    runfiles_native = runfiles_root / "src" / "pyd" / "opencc_clib.so"
+    runfiles_native.parent.mkdir(parents=True)
+    runfiles_native.write_bytes(b"runfiles candidate")
+    marker_path = tmp_path / "runfiles-probe"
+    result = _run_import_with_runfiles_probe(
+        manifest_path,
+        marker_path,
+        """
+import json
+import sys
+from pathlib import Path
+from opencc_backend.errors import PayloadIntegrityError
+from opencc_backend.runtime_selector import RuntimeSelector, _PayloadImportFinder
+
+try:
+    RuntimeSelector(manifest_path=Path(os.environ['MANIFEST'])).import_opencc()
+except PayloadIntegrityError as exc:
+    print(json.dumps({'error': type(exc).__name__,
+                      'finder': any(isinstance(item, _PayloadImportFinder) for item in sys.meta_path),
+                      'modules': sorted(name for name in sys.modules if name == 'opencc' or name.startswith('opencc.'))}))
+else:
+    raise SystemExit('missing native module unexpectedly imported')
+""",
+    )
+    assert result.returncode == 0, result.stderr
+    assert not marker_path.exists()
+    assert json.loads(result.stdout) == {"error": "PayloadIntegrityError", "finder": False, "modules": []}
+
+
+def test_native_loader_error_cannot_fall_back_to_runfiles(tmp_path: Path):
+    manifest_path, payload_root = _copy_selected_payload(tmp_path)
+    native_path = next((payload_root / "opencc" / "clib").glob("opencc_clib.*"))
+    native_path.write_bytes(b"corrupt native module")
+    _rewrite_selected_record(manifest_path, payload_root)
+
+    runfiles_root = payload_root.parent
+    runfiles_native = runfiles_root / "src" / "pyd" / "opencc_clib.so"
+    runfiles_native.parent.mkdir(parents=True)
+    runfiles_native.write_bytes(b"runfiles candidate")
+    marker_path = tmp_path / "runfiles-loader-probe"
+    result = _run_import_with_runfiles_probe(
+        manifest_path,
+        marker_path,
+        """
+import json
+import os
+import sys
+from pathlib import Path
+from opencc_backend.errors import PayloadIntegrityError
+from opencc_backend.runtime_selector import RuntimeSelector, _PayloadImportFinder
+
+try:
+    RuntimeSelector(manifest_path=Path(os.environ['MANIFEST'])).import_opencc()
+except PayloadIntegrityError as exc:
+    print(json.dumps({'error': type(exc).__name__,
+                      'finder': any(isinstance(item, _PayloadImportFinder) for item in sys.meta_path),
+                      'modules': sorted(name for name in sys.modules if name == 'opencc' or name.startswith('opencc.'))}))
+else:
+    raise SystemExit('corrupt native module unexpectedly imported')
+""",
+    )
+    assert result.returncode == 0, result.stderr
+    assert not marker_path.exists()
+    assert json.loads(result.stdout) == {"error": "PayloadIntegrityError", "finder": False, "modules": []}
+
+
+def test_out_of_payload_native_symlink_cannot_fall_back_to_runfiles(tmp_path: Path):
+    manifest_path, payload_root = _copy_selected_payload(tmp_path)
+    native_path = next((payload_root / "opencc" / "clib").glob("opencc_clib.*"))
+    outside_native = tmp_path / "outside-native.so"
+    outside_native.write_bytes(native_path.read_bytes())
+    native_path.unlink()
+    native_path.symlink_to(outside_native)
+    _rewrite_selected_record(manifest_path, payload_root)
+
+    runfiles_root = payload_root.parent
+    runfiles_native = runfiles_root / "src" / "pyd" / "opencc_clib.so"
+    runfiles_native.parent.mkdir(parents=True)
+    runfiles_native.write_bytes(b"runfiles candidate")
+    marker_path = tmp_path / "runfiles-symlink-probe"
+    result = _run_import_with_runfiles_probe(
+        manifest_path,
+        marker_path,
+        """
+import json
+import os
+import sys
+from pathlib import Path
+from opencc_backend.errors import PayloadIntegrityError
+from opencc_backend.runtime_selector import RuntimeSelector, _PayloadImportFinder
+
+try:
+    RuntimeSelector(manifest_path=Path(os.environ['MANIFEST'])).import_opencc()
+except PayloadIntegrityError as exc:
+    print(json.dumps({'error': type(exc).__name__,
+                      'finder': any(isinstance(item, _PayloadImportFinder) for item in sys.meta_path),
+                      'modules': sorted(name for name in sys.modules if name == 'opencc' or name.startswith('opencc.'))}))
+else:
+    raise SystemExit('out-of-payload native module unexpectedly imported')
+""",
+    )
+    assert result.returncode == 0, result.stderr
+    assert not marker_path.exists()
+    assert json.loads(result.stdout) == {"error": "PayloadIntegrityError", "finder": False, "modules": []}

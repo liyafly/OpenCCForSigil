@@ -51,6 +51,11 @@ _REQUIRED_MEMBERS = {
     "OpenCCForSigil/resources/i18n/en.json",
     "OpenCCForSigil/resources/i18n/zh-Hans.json",
     "OpenCCForSigil/resources/i18n/zh-Hant.json",
+    "OpenCCForSigil/resources/third_party/MARISA_COPYING.md",
+    "OpenCCForSigil/resources/third_party/DARTS_CLONE_COPYING.md",
+    "OpenCCForSigil/resources/third_party/RAPIDJSON_LICENSE.txt",
+    "OpenCCForSigil/resources/third_party/TCLAP_COPYING",
+    "OpenCCForSigil/resources/third_party/PYBIND11_LICENSE",
     "OpenCCForSigil/resources/third_party/CPPJIEBA_LICENSE",
     "OpenCCForSigil/vendor/opencc/manifest.json",
     "OpenCCForSigil/resources/third_party/THIRD_PARTY_NOTICES.md",
@@ -102,7 +107,10 @@ def _validate_profile(profile: object, name: str) -> None:
         raise SystemExit(f"profile resource has an unsupported schema version: {name}")
     if not isinstance(profile["conversion"], str) or not profile["conversion"]:
         raise SystemExit(f"profile resource has an invalid conversion: {name}")
-    if profile["segmentation"] not in {"mmseg", "jieba"}:
+    if not isinstance(profile["segmentation"], str) or profile["segmentation"] not in {
+        "mmseg",
+        "jieba",
+    }:
         raise SystemExit(f"profile resource has an invalid segmentation: {name}")
     if not isinstance(profile["scope"], str) or profile["scope"] not in _PROFILE_SCOPES:
         raise SystemExit(f"profile resource has an invalid scope: {name}")
