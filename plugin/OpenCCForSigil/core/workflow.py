@@ -48,6 +48,24 @@ class PlannedDocument:
     plan: ConversionPlan
 
 
+def _report_progress(
+    progress: Optional[Callable[[str, int, int, str], None]],
+    cancelled: Optional[Callable[[], bool]],
+    *,
+    phase: str,
+    index: int,
+    total: int,
+    href: str,
+    cancel_message: str,
+) -> None:
+    """Report a file boundary, then honor cancellation after event pumping."""
+
+    if progress is not None:
+        progress(phase, index, total, href)
+    if cancelled is not None and cancelled():
+        raise WorkflowCancelled(cancel_message)
+
+
 class ConversionWorkflow:
     """Coordinate pure core phases around a narrow Sigil adapter."""
 
@@ -89,17 +107,37 @@ class ConversionWorkflow:
         )
         sources = []
         total = len(target_files)
+        if not target_files:
+            _report_progress(
+                progress,
+                cancelled,
+                phase="analyzing",
+                index=0,
+                total=0,
+                href="…",
+                cancel_message="analysis cancelled",
+            )
         for index, (file_id, href) in enumerate(target_files, start=1):
-            if cancelled is not None and cancelled():
-                raise WorkflowCancelled("analysis cancelled")
+            _report_progress(
+                progress,
+                cancelled,
+                phase="analyzing",
+                index=index - 1,
+                total=total,
+                href=href,
+                cancel_message="analysis cancelled",
+            )
             source = self.adapter.read(file_id)
             sources.append(SourceDocument(file_id=file_id, href=href, source=source))
-            # A progress callback pumps Qt events. Report the completed read,
-            # then honor cancellation before starting the next file.
-            if progress is not None:
-                progress("analyzing", index, total, href)
-            if cancelled is not None and cancelled():
-                raise WorkflowCancelled("analysis cancelled")
+            _report_progress(
+                progress,
+                cancelled,
+                phase="analyzing",
+                index=index,
+                total=total,
+                href=href,
+                cancel_message="analysis cancelled",
+            )
         self._sources = tuple(sources)
         return self._sources
 
@@ -113,14 +151,36 @@ class ConversionWorkflow:
             self.scan(progress=progress, cancelled=cancelled)
         planned = []
         total = len(self._sources)
+        if not self._sources:
+            _report_progress(
+                progress,
+                cancelled,
+                phase="planning",
+                index=0,
+                total=0,
+                href="…",
+                cancel_message="analysis cancelled",
+            )
         for index, source_document in enumerate(self._sources, start=1):
-            if cancelled is not None and cancelled():
-                raise WorkflowCancelled("analysis cancelled")
+            _report_progress(
+                progress,
+                cancelled,
+                phase="planning",
+                index=index - 1,
+                total=total,
+                href=source_document.href,
+                cancel_message="analysis cancelled",
+            )
             planned.append(self._plan_document(source_document))
-            if progress is not None:
-                progress("planning", index, total, source_document.href)
-            if cancelled is not None and cancelled():
-                raise WorkflowCancelled("analysis cancelled")
+            _report_progress(
+                progress,
+                cancelled,
+                phase="planning",
+                index=index,
+                total=total,
+                href=source_document.href,
+                cancel_message="analysis cancelled",
+            )
         self._planned = tuple(planned)
         return self._planned
 
@@ -148,11 +208,31 @@ class ConversionWorkflow:
         finalized: Iterable[Tuple[PlannedDocument, ConversionPlan]],
         *,
         progress: Optional[Callable[[str, int, int, str], None]] = None,
+        cancelled: Optional[Callable[[], bool]] = None,
     ) -> Tuple[StagedFile, ...]:
         finalized_files = tuple(finalized)
         staged = []
         total = len(finalized_files)
+        if not finalized_files:
+            _report_progress(
+                progress,
+                cancelled,
+                phase="staging",
+                index=0,
+                total=0,
+                href="…",
+                cancel_message="staging cancelled",
+            )
         for index, (planned, selected_plan) in enumerate(finalized_files, start=1):
+            _report_progress(
+                progress,
+                cancelled,
+                phase="staging",
+                index=index - 1,
+                total=total,
+                href=planned.source.href,
+                cancel_message="staging cancelled",
+            )
             if selected_plan.changes:
                 staged.append(
                     self.staging.stage(
@@ -161,8 +241,15 @@ class ConversionWorkflow:
                         selected_plan,
                     )
                 )
-            if progress is not None:
-                progress("staging", index, total, planned.source.href)
+            _report_progress(
+                progress,
+                cancelled,
+                phase="staging",
+                index=index,
+                total=total,
+                href=planned.source.href,
+                cancel_message="staging cancelled",
+            )
         return tuple(staged)
 
     def verify(
@@ -170,22 +257,49 @@ class ConversionWorkflow:
         staged: Optional[Iterable[StagedFile]] = None,
         *,
         progress: Optional[Callable[[str, int, int, str], None]] = None,
+        cancelled: Optional[Callable[[], bool]] = None,
     ):
         files = tuple(staged) if staged is not None else tuple(self.staging.values())
         planned_by_id = {item.source.file_id: item for item in self._planned}
         results = []
         total = len(files)
+        if not files:
+            _report_progress(
+                progress,
+                cancelled,
+                phase="verifying",
+                index=0,
+                total=0,
+                href="…",
+                cancel_message="verification cancelled",
+            )
         for index, staged_file in enumerate(files, start=1):
             planned = planned_by_id.get(staged_file.file_id)
+            href = planned.source.href if planned is not None else staged_file.file_id
+            _report_progress(
+                progress,
+                cancelled,
+                phase="verifying",
+                index=index - 1,
+                total=total,
+                href=href,
+                cancel_message="verification cancelled",
+            )
             result = verify_staged_file(
                 staged_file,
                 tokenizer_options=self.tokenizer_options,
                 original_document=planned.tokenized if planned is not None else None,
             )
             results.append(result)
-            if progress is not None:
-                href = planned.source.href if planned is not None else staged_file.file_id
-                progress("verifying", index, total, href)
+            _report_progress(
+                progress,
+                cancelled,
+                phase="verifying",
+                index=index,
+                total=total,
+                href=href,
+                cancel_message="verification cancelled",
+            )
         self._verification = tuple(results)
         if not all(result.passed for result in self._verification):
             raise WorkflowError("structural verification failed; commit is blocked")

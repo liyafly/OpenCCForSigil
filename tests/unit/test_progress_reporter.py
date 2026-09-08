@@ -79,9 +79,10 @@ def test_progress_reporter_resets_each_phase_and_clamps_repeated_updates():
     reporter.update("analyzing", 1, 2, "Text/a.xhtml")
     reporter.update("analyzing", 2, 2, "Text/b.xhtml")
     reporter.update("analyzing", 1, 2, "Text/a.xhtml")
+    reporter.update("planning", 0, 1, "Text/a.xhtml")
     reporter.update("planning", 1, 1, "Text/a.xhtml")
 
-    assert reporter.dialog.values == [0, 1, 2, 2, 0, 1]
+    assert reporter.dialog.values == [0, 1, 2, 2, 0, 0, 1]
     assert reporter.dialog.maximums == [2, 1]
     assert reporter.dialog.labels[-1] == "Planning: 1/1 — Text/a.xhtml"
 

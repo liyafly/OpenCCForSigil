@@ -205,7 +205,9 @@ def test_workflow_reports_stage_and_verify_progress_and_reuses_source_tokens(mon
     assert planned[0].tokenized.source == book.source
     assert verification[0].passed
     assert events == [
+        ("staging", 0, 1, "Text/chapter.xhtml"),
         ("staging", 1, 1, "Text/chapter.xhtml"),
+        ("verifying", 0, 1, "Text/chapter.xhtml"),
         ("verifying", 1, 1, "Text/chapter.xhtml"),
     ]
     assert tokenized_sources == [staged[0].converted]
@@ -241,8 +243,10 @@ def test_workflow_emits_progress_after_each_operation(monkeypatch):
 
     workflow.plan(progress=progress)
     assert events == [
+        ("progress", "analyzing", 0, 1, "Text/chapter.xhtml"),
         ("read", "chapter"),
         ("progress", "analyzing", 1, 1, "Text/chapter.xhtml"),
+        ("progress", "planning", 0, 1, "Text/chapter.xhtml"),
         ("plan", "chapter"),
         ("progress", "planning", 1, 1, "Text/chapter.xhtml"),
     ]
@@ -260,6 +264,7 @@ def test_workflow_emits_progress_after_each_operation(monkeypatch):
     monkeypatch.setattr(workflow.staging, "stage", stage)
     staged = workflow.stage(finalized, progress=progress)
     assert events == [
+        ("progress", "staging", 0, 1, "Text/chapter.xhtml"),
         ("stage", "chapter"),
         ("progress", "staging", 1, 1, "Text/chapter.xhtml"),
     ]
@@ -276,6 +281,7 @@ def test_workflow_emits_progress_after_each_operation(monkeypatch):
     monkeypatch.setattr(workflow_module, "verify_staged_file", verify)
     workflow.verify(staged, progress=progress)
     assert events == [
+        ("progress", "verifying", 0, 1, "Text/chapter.xhtml"),
         ("verify", "chapter"),
         ("progress", "verifying", 1, 1, "Text/chapter.xhtml"),
     ]
@@ -336,15 +342,85 @@ def test_workflow_cancellation_after_progress_callback_stops_before_next_read():
     )
     cancelled = False
 
-    def progress(_phase, _index, _total, _href):
+    def progress(phase, index, _total, _href):
         nonlocal cancelled
-        cancelled = True
+        if phase == "analyzing" and index == 1:
+            cancelled = True
 
     with pytest.raises(WorkflowCancelled):
         workflow.plan(progress=progress, cancelled=lambda: cancelled)
 
     assert book.reads == ["a"]
     assert book.writes == []
+
+
+def test_workflow_reports_zero_item_boundaries_for_empty_phases():
+    class EmptyBook:
+        def text_iter(self):
+            return iter(())
+
+    workflow = ConversionWorkflow(
+        SigilBookAdapter(EmptyBook()),
+        OpenCCBackend("s2t"),
+        ConvertRequest("s2t"),
+    )
+    events = []
+
+    def progress(phase, index, total, href):
+        events.append((phase, index, total, href))
+
+    assert workflow.plan(progress=progress) == ()
+    assert events == [
+        ("analyzing", 0, 0, "…"),
+        ("planning", 0, 0, "…"),
+    ]
+
+    events.clear()
+    assert workflow.stage((), progress=progress) == ()
+    assert workflow.verify((), progress=progress) == ()
+    assert events == [
+        ("staging", 0, 0, "…"),
+        ("verifying", 0, 0, "…"),
+    ]
+
+
+def test_workflow_cancellation_at_stage_start_skips_staging_operation(monkeypatch):
+    book = MultiFileBook()
+    workflow = ConversionWorkflow(
+        SigilBookAdapter(book),
+        OpenCCBackend("s2t"),
+        ConvertRequest("s2t"),
+        targets=TargetSelection(Scope.ALL_XHTML, ("a", "b")),
+    )
+    workflow.plan()
+    previews = workflow.preview()
+    for preview in previews:
+        preview.accept_all()
+    finalized = workflow.finalize(previews)
+    cancelled = False
+    calls = []
+    original_stage = workflow.staging.stage
+
+    def stage(file_id, source, plan):
+        calls.append(file_id)
+        return original_stage(file_id, source, plan)
+
+    monkeypatch.setattr(workflow.staging, "stage", stage)
+
+    def progress(phase, index, _total, _href):
+        nonlocal cancelled
+        if phase == "staging" and index == 0:
+            cancelled = True
+
+    with pytest.raises(WorkflowCancelled):
+        workflow.stage(
+            finalized,
+            progress=progress,
+            cancelled=lambda: cancelled,
+        )
+
+    assert calls == []
+    assert len(workflow.staging) == 0
 
 
 def test_workflow_reports_partial_write_boundary_failure():
