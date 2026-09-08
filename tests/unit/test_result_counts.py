@@ -46,16 +46,37 @@ class _MessageBox:
 
 
 @pytest.mark.parametrize(
-    ("language", "expected"),
     (
-        ("en", "1 files were not written, including 1 with no proposed changes."),
-        ("zh-Hans", "1 个文件未写回，其中 1 个没有建议变更。"),
-        ("zh-Hant", "1 個檔案未寫回，其中 1 個沒有建議變更。"),
+        "language",
+        "files_scanned",
+        "files_changed",
+        "accepted_changes",
+        "skipped_changes",
+        "files_not_written",
+        "files_without_changes",
+        "expected",
+    ),
+    (
+        ("en", 1, 1, 1, 0, 0, 0, "0 files were not written, including 0 files with no proposed changes."),
+        ("en", 2, 1, 1, 0, 1, 1, "1 file was not written, including 1 file with no proposed changes."),
+        ("en", 3, 1, 1, 2, 2, 2, "2 files were not written, including 2 files with no proposed changes."),
+        ("zh-Hans", 1, 1, 1, 0, 0, 0, "0 个文件未写回，其中 0 个文件没有建议变更。"),
+        ("zh-Hans", 2, 1, 1, 0, 1, 1, "1 个文件未写回，其中 1 个文件没有建议变更。"),
+        ("zh-Hans", 3, 1, 1, 2, 2, 2, "2 个文件未写回，其中 2 个文件没有建议变更。"),
+        ("zh-Hant", 1, 1, 1, 0, 0, 0, "0 個檔案未寫回，其中 0 個檔案沒有建議變更。"),
+        ("zh-Hant", 2, 1, 1, 0, 1, 1, "1 個檔案未寫回，其中 1 個檔案沒有建議變更。"),
+        ("zh-Hant", 3, 1, 1, 2, 2, 2, "2 個檔案未寫回，其中 2 個檔案沒有建議變更。"),
     ),
 )
 def test_result_done_states_unwritten_files_include_unchanged_subset(
     monkeypatch,
     language: str,
+    files_scanned: int,
+    files_changed: int,
+    accepted_changes: int,
+    skipped_changes: int,
+    files_not_written: int,
+    files_without_changes: int,
     expected: str,
 ):
     _MessageBox.messages = []
@@ -66,12 +87,12 @@ def test_result_done_states_unwritten_files_include_unchanged_subset(
 
     preview_window.show_result(
         status="success",
-        files_scanned=2,
-        files_changed=1,
-        accepted_changes=1,
-        skipped_changes=0,
-        files_not_written=1,
-        files_without_changes=1,
+        files_scanned=files_scanned,
+        files_changed=files_changed,
+        accepted_changes=accepted_changes,
+        skipped_changes=skipped_changes,
+        files_not_written=files_not_written,
+        files_without_changes=files_without_changes,
     )
 
     assert len(_MessageBox.messages) == 1

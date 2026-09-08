@@ -92,16 +92,12 @@ class ConversionWorkflow:
         for index, (file_id, href) in enumerate(target_files, start=1):
             if cancelled is not None and cancelled():
                 raise WorkflowCancelled("analysis cancelled")
-            if progress is not None:
-                progress("analyzing", index, total, href)
-            # A progress callback pumps Qt events.  Cancellation can therefore
-            # arrive during the callback, including for the final file.  Check
-            # again before touching the book body and once more after the read
-            # so a cancel request cannot fall through into preview.
-            if cancelled is not None and cancelled():
-                raise WorkflowCancelled("analysis cancelled")
             source = self.adapter.read(file_id)
             sources.append(SourceDocument(file_id=file_id, href=href, source=source))
+            # A progress callback pumps Qt events. Report the completed read,
+            # then honor cancellation before starting the next file.
+            if progress is not None:
+                progress("analyzing", index, total, href)
             if cancelled is not None and cancelled():
                 raise WorkflowCancelled("analysis cancelled")
         self._sources = tuple(sources)
@@ -120,11 +116,9 @@ class ConversionWorkflow:
         for index, source_document in enumerate(self._sources, start=1):
             if cancelled is not None and cancelled():
                 raise WorkflowCancelled("analysis cancelled")
+            planned.append(self._plan_document(source_document))
             if progress is not None:
                 progress("planning", index, total, source_document.href)
-            if cancelled is not None and cancelled():
-                raise WorkflowCancelled("analysis cancelled")
-            planned.append(self._plan_document(source_document))
             if cancelled is not None and cancelled():
                 raise WorkflowCancelled("analysis cancelled")
         self._planned = tuple(planned)
@@ -159,17 +153,16 @@ class ConversionWorkflow:
         staged = []
         total = len(finalized_files)
         for index, (planned, selected_plan) in enumerate(finalized_files, start=1):
+            if selected_plan.changes:
+                staged.append(
+                    self.staging.stage(
+                        planned.source.file_id,
+                        planned.source.source,
+                        selected_plan,
+                    )
+                )
             if progress is not None:
                 progress("staging", index, total, planned.source.href)
-            if not selected_plan.changes:
-                continue
-            staged.append(
-                self.staging.stage(
-                    planned.source.file_id,
-                    planned.source.source,
-                    selected_plan,
-                )
-            )
         return tuple(staged)
 
     def verify(
@@ -183,18 +176,16 @@ class ConversionWorkflow:
         results = []
         total = len(files)
         for index, staged_file in enumerate(files, start=1):
+            planned = planned_by_id.get(staged_file.file_id)
+            result = verify_staged_file(
+                staged_file,
+                tokenizer_options=self.tokenizer_options,
+                original_document=planned.tokenized if planned is not None else None,
+            )
+            results.append(result)
             if progress is not None:
-                planned = planned_by_id.get(staged_file.file_id)
                 href = planned.source.href if planned is not None else staged_file.file_id
                 progress("verifying", index, total, href)
-            planned = planned_by_id.get(staged_file.file_id)
-            results.append(
-                verify_staged_file(
-                    staged_file,
-                    tokenizer_options=self.tokenizer_options,
-                    original_document=planned.tokenized if planned is not None else None,
-                )
-            )
         self._verification = tuple(results)
         if not all(result.passed for result in self._verification):
             raise WorkflowError("structural verification failed; commit is blocked")

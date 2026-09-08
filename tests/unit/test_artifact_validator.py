@@ -106,6 +106,20 @@ def test_validator_rejects_i18n_placeholder_mismatch(artifact: Path, tmp_path: P
         validate_artifact(target)
 
 
+def test_validator_rejects_empty_i18n_catalogs_missing_runtime_keys(
+    artifact: Path, tmp_path: Path
+):
+    names = {
+        f"OpenCCForSigil/resources/i18n/{language}.json": b"{}"
+        for language in ("en", "zh-Hans", "zh-Hant")
+    }
+    target = tmp_path / "i18n-empty.zip"
+    _rewrite_archive(artifact, target, names)
+
+    with pytest.raises(SystemExit, match="i18n resource is missing required runtime keys"):
+        validate_artifact(target)
+
+
 @pytest.mark.parametrize(
     "member",
     [

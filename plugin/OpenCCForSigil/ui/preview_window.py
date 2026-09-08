@@ -286,14 +286,18 @@ def show_result(
         if files_not_written is None
         else max(int(files_not_written), 0)
     )
+    result_values = _result_count_values(
+        files_scanned=files_scanned,
+        files_changed=files_changed,
+        accepted_changes=accepted_changes,
+        skipped_changes=skipped_changes,
+        files_not_written=not_written,
+        files_without_changes=files_without_changes,
+    )
     if status == "partial_failure":
         message = _translator.text(
             "result.partial",
-            changed=files_changed,
-            files=files_scanned,
-            accepted=accepted_changes,
-            not_written=not_written,
-            unchanged=max(int(files_without_changes), 0),
+            **result_values,
             failed_file=failed_file or "?",
         )
         method = getattr(qt_widgets.QMessageBox, "warning")
@@ -303,27 +307,44 @@ def show_result(
     elif accepted_changes == 0 and skipped_changes:
         message = _translator.text(
             "result.skipped",
-            files=files_scanned,
-            skipped=skipped_changes,
-            not_written=not_written,
-            unchanged=max(int(files_without_changes), 0),
+            **result_values,
         )
         method = getattr(qt_widgets.QMessageBox, "information")
     elif accepted_changes == 0:
-        message = _translator.text("result.noop", files=files_scanned)
+        message = _translator.text("result.noop", **result_values)
         method = getattr(qt_widgets.QMessageBox, "information")
     else:
         message = _translator.text(
             "result.done",
-            changed=files_changed,
-            files=files_scanned,
-            accepted=accepted_changes,
-            skipped=skipped_changes,
-            not_written=not_written,
-            unchanged=max(int(files_without_changes), 0),
+            **result_values,
         )
         method = getattr(qt_widgets.QMessageBox, "information")
     method(None, _translator.text("app.title"), message)
+
+
+def _result_count_values(
+    *,
+    files_scanned: int,
+    files_changed: int,
+    accepted_changes: int,
+    skipped_changes: int,
+    files_not_written: int,
+    files_without_changes: int,
+) -> dict[str, str]:
+    return {
+        "files": _result_count_phrase("files", files_scanned),
+        "written": _result_count_phrase("files", files_changed),
+        "accepted": _result_count_phrase("changes", accepted_changes),
+        "skipped": _result_count_phrase("changes", skipped_changes),
+        "not_written": _result_count_phrase("not_written", files_not_written),
+        "unchanged": _result_count_phrase("unchanged", files_without_changes),
+    }
+
+
+def _result_count_phrase(kind: str, count: int) -> str:
+    value = max(int(count), 0)
+    form = "one" if value == 1 else "many"
+    return _translator.text(f"result.{kind}_{form}", count=value)
 
 
 _application: Any = None

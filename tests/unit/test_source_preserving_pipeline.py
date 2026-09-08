@@ -211,6 +211,76 @@ def test_workflow_reports_stage_and_verify_progress_and_reuses_source_tokens(mon
     assert tokenized_sources == [staged[0].converted]
 
 
+def test_workflow_emits_progress_after_each_operation(monkeypatch):
+    book = FakeBook("<p>汉字与鼠标</p>")
+    events = []
+    original_read = book.readfile
+
+    def readfile(file_id):
+        events.append(("read", file_id))
+        return original_read(file_id)
+
+    monkeypatch.setattr(book, "readfile", readfile)
+    workflow = ConversionWorkflow(
+        SigilBookAdapter(book),
+        OpenCCBackend("s2t"),
+        ConvertRequest("s2t"),
+        session_id="session-1",
+        profile_id="conservative",
+    )
+    original_plan_document = workflow._plan_document
+
+    def plan_document(source_document):
+        events.append(("plan", source_document.file_id))
+        return original_plan_document(source_document)
+
+    monkeypatch.setattr(workflow, "_plan_document", plan_document)
+
+    def progress(phase, index, total, href):
+        events.append(("progress", phase, index, total, href))
+
+    workflow.plan(progress=progress)
+    assert events == [
+        ("read", "chapter"),
+        ("progress", "analyzing", 1, 1, "Text/chapter.xhtml"),
+        ("plan", "chapter"),
+        ("progress", "planning", 1, 1, "Text/chapter.xhtml"),
+    ]
+
+    previews = workflow.preview()
+    previews[0].accept_all()
+    finalized = workflow.finalize(previews)
+    events.clear()
+    original_stage = workflow.staging.stage
+
+    def stage(file_id, source, plan):
+        events.append(("stage", file_id))
+        return original_stage(file_id, source, plan)
+
+    monkeypatch.setattr(workflow.staging, "stage", stage)
+    staged = workflow.stage(finalized, progress=progress)
+    assert events == [
+        ("stage", "chapter"),
+        ("progress", "staging", 1, 1, "Text/chapter.xhtml"),
+    ]
+
+    import core.workflow as workflow_module
+
+    events.clear()
+    original_verify = workflow_module.verify_staged_file
+
+    def verify(staged_file, **kwargs):
+        events.append(("verify", staged_file.file_id))
+        return original_verify(staged_file, **kwargs)
+
+    monkeypatch.setattr(workflow_module, "verify_staged_file", verify)
+    workflow.verify(staged, progress=progress)
+    assert events == [
+        ("verify", "chapter"),
+        ("progress", "verifying", 1, 1, "Text/chapter.xhtml"),
+    ]
+
+
 def test_rejected_changes_are_not_written_back_to_sigil():
     book = FakeBook("<p>汉字与鼠标</p>")
     workflow = ConversionWorkflow(
@@ -256,13 +326,13 @@ class MultiFileBook:
         self.writes.append((file_id, data))
 
 
-def test_workflow_cancellation_after_progress_callback_reads_nothing():
+def test_workflow_cancellation_after_progress_callback_stops_before_next_read():
     book = MultiFileBook()
     workflow = ConversionWorkflow(
         SigilBookAdapter(book),
         OpenCCBackend("s2t"),
         ConvertRequest("s2t"),
-        targets=TargetSelection(Scope.SINGLE, ("a",)),
+        targets=TargetSelection(Scope.ALL_XHTML, ("a", "b")),
     )
     cancelled = False
 
@@ -273,7 +343,7 @@ def test_workflow_cancellation_after_progress_callback_reads_nothing():
     with pytest.raises(WorkflowCancelled):
         workflow.plan(progress=progress, cancelled=lambda: cancelled)
 
-    assert book.reads == []
+    assert book.reads == ["a"]
     assert book.writes == []
 
 

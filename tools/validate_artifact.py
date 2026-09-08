@@ -41,6 +41,92 @@ _PROFILE_REQUIRED_FIELDS = {
 _PROFILE_SCOPES = {"single", "all_xhtml", "spine", "selected"}
 _I18N_LANGUAGES = ("en", "zh-Hans", "zh-Hant")
 _PLACEHOLDER = re.compile(r"{([A-Za-z_][A-Za-z0-9_]*)}")
+_I18N_REQUIRED_KEYS = frozenset(
+    {
+        "app.title",
+        "config.title",
+        "config.direction",
+        "config.explanation",
+        "config.s2t",
+        "config.s2tw",
+        "config.s2twp",
+        "config.s2hk",
+        "config.s2hkp",
+        "config.t2s",
+        "config.tw2s",
+        "config.tw2sp",
+        "config.hk2s",
+        "config.hk2sp",
+        "config.t2tw",
+        "config.t2hk",
+        "config.tw2t",
+        "config.hk2t",
+        "config.t2jp",
+        "config.jp2t",
+        "config.jieba",
+        "config.jieba_tooltip",
+        "config.jieba_available",
+        "config.jieba_unavailable",
+        "config.continue",
+        "common.cancel",
+        "scope.title",
+        "scope.single",
+        "scope.selected",
+        "scope.all",
+        "scope.choose",
+        "scope.selected_count",
+        "scope.all_count",
+        "scope.ignored_non_xhtml",
+        "scope.none",
+        "scope.analyze",
+        "scope.filter",
+        "scope.select_visible",
+        "scope.clear_visible",
+        "preview.title",
+        "preview.summary",
+        "preview.accept_this",
+        "preview.skip_this",
+        "preview.accept_file",
+        "preview.skip_file",
+        "preview.accept_all",
+        "preview.skip_all",
+        "preview.apply",
+        "preview.incomplete",
+        "preview.no_changes",
+        "preview.rule",
+        "preview.category",
+        "preview.risk",
+        "preview.before",
+        "preview.change",
+        "progress.title",
+        "progress.status",
+        "progress.phase.analyzing",
+        "progress.phase.planning",
+        "progress.phase.staging",
+        "progress.phase.verifying",
+        "result.noop",
+        "result.skipped",
+        "result.done",
+        "result.partial",
+        "result.cancelled",
+        "result.files_one",
+        "result.files_many",
+        "result.changes_one",
+        "result.changes_many",
+        "result.not_written_one",
+        "result.not_written_many",
+        "result.unchanged_one",
+        "result.unchanged_many",
+        "error.read",
+        "error.failed",
+        "error.no_config",
+        "error.ui_unavailable",
+        "error.backend_self_test",
+        "error.scope_invalid",
+        "error.scope_exactly_one",
+        "language.label",
+    }
+)
 
 _REQUIRED_MEMBERS = {
     "OpenCCForSigil/plugin.xml",
@@ -134,6 +220,12 @@ def _validate_i18n(catalogs: dict[str, object], names: dict[str, str]) -> None:
             raise SystemExit(f"i18n resource must map string keys to string values: {name}")
         parsed[language] = catalog
     expected_keys = set(parsed["en"])
+    missing_required = sorted(_I18N_REQUIRED_KEYS - expected_keys)
+    if missing_required:
+        raise SystemExit(
+            "i18n resource is missing required runtime keys from en: "
+            + ", ".join(missing_required)
+        )
     for language, catalog in parsed.items():
         if set(catalog) != expected_keys:
             raise SystemExit(f"i18n resource keys differ from en: {names[language]}")
