@@ -287,6 +287,121 @@ print(json.dumps({'same_package': first is second,
     }
 
 
+def test_import_verification_counts_cold_and_hot_paths(tmp_path: Path):
+    manifest_path, payload_root = _copy_selected_payload(tmp_path)
+    result = _run_import_subprocess(
+        manifest_path,
+        """
+import json
+import os
+from pathlib import Path
+import opencc_backend.runtime_selector as selector_module
+
+calls = []
+original_verify_tree = selector_module.verify_tree_sha256
+
+def counted_verify_tree(root, expected):
+    calls.append(Path(root))
+    return original_verify_tree(root, expected)
+
+selector_module.verify_tree_sha256 = counted_verify_tree
+selector = selector_module.RuntimeSelector(manifest_path=Path(os.environ['MANIFEST']))
+selector.import_opencc()
+cold = len(calls)
+selector.import_opencc()
+print(json.dumps({'cold': cold, 'hot': len(calls) - cold}, ensure_ascii=True))
+""",
+        payload=payload_root,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) == {"cold": 5, "hot": 1}
+
+
+def test_delayed_import_rechecks_tampered_source_after_success(tmp_path: Path):
+    manifest_path, payload_root = _copy_selected_payload(tmp_path)
+    result = _run_import_subprocess(
+        manifest_path,
+        """
+import importlib
+import json
+import os
+import sys
+from pathlib import Path
+from app.errors import DataIntegrityError
+from opencc_backend.runtime_selector import RuntimeSelector
+
+RuntimeSelector(manifest_path=Path(os.environ['MANIFEST'])).import_opencc()
+source_path = Path(os.environ['PAYLOAD']) / 'opencc' / 'cli.py'
+source_path.write_bytes(source_path.read_bytes() + b'\\n# tampered after select\\n')
+sys.modules.pop('opencc.cli', None)
+try:
+    importlib.import_module('opencc.cli')
+except DataIntegrityError as exc:
+    print(json.dumps({'error': type(exc).__name__, 'message': str(exc)}, ensure_ascii=True))
+else:
+    raise SystemExit('tampered delayed module unexpectedly imported')
+""",
+        payload=payload_root,
+    )
+
+    assert result.returncode == 0, result.stderr
+    output = json.loads(result.stdout)
+    assert output["error"] == "DataIntegrityError"
+    assert "payload SHA-256 mismatch" in output["message"]
+
+
+def test_failed_import_clears_cached_context_before_next_import(tmp_path: Path):
+    manifest_path, payload_root = _copy_selected_payload(tmp_path)
+    result = _run_import_subprocess(
+        manifest_path,
+        """
+import json
+import os
+import opencc_backend.runtime_selector as selector_module
+from pathlib import Path
+
+calls = []
+original_verify_tree = selector_module.verify_tree_sha256
+
+def counted_verify_tree(root, expected):
+    calls.append(Path(root))
+    return original_verify_tree(root, expected)
+
+selector_module.verify_tree_sha256 = counted_verify_tree
+selector = selector_module.RuntimeSelector(manifest_path=Path(os.environ['MANIFEST']))
+selector.import_opencc()
+original_origin = selector_module._verified_origin
+
+def fail_origin(module, root):
+    selector_module._verified_origin = original_origin
+    raise RuntimeError('controlled import failure')
+
+selector_module._verified_origin = fail_origin
+try:
+    selector.import_opencc()
+except RuntimeError:
+    pass
+else:
+    raise SystemExit('controlled import failure was not raised')
+after_failure = sorted(
+    name for name in __import__('sys').modules
+    if name == 'opencc' or name.startswith('opencc.')
+)
+selector.import_opencc()
+print(json.dumps({'modules_after_failure': after_failure,
+                  'total_hashes': len(calls)}, ensure_ascii=True))
+""",
+        payload=payload_root,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) == {
+        "modules_after_failure": [],
+        "total_hashes": 11,
+    }
+
+
 def test_source_tampering_still_fails_integrity_check(tmp_path: Path):
     manifest_path, payload_root = _copy_selected_payload(tmp_path)
     source_path = payload_root / "opencc" / "__init__.py"
