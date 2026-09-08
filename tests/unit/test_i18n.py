@@ -136,6 +136,6 @@ def test_result_dialog_explains_files_without_a_write(monkeypatch):
     )
 
     assert messages == [
-        "已分析 38 个文件，实际写回 37 个；应用 37 项变更，跳过 0 项；其中 1 个没有可转换内容，1 个没有写回。"
+        "已分析 38 个文件，实际写回 37 个；应用 37 项变更，跳过 0 项；1 个文件未写回，其中 1 个没有建议变更。"
     ]
     preview_window.set_ui_language("en")
