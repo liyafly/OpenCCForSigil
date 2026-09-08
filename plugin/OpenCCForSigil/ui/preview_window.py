@@ -239,10 +239,6 @@ def create_progress_reporter(total: int, parent: Any = None) -> ProgressReporter
     return ProgressReporter(qt_widgets, total, parent)
 
 
-def _selected_xhtml_ids(adapter: Any, inventory: Tuple[TextFile, ...]) -> Tuple[str, ...]:
-    return _selected_xhtml_ids_and_ignored(adapter, inventory)[0]
-
-
 def _selected_xhtml_ids_and_ignored(
     adapter: Any,
     inventory: Tuple[TextFile, ...],

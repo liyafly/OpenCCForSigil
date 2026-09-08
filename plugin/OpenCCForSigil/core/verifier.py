@@ -1,16 +1,8 @@
 """Structural and planned-span verification boundary."""
 
-from typing import Iterable, Mapping, Tuple
-
 from core.models import StagedFile, VerificationResult
 from core.staging import StagingError, apply_changes, source_sha256
 from document.tokenizer import TokenizedDocument, TokenizerOptions, tokenize_xhtml
-
-
-def verification_passed(file_id: str) -> VerificationResult:
-    """Return a neutral result for an empty staging set."""
-
-    return VerificationResult(file_id=file_id, passed=True)
 
 
 def verify_staged_file(
@@ -54,22 +46,6 @@ def verify_staged_file(
         passed=not diagnostics,
         diagnostics=tuple(_diagnostic(value) for value in diagnostics),
         checked_change_ids=tuple(change.change_id for change in plan.changes),
-    )
-
-
-def verify_staging(
-    staged_files: Iterable[StagedFile],
-    *,
-    tokenizer_options: TokenizerOptions | None = None,
-    original_documents: Mapping[str, TokenizedDocument] | None = None,
-) -> Tuple[VerificationResult, ...]:
-    return tuple(
-        verify_staged_file(
-            staged_file,
-            tokenizer_options=tokenizer_options,
-            original_document=(original_documents or {}).get(staged_file.file_id),
-        )
-        for staged_file in staged_files
     )
 
 

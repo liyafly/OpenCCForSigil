@@ -15,7 +15,6 @@ from logging_ext.logger import SessionLogger
 from opencc_backend.backend import OpenCCBackend
 from opencc_backend.configs import SUPPORTED_CONFIGS, is_jieba_config
 from sigil.adapter import SigilBookAdapter
-from sigil.scope import Scope
 from sigil.storage import UserDataStore, resolve_user_data_dir
 
 
@@ -139,7 +138,6 @@ class Controller:
                 backend = OpenCCBackend(selected_config)
                 self._run_backend_self_test(backend)
 
-            run_scope = Scope(str(profile["scope"]))
             self.session.transition(SessionState.ANALYZING)
             workflow = ConversionWorkflow(
                 adapter,
@@ -148,7 +146,7 @@ class Controller:
                     selected_config,
                     segmentation="jieba" if is_jieba_config(selected_config) else "mmseg",
                 ),
-                scope=run_scope,
+                scope=targets.scope,
                 targets=targets,
                 tokenizer_options=TokenizerOptions(
                     protected_elements=tuple(profile["protected_elements"]),
@@ -159,11 +157,11 @@ class Controller:
                 session_id=self.session.session_id,
                 profile_id=str(profile["id"]),
             )
-            progress = create_progress_reporter(len(targets.file_ids)) if targets is not None else None
+            progress = create_progress_reporter(len(targets.file_ids))
             try:
                 planned = workflow.plan(
-                    progress=progress.update if progress is not None else None,
-                    cancelled=progress.cancelled if progress is not None else None,
+                    progress=progress.update,
+                    cancelled=progress.cancelled,
                 )
             except WorkflowCancelled:
                 self.session.cancel()
@@ -180,8 +178,7 @@ class Controller:
                 )
                 return 1
             finally:
-                if progress is not None:
-                    progress.close()
+                progress.close()
             planned_change_count = sum(len(item.plan.changes) for item in planned)
             files_without_changes = sum(not item.plan.changes for item in planned)
             self.logger.event(
