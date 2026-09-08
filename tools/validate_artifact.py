@@ -90,6 +90,9 @@ def validate(artifact: Path, *, require_runtimes: bool = False) -> None:
         required = {
             "OpenCCForSigil/plugin.xml",
             "OpenCCForSigil/plugin.py",
+            "OpenCCForSigil/LICENSE",
+            "OpenCCForSigil/NOTICE",
+            "OpenCCForSigil/resources/third_party/CPPJIEBA_LICENSE",
             "OpenCCForSigil/vendor/opencc/manifest.json",
             "OpenCCForSigil/resources/third_party/THIRD_PARTY_NOTICES.md",
         }

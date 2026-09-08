@@ -1,5 +1,9 @@
 # Third-party notices
 
+OpenCCForSigil's own plugin source is licensed under the Apache License,
+Version 2.0; see `../../LICENSE`. The components below retain their original
+licenses and notices.
+
 OpenCCForSigil vendors the official BYVoid/OpenCC Python Binding distribution
 `opencc` from the pinned upstream release recorded in
 `vendor/opencc/manifest.json`.

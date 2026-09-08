@@ -1,5 +1,9 @@
 # Third-party notices
 
+Project-authored OpenCCForSigil source and documentation are licensed under
+the Apache License, Version 2.0; see [`LICENSE`](LICENSE). This file does not
+relicense any bundled dependency.
+
 The checked-in payload is the BYVoid/OpenCC official Python Binding
 distribution `opencc` `1.4.2`, imported only from the manifest-selected macOS
 arm64 / CPython 3.14 (`cp314`) wheel payload. Runtime never downloads or

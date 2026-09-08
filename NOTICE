@@ -1,0 +1,9 @@
+OpenCCForSigil
+Copyright 2026 OpenCCForSigil contributors.
+
+Project-authored source code and documentation are licensed under the Apache
+License, Version 2.0; see LICENSE.
+
+Bundled third-party components retain their original licenses and attribution
+requirements. See THIRD_PARTY_NOTICES.md and the notice files shipped under
+plugin/OpenCCForSigil/resources/third_party/.
