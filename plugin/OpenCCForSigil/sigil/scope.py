@@ -26,6 +26,10 @@ class TargetSelection:
 
     scope: Scope
     file_ids: Tuple[str, ...]
+    include_nav: bool = True
+    include_ncx: bool = False
+    include_metadata: bool = False
+    update_language: bool = False
 
     def __post_init__(self) -> None:
         ids = tuple(self.file_ids)

@@ -80,5 +80,22 @@
   "error.backend_self_test": "The OpenCC backend is unavailable: {detail}",
   "error.scope_invalid": "The selected XHTML targets are no longer available.",
   "error.scope_exactly_one": "Choose exactly one XHTML file for the one-file scope.",
-  "language.label": "Interface language"
+  "language.label": "Interface language",
+  "options.title": "Additional documents and language",
+  "options.include_nav": "Include NAV within the selected XHTML files",
+  "options.include_ncx": "Also convert NCX labels (EPUB 2 navigation)",
+  "options.include_metadata": "Also convert allowed book metadata (high risk)",
+  "options.language_metadata": "Language tags",
+  "options.language_preset": "Language tag style",
+  "options.language_region": "Explicit generic Traditional region",
+  "options.keep": "Keep unchanged",
+  "options.suggest": "Propose changes in preview",
+  "options.force": "Explicitly update Chinese tags",
+  "options.legacy": "Legacy region tags",
+  "options.bcp47": "BCP47 script tags",
+  "options.no_region": "No explicit region",
+  "options.zh-TW": "Taiwan (zh-TW)",
+  "options.zh-HK": "Hong Kong (zh-HK)",
+  "options.language_note": "Existing Chinese tags and metadata language are reviewed together. Other languages and non-Han scripts remain unchanged.",
+  "options.region_required": "Choose zh-TW or zh-HK explicitly for forced generic Traditional Legacy tags, or use BCP47."
 }

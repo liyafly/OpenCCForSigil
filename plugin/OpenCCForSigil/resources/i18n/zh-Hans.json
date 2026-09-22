@@ -80,5 +80,22 @@
   "error.backend_self_test": "OpenCC 后端不可用：{detail}",
   "error.scope_invalid": "所选 XHTML 文件已不可用。",
   "error.scope_exactly_one": "单个文件模式必须准确选择一个 XHTML 文件。",
-  "language.label": "界面语言"
+  "language.label": "界面语言",
+  "options.title": "附加文档与语言标记",
+  "options.include_nav": "包含所选 XHTML 中的 NAV 目录",
+  "options.include_ncx": "同时转换 NCX 目录文字（EPUB 2）",
+  "options.include_metadata": "同时转换白名单书籍元数据（高风险）",
+  "options.language_metadata": "语言标记",
+  "options.language_preset": "语言标记格式",
+  "options.language_region": "通用繁体明确地区",
+  "options.keep": "保持不变",
+  "options.suggest": "在预览中建议修改",
+  "options.force": "明确更新中文标记",
+  "options.legacy": "传统地区标记",
+  "options.bcp47": "BCP47 文字标记",
+  "options.no_region": "不指定地区",
+  "options.zh-TW": "台湾（zh-TW）",
+  "options.zh-HK": "香港（zh-HK）",
+  "options.language_note": "现有中文标记与元数据语言会作为一组审阅。其他语言和非汉字文字标记保持不变。",
+  "options.region_required": "强制修改通用繁体的传统标记时，请明确选择 zh-TW／zh-HK，或使用 BCP47。"
 }

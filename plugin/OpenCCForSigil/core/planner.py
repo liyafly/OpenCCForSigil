@@ -8,7 +8,8 @@ import json
 from typing import Optional
 
 from core.converter import OfficialBackendConverter
-from core.models import ConversionPlan, ConvertRequest, SourceSpan, TextTarget, TokenChange
+from core.models import ConversionPlan, ConvertRequest, SourceSpan, TextTarget, TokenChange, ConvertResult
+from transforms.language_tags import is_han_language
 from document.tokenizer import TokenizedDocument
 from opencc_backend.backend import OpenCCBackend
 
@@ -23,6 +24,7 @@ def build_conversion_plan(
     session_id: str = "",
     profile_id: str = "",
     rules_snapshot_hash: Optional[str] = None,
+    document_kind: str = "xhtml",
 ) -> ConversionPlan:
     """Analyze writable targets and freeze their official OpenCC patches.
 
@@ -42,9 +44,27 @@ def build_conversion_plan(
     for target in document.targets:
         if not target.convert:
             continue
-        result = converter.convert(target.source_text, request)
+        if target.attribute_name in {"lang", "xml:lang"} or target.tag_name == "dc:language":
+            if not request.language_tag or not is_han_language(target.source_text):
+                continue
+            if target.source_text.strip() == request.language_tag:
+                continue
+            # Preserve surrounding whitespace in dc:language text.
+            leading = len(target.source_text) - len(target.source_text.lstrip())
+            trailing = len(target.source_text.rstrip())
+            language_change = TokenChange(
+                source=target.source_text[leading:trailing], target=request.language_tag,
+                span=SourceSpan(leading, trailing), rule_source="language_metadata",
+                category="language_metadata", risk="HIGH", group_id="language_metadata",
+            )
+            result = ConvertResult(target.source_text, request.language_tag, (language_change,))
+        else:
+            result = converter.convert(target.source_text, request)
         for local_change in result.changes:
-            changes.append(_absolute_change(file_id, target, local_change, source))
+            change = _absolute_change(file_id, target, local_change, source)
+            if document_kind == "metadata":
+                change = replace(change, risk="HIGH")
+            changes.append(replace(change, document_kind=document_kind))
 
     provenance = backend.provenance().as_dict()
     provenance_hash = sha256(
@@ -66,6 +86,7 @@ def build_conversion_plan(
         backend_provenance_hash=provenance_hash,
         targets=tuple(document.targets),
         source_length=len(source),
+        document_kind=document_kind,
     )
 
 
@@ -98,10 +119,12 @@ def _absolute_change(
         file_id=file_id,
         target_id=target.node_id,
         category=local_change.category,
-        risk="LOW",
-        attribution_method=None,
+        risk=local_change.risk,
+        attribution_method=local_change.attribution_method,
         context_before=source[before_start:start],
         context_after=source[end:after_end],
+        document_kind=target.document_kind,
+        group_id=local_change.group_id,
     )
 
 

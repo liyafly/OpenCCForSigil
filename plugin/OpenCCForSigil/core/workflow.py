@@ -11,6 +11,8 @@ from core.preview import PreviewSession
 from core.staging import StagedFile, StagingArea, source_sha256
 from core.verifier import verify_staged_file
 from document.tokenizer import TokenizedDocument, TokenizerOptions, tokenize_xhtml
+from document.xml_processor import tokenize_xml
+from transforms.language_tags import with_language_targets
 from opencc_backend.backend import OpenCCBackend
 from sigil.adapter import CommitError, CommitResult, SigilBookAdapter
 from sigil.scope import Scope, TargetSelection
@@ -39,6 +41,7 @@ class SourceDocument:
     file_id: str
     href: str
     source: str
+    document_kind: str = "xhtml"
 
 
 @dataclass(frozen=True)
@@ -101,9 +104,9 @@ class ConversionWorkflow:
         cancelled: Optional[Callable[[], bool]] = None,
     ) -> Tuple[SourceDocument, ...]:
         target_files = tuple(
-            self.adapter.text_files_for_targets(self.targets)
+            self.adapter.conversion_inventory(self.targets)
             if self.targets is not None
-            else self.adapter.text_files(self.scope)
+            else ((file_id, href, "xhtml") for file_id, href in self.adapter.text_files(self.scope))
         )
         sources = []
         total = len(target_files)
@@ -117,7 +120,7 @@ class ConversionWorkflow:
                 href="…",
                 cancel_message="analysis cancelled",
             )
-        for index, (file_id, href) in enumerate(target_files, start=1):
+        for index, (file_id, href, kind) in enumerate(target_files, start=1):
             _report_progress(
                 progress,
                 cancelled,
@@ -128,7 +131,7 @@ class ConversionWorkflow:
                 cancel_message="analysis cancelled",
             )
             source = self.adapter.read(file_id)
-            sources.append(SourceDocument(file_id=file_id, href=href, source=source))
+            sources.append(SourceDocument(file_id=file_id, href=href, source=source, document_kind=kind))
             _report_progress(
                 progress,
                 cancelled,
@@ -198,10 +201,21 @@ class ConversionWorkflow:
         sessions = tuple(previews)
         if len(sessions) != len(self._planned):
             raise WorkflowError("preview session count does not match planned documents")
-        return tuple(
+        if any(preview.plan != planned.plan for planned, preview in zip(self._planned, sessions)):
+            raise WorkflowError("preview plan changed; rescan required")
+        finalized = tuple(
             (planned, preview.finalize(require_explicit=require_explicit))
             for planned, preview in zip(self._planned, sessions)
         )
+        grouped = {}
+        accepted = {change.change_id for _, plan in finalized for change in plan.changes}
+        for item in self._planned:
+            for change in item.plan.changes:
+                if change.group_id:
+                    grouped.setdefault(change.group_id, set()).add(change.change_id)
+        if any(ids & accepted and not ids <= accepted for ids in grouped.values()):
+            raise WorkflowError("grouped language changes must be accepted or skipped together")
+        return finalized
 
     def stage(
         self,
@@ -325,7 +339,17 @@ class ConversionWorkflow:
             raise WorkflowCommitError(exc) from exc
 
     def _plan_document(self, source_document: SourceDocument) -> PlannedDocument:
-        tokenized = tokenize_xhtml(source_document.source, self.tokenizer_options)
+        kind = source_document.document_kind
+        if kind in {"ncx", "metadata"}:
+            tokenized = tokenize_xml(
+                source_document.source, document_kind=kind,
+                convert_metadata=bool(self.targets and self.targets.include_metadata),
+                include_language=bool(self.request.language_tag),
+            )
+        else:
+            tokenized = tokenize_xhtml(source_document.source, self.tokenizer_options)
+            if self.request.language_tag:
+                tokenized = with_language_targets(tokenized)
         plan = build_conversion_plan(
             file_id=source_document.file_id,
             source=source_document.source,
@@ -334,6 +358,7 @@ class ConversionWorkflow:
             request=self.request,
             session_id=self.session_id,
             profile_id=self.profile_id,
+            document_kind=kind,
         )
         return PlannedDocument(source_document, tokenized, plan)
 

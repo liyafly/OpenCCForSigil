@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -16,6 +17,7 @@ from opencc_backend.backend import OpenCCBackend
 from opencc_backend.configs import SUPPORTED_CONFIGS, is_jieba_config
 from sigil.adapter import SigilBookAdapter
 from sigil.storage import UserDataStore, resolve_user_data_dir
+from transforms.language_tags import target_language
 
 
 class Controller:
@@ -118,6 +120,9 @@ class Controller:
             # The language choice is now settled before the direction dialog
             # is constructed, including on a first launch with no preference.
             available_configs = backend.available_configs()
+            from ui.run_options import configure_run_options
+            configure_run_options(preferences.get("run_options"),
+                                  metadata_available=adapter.metadata_supported())
             set_jieba_status(backend.jieba_error)
             if backend.jieba_error:
                 self.logger.event("optional_jieba_unavailable", reason=backend.jieba_error)
@@ -129,10 +134,21 @@ class Controller:
                     self._summary(status="cancelled", files_scanned=0, changes=0, files_changed=0)
                 )
                 return 1
+            options = dict(getattr(selected_config, "options", {}))
+            selected_config = str(selected_config)
+            language_tag = target_language(
+                selected_config, options.get("language_metadata", "keep"),
+                options.get("language_preset", "legacy"), options.get("language_region", ""),
+            )
+            targets = replace(targets, include_nav=options.get("include_nav", True),
+                              include_ncx=options.get("include_ncx", False),
+                              include_metadata=options.get("include_metadata", False),
+                              update_language=bool(language_tag))
             self.storage.save_preferences(
                 {
                     **preferences,
                     "last_conversion_config": selected_config,
+                    "run_options": options,
                     "ui": {**ui_preferences, "language": language},
                 }
             )
@@ -148,6 +164,7 @@ class Controller:
                 ConvertRequest(
                     selected_config,
                     segmentation="jieba" if is_jieba_config(selected_config) else "mmseg",
+                    language_tag=language_tag,
                 ),
                 scope=targets.scope,
                 targets=targets,
@@ -190,6 +207,9 @@ class Controller:
                 config=selected_config,
                 files_scanned=len(planned),
                 changes=planned_change_count,
+                document_counts={kind: sum(item.source.document_kind == kind for item in planned)
+                                 for kind in ("xhtml", "ncx", "metadata")},
+                language_tag=language_tag,
             )
             self.session.transition(SessionState.PLANNED)
 

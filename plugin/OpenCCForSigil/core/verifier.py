@@ -3,6 +3,7 @@
 from core.models import StagedFile, VerificationResult
 from core.staging import StagingError, apply_changes, source_sha256
 from document.tokenizer import TokenizedDocument, TokenizerOptions, tokenize_xhtml
+from document.xml_processor import tokenize_xml
 
 
 def verify_staged_file(
@@ -29,13 +30,18 @@ def verify_staged_file(
     except UnicodeEncodeError:
         diagnostics.append("INVALID_UTF8")
 
+    def tokenize(source):
+        if plan.document_kind in {"ncx", "metadata"}:
+            return tokenize_xml(source, document_kind=plan.document_kind)
+        return tokenize_xhtml(source, tokenizer_options)
+
     if original_document is None or original_document.source != staged_file.original:
-        original_doc = tokenize_xhtml(staged_file.original, tokenizer_options)
+        original_doc = tokenize(staged_file.original)
     else:
         # The workflow already tokenized the immutable source while building
         # the plan. Reuse that document and tokenize only the staged output.
         original_doc = original_document
-    converted_doc = tokenize_xhtml(staged_file.converted, tokenizer_options)
+    converted_doc = tokenize(staged_file.converted)
     if original_doc.structural_signature != converted_doc.structural_signature:
         diagnostics.append("XHTML_STRUCTURE_CHANGED")
     if original_doc.protected_attribute_signature() != converted_doc.protected_attribute_signature():

@@ -64,6 +64,7 @@ class ConvertRequest:
     config: str
     segmentation: str = "mmseg"
     rules_snapshot: RuleSnapshot = field(default_factory=RuleSnapshot)
+    language_tag: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -80,6 +81,8 @@ class TokenChange:
     attribution_method: Optional[str] = None
     context_before: str = ""
     context_after: str = ""
+    document_kind: str = "xhtml"
+    group_id: str = ""
 
 
 @dataclass(frozen=True)
@@ -117,6 +120,7 @@ class ConversionPlan:
     backend_provenance_hash: str = ""
     targets: Tuple[TextTarget, ...] = ()
     source_length: int = 0
+    document_kind: str = "xhtml"
 
 
 @dataclass(frozen=True)

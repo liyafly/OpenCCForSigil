@@ -533,15 +533,27 @@ class _PreviewDialog:
         entry = self._current_entry()
         if entry is None:
             return
-        entry[0].accept_this(entry[1].change_id)
-        self._refresh_current()
+        self._decide_entry(entry, True)
 
     def _reject_this(self) -> None:
         entry = self._current_entry()
         if entry is None:
             return
-        entry[0].reject_this(entry[1].change_id)
-        self._refresh_current()
+        self._decide_entry(entry, False)
+
+    def _decide_entry(self, entry, accepted):
+        preview, change = entry
+        if change.group_id:
+            self._decide_group(change.group_id, accepted)
+            self._refresh()
+        else:
+            (preview.accept_this if accepted else preview.reject_this)(change.change_id)
+            self._refresh_current()
+
+    def _decide_group(self, group_id, accepted):
+        for preview, change in self._entries:
+            if change.group_id == group_id:
+                (preview.accept_this if accepted else preview.reject_this)(change.change_id)
 
     def _refresh_current(self) -> None:
         row = self.list_widget.currentRow()
@@ -560,6 +572,9 @@ class _PreviewDialog:
         if entry is None:
             return
         entry[0].accept_all(overwrite=True)
+        for change in entry[0].changes:
+            if change.group_id:
+                self._decide_group(change.group_id, True)
         self._refresh()
 
     def _reject_file(self) -> None:
@@ -567,6 +582,9 @@ class _PreviewDialog:
         if entry is None:
             return
         entry[0].reject_all(overwrite=True)
+        for change in entry[0].changes:
+            if change.group_id:
+                self._decide_group(change.group_id, False)
         self._refresh()
 
     def _accept_all(self) -> None:
@@ -635,6 +653,9 @@ class _ConversionConfigDialog:
         self.jieba_checkbox.setToolTip(self._translator.text("config.jieba_tooltip"))
         layout.addWidget(self.jieba_checkbox)
 
+        from ui.run_options import RunOptionsPanel
+        self.options_panel = RunOptionsPanel(qt_widgets, translator, layout)
+
         buttons = qt_widgets.QHBoxLayout()
         self.cancel_button = qt_widgets.QPushButton(self._translator.text("common.cancel"))
         self.continue_button = qt_widgets.QPushButton(self._translator.text("config.continue"))
@@ -670,12 +691,24 @@ class _ConversionConfigDialog:
             )
 
     def _accept(self) -> None:
+        from transforms.language_tags import target_language
+        from ui.run_options import ConfigurationChoice
+
         base_config = str(self.combo.currentData())
-        self.selected_config = (
+        config = (
             self._jieba_configs[base_config]
             if self.jieba_checkbox.isChecked() and base_config in self._jieba_configs
             else base_config
         )
+        options = self.options_panel.values()
+        try:
+            target_language(config, options["language_metadata"], options["language_preset"],
+                            options["language_region"])
+        except ValueError:
+            self._qt.QMessageBox.warning(self.dialog, self._translator.text("config.title"),
+                                        self._translator.text("options.region_required"))
+            return
+        self.selected_config = ConfigurationChoice(config, options)
         self.accepted = True
         self.dialog.accept()
 
