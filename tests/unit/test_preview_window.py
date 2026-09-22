@@ -1,4 +1,4 @@
-from core.models import ConversionPlan, SourceSpan, TokenChange
+from core.models import ConversionPlan, Diagnostic, SourceSpan, TokenChange
 from core.preview import PreviewSession
 from ui.preview_window import _PreviewDialog, _translator
 
@@ -58,6 +58,14 @@ class _FakeDialog:
 
     def accept(self) -> None:
         self.accept_calls += 1
+
+
+class _FakeCombo:
+    def __init__(self, value=None) -> None:
+        self.value = value
+
+    def currentData(self):
+        return self.value
 
 
 def _preview_dialog(change_count: int = 3, current_row: int = 1):
@@ -155,3 +163,82 @@ def test_preview_dialog_apply_blocks_undecided_and_accepts_decided_without_final
 
     dialog._apply()
     assert dialog.dialog.accept_calls == 1
+
+
+def test_filtered_group_decision_reaches_hidden_language_metadata_entries():
+    changes = (
+        TokenChange(
+            source="zh-CN", target="zh-TW", span=SourceSpan(0, 5),
+            rule_source="language_metadata", change_id="language-visible",
+            file_id="chapter.xhtml", category="language_metadata", risk="HIGH",
+            group_id="language_metadata",
+        ),
+        TokenChange(
+            source="zh-CN", target="zh-TW", span=SourceSpan(0, 5),
+            rule_source="language_metadata", change_id="language-hidden",
+            file_id="content.opf", category="language_metadata", risk="HIGH",
+            group_id="language_metadata",
+        ),
+        TokenChange(
+            source="后", target="後", span=SourceSpan(6, 7),
+            rule_source="OpenCC:s2t", change_id="character-visible",
+            file_id="chapter.xhtml", category="character", risk="LOW",
+        ),
+    )
+    first = PreviewSession(ConversionPlan(source_sha256="", changes=(changes[0], changes[2])))
+    second = PreviewSession(ConversionPlan(source_sha256="", changes=(changes[1],)))
+    dialog = object.__new__(_PreviewDialog)
+    dialog._previews = (first, second)
+    dialog._entries = tuple((preview, change) for preview in dialog._previews for change in preview.changes)
+    dialog.file_filter = _FakeCombo("chapter.xhtml")
+    dialog._refresh = lambda: None
+    dialog._decide_filtered(True)
+
+    assert first.decision("language-visible").value == "accept_this"
+    assert second.decision("language-hidden").value == "accept_this"
+    assert first.decision("character-visible").value == "accept_this"
+
+
+def test_preview_row_truncates_long_text_but_detail_keeps_full_text():
+    source = "前" * 300
+    change = TokenChange(
+        source=source, target="後" * 300, span=SourceSpan(0, 300),
+        rule_source="OpenCC:s2t", change_id="long", file_id="chapter.xhtml",
+    )
+    preview = PreviewSession(ConversionPlan(source_sha256="", changes=(change,)))
+    row = _PreviewDialog._entry_text(preview, change)
+
+    assert len(row) < 220
+    assert source not in row
+    assert "…" in row
+
+
+def test_plan_diagnostics_are_visible_in_summary_and_detail():
+    change = TokenChange(
+        source="后", target="後", span=SourceSpan(0, 1), rule_source="OpenCC:s2t",
+        change_id="diagnostic", file_id="chapter.xhtml",
+    )
+    preview = PreviewSession(ConversionPlan(source_sha256="", changes=(change,)))
+    dialog = object.__new__(_PreviewDialog)
+    dialog._previews = (preview,)
+    dialog._entries = ((preview, change),)
+    dialog._planned = (
+        type("Planned", (), {"plan": ConversionPlan(
+            source_sha256="", file_id="chapter.xhtml", diagnostics=(
+                Diagnostic("MIXED_SCRIPT", "mixed script input"),
+                Diagnostic("INLINE_BOUNDARY", "inline boundary"),
+            ),
+        )})(),
+    )
+    dialog.list_widget = _FakeListWidget([_FakeItem("row")], 0)
+    dialog.summary = _FakeLabel()
+    dialog.detail = _FakeDetail()
+    dialog.apply_button = _FakeButton()
+
+    dialog._update_summary()
+    dialog._show_current(0)
+
+    assert "MIXED_SCRIPT" in dialog.summary.text
+    assert "INLINE_BOUNDARY" in dialog.summary.text
+    assert "MIXED_SCRIPT" in dialog.detail.text
+    assert "mixed script input" in dialog.detail.text

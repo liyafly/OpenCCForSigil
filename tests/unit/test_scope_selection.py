@@ -2,7 +2,7 @@ import pytest
 
 from sigil.scope import Scope, ScopeSelectionError, TargetSelection, TextFile, resolve_target_selection
 from sigil.adapter import SigilBookAdapter
-from ui.preview_window import _selected_xhtml_ids_and_ignored
+from ui.preview_window import _selected_xhtml_ids_and_ignored, _spine_ids
 
 
 FILES = (
@@ -88,3 +88,18 @@ def test_missing_selection_api_and_non_xhtml_selection_are_safe():
             return iter(("chapter", "cover"))
 
     assert _selected_xhtml_ids_and_ignored(MixedSelection(), inventory) == (("chapter",), 1)
+
+
+def test_spine_ids_are_read_from_adapter_metadata_without_content_reads():
+    calls = []
+
+    class SpineAdapter:
+        def text_files(self, scope):
+            calls.append(scope)
+            assert scope is Scope.SPINE
+            return iter((("spine-a", "Text/a.xhtml"), ("spine-b", "Text/b.xhtml")))
+
+    adapter = SpineAdapter()
+    assert _spine_ids(adapter) == ("spine-a", "spine-b")
+    assert calls == [Scope.SPINE]
+    assert resolve_target_selection(FILES, Scope.SPINE, ("a", "b")).file_ids == ("a", "b")

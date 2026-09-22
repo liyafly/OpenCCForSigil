@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from app.session import Session, SessionState
+from app.settings import RunSettings, profile_options, settings_hash
 from app.version import PLUGIN_VERSION
 from core.models import ConvertRequest
 from core.workflow import ConversionWorkflow, WorkflowCancelled, WorkflowCommitError
@@ -121,114 +122,156 @@ class Controller:
             # is constructed, including on a first launch with no preference.
             available_configs = backend.available_configs()
             from ui.run_options import configure_run_options
-            configure_run_options(preferences.get("run_options"),
-                                  metadata_available=adapter.metadata_supported())
-            set_jieba_status(backend.jieba_error)
-            if backend.jieba_error:
-                self.logger.event("optional_jieba_unavailable", reason=backend.jieba_error)
-            selected_config = choose_conversion_config(available_configs, default_config=default_config)
-            if selected_config is None:
-                self.storage.save_preferences(scope_preferences)
-                self.session.cancel()
-                self.logger.summary(
-                    self._summary(status="cancelled", files_scanned=0, changes=0, files_changed=0)
-                )
-                return 1
-            options = dict(getattr(selected_config, "options", {}))
-            selected_config = str(selected_config)
-            language_tag = target_language(
-                selected_config, options.get("language_metadata", "keep"),
-                options.get("language_preset", "legacy"), options.get("language_region", ""),
-            )
-            targets = replace(targets, include_nav=options.get("include_nav", True),
-                              include_ncx=options.get("include_ncx", False),
-                              include_metadata=options.get("include_metadata", False),
-                              update_language=bool(language_tag))
-            self.storage.save_preferences(
-                {
-                    **preferences,
-                    "last_conversion_config": selected_config,
-                    "run_options": options,
-                    "ui": {**ui_preferences, "language": language},
-                }
-            )
-            if selected_config != backend.config:
-                backend.close()
-                backend = OpenCCBackend(selected_config)
-                self._run_backend_self_test(backend)
-
-            self.session.transition(SessionState.ANALYZING)
-            workflow = ConversionWorkflow(
-                adapter,
-                backend,
-                ConvertRequest(
-                    selected_config,
-                    segmentation="jieba" if is_jieba_config(selected_config) else "mmseg",
-                    language_tag=language_tag,
-                ),
-                scope=targets.scope,
-                targets=targets,
-                tokenizer_options=TokenizerOptions(
-                    protected_elements=tuple(profile["protected_elements"]),
-                    convert_attributes=tuple(profile["attributes"]),
-                    svg_text=bool(profile["svg_text"]),
-                    mathml=bool(profile["mathml"]),
-                ),
-                session_id=self.session.session_id,
-                profile_id=str(profile["id"]),
-            )
-            progress = create_progress_reporter(len(targets.file_ids))
-            try:
-                planned = workflow.plan_in_worker(
-                    OpenCCBackend,
-                    progress=progress.update,
-                    cancelled=progress.cancelled,
-                )
-            except WorkflowCancelled:
-                self.session.cancel()
-                self.logger.summary(
-                    self._summary(status="cancelled", files_scanned=0, changes=0, files_changed=0)
-                )
-                _show_result_safely(
-                    show_result,
-                    status="cancelled",
-                    files_scanned=0,
-                    files_changed=0,
-                    accepted_changes=0,
-                    skipped_changes=0,
-                )
-                return 1
-            finally:
-                progress.close()
-            planned_change_count = sum(len(item.plan.changes) for item in planned)
-            files_without_changes = sum(not item.plan.changes for item in planned)
-            self.logger.event(
-                "plan_built",
-                profile_id=profile["id"],
-                config=selected_config,
-                files_scanned=len(planned),
-                changes=planned_change_count,
-                document_counts={kind: sum(item.source.document_kind == kind for item in planned)
-                                 for kind in ("xhtml", "ncx", "metadata")},
-                language_tag=language_tag,
-            )
-            self.session.transition(SessionState.PLANNED)
-
-            self.session.transition(SessionState.PREVIEWING)
-            preview = show_preview(planned)
-            if not preview.accepted:
-                self.session.cancel()
-                self.logger.summary(
-                    self._summary(
-                        status="cancelled",
-                        files_scanned=len(planned),
-                        changes=planned_change_count,
-                        files_changed=0,
-                        files_without_changes=files_without_changes,
+            settings = RunSettings(self.storage, adapter, backend, preferences)
+            while True:
+                initial_options = profile_options(settings.active)
+                previous_options = preferences.get("run_options")
+                if isinstance(previous_options, dict):
+                    initial_options.update(previous_options)
+                configure_run_options(initial_options, metadata_available=adapter.metadata_supported(),
+                                      services=settings)
+                set_jieba_status(backend.jieba_error)
+                if backend.jieba_error:
+                    self.logger.event("optional_jieba_unavailable", reason=backend.jieba_error)
+                selected_config = choose_conversion_config(available_configs, default_config=default_config)
+                if selected_config is None:
+                    self.storage.save_preferences(scope_preferences)
+                    self.session.cancel()
+                    self.logger.summary(
+                        self._summary(status="cancelled", files_scanned=0, changes=0, files_changed=0)
                     )
+                    return 1
+                options = dict(getattr(selected_config, "options", {}))
+                selected_config = str(selected_config)
+                language_tag = target_language(
+                    selected_config, options.get("language_metadata", "keep"),
+                    options.get("language_preset", "legacy"), options.get("language_region", ""),
                 )
-                return 1
+                targets = replace(targets, include_nav=options.get("include_nav", True),
+                                  include_ncx=options.get("include_ncx", False),
+                                  include_metadata=options.get("include_metadata", False),
+                                  update_language=bool(language_tag))
+                active_profile = settings.current_profile(selected_config, options)
+                frozen_rules = settings.freeze_rules(active_profile)
+                self.storage.save_preferences(
+                    {
+                        **preferences,
+                        "profile_id": (active_profile.id if
+                            (settings.profiles.directory / f"{active_profile.id}.json").exists() else None),
+                        "last_conversion_config": selected_config,
+                        "run_options": options,
+                        "ui": {**ui_preferences, "language": language},
+                    }
+                )
+                if selected_config != backend.config:
+                    backend.close()
+                    backend = OpenCCBackend(selected_config)
+                    self._run_backend_self_test(backend)
 
+                settings.language = language
+                settings.session_id = self.session.session_id
+                settings.profile = active_profile
+                settings.backend = backend
+                self.session.metadata.update(config=selected_config, profile_id=active_profile.id,
+                                             profile_hash=settings_hash(active_profile),
+                                             rules_hash=frozen_rules.rules_hash)
+                self.session.transition(SessionState.ANALYZING)
+                workflow = ConversionWorkflow(
+                    adapter,
+                    backend,
+                    ConvertRequest(
+                        selected_config,
+                        segmentation="jieba" if is_jieba_config(selected_config) else "mmseg",
+                        language_tag=language_tag,
+                        rules_snapshot=frozen_rules,
+                        quotation_mode=active_profile.quotation_mode,
+                        punctuation_mode=active_profile.punctuation_mode,
+                        pivot_chain=active_profile.pivot_chain if active_profile.force_pivot else (),
+                        detailed_classification=bool(options.get("detailed_classification", True)),
+                        diagnose_mixed=bool(options.get("diagnose_mixed", True)),
+                        profile_id=active_profile.id,
+                        book_fingerprint=(settings.book_fingerprint if
+                            any(rule.scope == "book" for rule in frozen_rules.rules) else ""),
+                    ),
+                    scope=targets.scope,
+                    targets=targets,
+                    tokenizer_options=TokenizerOptions(
+                        decode_numeric_cjk_refs=active_profile.decode_numeric_cjk_refs,
+                        protected_elements=("script", "style")
+                            + (() if active_profile.convert_code_pre else ("code", "pre"))
+                            + (() if active_profile.convert_ruby_rt else ("rt", "rp")),
+                        convert_attributes=tuple(name for name, enabled in (
+                            ("alt", active_profile.convert_alt), ("title", active_profile.convert_title),
+                            ("aria-label", active_profile.convert_aria_label)) if enabled),
+                    ),
+                    session_id=self.session.session_id,
+                    profile_id=active_profile.id,
+                    snapshot_guard=settings.snapshot_guard(),
+                )
+                progress = create_progress_reporter(len(targets.file_ids))
+                try:
+                    planned = workflow.plan_in_worker(
+                        OpenCCBackend,
+                        progress=progress.update,
+                        cancelled=progress.cancelled,
+                    )
+                except WorkflowCancelled:
+                    self.session.cancel()
+                    self.logger.summary(
+                        self._summary(status="cancelled", files_scanned=0, changes=0, files_changed=0)
+                    )
+                    _show_result_safely(
+                        show_result,
+                        status="cancelled",
+                        files_scanned=0,
+                        files_changed=0,
+                        accepted_changes=0,
+                        skipped_changes=0,
+                    )
+                    return 1
+                finally:
+                    progress.close()
+                planned_change_count = sum(len(item.plan.changes) for item in planned)
+                files_without_changes = sum(not item.plan.changes for item in planned)
+                self.logger.event(
+                    "plan_built",
+                    profile_id=active_profile.id,
+                    profile_hash=settings_hash(active_profile),
+                    rules_hash=frozen_rules.rules_hash,
+                    config=selected_config,
+                    files_scanned=len(planned),
+                    changes=planned_change_count,
+                    document_counts={kind: sum(item.source.document_kind == kind for item in planned)
+                                     for kind in ("xhtml", "nav", "ncx", "metadata")},
+                    language_tag=language_tag,
+                )
+                self.session.transition(SessionState.PLANNED)
+
+                self.session.transition(SessionState.PREVIEWING)
+                preview = show_preview(planned)
+                if getattr(preview, "back_to_settings", False):
+                    preferences = self.storage.load_preferences()
+                    default_config = selected_config
+                    settings.backend = backend
+                    self.session.transition(SessionState.SCANNING)
+                    continue
+                if not preview.accepted:
+                    self.session.cancel()
+                    self.logger.summary(
+                        self._summary(
+                            status="cancelled",
+                            files_scanned=len(planned),
+                            changes=planned_change_count,
+                            files_changed=0,
+                            files_without_changes=files_without_changes,
+                        )
+                    )
+                    return 1
+
+                break
+
+            self.session.metadata["checkpoint_notice_shown"] = bool(
+                getattr(preview, "checkpoint_notice_shown", False))
             finalized = workflow.finalize(preview.previews)
             accepted_change_count = sum(len(plan.changes) for _, plan in finalized)
             skipped_change_count = planned_change_count - accepted_change_count
@@ -281,6 +324,7 @@ class Controller:
                     skipped_changes=skipped_change_count,
                 )
             )
+            self._record_history(planned, staged, backend)
             _show_result_safely(
                 show_result,
                 status="success",
@@ -375,6 +419,34 @@ class Controller:
         )
         return 0
 
+    def _record_history(self, planned, staged, backend):
+        from core.staging import source_sha256
+        from logging_ext.history import HistoryStore
+        by_id = {item.source.file_id: item for item in planned}
+        manifest = {
+            "schema_version": 1, "session_id": self.session.session_id,
+            "files": [{
+                "id": item.file_id, "href": by_id[item.file_id].source.href,
+                "before_sha256": source_sha256(item.original),
+                "after_sha256": source_sha256(item.converted),
+                "bytes_before": len(item.original.encode("utf-8")),
+                "bytes_after": len(item.converted.encode("utf-8")),
+                "change_count": len(item.plan.changes),
+                "high_risk_changes": sum(change.risk == "HIGH" for change in item.plan.changes),
+                "warnings": [diagnostic.code for diagnostic in item.plan.diagnostics],
+            } for item in staged],
+        }
+        try:
+            summary = json.loads(self.logger.summary_path.read_text(encoding="utf-8"))
+            HistoryStore(self.storage.paths.history).record_session(
+                summary, manifest, backend.provenance().as_dict())
+            self.logger.event("commit_manifest", **manifest)
+        except (OSError, ValueError) as exc:
+            # A failed audit export after the write boundary must not pretend
+            # that the verified conversion itself failed or was rolled back.
+            self.logger.event("history_failed", level="ERROR", error=str(exc))
+            print(f"Conversion completed, but history could not be saved: {exc}")
+
     def _summary(
         self,
         *,
@@ -389,6 +461,8 @@ class Controller:
     ) -> Dict[str, object]:
         summary: Dict[str, object] = {
             "plugin_version": PLUGIN_VERSION,
+            "session_id": self.session.session_id,
+            **self.session.metadata,
             "status": status,
             "state": self.session.state.value,
             "files_scanned": files_scanned,

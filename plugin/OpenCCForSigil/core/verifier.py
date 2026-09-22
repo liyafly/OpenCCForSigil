@@ -4,6 +4,7 @@ from core.models import StagedFile, VerificationResult
 from core.staging import StagingError, apply_changes, source_sha256
 from document.tokenizer import TokenizedDocument, TokenizerOptions, tokenize_xhtml
 from document.xml_processor import tokenize_xml
+from document.validation import validate_xhtml_syntax
 
 
 def verify_staged_file(
@@ -42,6 +43,11 @@ def verify_staged_file(
         # the plan. Reuse that document and tokenize only the staged output.
         original_doc = original_document
     converted_doc = tokenize(staged_file.converted)
+    if plan.document_kind in {"xhtml", "nav"}:
+        try:
+            validate_xhtml_syntax(staged_file.converted)
+        except ValueError as exc:
+            diagnostics.append(f"INVALID_XHTML:{exc}")
     if original_doc.structural_signature != converted_doc.structural_signature:
         diagnostics.append("XHTML_STRUCTURE_CHANGED")
     if original_doc.protected_attribute_signature() != converted_doc.protected_attribute_signature():

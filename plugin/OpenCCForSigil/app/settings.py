@@ -1,0 +1,219 @@
+"""Persistent profiles/rules and immutable run settings shared by the UI."""
+
+from dataclasses import replace
+from hashlib import sha256
+import json
+from pathlib import Path
+from uuid import uuid4
+
+from app.profiles import Profile, ProfileStore
+from core.models import RuleSnapshot
+from rules.store import RuleSet, RuleStore
+
+
+ALIASES = {"include_nav": "convert_nav", "include_ncx": "convert_ncx",
+           "include_metadata": "convert_metadata"}
+
+
+def profile_options(profile):
+    values = profile.to_dict()
+    values.update({key: values[value] for key, value in ALIASES.items()})
+    if values.get("language_region") == "auto":
+        values["language_region"] = ""
+    return values
+
+
+class RunSettings:
+    def __init__(self, storage, adapter, backend, preferences):
+        self.storage, self.adapter, self.backend = storage, adapter, backend
+        self.profiles = ProfileStore(storage.paths.profiles)
+        self.rules = RuleStore(storage.paths.rules)
+        identifier = preferences.get("profile_id")
+        self.active = self.profiles.load(identifier) if identifier else Profile(
+            id="conservative", name="Conservative", ruleset_ids=("default",))
+        self._book_fingerprint = None
+
+    @property
+    def book_fingerprint(self):
+        if self._book_fingerprint is None:
+            self._book_fingerprint = self.adapter.book_fingerprint()
+        return self._book_fingerprint
+
+    def current_profile(self, config, options):
+        payload = self.active.to_dict()
+        payload.update({ALIASES.get(key, key): value for key, value in options.items()
+                        if key not in {"id", "name", "schema_version", "profile_id"}})
+        payload["conversion"] = config
+        payload["segmentation"] = "jieba" if config.endswith("_jieba") else "mmseg"
+        profile = Profile.from_dict(payload)
+        if profile.force_pivot and (not profile.pivot_chain or profile.pivot_chain[-1] != config):
+            raise ValueError("force-pivot must end in the selected configuration")
+        return profile
+
+    def pick_profile(self, config, options, translator):
+        from ui.profile_window import show_profile_window
+
+        draft = self.current_profile(config, options)
+        existing = self.profiles.load_all()
+        values = (draft,) + tuple(item for item in existing if item.id != draft.id)
+        selected = show_profile_window(values, translator=translator, store=self.profiles,
+                                       selected_id=draft.id,
+                                       available_configs=self.backend.available_configs())
+        if selected is not None:
+            self.active = selected
+        return selected
+
+    def save_profile(self, config, options, translator, qt, parent):
+        name, accepted = qt.QInputDialog.getText(parent, translator.text("settings.save_profile"),
+                                               translator.text("settings.name"))
+        if not accepted or not name.strip():
+            return
+        profile = replace(self.current_profile(config, options), id=str(uuid4()), name=name.strip())
+        self.profiles.save(profile)
+        self.active = profile
+
+    def edit_rules(self, config, translator, qt, parent):
+        from ui.rules_window import show_rules_window
+
+        identifiers = tuple(dict.fromkeys((*self.active.ruleset_ids,
+                                          *(item.id for item in self.rules.list()), "default")))
+        identifier, accepted = qt.QInputDialog.getItem(
+            parent, translator.text("settings.rules"), translator.text("settings.ruleset"),
+            list(identifiers), 0, True)
+        if not accepted or not identifier.strip():
+            return
+        identifier = identifier.strip()
+        path = self.rules.directory / f"{identifier}.json"
+        # Validate IDs before either reading or saving paths supplied by the UI.
+        self.rules._validate_id(identifier)
+        ruleset = self.rules.load(identifier) if path.exists() else RuleSet(identifier)
+        result = show_rules_window(
+            ruleset.rules, translator=translator, official_convert=self.backend,
+            config=config, profile_id=self.active.id, book_fingerprint=self.book_fingerprint,
+            available_configs=self.backend.available_configs())
+        if result is not None:
+            self.rules.save(RuleSet(identifier, result, ruleset.name))
+            self.active = replace(self.active, ruleset_ids=tuple(dict.fromkeys(
+                (*self.active.ruleset_ids, identifier))))
+
+    def freeze_rules(self, profile):
+        identifiers = tuple(profile.ruleset_ids)
+        rules = []
+        for identifier in identifiers:
+            # The built-in empty set does not need an on-disk file.
+            if identifier == "default" and not (self.rules.directory / "default.json").exists():
+                continue
+            rules.extend(self.rules.load(identifier).rules)
+        from rules.models import RuleSnapshot as Snapshot
+        from rules.conflicts import validate_no_blocking_conflicts
+        validate_no_blocking_conflicts(rules)
+        frozen = Snapshot.freeze(rules)
+        return RuleSnapshot(rules_hash=frozen.sha256, rules=frozen.rules)
+
+    def revision(self):
+        digest = sha256()
+        for directory in (self.profiles.directory, self.rules.directory):
+            for path in sorted(directory.glob("*.json")):
+                digest.update(str(path.relative_to(self.storage.paths.root)).encode())
+                digest.update(path.read_bytes())
+        return digest.hexdigest()
+
+    def snapshot_guard(self):
+        expected = self.revision()
+
+        def validate():
+            if self.revision() != expected:
+                raise ValueError("profiles or rules changed after preview; rescan required")
+        return validate
+
+    def checkpoint_notice_enabled(self):
+        value = self.adapter.checkpoint_notice_preference()
+        if value is not None:
+            return bool(value)
+        return self.storage.load_preferences().get("checkpoint_notice", True)
+
+    def hide_checkpoint_notice(self):
+        if not self.adapter.save_checkpoint_notice_preference(False):
+            preferences = self.storage.load_preferences()
+            self.storage.save_preferences({**preferences, "checkpoint_notice": False})
+
+    def open_tool(self, name, translator, qt, parent):
+        if name == "self_test":
+            from app.self_test import run_self_test
+            report = run_self_test(data_dir=self.storage.paths.root)
+            self.show_text(json.dumps(report.as_dict(), ensure_ascii=False, indent=2),
+                           translator.text("settings.self_test"), qt, parent)
+        elif name == "history":
+            from ui.history_window import show_history
+            dialog = show_history(
+                self.storage.paths.history, parent=parent, language=translator.language,
+                on_inspect=lambda record: self.inspect_report(record, translator, qt, parent),
+                on_export=lambda record, full, diff: self.export_report(
+                    record, full, diff, translator, qt, parent))
+            if dialog is not None:
+                dialog.exec()
+
+    def inspect_report(self, record, translator, qt, parent):
+        from logging_ext.report import render_markdown
+        self.show_text(render_markdown(record["summary"], record["commit_manifest"],
+                                       record["provenance"]),
+                       translator.text("settings.history"), qt, parent)
+
+    def export_report(self, record, full, diff, translator, qt, parent):
+        from logging_ext.report import export_json, export_markdown
+        path, _filter = qt.QFileDialog.getSaveFileName(
+            parent, translator.text("settings.history"),
+            str(self.storage.paths.exports / (record["session_id"] + ".md")),
+            "Markdown (*.md);;JSON (*.json)")
+        if not path:
+            return
+        exporter = export_json if path.lower().endswith(".json") else export_markdown
+        exporter(Path(path), record["summary"], record["commit_manifest"], record["provenance"],
+                 include_full_diff=full, full_diff=diff)
+
+    def export_preview(self, planned, previews, include_full_diff, qt, parent):
+        from core.staging import apply_changes, source_sha256
+        from ui.i18n import Translator
+        translator = Translator(getattr(self, "language", "en"))
+        session_id = getattr(self, "session_id", str(uuid4()))
+        summary = {"session_id": session_id, "status": "preview (not committed)",
+                   "files_scanned": len(planned), "config": self.profile.conversion,
+                   "profile_id": self.profile.id,
+                   "changes": sum(len(item.plan.changes) for item in planned)}
+        files, diff = [], []
+        for item, preview in zip(planned, previews):
+            accepted = preview.finalize(require_explicit=False)
+            converted = apply_changes(item.source.source, accepted.changes)
+            files.append({"id": item.source.file_id, "href": item.source.href,
+                          "before_sha256": item.plan.source_sha256,
+                          "after_sha256": source_sha256(converted),
+                          "change_count": len(accepted.changes)})
+            if include_full_diff:
+                diff.extend({"file": item.source.href, "source": change.source,
+                             "target": change.target, "rule_source": change.rule_source,
+                             "risk": change.risk,
+                             "decision": (preview.decision(change.change_id).value
+                                          if preview.decision(change.change_id) else "undecided")}
+                            for change in item.plan.changes)
+        record = {"session_id": session_id, "summary": summary,
+                  "commit_manifest": {"session_id": session_id, "files": files},
+                  "provenance": self.backend.provenance().as_dict()}
+        self.export_report(record, include_full_diff, diff if include_full_diff else None,
+                           translator, qt, parent)
+
+    @staticmethod
+    def show_text(text, title, qt, parent):
+        dialog = qt.QDialog(parent)
+        dialog.setWindowTitle(title)
+        dialog.resize(720, 520)
+        layout = qt.QVBoxLayout(dialog)
+        view = qt.QPlainTextEdit()
+        view.setReadOnly(True)
+        view.setPlainText(text)
+        layout.addWidget(view)
+        dialog.exec()
+
+
+def settings_hash(profile):
+    return sha256(json.dumps(profile.to_dict(), sort_keys=True,
+                             ensure_ascii=False).encode()).hexdigest()

@@ -138,6 +138,13 @@ def _classify_change(
     target_start: int,
     target_end: int,
 ) -> tuple[str, str | None, str]:
+    if config in {"s2tw", "s2hk"} and "s2t" in outputs:
+        start, end, stable = _project_target(source, outputs["s2t"], source_start,
+                                            source_end, alignments["s2t"])
+        if not stable or target_end - target_start != source_end - source_start:
+            return "phrase", None, "low"
+        if final[target_start:target_end] != outputs["s2t"][start:end]:
+            return "variant", f"{config}-vs-s2t", "high"
     base = _REGIONAL_BASES.get(config)
     generic = "s2t" if config in {"s2twp", "s2hkp"} else None
     if base is not None and base in outputs:

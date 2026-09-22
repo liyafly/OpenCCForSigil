@@ -4,6 +4,8 @@ Only this adapter's commit method is allowed to call `bk.writefile()`.
 """
 
 from dataclasses import dataclass
+from hashlib import sha256
+from xml.etree import ElementTree
 from typing import Any, Iterable, Iterator, Protocol, Tuple
 
 from sigil.scope import Scope, TargetSelection, TextFile
@@ -59,6 +61,38 @@ class SigilBookAdapter:
     def metadata_supported(self) -> bool:
         return all(callable(getattr(self._bk, name, None))
                    for name in ("getmetadataxml", "setmetadataxml"))
+
+    def checkpoint_notice_preference(self):
+        read = getattr(self._bk, "getPrefs", None)
+        if callable(read):
+            return read().get("opencc_for_sigil_checkpoint_notice", True)
+        return None
+
+    def save_checkpoint_notice_preference(self, enabled):
+        read, save = getattr(self._bk, "getPrefs", None), getattr(self._bk, "savePrefs", None)
+        if not callable(read) or not callable(save):
+            return False
+        values = read()
+        values["opencc_for_sigil_checkpoint_notice"] = bool(enabled)
+        save(values)
+        return True
+
+    def book_fingerprint(self) -> str:
+        """Use a stable public identifier, then the saved path; never book text."""
+        read_metadata = getattr(self._bk, "getmetadataxml", None)
+        if callable(read_metadata):
+            try:
+                root = ElementTree.fromstring(read_metadata())
+                identifiers = tuple(node.text.strip() for node in root.iter()
+                                    if node.tag == "{http://purl.org/dc/elements/1.1/}identifier"
+                                    and node.text and node.text.strip())
+                if identifiers:
+                    return sha256(("identifier:" + "\0".join(identifiers)).encode()).hexdigest()
+            except ElementTree.ParseError:
+                pass
+        filepath = getattr(self._bk, "get_epub_filepath", None)
+        value = filepath() if callable(filepath) else None
+        return sha256(("path:" + str(value)).encode()).hexdigest() if value else ""
 
     def nav_id(self) -> str | None:
         method = getattr(self._bk, "getnavid", None)

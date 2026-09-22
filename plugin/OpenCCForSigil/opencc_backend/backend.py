@@ -28,6 +28,7 @@ class OpenCCBackend:
     """Official Python Binding adapter with optional native Jieba configs."""
 
     def __init__(self, config: str, selector: Optional[RuntimeSelector] = None) -> None:
+        self._comparisons = {}
         self._config = validate_config(config)
         self._selector = selector or RuntimeSelector()
         try:
@@ -120,6 +121,22 @@ class OpenCCBackend:
             raise BackendConversionError("official OpenCC returned a non-text result")
         return result
 
+    def convert_for_config(self, config: str, text: str) -> str:
+        """Independent official comparison on this backend's verified payload."""
+        config = validate_config(config)
+        if config == self.config:
+            return self.convert(text)
+        if config not in self._available_configs:
+            raise BackendConversionError(f"configuration unavailable: {config}")
+        if not isinstance(text, str):
+            raise TypeError("OpenCC input must be text")
+        if config not in self._comparisons:
+            self._comparisons[config] = self._module.OpenCC(config)
+        value = self._comparisons[config].convert(text)
+        if not isinstance(value, str):
+            raise BackendConversionError("official OpenCC returned a non-text result")
+        return value
+
     def provenance(self) -> BackendProvenance:
         manifest = self._selector.manifest
         native_plugin = self._native_plugin_for_config()
@@ -195,6 +212,7 @@ class OpenCCBackend:
         # The official binding owns native resources; dropping the public object
         # is the only lifecycle operation OpenCCForSigil performs.
         self._converter = None
+        self._comparisons.clear()
 
     def _ensure_config_is_exposed(self) -> None:
         if self.config not in self._available_configs:

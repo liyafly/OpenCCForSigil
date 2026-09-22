@@ -5,10 +5,11 @@ turns one backend result into source-relative changes that a planner can move
 to absolute document offsets.
 """
 
+from dataclasses import replace
 from typing import Protocol
 
 from core.diff import bounded_opcodes
-from core.models import ConvertRequest, ConvertResult, SourceSpan, TokenChange
+from core.models import ConvertRequest, ConvertResult, SourceSpan, TokenChange, Diagnostic
 from opencc_backend.backend import OpenCCBackend
 
 
@@ -26,22 +27,97 @@ class OfficialBackendConverter:
     def convert(self, text: str, request: ConvertRequest) -> ConvertResult:
         if not isinstance(text, str):
             raise TypeError("conversion input must be text")
-        target = self.backend.convert(text)
-        if target == text:
-            return ConvertResult(source=text, target=target)
+        if request.rules_snapshot.rules:
+            return self._convert_rules(text, request)
+        from core.classifier import classify_conversion
+        from core.diagnostics import diagnose_mixed_script
+        from core.transformation import apply_force_pivot
+        from transforms.quotations import transform_quotations
+        from transforms.punctuation import normalize_punctuation
+
+        compare = getattr(self.backend, "convert_for_config", None)
         rule_source = f"OpenCC:{request.config}"
-        changes = tuple(
-            TokenChange(
-                source=text[i1:i2],
-                target=target[j1:j2],
-                span=SourceSpan(i1, i2),
-                rule_source=rule_source,
-                category=_change_category(text[i1:i2], target[j1:j2]),
-            )
-            for tag, i1, i2, j1, j2 in bounded_opcodes(text, target)
-            if tag != "equal"
-        )
-        return ConvertResult(source=text, target=target, changes=changes)
+        if request.pivot_chain:
+            if request.pivot_chain[-1] != request.config:
+                raise ValueError("force-pivot must end in the selected configuration")
+            pivot = apply_force_pivot(text, request.pivot_chain, self.backend, enabled=True)
+            official = pivot.target
+            rule_source = pivot.rule_source
+        else:
+            official = self.backend.convert(text)
+        quoted = transform_quotations(official, request.quotation_mode)
+        target = normalize_punctuation(quoted, request.punctuation_mode)
+        diagnostics = []
+        if request.diagnose_mixed and callable(compare) and text:
+            diagnosis = diagnose_mixed_script(text, compare)
+            if diagnosis.status == "mixed":
+                diagnostics.append(Diagnostic("MIXED_SCRIPT", diagnosis.warning))
+        if target == text:
+            return ConvertResult(text, target, diagnostics=tuple(diagnostics))
+        classification = {}
+        if request.detailed_classification and callable(compare) and not request.pivot_chain:
+            result = classify_conversion(text, request.config, compare, final=official)
+            classification = {(item.source_start, item.source_end, item.target): item
+                              for item in result.changes}
+        changes = []
+        for tag, i1, i2, j1, j2 in bounded_opcodes(text, target):
+            if tag == "equal":
+                continue
+            source_part, target_part = text[i1:i2], target[j1:j2]
+            attribution = classification.get((i1, i2, target_part))
+            source_name = rule_source
+            category = attribution.category if attribution else _change_category(source_part, target_part)
+            if not request.pivot_chain and attribution is None:
+                if (request.quotation_mode != "keep" and
+                        transform_quotations(source_part, request.quotation_mode) == target_part):
+                    source_name, category = "QuotationTransform", "quotation"
+                elif (request.punctuation_mode != "keep" and
+                      normalize_punctuation(source_part, request.punctuation_mode) == target_part):
+                    source_name, category = "PunctuationTransform", "punctuation"
+            changes.append(TokenChange(
+                source=source_part, target=target_part, span=SourceSpan(i1, i2),
+                rule_source=source_name, category=category,
+                risk=("HIGH" if request.pivot_chain else "REVIEW" if category == "regional" or
+                      (attribution and attribution.attribution_confidence == "low") else "LOW"),
+                attribution_method=attribution.attribution_method if attribution else None,
+                comparison_stage=attribution.comparison_stage if attribution else None,
+                attribution_confidence=attribution.attribution_confidence if attribution else None,
+            ))
+        return ConvertResult(text, target, tuple(changes), tuple(diagnostics))
+
+    def _convert_rules(self, text, request):
+        from rules.engine import lock_spans
+        from rules.models import RuleSnapshot
+
+        snapshot = RuleSnapshot.freeze(request.rules_snapshot.rules)
+        if snapshot.rules_hash != request.rules_snapshot.rules_hash:
+            raise ValueError("rule snapshot hash mismatch")
+        spans = lock_spans(text, snapshot, config=request.config,
+                           profile_id=request.profile_id,
+                           book_fingerprint=request.book_fingerprint)
+        # Reuse the complete unlocked pipeline while avoiding a second rule pass.
+        unlocked = replace(request, rules_snapshot=type(request.rules_snapshot)())
+        output, changes, diagnostics = [], [], []
+        cursor = 0
+        for span in (*spans, None):
+            end = span.start if span is not None else len(text)
+            if end > cursor:
+                result = self.convert(text[cursor:end], unlocked)
+                output.append(result.target)
+                changes.extend(replace(change, span=SourceSpan(
+                    cursor + change.span.start, cursor + change.span.end))
+                    for change in result.changes)
+                diagnostics.extend(result.diagnostics)
+            if span is not None:
+                output.append(span.target)
+                if span.source != span.target:
+                    changes.append(TokenChange(
+                        source=span.source, target=span.target,
+                        span=SourceSpan(span.start, span.end),
+                        rule_source=f"UserRule:{span.rule.id}", category="user_rule",
+                        risk="HIGH" if len(span.source) != len(span.target) else "REVIEW"))
+                cursor = span.end
+        return ConvertResult(text, "".join(output), tuple(changes), tuple(diagnostics))
 
 
 def _change_category(source: str, target: str) -> str:

@@ -52,10 +52,14 @@ BASE_CONFIG_BY_JIEBA = {value: key for key, value in JIEBA_CONFIG_BY_BASE.items(
 
 
 _COMPARISON_CONFIGS: Dict[str, Tuple[str, ...]] = {
+    "s2tw": ("s2t", "s2tw"),
+    "s2hk": ("s2t", "s2hk"),
+    "tw2s": ("tw2t", "tw2s"),
+    "hk2s": ("hk2t", "hk2s"),
     "s2twp": ("s2t", "s2tw", "s2twp"),
     "s2hkp": ("s2t", "s2hk", "s2hkp"),
-    "tw2sp": ("tw2s", "tw2sp"),
-    "hk2sp": ("hk2s", "hk2sp"),
+    "tw2sp": ("tw2t", "tw2s", "tw2sp"),
+    "hk2sp": ("hk2t", "hk2s", "hk2sp"),
 }
 
 

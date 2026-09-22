@@ -44,6 +44,7 @@ _ALLOWED_TRANSITIONS: Dict[SessionState, Set[SessionState]] = {
         SessionState.FAILED,
     },
     SessionState.PREVIEWING: {
+        SessionState.SCANNING,
         SessionState.APPLYING_TO_STAGE,
         SessionState.CANCELLED,
         SessionState.FAILED,

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import replace
 from hashlib import sha256
+from html import escape, unescape
+from document.diagnostics import inline_boundary_diagnostics
 import json
 from typing import Optional
 
@@ -42,6 +44,7 @@ def build_conversion_plan(
 
     converter = OfficialBackendConverter(backend)
     changes = []
+    diagnostics = list(inline_boundary_diagnostics(document)) if document_kind in {"xhtml", "nav"} else []
     for target in document.targets:
         if check_cancel is not None:
             check_cancel()
@@ -61,14 +64,32 @@ def build_conversion_plan(
                 category="language_metadata", risk="HIGH", group_id="language_metadata",
             )
             result = ConvertResult(target.source_text, request.language_tag, (language_change,))
+        elif target.node_id.startswith("numeric_ref:"):
+            decoded = unescape(target.source_text)
+            converted = converter.convert(decoded, request)
+            attribution = (converted.changes[0] if converted.changes else TokenChange(
+                source=decoded, target=decoded, span=SourceSpan(0, len(decoded)),
+                rule_source="NumericReferenceDecode"))
+            result = ConvertResult(target.source_text, converted.target, (replace(
+                attribution, source=target.source_text, target=converted.target,
+                span=SourceSpan(0, len(target.source_text)), category="numeric_reference", risk="HIGH"),),
+                converted.diagnostics)
+
         else:
             result = converter.convert(target.source_text, request)
+        diagnostics.extend(result.diagnostics)
         for local_change in result.changes:
             change = _absolute_change(file_id, target, local_change, source)
             if document_kind == "metadata":
                 change = replace(change, risk="HIGH")
             changes.append(replace(change, document_kind=document_kind))
 
+    boundaries = [item.span for item in diagnostics if item.code == "INLINE_BOUNDARY" and item.span]
+    before_boundaries = {span.start for span in boundaries}
+    after_boundaries = {span.end for span in boundaries}
+    changes = [replace(change, risk="REVIEW") if change.risk != "HIGH" and (
+        change.span.end in before_boundaries or change.span.start in after_boundaries)
+        else change for change in changes]
     provenance = backend.provenance().as_dict()
     provenance_hash = sha256(
         json.dumps(provenance, ensure_ascii=False, sort_keys=True).encode("utf-8")
@@ -90,6 +111,7 @@ def build_conversion_plan(
         targets=tuple(document.targets),
         source_length=len(source),
         document_kind=document_kind,
+        diagnostics=tuple(diagnostics),
     )
 
 
@@ -107,15 +129,22 @@ def _absolute_change(
 ) -> TokenChange:
     start = target.source_start + local_change.span.start
     end = target.source_start + local_change.span.end
+    target_text = local_change.target
+    in_cdata = (source.rfind("<![CDATA[", 0, start) > source.rfind("]]>", 0, start))
+    if in_cdata:
+        if "]]>" in target_text:
+            raise ValueError("replacement cannot terminate a CDATA section")
+    else:
+        target_text = escape(target_text, quote=target.attribute_name is not None)
     change_key = "\0".join(
-        (file_id, target.node_id, str(start), str(end), local_change.target)
+        (file_id, target.node_id, str(start), str(end), target_text)
     )
     change_id = sha256(change_key.encode("utf-8")).hexdigest()[:24]
     before_start = max(0, start - 32)
     after_end = min(len(source), end + 32)
     return TokenChange(
         source=local_change.source,
-        target=local_change.target,
+        target=target_text,
         span=SourceSpan(start, end),
         rule_source=local_change.rule_source,
         change_id=change_id,
@@ -124,6 +153,8 @@ def _absolute_change(
         category=local_change.category,
         risk=local_change.risk,
         attribution_method=local_change.attribution_method,
+        comparison_stage=local_change.comparison_stage,
+        attribution_confidence=local_change.attribution_confidence,
         context_before=source[before_start:start],
         context_after=source[end:after_end],
         document_kind=target.document_kind,

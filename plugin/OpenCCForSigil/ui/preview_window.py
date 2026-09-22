@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Sequence, Tuple
 
-from core.preview import PreviewSession
+from core.preview import PreviewFilter, PreviewSession
 from core.models import TokenChange
 from core.workflow import PlannedDocument
 from opencc_backend.configs import (
@@ -25,6 +25,8 @@ class UIUnavailableError(RuntimeError):
 class PreviewOutcome:
     accepted: bool
     previews: Tuple[PreviewSession, ...]
+    back_to_settings: bool = False
+    checkpoint_notice_shown: bool = False
 
 
 @dataclass(frozen=True)
@@ -144,6 +146,82 @@ class ProgressReporter:
 _translator = Translator("en")
 _jieba_unavailable_reason: str | None = None
 
+_LOCAL_TEXT = {
+    "en": {
+        "scope.spine": "Spine",
+        "scope.spine_count": "Spine files: {total}",
+        "preview.accept_filter": "Accept filtered",
+        "preview.skip_filter": "Skip filtered",
+        "preview.filter_file": "File",
+        "preview.filter_category": "Category",
+        "preview.filter_risk": "Risk",
+        "preview.filter_all": "All",
+        "preview.back_settings": "Back to settings",
+        "preview.checkpoint_title": "Checkpoint required",
+        "preview.checkpoint_message": (
+            "Plugin changes cannot be undone with Ctrl+Z. Create a Sigil Checkpoint before applying.\n\n"
+            "Continue applying the selected changes?"
+        ),
+        "preview.checkpoint_yes": "I created a Checkpoint; continue",
+        "preview.checkpoint_no": "Cancel",
+        "preview.checkpoint_hide": "Do not show again",
+        "preview.diagnostics": "Plan diagnostics: {details}",
+        "preview.diagnostic_detail": "Diagnostics: {details}",
+        "preview.export": "Export report",
+        "preview.export_full_diff": "Include full diff",
+    },
+    "zh-Hans": {
+        "scope.spine": "Spine 正文",
+        "scope.spine_count": "Spine 文件数：{total}",
+        "preview.accept_filter": "接受筛选项",
+        "preview.skip_filter": "跳过筛选项",
+        "preview.filter_file": "文件",
+        "preview.filter_category": "类别",
+        "preview.filter_risk": "风险",
+        "preview.filter_all": "全部",
+        "preview.back_settings": "返回设置",
+        "preview.checkpoint_title": "需要建立 Checkpoint",
+        "preview.checkpoint_message": "插件修改无法用 Ctrl+Z 撤销。应用前请先在 Sigil 中建立 Checkpoint。\n\n继续应用已选择的变化吗？",
+        "preview.checkpoint_yes": "我已建立 Checkpoint，继续",
+        "preview.checkpoint_no": "取消",
+        "preview.checkpoint_hide": "以后不再提示",
+        "preview.diagnostics": "计划诊断：{details}",
+        "preview.diagnostic_detail": "诊断：{details}",
+        "preview.export": "导出报告",
+        "preview.export_full_diff": "包含完整差异",
+    },
+    "zh-Hant": {
+        "scope.spine": "Spine 正文",
+        "scope.spine_count": "Spine 檔案數：{total}",
+        "preview.accept_filter": "接受篩選項目",
+        "preview.skip_filter": "略過篩選項目",
+        "preview.filter_file": "檔案",
+        "preview.filter_category": "類別",
+        "preview.filter_risk": "風險",
+        "preview.filter_all": "全部",
+        "preview.back_settings": "返回設定",
+        "preview.checkpoint_title": "需要建立 Checkpoint",
+        "preview.checkpoint_message": "外掛程式修改無法用 Ctrl+Z 復原。套用前請先在 Sigil 中建立 Checkpoint。\n\n要繼續套用已選取的變化嗎？",
+        "preview.checkpoint_yes": "我已建立 Checkpoint，繼續",
+        "preview.checkpoint_no": "取消",
+        "preview.checkpoint_hide": "以後不再提示",
+        "preview.diagnostics": "計畫診斷：{details}",
+        "preview.diagnostic_detail": "診斷：{details}",
+        "preview.export": "匯出報告",
+        "preview.export_full_diff": "包含完整差異",
+    },
+}
+
+
+def _ui_text(key: str, **values: object) -> str:
+    """Use shipped catalogs first and local fallback text for new preview keys."""
+
+    value = _translator.text(key, **values)
+    if value != key:
+        return value
+    language = _translator.language if _translator.language in _LOCAL_TEXT else "en"
+    return _LOCAL_TEXT[language].get(key, _LOCAL_TEXT["en"].get(key, key)).format(**values)
+
 
 def set_jieba_status(reason: str | None) -> None:
     global _jieba_unavailable_reason
@@ -214,6 +292,7 @@ def choose_scope(adapter: Any, *, initial_language: str = "en") -> ScopeOutcome:
 
     inventory = tuple(adapter.text_file_inventory())
     selected_ids, ignored_non_xhtml = _selected_xhtml_ids_and_ignored(adapter, inventory)
+    spine_ids = _spine_ids(adapter)
     language = initial_language or _translator.language
     _translator.set_language(language)
     qt_widgets = _load_qt_widgets()
@@ -225,6 +304,7 @@ def choose_scope(adapter: Any, *, initial_language: str = "en") -> ScopeOutcome:
         language,
         _translator,
         ignored_non_xhtml=ignored_non_xhtml,
+        spine_ids=spine_ids,
     )
     exec_method = getattr(dialog.dialog, "exec", None) or dialog.dialog.exec_
     exec_method()
@@ -232,7 +312,9 @@ def choose_scope(adapter: Any, *, initial_language: str = "en") -> ScopeOutcome:
         return ScopeOutcome(False, None, dialog.language)
     _translator.set_language(dialog.language)
     selection = resolve_target_selection(
-        inventory, dialog.scope, dialog.selected_ids()
+        inventory,
+        dialog.scope,
+        dialog.spine_ids if dialog.scope is Scope.SPINE else dialog.selected_ids(),
     )
     return ScopeOutcome(True, selection, dialog.language)
 
@@ -260,6 +342,18 @@ def _selected_xhtml_ids_and_ignored(
     )
 
 
+def _spine_ids(adapter: Any) -> Tuple[str, ...]:
+    """Read the spine manifest ids without reading any document content."""
+
+    text_files = getattr(adapter, "text_files", None)
+    if not callable(text_files):
+        return ()
+    try:
+        return tuple(file_id for file_id, _href in text_files(Scope.SPINE))
+    except (AttributeError, TypeError, ValueError):
+        return ()
+
+
 def show_preview(planned: Sequence[PlannedDocument]) -> PreviewOutcome:
     """Show a preview and return the sessions containing user decisions."""
 
@@ -269,7 +363,12 @@ def show_preview(planned: Sequence[PlannedDocument]) -> PreviewOutcome:
     dialog = _PreviewDialog(qt_widgets, planned, previews)
     exec_method = getattr(dialog.dialog, "exec", None) or dialog.dialog.exec_
     exec_method()
-    return PreviewOutcome(accepted=dialog.applied, previews=previews)
+    return PreviewOutcome(
+        accepted=dialog.applied,
+        previews=previews,
+        back_to_settings=dialog.back_to_settings,
+        checkpoint_notice_shown=dialog.checkpoint_notice_shown,
+    )
 
 
 def show_result(
@@ -401,6 +500,8 @@ class _PreviewDialog:
             for change in preview.changes
         )
         self.applied = False
+        self.back_to_settings = False
+        self.checkpoint_notice_shown = False
 
         self.dialog = qt_widgets.QDialog()
         self.dialog.setWindowTitle(_translator.text("preview.title"))
@@ -415,13 +516,28 @@ class _PreviewDialog:
         self.summary = qt.QLabel()
         layout.addWidget(self.summary)
 
+        filter_row = qt.QHBoxLayout()
+        self.file_filter = qt.QComboBox()
+        self.category_filter = qt.QComboBox()
+        self.risk_filter = qt.QComboBox()
+        self._populate_filter(self.file_filter, _ui_text("preview.filter_file"),
+                              sorted({change.file_id for _, change in self._entries}))
+        self._populate_filter(self.category_filter, _ui_text("preview.filter_category"),
+                              sorted({change.category for _, change in self._entries}))
+        self._populate_filter(self.risk_filter, _ui_text("preview.filter_risk"),
+                              sorted({change.risk for _, change in self._entries}))
+        for widget in (self.file_filter, self.category_filter, self.risk_filter):
+            filter_row.addWidget(widget)
+            widget.currentIndexChanged.connect(self._refresh)
+        layout.addLayout(filter_row)
+
         self.list_widget = qt.QListWidget()
         self.list_widget.currentRowChanged.connect(self._show_current)
         layout.addWidget(self.list_widget)
 
         self.detail = qt.QPlainTextEdit()
         self.detail.setReadOnly(True)
-        self.detail.setMaximumHeight(150)
+        self.detail.setMinimumHeight(180)
         layout.addWidget(self.detail)
 
         buttons = qt.QHBoxLayout()
@@ -431,20 +547,29 @@ class _PreviewDialog:
         self.reject_file_button = qt.QPushButton(_translator.text("preview.skip_file"))
         self.accept_all_button = qt.QPushButton(_translator.text("preview.accept_all"))
         self.reject_all_button = qt.QPushButton(_translator.text("preview.skip_all"))
+        self.accept_filter_button = qt.QPushButton(_ui_text("preview.accept_filter"))
+        self.reject_filter_button = qt.QPushButton(_ui_text("preview.skip_filter"))
+        self.export_button = qt.QPushButton(_ui_text("preview.export"))
+        self.export_full_diff = qt.QCheckBox(_ui_text("preview.export_full_diff"))
+        self.export_full_diff.setChecked(False)
         self.apply_button = qt.QPushButton(_translator.text("preview.apply"))
+        self.back_settings_button = qt.QPushButton(_ui_text("preview.back_settings"))
         self.cancel_button = qt.QPushButton(_translator.text("common.cancel"))
-        for button in (
-            self.accept_this_button,
-            self.reject_this_button,
-            self.accept_file_button,
-            self.reject_file_button,
-            self.accept_all_button,
-            self.reject_all_button,
-            self.apply_button,
-            self.cancel_button,
-        ):
+        for button in (self.accept_this_button, self.reject_this_button,
+                       self.accept_file_button, self.reject_file_button,
+                       self.accept_filter_button, self.reject_filter_button):
             buttons.addWidget(button)
         layout.addLayout(buttons)
+        tools = qt.QHBoxLayout()
+        for button in (self.accept_all_button, self.reject_all_button,
+                       self.export_button, self.export_full_diff):
+            tools.addWidget(button)
+        layout.addLayout(tools)
+        actions = qt.QHBoxLayout()
+        actions.addStretch(1)
+        for button in (self.back_settings_button, self.cancel_button, self.apply_button):
+            actions.addWidget(button)
+        layout.addLayout(actions)
 
         self.accept_this_button.clicked.connect(self._accept_this)
         self.reject_this_button.clicked.connect(self._reject_this)
@@ -452,22 +577,91 @@ class _PreviewDialog:
         self.reject_file_button.clicked.connect(self._reject_file)
         self.accept_all_button.clicked.connect(self._accept_all)
         self.reject_all_button.clicked.connect(self._reject_all)
+        self.accept_filter_button.clicked.connect(lambda: self._decide_filtered(True))
+        self.reject_filter_button.clicked.connect(lambda: self._decide_filtered(False))
+        self.export_button.clicked.connect(self._export_preview)
         self.apply_button.clicked.connect(self._apply)
+        self.back_settings_button.clicked.connect(self._back_to_settings)
         self.cancel_button.clicked.connect(self.dialog.reject)
+        self.export_button.setEnabled(self._export_service() is not None)
+
+    @staticmethod
+    def _export_service():
+        try:
+            from ui.run_options import get_run_services
+        except (ImportError, AttributeError):
+            return None
+        try:
+            services = get_run_services()
+        except (AttributeError, TypeError):
+            return None
+        return getattr(services, "export_preview", None) if services is not None else None
+
+    def _export_preview(self) -> None:
+        export = self._export_service()
+        if export is None:
+            return
+        checkbox = getattr(self, "export_full_diff", None)
+        include_full_diff = bool(checkbox is not None and checkbox.isChecked())
+        export(self._planned, self._previews, include_full_diff, self._qt, self.dialog)
+
+    @staticmethod
+    def _populate_filter(combo: Any, label: str, values: Sequence[str]) -> None:
+        combo.addItem(f"{label}: {_ui_text('preview.filter_all')}", None)
+        for value in values:
+            combo.addItem(str(value), str(value))
+
+    def _current_filter(self) -> PreviewFilter:
+        def data(name: str) -> str | None:
+            combo = getattr(self, name, None)
+            if combo is None or not callable(getattr(combo, "currentData", None)):
+                return None
+            value = combo.currentData()
+            return str(value) if value else None
+
+        return PreviewFilter(
+            file_id=data("file_filter"),
+            category=data("category_filter"),
+            risk=data("risk_filter"),
+        )
+
+    def _visible_entries(self) -> Tuple[Tuple[PreviewSession, TokenChange], ...]:
+        current = self._current_filter()
+        return tuple((preview, change) for preview, change in self._entries if current.matches(change))
+
+    @staticmethod
+    def _truncate(value: object, limit: int = 96) -> str:
+        text = str(value)
+        if len(text) <= limit:
+            return text
+        return text[: max(1, limit - 1)] + "…"
+
+    def _diagnostics_for_file(self, file_id: str | None = None) -> Tuple[str, ...]:
+        diagnostics = []
+        for planned in getattr(self, "_planned", ()):
+            plan = getattr(planned, "plan", None)
+            if plan is None or (file_id and getattr(plan, "file_id", "") != file_id):
+                continue
+            for diagnostic in getattr(plan, "diagnostics", ()):
+                code = str(getattr(diagnostic, "code", ""))
+                message = str(getattr(diagnostic, "message", ""))
+                diagnostics.append(f"{code}: {message}" if message else code)
+        return tuple(dict.fromkeys(diagnostics))
 
     def _refresh(self) -> None:
+        visible_entries = self._visible_entries()
         current_row = self.list_widget.currentRow()
         self.list_widget.blockSignals(True)
         set_updates_enabled = getattr(self.list_widget, "setUpdatesEnabled", None)
         if callable(set_updates_enabled):
             set_updates_enabled(False)
         try:
-            if self.list_widget.count() != len(self._entries):
+            if self.list_widget.count() != len(visible_entries):
                 self.list_widget.clear()
-                for preview, change in self._entries:
+                for preview, change in visible_entries:
                     self.list_widget.addItem(self._entry_text(preview, change))
             else:
-                for index, (preview, change) in enumerate(self._entries):
+                for index, (preview, change) in enumerate(visible_entries):
                     item = self.list_widget.item(index)
                     if item is not None:
                         item.setText(self._entry_text(preview, change))
@@ -476,9 +670,10 @@ class _PreviewDialog:
                 set_updates_enabled(True)
             self.list_widget.blockSignals(False)
 
-        if self._entries:
-            row = current_row if 0 <= current_row < len(self._entries) else 0
+        if visible_entries:
+            row = current_row if 0 <= current_row < len(visible_entries) else 0
             self.list_widget.setCurrentRow(row)
+            self._show_current(row)
         else:
             self.detail.setPlainText(_translator.text("preview.no_changes"))
         self._update_summary()
@@ -487,33 +682,55 @@ class _PreviewDialog:
     def _entry_text(preview: PreviewSession, change: TokenChange) -> str:
         decision = preview.decision(change.change_id)
         prefix = "?" if decision is None else "✓" if decision.value.startswith("accept") else "×"
-        return f"{prefix} {change.file_id}: {change.source!r} → {change.target!r}"
+        source = _PreviewDialog._truncate(change.source)
+        target = _PreviewDialog._truncate(change.target)
+        return f"{prefix} {change.file_id}: {source!r} → {target!r}"
 
     def _update_summary(self) -> None:
         totals = {"total": 0, "accepted": 0, "rejected": 0, "undecided": 0}
         for preview in self._previews:
             for key, value in preview.summary().items():
                 totals[key] += value
-        self.summary.setText(_translator.text("preview.summary", files=len(self._previews), **totals))
-        has_current = bool(self._entries)
-        self.accept_this_button.setEnabled(has_current)
-        self.reject_this_button.setEnabled(has_current)
-        self.accept_file_button.setEnabled(has_current)
-        self.reject_file_button.setEnabled(has_current)
+        summary = _translator.text("preview.summary", files=len(self._previews), **totals)
+        diagnostics = self._diagnostics_for_file()
+        if diagnostics:
+            summary += "\n" + _ui_text("preview.diagnostics", details="; ".join(diagnostics))
+        self.summary.setText(summary)
+        has_current = bool(self._visible_entries())
+        for name in (
+            "accept_this_button",
+            "reject_this_button",
+            "accept_file_button",
+            "reject_file_button",
+            "accept_filter_button",
+            "reject_filter_button",
+        ):
+            button = getattr(self, name, None)
+            if button is not None:
+                button.setEnabled(has_current)
         # An explicit repeat of a bulk action is allowed to reverse prior
         # per-item decisions, so both global buttons stay available while the
         # preview contains changes.  Applying remains blocked until every
         # change has a decision, including a preview with no changes.
         has_entries = bool(self._entries)
-        self.accept_all_button.setEnabled(has_entries)
-        self.reject_all_button.setEnabled(has_entries)
+        for name in ("accept_all_button", "reject_all_button"):
+            button = getattr(self, name, None)
+            if button is not None:
+                button.setEnabled(has_entries)
         self.apply_button.setEnabled(totals["undecided"] == 0)
 
     def _show_current(self, row: int) -> None:
-        if row < 0 or row >= len(self._entries):
+        visible_entries = self._visible_entries()
+        if row < 0 or row >= len(visible_entries):
             self.detail.clear()
             return
-        preview, change = self._entries[row]
+        preview, change = visible_entries[row]
+        diagnostics = self._diagnostics_for_file(change.file_id)
+        diagnostic_text = (
+            "\n" + _ui_text("preview.diagnostic_detail", details="; ".join(diagnostics))
+            if diagnostics
+            else ""
+        )
         self.detail.setPlainText(
             f"{_translator.text('preview.rule')}: {change.rule_source}\n"
             f"{_translator.text('preview.category')}: {change.category}    "
@@ -521,13 +738,15 @@ class _PreviewDialog:
             f"{_translator.text('preview.before')}: "
             f"{change.context_before}{change.source}{change.context_after}\n"
             f"{_translator.text('preview.change')}: {change.source!r} → {change.target!r}"
+            f"{diagnostic_text}"
         )
 
     def _current_entry(self):
         row = self.list_widget.currentRow()
-        if row < 0 or row >= len(self._entries):
+        visible_entries = self._visible_entries()
+        if row < 0 or row >= len(visible_entries):
             return None
-        return self._entries[row]
+        return visible_entries[row]
 
     def _accept_this(self) -> None:
         entry = self._current_entry()
@@ -555,14 +774,25 @@ class _PreviewDialog:
             if change.group_id == group_id:
                 (preview.accept_this if accepted else preview.reject_this)(change.change_id)
 
+    def _decide_filtered(self, accepted: bool) -> None:
+        visible_entries = self._visible_entries()
+        groups = {change.group_id for _preview, change in visible_entries if change.group_id}
+        for preview, change in visible_entries:
+            if not change.group_id:
+                (preview.accept_this if accepted else preview.reject_this)(change.change_id)
+        for group_id in groups:
+            self._decide_group(group_id, accepted)
+        self._refresh()
+
     def _refresh_current(self) -> None:
         row = self.list_widget.currentRow()
-        if row < 0 or row >= len(self._entries):
+        visible_entries = self._visible_entries()
+        if row < 0 or row >= len(visible_entries):
             self._update_summary()
             return
         item = self.list_widget.item(row)
         if item is not None:
-            preview, change = self._entries[row]
+            preview, change = visible_entries[row]
             item.setText(self._entry_text(preview, change))
         self._show_current(row)
         self._update_summary()
@@ -597,11 +827,45 @@ class _PreviewDialog:
             preview.reject_all(overwrite=True)
         self._refresh()
 
+    def _back_to_settings(self) -> None:
+        if self.applied:
+            return
+        self.back_to_settings = True
+        self.dialog.reject()
+
+    def _checkpoint_confirm(self) -> bool:
+        if not any(preview.summary()["accepted"] for preview in self._previews):
+            return True
+        from ui.run_options import get_run_services
+        services = get_run_services()
+        if services is not None and not services.checkpoint_notice_enabled():
+            return True
+        message_box = getattr(self._qt, "QMessageBox", None)
+        if not callable(message_box):
+            return True
+        self.checkpoint_notice_shown = True
+        box = message_box(self.dialog)
+        box.setWindowTitle(_ui_text("preview.checkpoint_title"))
+        box.setText(_ui_text("preview.checkpoint_message"))
+        box.setIcon(message_box.Warning)
+        accept = box.addButton(_ui_text("preview.checkpoint_yes"), message_box.AcceptRole)
+        cancel = box.addButton(_ui_text("preview.checkpoint_no"), message_box.RejectRole)
+        box.setDefaultButton(cancel)
+        hide = self._qt.QCheckBox(_ui_text("preview.checkpoint_hide"))
+        box.setCheckBox(hide)
+        box.exec()
+        accepted = box.clickedButton() is accept
+        if accepted and hide.isChecked() and services is not None:
+            services.hide_checkpoint_notice()
+        return accepted
+
     def _apply(self) -> None:
         if self.applied:
             return
         if any(preview.undecided() for preview in self._previews):
             self._update_summary()
+            return
+        if not self._checkpoint_confirm():
             return
         self.applied = True
         # Disable before accepting the dialog so a queued/re-entrant click
@@ -655,6 +919,7 @@ class _ConversionConfigDialog:
 
         from ui.run_options import RunOptionsPanel
         self.options_panel = RunOptionsPanel(qt_widgets, translator, layout)
+        self.options_panel.bind(self._get_config, self._set_config, self.dialog)
 
         buttons = qt_widgets.QHBoxLayout()
         self.cancel_button = qt_widgets.QPushButton(self._translator.text("common.cancel"))
@@ -670,6 +935,19 @@ class _ConversionConfigDialog:
         if selected_index >= 0:
             self.combo.setCurrentIndex(selected_index)
         self.jieba_checkbox.setChecked(default_config in self._jieba_configs.values())
+        self._update_jieba_state()
+
+    def _get_config(self):
+        base = str(self.combo.currentData())
+        return self._jieba_configs.get(base, base) if self.jieba_checkbox.isChecked() else base
+
+    def _set_config(self, config):
+        base = BASE_CONFIG_BY_JIEBA.get(config, config)
+        index = self.combo.findData(base)
+        if index < 0 or (config != base and config not in self._jieba_configs.values()):
+            raise ValueError("profile configuration is unavailable on this host")
+        self.combo.setCurrentIndex(index)
+        self.jieba_checkbox.setChecked(config != base)
         self._update_jieba_state()
 
     def _update_jieba_state(self) -> None:
@@ -702,11 +980,11 @@ class _ConversionConfigDialog:
         )
         options = self.options_panel.values()
         try:
+            self.options_panel.validate(config)
             target_language(config, options["language_metadata"], options["language_preset"],
                             options["language_region"])
-        except ValueError:
-            self._qt.QMessageBox.warning(self.dialog, self._translator.text("config.title"),
-                                        self._translator.text("options.region_required"))
+        except ValueError as exc:
+            self._qt.QMessageBox.warning(self.dialog, self._translator.text("config.title"), str(exc))
             return
         self.selected_config = ConfigurationChoice(config, options)
         self.accepted = True
@@ -725,6 +1003,7 @@ class _ScopeDialog:
         translator: Translator,
         *,
         ignored_non_xhtml: int = 0,
+        spine_ids: Tuple[str, ...] = (),
     ) -> None:
         self._qt = qt_widgets
         self._inventory = inventory
@@ -732,6 +1011,7 @@ class _ScopeDialog:
         self.accepted = False
         self.language = language
         self.ignored_non_xhtml = max(0, ignored_non_xhtml)
+        self.spine_ids = tuple(file_id for file_id in spine_ids if file_id)
         self.dialog = qt_widgets.QDialog()
         self.dialog.setWindowTitle(translator.text("scope.title"))
         self.dialog.resize(700, 560)
@@ -751,10 +1031,11 @@ class _ScopeDialog:
 
         self.single_radio = qt_widgets.QRadioButton(translator.text("scope.single"))
         self.selected_radio = qt_widgets.QRadioButton(translator.text("scope.selected"))
+        self.spine_radio = qt_widgets.QRadioButton(_ui_text("scope.spine"))
         self.all_radio = qt_widgets.QRadioButton(translator.text("scope.all"))
         self.selected_radio.setChecked(True)
         radio_row = qt_widgets.QHBoxLayout()
-        for radio in (self.single_radio, self.selected_radio, self.all_radio):
+        for radio in (self.single_radio, self.selected_radio, self.spine_radio, self.all_radio):
             radio_row.addWidget(radio)
             radio.toggled.connect(self._refresh_enabled)
         layout.addLayout(radio_row)
@@ -821,6 +1102,7 @@ class _ScopeDialog:
         self.language_label.setText(self._translator.text("language.label"))
         self.single_radio.setText(self._translator.text("scope.single"))
         self.selected_radio.setText(self._translator.text("scope.selected"))
+        self.spine_radio.setText(_ui_text("scope.spine"))
         self.all_radio.setText(self._translator.text("scope.all"))
         self.filter_edit.setPlaceholderText(self._translator.text("scope.filter"))
         self.select_visible.setText(self._translator.text("scope.select_visible"))
@@ -867,6 +1149,8 @@ class _ScopeDialog:
             self.count_label.setText(
                 self._translator.text("scope.all_count", total=total)
             )
+        elif self.spine_radio.isChecked():
+            self.count_label.setText(_ui_text("scope.spine_count", total=len(self.spine_ids)))
         else:
             selected = len(self._checked_ids())
             self.count_label.setText(
@@ -891,6 +1175,7 @@ class _ScopeDialog:
         self.list_widget.setEnabled(custom)
         self.select_visible.setEnabled(custom)
         self.clear_visible.setEnabled(custom)
+        self.spine_radio.setEnabled(bool(self.spine_ids))
         self._refresh_count()
         self._update_analyze_enabled()
 
@@ -903,15 +1188,22 @@ class _ScopeDialog:
             valid = count == 1
         elif self.selected_radio.isChecked():
             valid = count > 0
+        elif self.spine_radio.isChecked():
+            valid = bool(self.spine_ids)
         self.analyze_button.setEnabled(valid)
 
     def _accept(self) -> None:
         checked_count = len(self.selected_ids())
         try:
             scope = Scope.SINGLE if self.single_radio.isChecked() else (
-                Scope.ALL_XHTML if self.all_radio.isChecked() else Scope.SELECTED
+                Scope.ALL_XHTML
+                if self.all_radio.isChecked()
+                else Scope.SPINE
+                if self.spine_radio.isChecked()
+                else Scope.SELECTED
             )
-            selection = resolve_target_selection(self._inventory, scope, self.selected_ids())
+            ids = self.spine_ids if scope is Scope.SPINE else self.selected_ids()
+            selection = resolve_target_selection(self._inventory, scope, ids)
             if selection.empty:
                 raise ScopeSelectionError(self._translator.text("scope.none"))
         except ScopeSelectionError:

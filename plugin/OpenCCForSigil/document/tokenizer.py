@@ -43,6 +43,7 @@ class TokenizerOptions:
     protected_attributes: Tuple[str, ...] = DEFAULT_PROTECTED_ATTRIBUTES
     svg_text: bool = False
     mathml: bool = False
+    decode_numeric_cjk_refs: bool = False
     document_kind: str = "xhtml"
     context_radius: int = 32
 
@@ -53,6 +54,7 @@ class TokenizerOptions:
             protected_attributes=tuple(name.lower() for name in self.protected_attributes),
             svg_text=self.svg_text,
             mathml=self.mathml,
+            decode_numeric_cjk_refs=self.decode_numeric_cjk_refs,
             document_kind=self.document_kind,
             context_radius=max(0, self.context_radius),
         )
@@ -142,7 +144,12 @@ def tokenize_xhtml(source: str, options: Optional[TokenizerOptions] = None) -> T
             if text_end < 0:
                 text_end = len(source)
             if not _is_protected(stack, policy):
-                for start, end in _split_entity_boundaries(source, cursor, text_end):
+                for start, end, numeric_reference in _split_text_boundaries(
+                    source,
+                    cursor,
+                    text_end,
+                    decode_numeric_cjk_refs=policy.decode_numeric_cjk_refs,
+                ):
                     if start == end:
                         continue
                     target_ordinal += 1
@@ -154,6 +161,7 @@ def tokenize_xhtml(source: str, options: Optional[TokenizerOptions] = None) -> T
                             target_ordinal,
                             policy,
                             tag_name=stack[-1] if stack else None,
+                            numeric_reference=numeric_reference,
                         )
                     )
             cursor = text_end
@@ -186,18 +194,27 @@ def tokenize_xhtml(source: str, options: Optional[TokenizerOptions] = None) -> T
             if _element_is_writable(tag.name, stack, policy):
                 for attribute in tag.attributes:
                     if attribute.name in policy.convert_attributes:
-                        target_ordinal += 1
-                        targets.append(
-                            _make_target(
-                                source,
-                                attribute.value_start,
-                                attribute.value_end,
-                                target_ordinal,
-                                policy,
-                                tag_name=tag.name,
-                                attribute_name=attribute.name,
+                        for start, end, numeric_reference in _split_attribute_boundaries(
+                            source,
+                            attribute.value_start,
+                            attribute.value_end,
+                            decode_numeric_cjk_refs=policy.decode_numeric_cjk_refs,
+                        ):
+                            if start == end:
+                                continue
+                            target_ordinal += 1
+                            targets.append(
+                                _make_target(
+                                    source,
+                                    start,
+                                    end,
+                                    target_ordinal,
+                                    policy,
+                                    tag_name=tag.name,
+                                    attribute_name=attribute.name,
+                                    numeric_reference=numeric_reference,
+                                )
                             )
-                        )
             if not tag.self_closing and tag.name not in VOID_ELEMENTS:
                 stack.append(tag.name)
         else:
@@ -220,12 +237,14 @@ def _make_target(
     *,
     tag_name: Optional[str],
     attribute_name: Optional[str] = None,
+    numeric_reference: bool = False,
 ) -> TextTarget:
     radius = options.context_radius
     context_start = max(0, start - radius)
     context_end = min(len(source), end + radius)
     kind = "attr" if attribute_name is not None else "text"
-    node_id = f"{options.document_kind}:{kind}:{ordinal}"
+    prefix = "numeric_ref:" if numeric_reference else f"{options.document_kind}:{kind}:"
+    node_id = f"{prefix}{ordinal}"
     return TextTarget(
         node_id=node_id,
         source_text=source[start:end],
@@ -384,6 +403,23 @@ def _pop_stack(stack: list[str], name: str) -> None:
 
 
 def _split_entity_boundaries(source: str, start: int, end: int) -> Iterable[Tuple[int, int]]:
+    """Yield only non-entity spans, preserving the legacy default behavior."""
+
+    for span_start, span_end, _ in _split_text_boundaries(
+        source, start, end, decode_numeric_cjk_refs=False
+    ):
+        yield span_start, span_end
+
+
+def _split_text_boundaries(
+    source: str,
+    start: int,
+    end: int,
+    *,
+    decode_numeric_cjk_refs: bool,
+) -> Iterable[Tuple[int, int, bool]]:
+    """Split text around entities and optionally expose numeric Han refs."""
+
     cursor = start
     segment_start = start
     while cursor < end:
@@ -395,11 +431,76 @@ def _split_entity_boundaries(source: str, start: int, end: int) -> Iterable[Tupl
             cursor += 1
             continue
         if segment_start < cursor:
-            yield segment_start, cursor
-        cursor = semicolon + 1
+            yield segment_start, cursor, False
+        entity_end = semicolon + 1
+        if decode_numeric_cjk_refs and _is_numeric_han_reference(
+            source[cursor:entity_end]
+        ):
+            yield cursor, entity_end, True
+        cursor = entity_end
         segment_start = cursor
     if segment_start < end:
-        yield segment_start, end
+        yield segment_start, end, False
+
+
+def _split_attribute_boundaries(
+    source: str,
+    start: int,
+    end: int,
+    *,
+    decode_numeric_cjk_refs: bool,
+) -> Iterable[Tuple[int, int, bool]]:
+    """Split every attribute entity so no rule can rewrite entity internals."""
+
+    cursor = start
+    segment_start = start
+    while cursor < end:
+        if source[cursor] != "&":
+            cursor += 1
+            continue
+        semicolon = source.find(";", cursor + 1, end)
+        if semicolon < 0:
+            cursor += 1
+            continue
+        if segment_start < cursor:
+            yield segment_start, cursor, False
+        entity_end = semicolon + 1
+        if decode_numeric_cjk_refs and _is_numeric_han_reference(
+            source[cursor:entity_end]
+        ):
+            yield cursor, entity_end, True
+        cursor = entity_end
+        segment_start = cursor
+    if segment_start < end:
+        yield segment_start, end, False
+
+
+def _is_numeric_han_reference(value: str) -> bool:
+    if not value.startswith("&#") or not value.endswith(";"):
+        return False
+    digits = value[2:-1]
+    try:
+        if digits[:1].lower() == "x":
+            if len(digits) == 1:
+                return False
+            codepoint = int(digits[1:], 16)
+        else:
+            codepoint = int(digits, 10)
+    except ValueError:
+        return False
+    return 0 <= codepoint <= 0x10FFFF and _is_han_codepoint(codepoint)
+
+
+def _is_han_codepoint(codepoint: int) -> bool:
+    return any(
+        start <= codepoint <= finish
+        for start, finish in (
+            (0x3400, 0x4DBF),
+            (0x4E00, 0x9FFF),
+            (0xF900, 0xFAFF),
+            (0x20000, 0x2FA1F),
+        )
+    )
 
 
 def _is_name_character(character: str) -> bool:

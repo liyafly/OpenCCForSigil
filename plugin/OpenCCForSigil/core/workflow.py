@@ -86,6 +86,7 @@ class ConversionWorkflow:
         tokenizer_options: Optional[TokenizerOptions] = None,
         session_id: str = "",
         profile_id: str = "",
+        snapshot_guard=None,
     ) -> None:
         self.adapter = adapter
         self.backend = backend
@@ -95,10 +96,12 @@ class ConversionWorkflow:
         self.tokenizer_options = tokenizer_options or TokenizerOptions()
         self.session_id = session_id
         self.profile_id = profile_id
+        self.snapshot_guard = snapshot_guard
         self._sources: Tuple[SourceDocument, ...] = ()
         self._planned: Tuple[PlannedDocument, ...] = ()
         self.staging = StagingArea()
         self._verification = ()
+        self._verified_files = ()
 
     def scan(
         self,
@@ -377,6 +380,7 @@ class ConversionWorkflow:
         self._verification = tuple(results)
         if not all(result.passed for result in self._verification):
             raise WorkflowError("structural verification failed; commit is blocked")
+        self._verified_files = files
         return self._verification
 
     def commit(self, staged: Optional[Iterable[StagedFile]] = None) -> CommitResult:
@@ -385,12 +389,16 @@ class ConversionWorkflow:
             return CommitResult()
         if not self._verification or not all(result.passed for result in self._verification):
             raise WorkflowError("verify must pass before commit")
+        if files != self._verified_files:
+            raise WorkflowError("staged files changed after verification; reverify required")
         for staged_file in files:
             current = self.adapter.read(staged_file.file_id)
             if source_sha256(current) != staged_file.plan.source_sha256:
                 raise WorkflowError(
                     f"source changed after preview; rescan required: {staged_file.file_id}"
                 )
+        if self.snapshot_guard is not None:
+            self.snapshot_guard()
         try:
             return self.adapter.commit(
                 (staged_file.file_id, staged_file.converted) for staged_file in files

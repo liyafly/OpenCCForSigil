@@ -57,6 +57,7 @@ class RuleSnapshot:
 
     schema_version: int = 1
     rules_hash: str = ""
+    rules: Tuple[object, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -65,6 +66,13 @@ class ConvertRequest:
     segmentation: str = "mmseg"
     rules_snapshot: RuleSnapshot = field(default_factory=RuleSnapshot)
     language_tag: Optional[str] = None
+    profile_id: str = ""
+    book_fingerprint: str = ""
+    quotation_mode: str = "keep"
+    punctuation_mode: str = "keep"
+    pivot_chain: Tuple[str, ...] = ()
+    detailed_classification: bool = True
+    diagnose_mixed: bool = True
 
 
 @dataclass(frozen=True)
@@ -79,6 +87,8 @@ class TokenChange:
     category: str = "opencc_change"
     risk: str = "LOW"
     attribution_method: Optional[str] = None
+    comparison_stage: Optional[str] = None
+    attribution_confidence: Optional[str] = None
     context_before: str = ""
     context_after: str = ""
     document_kind: str = "xhtml"
@@ -121,6 +131,7 @@ class ConversionPlan:
     targets: Tuple[TextTarget, ...] = ()
     source_length: int = 0
     document_kind: str = "xhtml"
+    diagnostics: Tuple[Diagnostic, ...] = ()
 
 
 @dataclass(frozen=True)
