@@ -31,6 +31,7 @@ in Windows, Linux, macOS Intel, and macOS arm64 Sigil.
 
 The user's previous acceptance covers the previous tested artifact. The newly
 built package needs its own real-host acceptance; previously noted minor UI
-polish remains deferred. Tagged releases are separate from these main-branch
-changes. A local package contains only the checked-in host payload; use the
-commit-named CI Fat Plugin for cross-platform installation.
+polish remains deferred. Release notes record these boundaries for each tagged
+package. A local package contains only the checked-in host payload; use the
+published release Fat Plugin or commit-named CI Fat Plugin for cross-platform
+installation.

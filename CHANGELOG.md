@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.0 - 2026-09-22
 
 - Connect exact/protect rules, profile storage, rule import/export, a text
   sandbox, and official comparative inspection to the conversion settings.
@@ -34,6 +34,11 @@
   option and reports its reason without blocking standard conversion. A
   selected Jieba configuration never falls back to another algorithm, and
   payload/hash/provenance failures remain blocking (spec §4.4.1, §4.5.5).
+
+- Release validation covers CI tests, the four-platform native binary baseline,
+  and a controlled Qt smoke test on the local host. Real Sigil install,
+  apply, save, and reopen acceptance across all four platforms remains open;
+  previously noted minor UI polish is deferred to a later release.
 
 ## 0.0.3-beta
 
@@ -84,7 +89,7 @@
 - Unified the V1 runtime policy at CPython 3.14.x/cp314: Sigil 3.14.2 is the production baseline and mise uses 3.14.7 for development/CI only.
 - Preserved source-span-safe XHTML mutation, preview/transaction boundaries, rules overlays, provenance, golden/CLI differential tests, and regional explicitness.
 
-## 0.1.0
+## Historical Phase 0 plugin skeleton
 
 - Added the Phase 0 plugin skeleton.
 - Pinned the local Python and development toolchain with mise.

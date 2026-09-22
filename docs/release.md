@@ -90,6 +90,13 @@ source-controlled documentation. They are linked from [`docs/README.md`](README.
 and are deliberately not generated into a documentation ZIP or uploaded by this
 workflow. This preserves the full maintainer record in the repository.
 
+Tags without a prerelease suffix (for example, `v0.1.0`) publish a regular
+GitHub release and mark it latest. Tags with a suffix (for example,
+`v0.1.1-beta`) publish a prerelease without replacing the latest stable release.
+The publish job uses `docs/releases/<tag>.md` when present, otherwise GitHub's
+generated notes. Notes must distinguish automated validation from real Sigil
+host acceptance; a regular release does not imply that untested hosts were tested.
+
 Release mode requires exactly these four runtime identities, with no missing or
 extra payload: Linux x86_64, macOS arm64, macOS x86_64, and Windows x86_64,
 all on CPython 3.14/cp314. `tools/build_plugin.py --require-runtimes` writes a

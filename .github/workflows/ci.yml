@@ -182,11 +182,13 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    # This job only downloads artifacts and has no checkout, so gh cannot
-    # resolve the repository from git remotes and needs GH_REPO instead.
+    # Resolve release operations explicitly against this repository.
     env:
       GH_REPO: ${{ github.repository }}
     steps:
+      - name: Check out release notes
+        uses: actions/checkout@v4
+
       - name: Download the validated Fat Plugin artifact
         uses: actions/download-artifact@v5
         with:
@@ -221,15 +223,25 @@ jobs:
           PY
           mv "$plugin_zip" "release-artifacts/OpenCCForSigil_${version}.zip"
 
-      - name: Create GitHub prerelease
+      - name: Create GitHub release
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           version="${RELEASE_TAG#v}"
+          release_flags=(--latest)
+          if [[ "$version" == *-* ]]; then
+            release_flags=(--prerelease --latest=false)
+          fi
+          notes_path="docs/releases/${RELEASE_TAG}.md"
+          notes_flags=(--generate-notes)
+          if [[ -f "$notes_path" ]]; then
+            notes_flags=(--notes-file "$notes_path")
+          fi
           gh release create "$RELEASE_TAG" \
             --verify-tag \
             --title "OpenCCForSigil ${RELEASE_TAG}" \
-            --prerelease \
-            --generate-notes \
+            "${release_flags[@]}" \
+            "${notes_flags[@]}" \
             "release-artifacts/OpenCCForSigil_${version}.zip"
