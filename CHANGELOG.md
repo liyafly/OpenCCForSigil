@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Analyze frozen document sources with a worker-owned OpenCC instance while
+  the main thread handles progress, cancellation, and every Sigil API call.
+  Cancellation discards the plan and never enters the write boundary.
+
 - Add opt-in NCX labels and whitelisted OPF metadata conversion, plus grouped
   Chinese language-tag proposals. Preserve XML source formatting and require
   preview, structural verification, and source hash checks before any write.

@@ -179,7 +179,8 @@ class Controller:
             )
             progress = create_progress_reporter(len(targets.file_ids))
             try:
-                planned = workflow.plan(
+                planned = workflow.plan_in_worker(
+                    OpenCCBackend,
                     progress=progress.update,
                     cancelled=progress.cancelled,
                 )

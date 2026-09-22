@@ -25,6 +25,7 @@ def build_conversion_plan(
     profile_id: str = "",
     rules_snapshot_hash: Optional[str] = None,
     document_kind: str = "xhtml",
+    check_cancel=None,
 ) -> ConversionPlan:
     """Analyze writable targets and freeze their official OpenCC patches.
 
@@ -42,6 +43,8 @@ def build_conversion_plan(
     converter = OfficialBackendConverter(backend)
     changes = []
     for target in document.targets:
+        if check_cancel is not None:
+            check_cancel()
         if not target.convert:
             continue
         if target.attribute_name in {"lang", "xml:lang"} or target.tag_name == "dc:language":

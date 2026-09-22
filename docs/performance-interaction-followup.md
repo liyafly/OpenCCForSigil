@@ -49,3 +49,12 @@
 | 大列表模型/视图 | 当前仍为每条变更创建列表项。应实测一万条以上数据，再决定分页或虚拟列表，不能改变实际接受范围。 |
 
 真实宿主性能验收应使用同一 EPUB 副本、相同 OpenCC 配置与平台，记录设置至预览、接受单条、全部接受、应用至完成的耗时和峰值内存。自动测试或合成基准不能替代该验收。
+# Worker planning
+
+The controller reads selected sources on the main thread, then plans them with
+a backend constructed, used, and closed in one dedicated worker. Queued
+progress keeps Qt event processing on the main thread. Cancel discards the
+entire plan at the next target boundary; a native OpenCC call already in
+progress must return before the worker exits. Staging, verification, and every
+Sigil read/write remain on the calling thread. This is cooperative cancellation,
+not a hard interruption of the native library.

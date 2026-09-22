@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from queue import Empty, Queue
+from threading import Event
 from typing import Callable, Iterable, Optional, Tuple
 
 from core.models import ConversionPlan, ConvertRequest
@@ -187,6 +190,63 @@ class ConversionWorkflow:
         self._planned = tuple(planned)
         return self._planned
 
+    def plan_in_worker(self, backend_factory, *, progress=None, cancelled=None):
+        """Read on the caller thread; construct/use/close a backend in its worker.
+
+        Only immutable source/request data and progress tuples cross threads.
+        Cancellation is cooperative between targets; a running native call must
+        return before shutdown. No Qt or BookContainer API is used by the worker.
+        """
+        sources = self.scan(progress=progress, cancelled=cancelled)
+        if not sources:
+            self._planned = ()
+            return ()
+        stop = Event()
+        updates = Queue()
+
+        def check_cancel():
+            if stop.is_set():
+                raise WorkflowCancelled("analysis cancelled")
+
+        def work():
+            backend = backend_factory(self.request.config)
+            try:
+                results = []
+                for index, source in enumerate(sources):
+                    check_cancel()
+                    updates.put(("planning", index, len(sources), source.href))
+                    results.append(self._plan_document(
+                        source, backend=backend, check_cancel=check_cancel))
+                    check_cancel()
+                    updates.put(("planning", index + 1, len(sources), source.href))
+                return tuple(results)
+            finally:
+                backend.close()
+
+        last = ("planning", 0, len(sources), sources[0].href)
+        with ThreadPoolExecutor(max_workers=1, thread_name_prefix="OpenCC-plan") as pool:
+            future = pool.submit(work)
+            try:
+                while not future.done():
+                    try:
+                        last = updates.get(timeout=0.025)
+                    except Empty:
+                        pass
+                    if progress:
+                        progress(*last)
+                    if cancelled and cancelled():
+                        stop.set()
+                result = future.result()
+                if cancelled and cancelled():
+                    stop.set()
+                check_cancel()
+                if progress:
+                    progress("planning", len(sources), len(sources), sources[-1].href)
+            finally:
+                stop.set()
+        self._planned = result
+        return result
+
     def preview(self) -> Tuple[PreviewSession, ...]:
         if not self._planned:
             self.plan()
@@ -338,7 +398,8 @@ class ConversionWorkflow:
         except CommitError as exc:
             raise WorkflowCommitError(exc) from exc
 
-    def _plan_document(self, source_document: SourceDocument) -> PlannedDocument:
+    def _plan_document(self, source_document: SourceDocument, *, backend=None,
+                       check_cancel=None) -> PlannedDocument:
         kind = source_document.document_kind
         if kind in {"ncx", "metadata"}:
             tokenized = tokenize_xml(
@@ -354,7 +415,8 @@ class ConversionWorkflow:
             file_id=source_document.file_id,
             source=source_document.source,
             document=tokenized,
-            backend=self.backend,
+            backend=backend if backend is not None else self.backend,
+            check_cancel=check_cancel,
             request=self.request,
             session_id=self.session_id,
             profile_id=self.profile_id,
