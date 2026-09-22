@@ -10,43 +10,40 @@ dependencies retain the notices described in
 
 ## Current implementation status
 
-The repository now contains the installable plugin skeleton plus one verified
-official OpenCC wheel payload for the current build host:
+The V1 conversion workflow is connected end to end:
 
-- a thin `plugin.py` entry point and `plugin.xml` metadata;
-- explicit application/session states;
-- user-data storage and JSONL logging boundaries;
-- the official OpenCC Python Binding and exact runtime-selector boundary;
-- a verified OpenCC 1.4.2 macOS arm64 / CPython 3.14 / `cp314` payload;
-- the official upstream native `opencc-jieba` plugin, its seven plugin configs,
-  and its Jieba resources in the macOS payload;
-- build-time wheel fetch, SHA-256, payload, config/data, and import checks;
-- an offset-preserving XHTML tokenizer and TextTarget/ConversionPlan pipeline;
-- Preview decisions with Accept this, Skip this, Accept all, and Skip all;
-- staging, structural verification, source-SHA256 concurrency checks, and a
-  single adapter commit boundary for `bk.writefile()`;
-- three-language UI catalogs (简体中文, English, 繁體中文), remembered in
-  plugin preferences;
-- an explicit XHTML target picker for one file, Book Browser-selected files,
-  or all XHTML resources, followed by file-level preview and cancellable
-  analysis progress;
-- tests and a mise-pinned development toolchain.
+- all 16 official configs, plus seven optional native Jieba configs when the
+  verified payload can load them;
+- explicit single/selected/spine/all XHTML scope, with a frozen manifest-ID
+  selection and opt-in NCX, whitelisted metadata, and Chinese language tags;
+- source-preserving exact/protect rules, profile and book scopes, import/export,
+  a text sandbox, and independent official-config inspection;
+- saved profiles, optional quotation/horizontal-punctuation changes, mixed
+  script diagnostics, and explicit high-risk pivot chains;
+- preview decisions by item, file, category, and risk, grouped language changes,
+  return-to-settings analysis, and a Checkpoint reminder before applying;
+- worker-owned conversion, cooperative cancellation, in-memory staging, XML
+  syntax/structure verification, and source/rule/profile snapshot checks;
+- conversion history and Markdown/JSON reports; document text is excluded from
+  persisted history, and full-diff export requires explicit opt-in;
+- English, 简体中文, and 繁體中文 UI.
 
-The first interactive conversion slice lets the user explicitly choose a
-pinned standard OpenCC config before planning (`s2t` is the initial default;
-regional choices such as `tw2s` and `tw2sp` are available). When the selected
-payload has passed the native-plugin checks, an advanced checkbox maps a
-standard direction to its official `*_jieba` config. It previews every
-planned change before any EPUB write. Script/style/code/pre content and
-protected attributes remain unchanged. Runtime must not fall back to a system
-OpenCC/plugin installation or invoke pip.
+See [document conversion](docs/extended-document-conversion.md),
+[rules and profiles](docs/rules-and-profiles.md), and
+[current validation boundaries](docs/deviations.md). Rules, preferences, logs,
+profiles, and history live outside the plugin installation and the EPUB.
 
-The target picker uses manifest IDs and keeps the selection frozen for the
-whole run. Sigil's `selected_iter()` is the Book Browser selection; it is not
-treated as the active editor tab. If a host does not expose that iterator, the
-same picker opens with no initial checks so the user must choose the targets
-explicitly. The plugin reads XHTML bodies only after the user confirms the
-target set.
+The checked-in payload is macOS arm64/cp314. CI assembles the four-platform Fat
+Plugin and inspects actual native OS/ABI requirements: macOS deployment target
+13.0 or earlier, and Linux GLIBC/GLIBCXX at most 2.35/3.4.30. This does not
+replace installing, applying, saving, and reopening an EPUB in each real Sigil
+host. Windows and Linux ARM, and other Python minor versions, are not declared
+supported payloads.
+
+Standard preflight is independent of optional Jieba loading. An optional load
+failure disables Jieba with its reason; corruption/provenance failures block
+execution. Runtime never downloads dependencies, invokes pip, imports a system
+OpenCC, or silently changes the selected algorithm.
 
 V1 formally supports CPython 3.14.x with wheel ABI `cp314`; the current Sigil
 bundled Python 3.14.2 is the production baseline. The reproducible development

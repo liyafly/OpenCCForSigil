@@ -30,6 +30,8 @@ BYVoid/OpenCC official Python Binding (`opencc.OpenCC`); the v1.2 direct
 | Understand the dependency direction and conversion state machine | [`architecture.md`](architecture.md) |
 | Inspect the official OpenCC Binding and payload boundary | [`native-backend.md`](native-backend.md) |
 | Review the optional official native Jieba capability | [`jieba-native-evaluation.md`](jieba-native-evaluation.md) |
+| Configure NCX, metadata, and language proposals | [`extended-document-conversion.md`](extended-document-conversion.md) |
+| Manage profiles, rules, sandbox, and inspector | [`rules-and-profiles.md`](rules-and-profiles.md) |
 | Define or review user rule behavior | [`rule-format.md`](rule-format.md) |
 | Understand privacy-safe storage and logs | [`privacy.md`](privacy.md) |
 | Run local and release validation | [`testing.md`](testing.md) |

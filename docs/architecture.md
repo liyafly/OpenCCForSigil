@@ -1,6 +1,6 @@
 # Architecture
 
-This repository implements the source-preserving conversion slice and the
+This repository implements the source-preserving V1 conversion workflow and the
 official OpenCC Binding runtime boundary from the engineering specification.
 The intended dependency direction is:
 
@@ -14,14 +14,14 @@ app/controller.py + app/session.py
 sigil adapter (the only commit boundary)
 ```
 
-The UI will consume application view models later. It must not import
-`opencc_backend`, document processors, or the Sigil `BookContainer` directly.
-The backend will return strings and provenance only; it will not know about
-EPUB structure, rules, or UI.
+UI dialogs receive immutable plans and settings services. Backend config
+identifiers may be displayed by the UI; native conversion remains behind the
+backend service. Dialogs never write BookContainer resources. The backend
+returns strings and provenance and knows nothing about EPUB structure or UI.
 
 ## Conversion workflow
 
-The first interactive profile runs an explicit standard-config chooser (for
+The controller runs an explicit standard-config chooser (for
 example `s2t`, `t2s`, `tw2s`, or `tw2sp`) before the workflow:
 
 ```text
@@ -41,8 +41,8 @@ official native plugin, the config dialog enables an advanced Jieba checkbox
 that maps a standard config to its concrete `*_jieba` config. It is not a
 generic segmentation selector, and an unavailable/invalid payload fails
 closed. The core API also supports bulk filters by file, category, risk, or
-rule source, so future review modes can narrow a bulk decision without
-changing the write boundary.
+rule source. The UI exposes file/category/risk filters. Language-tag groups
+remain indivisible even when some members are hidden by a filter.
 
 ## Runtime boundaries
 
@@ -63,3 +63,20 @@ changing the write boundary.
 - User data is stored outside the plugin installation directory.
 - Logs are JSONL and default to metadata/short diagnostic fields, not whole
   book content.
+
+## Frozen settings and worker ownership
+
+The controller reads Sigil sources on the main thread. One worker constructs,
+uses, and closes its own backend while immutable source/request data and queued
+progress cross the thread boundary. Returning to settings discards old plans
+and decisions. Cancellation discards all analysis before any commit.
+
+Rules lock their spans before the unlocked pipeline runs. Exact/protect output
+bypasses every subsequent transform. OpenCC comparisons independently receive
+the original segment and only explain the frozen result; they never replace
+it during Apply. Full-diff exports use in-memory data and require opt-in.
+
+A final source hash check covers every staged resource before the first write.
+The verified staged-file tuple and profile/rule storage revision must still
+match. A host write failure can be partial; its committed IDs are reported
+honestly, without claiming rollback or an undo transaction.

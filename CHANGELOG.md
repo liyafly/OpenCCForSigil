@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Connect exact/protect rules, profile storage, rule import/export, a text
+  sandbox, and official comparative inspection to the conversion settings.
+- Add optional quotation and horizontal punctuation transforms, mixed-script
+  diagnostics, explicit high-risk pivot, and numeric Han reference decoding.
+- Add spine selection, file/category/risk preview filters, grouped decisions,
+  return to settings, and the persisted Checkpoint reminder preference.
+- Add private conversion history and Markdown/JSON reports. Full diff remains
+  in memory unless explicitly exported; verify settings and source snapshots
+  again before committing the exact verified staged files.
+- Extend TW/HK, ambiguity, and Unicode CLI differential coverage to 28 cases.
+
 - Analyze frozen document sources with a worker-owned OpenCC instance while
   the main thread handles progress, cancellation, and every Sigil API call.
   Cancellation discards the plan and never enters the write boundary.

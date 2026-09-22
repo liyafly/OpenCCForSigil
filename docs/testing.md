@@ -1,6 +1,6 @@
 # Testing
 
-The initial exit condition is:
+The local automated checks cover:
 
 ```text
 pytest unit storage/logging = PASS
@@ -20,12 +20,15 @@ mise exec -- uv sync --locked
 make check
 ```
 
-The test tree follows the specification's fixed separation. The current slice
-also validates the checked-in official wheel payload, import origin, all V1
-configs, the independent CLI smoke corpus, source-preserving target spans,
-preview decisions, and the single write boundary. Later phases add broader
-document, structural, golden, and performance suites; they should not be
-collapsed into one plugin smoke test.
+The test tree separates unit and integration behavior: native payload and OS
+metadata, bounded diff reconstruction, thread ownership/cancellation, XML/NCX
+metadata whitelists, grouped language decisions, rules/profile persistence,
+locked outputs, pivot/quotation/punctuation transforms, history privacy, source
+and settings drift, return-to-settings replanning, and commit verification.
+The source-only official CLI corpus includes all 16 configs plus ambiguity,
+TW/HK vocabulary, mixed scripts, and Unicode preservation examples. Frozen
+comparison outputs are explanatory; accepting all must reproduce the selected
+pipeline exactly.
 
 The native Jieba suite is a separate advanced-payload gate:
 [`jieba-native-evaluation.md`](jieba-native-evaluation.md) records the pinned
