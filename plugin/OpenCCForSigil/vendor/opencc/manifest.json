@@ -29,7 +29,7 @@
       "wheel_sha256": "2dd2f8c3f7e633d252753c8f69298d5f446e02d62a3cf9c6a3c18683b5346c89",
       "wheel_url": "https://files.pythonhosted.org/packages/19/0b/94de5296f99aa3a7e8e9ced388b0ada742b57394eb8cec8bc5ecc882af54/opencc-1.4.2-cp314-cp314-macosx_11_0_arm64.whl",
       "payload_path": "payloads/macos-arm64-cp314",
-      "payload_sha256": "8772b53761950fe817891cef8fc718e0060ecd930eaaa95b98013b997ff973c0",
+      "payload_sha256": "d0a31b172323182d1dc726817e84611ba354e98da89401735a3545e5e4eb98de",
       "payload_runtime_test": "passed",
       "config_hashes": {
         "hk2s": "b5fb0d6447f1f111c02a99f405d678b40a97bf73de0a25000219878994a8da37",
@@ -122,7 +122,7 @@
           "upstream_commit": "025f371dc76b598d77384fbdab90c937471844d8",
           "plugin_dir": "opencc/clib/lib/opencc/plugins",
           "library_path": "opencc/clib/lib/opencc/plugins/libopencc-jieba.dylib",
-          "library_sha256": "10b9349ed128f14745a1ec15cd609b8ffca32db84bd9090708dff07f57c1eb9d",
+          "library_sha256": "7a3ce927ad5ce30c33dde4bb139ed7da53637e1626dfebb92f93572433726489",
           "config_names": [
             "s2t_jieba",
             "s2tw_jieba",

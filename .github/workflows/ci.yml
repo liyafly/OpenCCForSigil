@@ -20,13 +20,13 @@ jobs:
       matrix:
         include:
           - id: linux-x86_64
-            runner: ubuntu-latest
+            runner: ubuntu-22.04
           - id: macos-arm64
             runner: macos-15
           - id: macos-x86_64
             runner: macos-15-intel
           - id: windows-x86_64
-            runner: windows-latest
+            runner: windows-2022
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Check out
@@ -48,7 +48,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: native_build/artifacts/verified-payload
-          key: opencc-payload-${{ matrix.id }}-${{ hashFiles('.github/workflows/ci.yml', 'native_build/payload-lock.json', 'tools/vendor_opencc.py', 'tools/build_opencc_jieba.py', 'tools/check_upstream_provenance.py', 'tools/export_verified_payload.py', 'tools/merge_verified_payloads.py', 'plugin/OpenCCForSigil/vendor/opencc/manifest.json') }}
+          key: opencc-payload-${{ matrix.id }}-${{ hashFiles('.github/workflows/ci.yml', 'native_build/payload-lock.json', 'tools/vendor_opencc.py', 'tools/build_opencc_jieba.py', 'tools/native_compatibility.py', 'tools/check_upstream_provenance.py', 'tools/export_verified_payload.py', 'tools/merge_verified_payloads.py', 'plugin/OpenCCForSigil/vendor/opencc/manifest.json') }}
 
       - name: Merge cached target-tested payload
         if: steps.payload-cache.outputs.cache-hit == 'true'
@@ -81,8 +81,9 @@ jobs:
           ldd "$plugin"
           ldd -r "$plugin"
           nm -D --defined-only "$plugin" | grep opencc_get_segmentation_plugin_v2
+          log_file="$RUNNER_TEMP/opencc-jieba-load.log"
           set +e
-          LD_DEBUG=libs mise exec -- uv run python - <<'PY' 2>&1 | grep -E 'libopencc-jieba|not found|cannot|error' | tail -120
+          LD_DEBUG=libs mise exec -- uv run python - <<'PY' >"$log_file" 2>&1
           import sys
           sys.path.insert(0, "plugin/OpenCCForSigil")
           from opencc_backend.runtime_selector import RuntimeSelector
@@ -90,7 +91,12 @@ jobs:
           module, _, _, _, _ = RuntimeSelector().import_opencc()
           module.OpenCC("s2t_jieba").convert("汉字")
           PY
-          exit 0
+          status=$?
+          grep -E 'libopencc-jieba|not found|cannot|error' "$log_file" | tail -120 || true
+          if [ "$status" -ne 0 ]; then
+            cat "$log_file"
+            exit "$status"
+          fi
 
       - name: Verify manifest and payload integrity
         run: mise exec -- uv run python tools/verify_vendor.py

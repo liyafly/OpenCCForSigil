@@ -21,6 +21,11 @@ import tempfile
 from typing import Any, Iterable, Mapping
 import uuid
 
+try:
+    from native_compatibility import NativeCompatibilityError, validate_binary_path
+except ModuleNotFoundError:  # Imported as tools.build_opencc_jieba by tests.
+    from tools.native_compatibility import NativeCompatibilityError, validate_binary_path
+
 
 ROOT = Path(__file__).resolve().parents[1]
 PLUGIN_ROOT = ROOT / "plugin" / "OpenCCForSigil"
@@ -224,6 +229,19 @@ def _cmake_rpath(runtime_os: str) -> str | None:
     return None
 
 
+def _cmake_baseline_options(runtime_os: str) -> list[str]:
+    """Return explicit host baseline options for the target native build."""
+
+    if runtime_os == "macos":
+        return ["-DCMAKE_OSX_DEPLOYMENT_TARGET=13.0"]
+    if runtime_os == "linux":
+        # Build with Ubuntu 22.04's GCC 11; its runtime requirements must fit
+        # the GLIBCXX_3.4.30 host policy. Keep the compiler explicit so a future
+        # runner image cannot silently raise the payload's ABI floor.
+        return ["-DCMAKE_C_COMPILER=gcc-11", "-DCMAKE_CXX_COMPILER=g++-11"]
+    return []
+
+
 def _strip_plugin(plugin_library: Path, runtime_os: str) -> None:
     """Remove build-time symbols and paths before hashing the release payload."""
 
@@ -236,7 +254,11 @@ def _strip_plugin(plugin_library: Path, runtime_os: str) -> None:
 
 
 def _build_plugin(
-    source_root: Path, payload_root: Path, runtime_os: str, build_root: Path
+    source_root: Path,
+    payload_root: Path,
+    runtime_os: str,
+    architecture: str,
+    build_root: Path,
 ) -> tuple[Path, Path]:
     plugin_source = source_root / "plugins" / "jieba"
     if not (plugin_source / "CMakeLists.txt").is_file():
@@ -258,6 +280,7 @@ def _build_plugin(
         "-DOPENCC_ENABLE_INSTALL=ON",
         "-DBUILD_SHARED_LIBS=OFF",
     ]
+    configure.extend(_cmake_baseline_options(runtime_os))
     if runtime_os != "windows":
         # Put reproducibility and ABI flags in the general flag set.  Setting
         # CMAKE_CXX_FLAGS_RELEASE here would replace CMake's default Release
@@ -309,6 +332,14 @@ def _build_plugin(
     )
     plugin_library = _find_plugin(install_root)
     _strip_plugin(plugin_library, runtime_os)
+    try:
+        validate_binary_path(
+            plugin_library,
+            runtime_os=runtime_os,
+            architecture=architecture,
+        )
+    except NativeCompatibilityError as exc:
+        raise SystemExit(f"built Jieba plugin failed binary compatibility check: {exc}") from exc
     return plugin_library, install_root
 
 
@@ -392,6 +423,7 @@ def build(source_root: Path, payload_root: Path) -> None:
             source_root,
             payload_root,
             runtime_os,
+            str(record["architecture"]),
             Path(temp),
         )
         plugin_record = _copy_plugin_payload(

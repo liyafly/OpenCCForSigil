@@ -17,12 +17,14 @@ try:
         format_runtime_identity,
         runtime_identity,
     )
+    from native_compatibility import NativeCompatibilityError, validate_binary_bytes
 except ModuleNotFoundError:  # Imported as tools.validate_artifact by tests.
     from tools.runtime_matrix import (
         SUPPORTED_RUNTIME_IDENTITIES,
         format_runtime_identity,
         runtime_identity,
     )
+    from tools.native_compatibility import NativeCompatibilityError, validate_binary_bytes
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -382,6 +384,15 @@ def validate(artifact: Path, *, require_runtimes: bool = False) -> None:
             actual_library_hash = _sha256_bytes(archive.read(library_path))
             if actual_library_hash.lower() != expected_library_hash.lower():
                 raise SystemExit(f"native opencc-jieba library hash mismatch: {library_path}")
+            try:
+                validate_binary_bytes(
+                    archive.read(library_path),
+                    runtime_os=str(payload.get("os", "")),
+                    architecture=str(payload.get("architecture", "")),
+                    label=library_path,
+                )
+            except NativeCompatibilityError as exc:
+                raise SystemExit(f"native opencc-jieba binary compatibility check failed: {exc}") from exc
             for config in plugin.get("config_names", []):
                 config_name = prefix + "opencc/clib/share/opencc/" + str(config) + ".json"
                 if config_name not in names:

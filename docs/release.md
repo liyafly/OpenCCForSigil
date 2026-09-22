@@ -33,10 +33,10 @@ own official plugin.
 matrix:
 
 ```text
-ubuntu-latest  → linux-x86_64-cp314
+ubuntu-22.04   → linux-x86_64-cp314
 macos-15       → macos-arm64-cp314
 macos-15-intel → macos-x86_64-cp314
-windows-latest → windows-x86_64-cp314
+windows-2022  → windows-x86_64-cp314
 ```
 
 Each matrix job runs `tools/vendor_opencc.py`, manifest/payload verification,
@@ -45,6 +45,17 @@ tests, and the independent official CLI plus native Jieba differential corpora
 on its own native runner. It then exports only the target-tested payload
 with `tools/export_verified_payload.py` and uploads that directory as a
 workflow artifact.
+
+Native compatibility is an additional release gate, not implied by an ABI
+wheel tag or a successful modern runner. `tools/native_compatibility.py`
+inspects the actual Jieba library bytes without loading them: macOS minimum
+deployment target must be at most 13.0; Linux GLIBC and GLIBCXX requirements
+must be at most 2.35 and 3.4.30 respectively. ELF/Mach-O/PE architecture must
+match the payload. Missing or malformed required version metadata is rejected.
+Both `verify_vendor.py` and the final ZIP validator run this gate, including
+on cached payloads. macOS builds pass `CMAKE_OSX_DEPLOYMENT_TARGET=13.0` and
+Linux builds explicitly select GCC 11 on Ubuntu 22.04. These static checks
+do not replace actual Sigil testing on the supported host systems.
 
 Successful push and manual runs also cache the exported, target-tested payload
 under a key derived from the wheel lock, manifest, and native build recipes.

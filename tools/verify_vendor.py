@@ -15,12 +15,14 @@ try:
         format_runtime_identity,
         runtime_identity,
     )
+    from native_compatibility import NativeCompatibilityError, validate_binary_path
 except ModuleNotFoundError:  # Imported as tools.verify_vendor by the test suite.
     from tools.runtime_matrix import (
         SUPPORTED_RUNTIME_IDENTITIES,
         format_runtime_identity,
         runtime_identity,
     )
+    from tools.native_compatibility import NativeCompatibilityError, validate_binary_path
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -198,6 +200,14 @@ def _validate_native_plugins(
         raise SystemExit("native plugin library_sha256 is missing or malformed")
     if _sha256_file(library).lower() != library_hash.lower():
         raise SystemExit(f"native plugin library hash mismatch: {library}")
+    try:
+        validate_binary_path(
+            library,
+            runtime_os=str(record.get("os", "")),
+            architecture=str(record.get("architecture", "")),
+        )
+    except NativeCompatibilityError as exc:
+        raise SystemExit(f"native plugin binary compatibility check failed: {exc}") from exc
 
     resource_hashes = plugin["resource_hashes"]
     if not isinstance(resource_hashes, dict) or not resource_hashes:
