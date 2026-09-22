@@ -21,7 +21,7 @@ class OpenCCBackendProtocol(Protocol):
     def provenance(self) -> BackendProvenance:
         ...
 
-    def self_test(self) -> "SelfTestResult":
+    def self_test(self, *, include_optional: bool = True) -> "SelfTestResult":
         ...
 
     def comparison_configs(self, config: str) -> Tuple[str, ...]:

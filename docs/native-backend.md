@@ -12,6 +12,15 @@ bundled Python 3.14.2 is the production baseline; Python 3.14.7 is used only
 for mise development/CI. Patch versions are recorded in provenance and do not
 participate in payload selection.
 
+Standard startup preflight checks standard conversions and the selected
+configuration. Optional Jieba load tests are performed once per backend when
+enumerating available configurations. If the verified optional library cannot
+load, standard conversion remains available and the UI/log reports the cause;
+an explicitly selected Jieba configuration still fails rather than changing
+its algorithm. Payload hash and provenance errors remain blocking. The full
+`self_test()` continues to include the optional capability for diagnostics;
+startup uses `self_test(include_optional=False)` (spec §4.4.1 and §4.5.5).
+
 The current implementation provides the allowlist, provenance model,
 wheel/payload manifest, deterministic tree hash, exact runtime selector,
 import-origin boundary, and a verified macOS arm64 / cp314 payload. A missing

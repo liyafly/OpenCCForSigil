@@ -80,6 +80,7 @@ class Controller:
                 choose_scope,
                 create_progress_reporter,
                 set_ui_language,
+                set_jieba_status,
                 show_result,
                 show_preview,
             )
@@ -116,9 +117,11 @@ class Controller:
 
             # The language choice is now settled before the direction dialog
             # is constructed, including on a first launch with no preference.
-            selected_config = choose_conversion_config(
-                backend.available_configs(), default_config=default_config
-            )
+            available_configs = backend.available_configs()
+            set_jieba_status(backend.jieba_error)
+            if backend.jieba_error:
+                self.logger.event("optional_jieba_unavailable", reason=backend.jieba_error)
+            selected_config = choose_conversion_config(available_configs, default_config=default_config)
             if selected_config is None:
                 self.storage.save_preferences(scope_preferences)
                 self.session.cancel()
@@ -327,7 +330,7 @@ class Controller:
                 backend.close()
 
     def _run_backend_self_test(self, backend: OpenCCBackend) -> None:
-        self_test = backend.self_test()
+        self_test = backend.self_test(include_optional=False)
         self.logger.event(
             "backend_self_test",
             passed=self_test.passed,

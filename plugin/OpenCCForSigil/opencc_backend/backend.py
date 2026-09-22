@@ -53,6 +53,8 @@ class OpenCCBackend:
             and config_name in module_configs
         )
         self._available_configs = standard_configs + jieba_configs
+        self._jieba_checked = False
+        self._jieba_error: Optional[str] = None
         self._ensure_config_is_exposed()
         try:
             # This is the public upstream API. The default tofu policy is intentional.
@@ -63,14 +65,43 @@ class OpenCCBackend:
             ) from exc
 
     def available_configs(self) -> Tuple[str, ...]:
-        return self._available_configs
+        if self.probe_jieba():
+            return self._available_configs
+        return tuple(config for config in self._available_configs if not is_jieba_config(config))
 
     def jieba_available(self) -> bool:
         """Return whether the selected payload exposes verified native Jieba."""
 
-        return self._jieba_plugin is not None and bool(
-            set(JIEBA_CONFIGS) & set(self._available_configs)
-        )
+        return self.probe_jieba()
+
+    @property
+    def jieba_error(self) -> Optional[str]:
+        """Optional capability failure; integrity failures still abort import."""
+
+        return self._jieba_error
+
+    def probe_jieba(self) -> bool:
+        """Probe the verified optional plugin once without changing the config.
+
+        This only isolates native loading/construction failures. The selector
+        has already verified every shipped byte; hash/provenance failures are
+        never downgraded to an optional-capability warning.
+        """
+
+        if not self._jieba_checked:
+            self._jieba_checked = True
+            try:
+                if self._jieba_plugin is None:
+                    raise RuntimeError("official native Jieba is not included in this payload")
+                if not set(JIEBA_CONFIGS) <= set(self._available_configs):
+                    raise RuntimeError("official native Jieba configurations are incomplete")
+                for config in JIEBA_CONFIGS:
+                    value = self._module.OpenCC(config).convert("汉字")
+                    if not isinstance(value, str):
+                        raise TypeError(f"{config} returned a non-text result")
+            except Exception as exc:
+                self._jieba_error = str(exc)
+        return self._jieba_error is None
 
     @property
     def config(self) -> str:
@@ -121,7 +152,7 @@ class OpenCCBackend:
             ),
         )
 
-    def self_test(self) -> SelfTestResult:
+    def self_test(self, *, include_optional: bool = True) -> SelfTestResult:
         error: Optional[str] = None
         checks: Dict[str, bool] = {
             "manifest": True,
@@ -131,27 +162,29 @@ class OpenCCBackend:
             == self._selector.manifest.opencc_version,
             "config": True,
             "s2t_smoke": False,
-            "native_jieba_payload": True,
-            "native_jieba_smoke": True,
+            "t2s_smoke": False,
+            "regional_smoke": False,
+            "selected_config_smoke": False,
         }
         try:
             checks["config"] = set(self._available_configs) >= set(V1_CONFIGS)
             checks["s2t_smoke"] = self._module.OpenCC("s2t").convert("汉字") == "漢字"
-            if self._jieba_plugin is not None:
+            checks["t2s_smoke"] = self._module.OpenCC("t2s").convert("漢字") == "汉字"
+            checks["regional_smoke"] = isinstance(
+                self._module.OpenCC("s2twp").convert("汉字"), str
+            )
+            checks["selected_config_smoke"] = isinstance(self.convert("汉字"), str)
+            if include_optional and self._jieba_plugin is not None:
                 checks["native_jieba_payload"] = set(self._jieba_plugin.config_names) <= set(
                     self._available_configs
                 )
-                checks["native_jieba_smoke"] = all(
-                    isinstance(self._module.OpenCC(config).convert("汉字"), str)
-                    for config in self._jieba_plugin.config_names
-                )
+                checks["native_jieba_smoke"] = self.probe_jieba()
+                if not checks["native_jieba_smoke"]:
+                    error = self._jieba_error
         except Exception as exc:
             error = f"self-test failed: {exc}"
             checks["config"] = False
             checks["s2t_smoke"] = False
-            if self._jieba_plugin is not None:
-                checks["native_jieba_payload"] = False
-                checks["native_jieba_smoke"] = False
         passed = all(checks.values())
         return SelfTestResult(passed=passed, checks=checks, error=None if passed else error)
 

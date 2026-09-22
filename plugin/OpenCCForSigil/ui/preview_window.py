@@ -142,6 +142,12 @@ class ProgressReporter:
 
 
 _translator = Translator("en")
+_jieba_unavailable_reason: str | None = None
+
+
+def set_jieba_status(reason: str | None) -> None:
+    global _jieba_unavailable_reason
+    _jieba_unavailable_reason = reason
 
 
 def set_ui_language(language: str) -> None:
@@ -660,6 +666,7 @@ class _ConversionConfigDialog:
         else:
             self.jieba_status.setText(
                 self._translator.text("config.jieba_unavailable")
+                + ("\n" + _jieba_unavailable_reason if _jieba_unavailable_reason else "")
             )
 
     def _accept(self) -> None:
