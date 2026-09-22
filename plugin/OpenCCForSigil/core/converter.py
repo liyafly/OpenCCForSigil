@@ -5,12 +5,11 @@ turns one backend result into source-relative changes that a planner can move
 to absolute document offsets.
 """
 
-from difflib import SequenceMatcher
 from typing import Protocol
 
-from core.models import ConvertRequest, ConvertResult
+from core.diff import bounded_opcodes
+from core.models import ConvertRequest, ConvertResult, SourceSpan, TokenChange
 from opencc_backend.backend import OpenCCBackend
-from core.models import SourceSpan, TokenChange
 
 
 class Converter(Protocol):
@@ -39,9 +38,7 @@ class OfficialBackendConverter:
                 rule_source=rule_source,
                 category=_change_category(text[i1:i2], target[j1:j2]),
             )
-            for tag, i1, i2, j1, j2 in SequenceMatcher(
-                None, text, target, autojunk=False
-            ).get_opcodes()
+            for tag, i1, i2, j1, j2 in bounded_opcodes(text, target)
             if tag != "equal"
         )
         return ConvertResult(source=text, target=target, changes=changes)
