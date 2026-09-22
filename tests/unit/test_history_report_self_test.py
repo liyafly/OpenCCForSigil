@@ -100,6 +100,25 @@ def test_retention_is_explicit_and_scoped_to_session_files(tmp_path: Path):
     assert HistoryStore(history_root).load() == []
 
 
+def test_retention_never_follows_log_directory_symlinks(tmp_path: Path):
+    root = tmp_path / "history"
+    old = datetime.now(timezone.utc) - timedelta(days=60)
+    HistoryStore(root).record_session(SUMMARY, MANIFEST, PROVENANCE, recorded_at=old)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    retained = outside / f"{SESSION_ID}.jsonl"
+    retained.write_text("outside plugin log tree")
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    try:
+        (logs / old.strftime("%Y-%m")).symlink_to(outside, target_is_directory=True)
+    except OSError:
+        pytest.skip("host does not allow directory symlinks")
+    result = cleanup(root, logs)
+    assert result.removed_log_files == ()
+    assert retained.read_text() == "outside plugin log tree"
+
+
 class _BackendResult:
     passed = True
     checks = {"s2t_smoke": True}

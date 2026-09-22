@@ -168,8 +168,11 @@ class RunSettings:
         if not path:
             return
         exporter = export_json if path.lower().endswith(".json") else export_markdown
-        exporter(Path(path), record["summary"], record["commit_manifest"], record["provenance"],
-                 include_full_diff=full, full_diff=diff)
+        try:
+            exporter(Path(path), record["summary"], record["commit_manifest"], record["provenance"],
+                     include_full_diff=full, full_diff=diff)
+        except (OSError, ValueError) as exc:
+            qt.QMessageBox.warning(parent, translator.text("settings.history"), str(exc))
 
     def export_preview(self, planned, previews, include_full_diff, qt, parent):
         from core.staging import apply_changes, source_sha256
@@ -217,3 +220,21 @@ class RunSettings:
 def settings_hash(profile):
     return sha256(json.dumps(profile.to_dict(), sort_keys=True,
                              ensure_ascii=False).encode()).hexdigest()
+
+
+def tokenizer_policy(profile):
+    from document.tokenizer import TokenizerOptions
+    protected = set(profile.protected_elements) | {"script", "style"}
+    for names, enabled in ((("code", "pre"), profile.convert_code_pre),
+                           (("rt", "rp"), profile.convert_ruby_rt)):
+        if enabled:
+            protected.difference_update(names)
+        else:
+            protected.update(names)
+    return TokenizerOptions(
+        decode_numeric_cjk_refs=profile.decode_numeric_cjk_refs,
+        protected_elements=tuple(sorted(protected)),
+        convert_attributes=tuple(name for name, enabled in (
+            ("alt", profile.convert_alt), ("title", profile.convert_title),
+            ("aria-label", profile.convert_aria_label)) if enabled),
+    )

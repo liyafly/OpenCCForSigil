@@ -172,3 +172,11 @@ def test_snapshot_from_dict_checks_supplied_hash_and_requires_direction():
         RuleSnapshot.from_dict(payload)
     with pytest.raises(RuleValidationError, match="direction"):
         import_rules('{"rules":[{"source":"a","target":"b"}]}')
+
+
+def test_global_conflicts_ignore_inactive_profile_owner_fields():
+    rules = [
+        Rule(id="one", direction="s2t", source="软件", target="甲", scope="global", profile_id="a"),
+        Rule(id="two", direction="s2t", source="软件", target="乙", scope="global", profile_id="b"),
+    ]
+    assert blocking_conflicts(rules)

@@ -139,3 +139,13 @@ def test_xhtml_validation_never_fetches_external_dtd_and_keeps_named_entities():
     flow = ConversionWorkflow(SigilBookAdapter(Book(source)), Backend(), ConvertRequest("s2t"))
     _, staged = stage_all(flow)
     assert staged[0].converted == source.replace("汉", "漢")
+
+
+def test_commit_rejects_a_different_buffer_after_verification():
+    book = Book("<p>汉</p>")
+    flow = ConversionWorkflow(SigilBookAdapter(book), Backend(), ConvertRequest("s2t"))
+    _, staged = stage_all(flow)
+    forged = replace(staged[0], converted="<p>不属于预览的内容</p>")
+    with pytest.raises(RuntimeError, match="changed after verification"):
+        flow.commit((forged,))
+    assert book.writes == []

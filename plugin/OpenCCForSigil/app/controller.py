@@ -8,11 +8,10 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from app.session import Session, SessionState
-from app.settings import RunSettings, profile_options, settings_hash
+from app.settings import RunSettings, profile_options, settings_hash, tokenizer_policy
 from app.version import PLUGIN_VERSION
 from core.models import ConvertRequest
 from core.workflow import ConversionWorkflow, WorkflowCancelled, WorkflowCommitError
-from document.tokenizer import TokenizerOptions
 from logging_ext.logger import SessionLogger
 from opencc_backend.backend import OpenCCBackend
 from opencc_backend.configs import SUPPORTED_CONFIGS, is_jieba_config
@@ -195,15 +194,7 @@ class Controller:
                     ),
                     scope=targets.scope,
                     targets=targets,
-                    tokenizer_options=TokenizerOptions(
-                        decode_numeric_cjk_refs=active_profile.decode_numeric_cjk_refs,
-                        protected_elements=("script", "style")
-                            + (() if active_profile.convert_code_pre else ("code", "pre"))
-                            + (() if active_profile.convert_ruby_rt else ("rt", "rp")),
-                        convert_attributes=tuple(name for name, enabled in (
-                            ("alt", active_profile.convert_alt), ("title", active_profile.convert_title),
-                            ("aria-label", active_profile.convert_aria_label)) if enabled),
-                    ),
+                    tokenizer_options=tokenizer_policy(active_profile),
                     session_id=self.session.session_id,
                     profile_id=active_profile.id,
                     snapshot_guard=settings.snapshot_guard(),

@@ -14,3 +14,15 @@
 {"id":"regional-hk2t","config":"hk2t","source":"鼠標"}
 {"id":"regional-t2jp","config":"t2jp","source":"臺灣與漢字"}
 {"id":"regional-jp2t","config":"jp2t","source":"台湾と漢字"}
+{"id":"ambiguity-s2t","config":"s2t","source":"头发发展，干燥的干将，皇后在后面，面条与里面。"}
+{"id":"ambiguity-t2s","config":"t2s","source":"頭髮發展，乾燥的幹將，皇后在後面，麵條與裡面。"}
+{"id":"vocabulary-tw","config":"s2twp","source":"软件、鼠标、硬盘、打印机、服务器、内存和网络。"}
+{"id":"vocabulary-tw-return","config":"tw2sp","source":"軟體、滑鼠、硬碟、印表機、伺服器、記憶體和網路。"}
+{"id":"vocabulary-hk","config":"s2hkp","source":"出租车、公交车、软件、鼠标、网络和计算机。"}
+{"id":"vocabulary-hk-return","config":"hk2sp","source":"的士、巴士、軟件、鼠標、網絡和電腦。"}
+{"id":"unicode-and-mixed","config":"s2t","source":"𠀀汉漢神神︀神󠄀🙂 Café “quote”"}
+{"id":"punctuation-kept","config":"t2s","source":"「漢字」，【軟體】；A & B < C > D。"}
+{"id":"variant-tw","config":"s2tw","source":"台风、台湾、里面、着作、周游。"}
+{"id":"variant-hk","config":"s2hk","source":"台风、台湾、里面、着作、周游。"}
+{"id":"regional-normalization-tw","config":"tw2t","source":"臺灣裡的計程車和滑鼠。"}
+{"id":"regional-normalization-hk","config":"hk2t","source":"裏面的的士、巴士和鼠標。"}

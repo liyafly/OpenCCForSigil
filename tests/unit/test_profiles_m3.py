@@ -104,3 +104,11 @@ def test_profile_strict_enums_and_windowsafe_ids(tmp_path: Path):
         ProfileStore(tmp_path).load("C:\\profile")
     with pytest.raises(RuleValidationError, match="filename-safe"):
         RuleStore(tmp_path).load("C:\\rules")
+def test_protected_elements_survive_settings_policy_and_scripts_stay_protected():
+    from app.settings import tokenizer_policy
+    from document.tokenizer import tokenize_xhtml
+
+    profile = Profile(protected_elements=("h1",), convert_code_pre=True)
+    document = tokenize_xhtml('<h1>标题</h1><script>脚本</script><code>示例</code>',
+                              tokenizer_policy(profile))
+    assert [target.source_text for target in document.targets] == ["示例"]

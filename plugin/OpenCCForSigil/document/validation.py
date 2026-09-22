@@ -34,8 +34,8 @@ def validate_xhtml_syntax(source: str) -> None:
         else:
             end = _find_markup_end(source, start + 1, bracket_aware=True)
         markup = source[start:end]
-        if not (markup.lower().startswith("<!doctype") or
-                re.match(r"<\?xml\s", markup, re.IGNORECASE)):
+        if not (re.match(r"<!DOCTYPE\s", markup, re.IGNORECASE) or
+                re.match(r"<\?xml\s", markup)):
             fragments.append(markup)
         cursor = max(start + 1, end)
     validation_copy = _NAMED_REFERENCE.sub("x", "".join(fragments))

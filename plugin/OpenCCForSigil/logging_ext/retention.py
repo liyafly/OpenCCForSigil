@@ -68,12 +68,13 @@ def cleanup(
     logs_path = Path(logs_root)
     if logs_path.is_dir():
         for month in logs_path.iterdir():
-            if not month.is_dir() or not re.fullmatch(r"\d{4}-\d{2}", month.name):
+            if month.is_symlink() or not month.is_dir() or not re.fullmatch(r"\d{4}-\d{2}", month.name):
                 continue
             for path in month.iterdir():
                 match = _SESSION_FILE.fullmatch(path.name)
                 if (
                     path.is_file()
+                    and not path.is_symlink()
                     and match is not None
                     and match.group("session") in removed_sessions
                 ):

@@ -94,7 +94,8 @@ def import_rules(
     seen: set[tuple] = set()
     for rule in valid:
         key = (rule.direction, rule.scope, rule.type, rule.source, rule.target, rule.priority,
-               rule.profile_id, rule.book_fingerprint)
+               rule.profile_id if rule.scope == "profile" else "",
+               rule.book_fingerprint if rule.scope == "book" else "")
         if key in seen:
             duplicates.append(rule)
         else:

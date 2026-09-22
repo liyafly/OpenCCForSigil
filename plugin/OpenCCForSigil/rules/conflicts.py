@@ -49,8 +49,8 @@ def find_conflicts(rules: Iterable[Rule]) -> tuple[RuleConflict, ...]:
             rule.source,
             rule.type,
             rule.priority,
-            rule.profile_id,
-            rule.book_fingerprint,
+            rule.profile_id if rule.scope == "profile" else "",
+            rule.book_fingerprint if rule.scope == "book" else "",
         )
         by_key.setdefault(key, []).append(rule)
     for (
@@ -89,8 +89,8 @@ def find_conflicts(rules: Iterable[Rule]) -> tuple[RuleConflict, ...]:
                     rule.source,
                     rule.type,
                     rule.priority,
-                    rule.profile_id,
-                    rule.book_fingerprint,
+                    rule.profile_id if rule.scope == "profile" else "",
+                    rule.book_fingerprint if rule.scope == "book" else "",
                 ),
                 [],
             ).append(rule)
@@ -103,8 +103,8 @@ def find_conflicts(rules: Iterable[Rule]) -> tuple[RuleConflict, ...]:
                 rule.source,
                 rule.type,
                 rule.priority,
-                rule.profile_id,
-                rule.book_fingerprint,
+                rule.profile_id if rule.scope == "profile" else "",
+                rule.book_fingerprint if rule.scope == "book" else "",
             ),
             [],
         )

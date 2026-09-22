@@ -151,12 +151,18 @@ class Profile:
                 ):
                     raise ProfileValidationError(f"{key} must be an array of strings")
                 normalized[key] = tuple(normalized[key])
+        if normalized.get("force_pivot"):
+            from core.transformation import FORCE_PIVOT_CHAINS
+            if normalized.get("pivot_chain", ()) not in FORCE_PIVOT_CHAINS:
+                raise ProfileValidationError("force_pivot requires a supported explicit pivot_chain")
         if "attributes" in normalized:
             if not isinstance(normalized["attributes"], (list, tuple)) or not all(
                 isinstance(item, str) for item in normalized["attributes"]
             ):
                 raise ProfileValidationError("attributes must be an array of strings")
             attrs = tuple(normalized["attributes"])
+            if not set(attrs) <= {"alt", "title", "aria-label"}:
+                raise ProfileValidationError("only alt, title and aria-label are writable attributes")
             normalized.setdefault("convert_alt", "alt" in attrs)
             normalized.setdefault("convert_title", "title" in attrs)
             normalized.setdefault("convert_aria_label", "aria-label" in attrs)
