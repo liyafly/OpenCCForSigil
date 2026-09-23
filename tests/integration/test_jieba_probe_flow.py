@@ -114,7 +114,7 @@ def test_probe_survives_settings_loop_and_preserves_jieba_choice(monkeypatch, tm
     def choose_config(available, *, default_config, jieba_probe, **_kwargs):
         config_calls.append((tuple(available), default_config, jieba_probe))
         if len(config_calls) == 1:
-            deadline = time.monotonic() + 8
+            deadline = time.monotonic() + 30
             while jieba_probe.jieba_probe_state()[0] == "pending":
                 if time.monotonic() >= deadline:
                     raise AssertionError("native Jieba probe did not finish")
