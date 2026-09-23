@@ -26,6 +26,8 @@ _LOCAL_CATALOGS = {
         "history.corrupt": "History could not be read: {detail}",
         "history.select": "Select a session first.",
         "history.full_diff_unavailable": "Full diff is available only when supplied in memory by the caller.",
+        "history.backup_rebuild": "Back up and rebuild empty history",
+        "history.rebuilt": "Corrupt history was backed up as {file}; a new empty history was created.",
     },
     "zh-Hans": {
         "history.title": "转换历史",
@@ -44,6 +46,8 @@ _LOCAL_CATALOGS = {
         "history.corrupt": "无法读取历史：{detail}",
         "history.select": "请先选择会话。",
         "history.full_diff_unavailable": "只有调用方临时提供内存中的差异时才能导出完整差异。",
+        "history.backup_rebuild": "备份并重建空历史",
+        "history.rebuilt": "损坏的历史已备份为 {file}，并已创建空历史。",
     },
     "zh-Hant": {
         "history.title": "轉換歷史",
@@ -62,6 +66,8 @@ _LOCAL_CATALOGS = {
         "history.corrupt": "無法讀取歷史：{detail}",
         "history.select": "請先選取工作階段。",
         "history.full_diff_unavailable": "只有呼叫方暫時提供記憶體中的差異時才能匯出完整差異。",
+        "history.backup_rebuild": "備份並重建空白歷史",
+        "history.rebuilt": "損毀的歷史已備份為 {file}，並已建立空白歷史。",
     },
 }
 
@@ -125,11 +131,23 @@ def show_history(
     try:
         records = HistoryStore(Path(history_root)).load()
     except HistoryError as exc:
-        message = translator.text("history.corrupt", detail=str(exc))
-        box = getattr(qt_widgets, "QMessageBox", None)
-        if box is not None:
-            box.critical(parent, translator.text("history.title"), message)
-        return None
+        box = qt_widgets.QMessageBox(parent)
+        box.setWindowTitle(translator.text("history.title"))
+        box.setText(translator.text("history.corrupt", detail=str(exc)))
+        recover_button = box.addButton(
+            translator.text("history.backup_rebuild"), box.ButtonRole.AcceptRole)
+        box.addButton(translator.text("history.close"), box.ButtonRole.RejectRole)
+        exec_method = getattr(box, "exec", None) or box.exec_
+        exec_method()
+        if box.clickedButton() is not recover_button:
+            return None
+        backup = backup_and_rebuild_history(Path(history_root))
+        qt_widgets.QMessageBox.information(
+            parent,
+            translator.text("history.title"),
+            translator.text("history.rebuilt", file=backup.name),
+        )
+        records = HistoryStore(Path(history_root)).load()
 
     dialog = qt_widgets.QDialog(parent)
     dialog.setWindowTitle(translator.text("history.title"))
@@ -205,4 +223,16 @@ def show_history(
     return dialog
 
 
-__all__ = ["history_rows", "show_history"]
+def backup_and_rebuild_history(history_root: Path) -> Path:
+    """Quarantine a corrupt history index and create a valid empty index."""
+
+    root = Path(history_root)
+    store = HistoryStore(root)
+    from sigil.storage import UserDataStore
+
+    backup = UserDataStore(root.parent).quarantine(store.index_path)
+    store.replace_sessions(())
+    return backup
+
+
+__all__ = ["backup_and_rebuild_history", "history_rows", "show_history"]

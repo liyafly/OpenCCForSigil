@@ -112,13 +112,18 @@ class RuleStore:
     def load_snapshot(self, ruleset_ids: Iterable[str]) -> RuleSnapshot:
         return RuleSnapshot.freeze(self.load_many(ruleset_ids))
 
-    def list(self) -> tuple[RuleSet, ...]:
+    def list(self) -> tuple[tuple[RuleSet, ...], tuple[tuple[str, str], ...]]:
         if not self.directory.exists():
-            return ()
-        return tuple(
-            RuleSet.from_dict(json.loads(path.read_text(encoding="utf-8")))
-            for path in sorted(self.directory.glob("*.json"))
-        )
+            return (), ()
+        rulesets = []
+        errors = []
+        for path in sorted(self.directory.glob("*.json")):
+            try:
+                rulesets.append(
+                    RuleSet.from_dict(json.loads(path.read_text(encoding="utf-8"))))
+            except (OSError, UnicodeError, json.JSONDecodeError, RuleValidationError) as exc:
+                errors.append((path.name, str(exc)))
+        return tuple(rulesets), tuple(errors)
 
     @staticmethod
     def _validate_id(identifier: str) -> None:

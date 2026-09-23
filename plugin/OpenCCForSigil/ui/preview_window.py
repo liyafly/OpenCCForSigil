@@ -302,7 +302,7 @@ def choose_conversion_config(
     return dialog.selected_config if dialog.accepted else None
 
 
-def choose_scope(adapter: Any, *, initial_language: str = "en") -> ScopeOutcome:
+def choose_scope(adapter: Any, *, initial_language: str = "en", notice=()) -> ScopeOutcome:
     """Choose a frozen XHTML target set after enumerating metadata only."""
 
     inventory = tuple(adapter.text_file_inventory())
@@ -320,6 +320,7 @@ def choose_scope(adapter: Any, *, initial_language: str = "en") -> ScopeOutcome:
         _translator,
         ignored_non_xhtml=ignored_non_xhtml,
         spine_ids=spine_ids,
+        recovery_notices=notice,
     )
     exec_method = getattr(dialog.dialog, "exec", None) or dialog.dialog.exec_
     exec_method()
@@ -530,6 +531,16 @@ def _result_count_phrase(kind: str, count: int) -> str:
     value = max(int(count), 0)
     form = "one" if value == 1 else "many"
     return _translator.text(f"result.{kind}_{form}", count=value)
+
+
+def _recovery_notice_text(kind: str, value: str) -> str:
+    key = {
+        "preferences_corrupt": "recovery.preferences_corrupt",
+        "preferences_future_schema": "recovery.preferences_future_schema",
+        "profile_recovered": "recovery.profile_recovered",
+        "rulesets_missing": "recovery.rulesets_missing",
+    }.get(kind, "recovery.generic")
+    return _translator.text(key, value=value)
 
 
 _application: Any = None
@@ -1175,6 +1186,7 @@ class _ScopeDialog:
         *,
         ignored_non_xhtml: int = 0,
         spine_ids: Tuple[str, ...] = (),
+        recovery_notices=(),
     ) -> None:
         self._qt = qt_widgets
         self._inventory = inventory
@@ -1187,6 +1199,12 @@ class _ScopeDialog:
         self.dialog.setWindowTitle(translator.text("scope.title"))
         self.dialog.resize(700, 560)
         layout = qt_widgets.QVBoxLayout(self.dialog)
+        self.recovery_notice_label = None
+        if recovery_notices:
+            notice_lines = [_recovery_notice_text(kind, value) for kind, value in recovery_notices]
+            self.recovery_notice_label = qt_widgets.QLabel("\n".join(notice_lines))
+            self.recovery_notice_label.setWordWrap(True)
+            layout.addWidget(self.recovery_notice_label)
 
         language_row = qt_widgets.QHBoxLayout()
         self.language_label = qt_widgets.QLabel(translator.text("language.label"))

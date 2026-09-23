@@ -30,17 +30,39 @@ class RunSettings:
         self.rules = RuleStore(storage.paths.rules)
         self._pending_missing_rulesets: tuple[str, ...] = ()
         self._reported_missing_rulesets: set[str] = set()
+        self.recovery_notice: tuple[str, str] | None = None
+        self.clear_profile_preference = False
         identifier = preferences.get("profile_id")
         if identifier:
-            self.active = self.profiles.load(identifier)
+            try:
+                self.active = self.profiles.load(identifier)
+            except (OSError, ValueError):
+                backup_name = ""
+                try:
+                    path = self.profiles._path(str(identifier))
+                    if path.is_file():
+                        backup_name = self.storage.quarantine(path).name
+                except Exception:
+                    pass
+                self.active = self._conservative_profile(preferences)
+                self.recovery_notice = (
+                    "profile_recovered", backup_name or str(identifier))
+                self.clear_profile_preference = True
         else:
-            options = preferences.get("run_options")
-            saved_ids = options.get("ruleset_ids", ()) if isinstance(options, dict) else ()
-            self.active = Profile(
-                id="conservative", name="Conservative",
-                ruleset_ids=self._existing_ruleset_ids(saved_ids),
-            )
+            self.active = self._conservative_profile(preferences)
+        self.active = replace(
+            self.active,
+            ruleset_ids=self._validate_active_rulesets(self.active.ruleset_ids),
+        )
         self._book_fingerprint = None
+
+    def _conservative_profile(self, preferences):
+        options = preferences.get("run_options")
+        saved_ids = options.get("ruleset_ids", ()) if isinstance(options, dict) else ()
+        return Profile(
+            id="conservative", name="Conservative",
+            ruleset_ids=self._existing_ruleset_ids(saved_ids),
+        )
 
     @property
     def active_profile_is_saved(self):
@@ -82,6 +104,27 @@ class RunSettings:
             (*self._pending_missing_rulesets, *missing)))
         return kept
 
+    def _validate_active_rulesets(self, identifiers):
+        valid = []
+        for identifier in identifiers:
+            path = self.rules.directory / f"{identifier}.json"
+            if identifier == "default" and not path.exists():
+                valid.append(identifier)
+                continue
+            try:
+                self.rules.load(identifier)
+            except (OSError, ValueError):
+                if path.is_file():
+                    try:
+                        self.storage.quarantine(path)
+                    except Exception:
+                        pass
+                self._pending_missing_rulesets = tuple(dict.fromkeys(
+                    (*self._pending_missing_rulesets, identifier)))
+                continue
+            valid.append(identifier)
+        return tuple(valid)
+
     def take_missing_rulesets_notice(self):
         pending = tuple(item for item in self._pending_missing_rulesets
                         if item not in self._reported_missing_rulesets)
@@ -93,11 +136,12 @@ class RunSettings:
         from ui.profile_window import show_profile_window
 
         draft = self.current_profile(config, options)
-        existing = self.profiles.load_all()
+        existing, errors = self.profiles.load_all()
         values = (draft,) + tuple(item for item in existing if item.id != draft.id)
         selected = show_profile_window(values, translator=translator, store=self.profiles,
                                        selected_id=draft.id,
-                                       available_configs=self.backend.available_configs())
+                                       available_configs=self.backend.available_configs(),
+                                       storage_errors=tuple(name for name, _error in errors))
         if selected is not None:
             self.active = selected
         return selected
@@ -114,8 +158,9 @@ class RunSettings:
     def edit_rules(self, config, translator, qt, parent):
         from ui.rules_window import show_rules_window
 
+        rulesets, errors = self.rules.list()
         identifiers = tuple(dict.fromkeys((*self.active.ruleset_ids,
-                                          *(item.id for item in self.rules.list()), "default")))
+                                          *(item.id for item in rulesets), "default")))
         identifier, accepted = qt.QInputDialog.getItem(
             parent, translator.text("settings.rules"), translator.text("settings.ruleset"),
             list(identifiers), 0, True)
@@ -125,11 +170,23 @@ class RunSettings:
         path = self.rules.directory / f"{identifier}.json"
         # Validate IDs before either reading or saving paths supplied by the UI.
         self.rules._validate_id(identifier)
-        ruleset = self.rules.load(identifier) if path.exists() else RuleSet(identifier)
+        if path.exists():
+            try:
+                ruleset = self.rules.load(identifier)
+            except (OSError, ValueError):
+                try:
+                    self.storage.quarantine(path)
+                except Exception:
+                    pass
+                errors = (*errors, (path.name, "corrupt ruleset backed up"))
+                ruleset = RuleSet(identifier)
+        else:
+            ruleset = RuleSet(identifier)
         result = show_rules_window(
             ruleset.rules, translator=translator, official_convert=self.backend,
             config=config, profile_id=self.active.id, book_fingerprint=self.book_fingerprint,
-            available_configs=self.backend.available_configs())
+            available_configs=self.backend.available_configs(),
+            storage_errors=tuple(name for name, _error in errors))
         if result is not None:
             self.rules.save(RuleSet(identifier, result, ruleset.name))
             updated = replace(self.active, ruleset_ids=tuple(dict.fromkeys(
@@ -158,7 +215,17 @@ class RunSettings:
             # The built-in empty set does not need an on-disk file.
             if identifier == "default" and not (self.rules.directory / "default.json").exists():
                 continue
-            rules.extend(self.rules.load(identifier).rules)
+            try:
+                rules.extend(self.rules.load(identifier).rules)
+            except (OSError, ValueError):
+                path = self.rules.directory / f"{identifier}.json"
+                if path.is_file():
+                    try:
+                        self.storage.quarantine(path)
+                    except Exception:
+                        pass
+                self._pending_missing_rulesets = tuple(dict.fromkeys(
+                    (*self._pending_missing_rulesets, identifier)))
         from rules.models import RuleSnapshot as Snapshot
         from rules.conflicts import validate_no_blocking_conflicts
         validate_no_blocking_conflicts(rules)

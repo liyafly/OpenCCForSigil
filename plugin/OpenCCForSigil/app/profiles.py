@@ -416,15 +416,19 @@ class ProfileStore:
             raise ProfileValidationError(f"could not read profile {profile_id}: {exc}") from exc
         return Profile.from_dict(payload, migrate=True)
 
-    def load_all(self) -> tuple[Profile, ...]:
+    def load_all(self) -> tuple[tuple[Profile, ...], tuple[tuple[str, str], ...]]:
         if not self.directory.exists():
-            return ()
+            return (), ()
         profiles = []
+        errors = []
         for path in sorted(self.directory.glob("*.json")):
-            profiles.append(
-                Profile.from_dict(json.loads(path.read_text(encoding="utf-8")), migrate=True)
-            )
-        return tuple(profiles)
+            try:
+                profiles.append(
+                    Profile.from_dict(json.loads(path.read_text(encoding="utf-8")), migrate=True)
+                )
+            except (OSError, UnicodeError, json.JSONDecodeError, ProfileValidationError) as exc:
+                errors.append((path.name, str(exc)))
+        return tuple(profiles), tuple(errors)
 
     def _path(self, profile_id: str) -> Path:
         if not _safe_file_id(profile_id):

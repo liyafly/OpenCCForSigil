@@ -22,6 +22,7 @@ _LABELS = {
         "remove": "Remove",
         "test": "Test",
         "inspect": "Inspect dictionary",
+        "skipped_files": "Corrupt rule sets skipped: {files}",
         "inspector_title": "Dictionary Inspector",
         "close": "Close",
         "input_label": "Input",
@@ -55,6 +56,7 @@ _LABELS = {
         "remove": "删除",
         "test": "测试",
         "inspect": "词典检查",
+        "skipped_files": "已跳过损坏的规则集文件：{files}",
         "inspector_title": "词典检查",
         "close": "关闭",
         "input_label": "输入",
@@ -88,6 +90,7 @@ _LABELS = {
         "remove": "刪除",
         "test": "測試",
         "inspect": "詞典檢查",
+        "skipped_files": "已略過損毀的規則集檔案：{files}",
         "inspector_title": "詞典檢查",
         "close": "關閉",
         "input_label": "輸入",
@@ -141,6 +144,7 @@ def inspect_dictionary(
     config: str,
     official_convert: Callable[[str], str] | object,
     comparison_configs: Iterable[str] = (),
+    storage_errors: Iterable[str] = (),
     snapshot: RuleSnapshot | None = None,
     profile_id: str | None = None,
     book_fingerprint: str | None = None,
@@ -257,6 +261,7 @@ def show_rules_window(
     book_fingerprint: str | None = None,
     available_configs: Iterable[str] | None = None,
     comparison_configs: Iterable[str] = (),
+    storage_errors: Iterable[str] = (),
 ) -> tuple[Rule, ...] | None:
     """Open the manager and return committed rules, or ``None`` on cancel."""
 
@@ -272,6 +277,7 @@ def show_rules_window(
         book_fingerprint=book_fingerprint,
         available_configs=available_configs,
         comparison_configs=comparison_configs,
+        storage_errors=storage_errors,
     )
     exec_method = getattr(dialog.dialog, "exec", None) or dialog.dialog.exec_
     exec_method()
@@ -291,6 +297,7 @@ class RuleManagerDialog:
         book_fingerprint: str | None = None,
         available_configs: Iterable[str] | None = None,
         comparison_configs: Iterable[str] = (),
+        storage_errors: Iterable[str] = (),
     ) -> None:
         self._qt = qt_widgets
         self._translator = translator
@@ -302,6 +309,7 @@ class RuleManagerDialog:
         self._book_fingerprint = book_fingerprint
         self._available_configs = _base_config_options(available_configs)
         self._comparison_configs = tuple(comparison_configs)
+        self._storage_errors = tuple(storage_errors)
         self.accepted = False
         self.dialog = qt_widgets.QDialog()
         self.dialog.setWindowTitle(self._labels["title"])
@@ -312,6 +320,11 @@ class RuleManagerDialog:
     def _build(self) -> None:
         qt = self._qt
         layout = qt.QVBoxLayout(self.dialog)
+        if self._storage_errors:
+            notice = qt.QLabel(self._labels["skipped_files"].format(
+                files=", ".join(self._storage_errors)))
+            notice.setWordWrap(True)
+            layout.addWidget(notice)
         self.table = qt.QTableWidget(0, 6)
         self.table.setHorizontalHeaderLabels(
             [

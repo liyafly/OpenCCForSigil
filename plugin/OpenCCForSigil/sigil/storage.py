@@ -1,6 +1,7 @@
 """User-data location and schema-aware storage helpers."""
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 import json
 from pathlib import Path
 import tempfile
@@ -57,6 +58,8 @@ class UserDataStore:
 
     def __init__(self, root: Path) -> None:
         self.paths = StoragePaths.from_root(root)
+        self.read_only_preferences = False
+        self._recovery_notice: tuple[str, str] | None = None
 
     def ensure_layout(self) -> StoragePaths:
         for directory in (
@@ -76,15 +79,58 @@ class UserDataStore:
 
         if not self.paths.preferences.exists():
             return dict(default or {"schema_version": SCHEMA_VERSION})
-        payload = self._read_json(self.paths.preferences)
-        self._validate_schema(payload, self.paths.preferences)
+        try:
+            payload = self._read_json(self.paths.preferences)
+        except StorageError:
+            backup = self.quarantine(self.paths.preferences)
+            self._recovery_notice = ("preferences_corrupt", backup.name)
+            return dict(default or {"schema_version": SCHEMA_VERSION})
+        version = payload.get("schema_version")
+        if isinstance(version, int) and not isinstance(version, bool) and version > SCHEMA_VERSION:
+            self.read_only_preferences = True
+            self._recovery_notice = ("preferences_future_schema", str(version))
+            return payload
+        if version != SCHEMA_VERSION:
+            backup = self.quarantine(self.paths.preferences)
+            self._recovery_notice = ("preferences_corrupt", backup.name)
+            return dict(default or {"schema_version": SCHEMA_VERSION})
         return payload
 
     def save_preferences(self, values: Mapping[str, Any]) -> None:
+        if self.read_only_preferences:
+            return
         payload = dict(values)
         payload.setdefault("schema_version", SCHEMA_VERSION)
         self._validate_schema(payload, self.paths.preferences)
         self._write_json(self.paths.preferences, payload)
+
+    def quarantine(self, path: str | Path) -> Path:
+        """Rename one plugin-owned data file to a timestamped recovery copy."""
+
+        candidate = Path(path)
+        if not candidate.is_absolute():
+            candidate = self.paths.root / candidate
+        root = self.paths.root.resolve()
+        try:
+            resolved = candidate.resolve(strict=True)
+            resolved.relative_to(root)
+        except (OSError, ValueError) as exc:
+            raise StorageError("recovery files must be inside the plugin data directory") from exc
+        if not resolved.is_file():
+            raise StorageError("only plugin-owned files can be quarantined")
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        destination = resolved.with_name(f"{resolved.name}.corrupt-{timestamp}")
+        suffix = 1
+        while destination.exists():
+            destination = resolved.with_name(f"{resolved.name}.corrupt-{timestamp}-{suffix}")
+            suffix += 1
+        resolved.replace(destination)
+        return destination
+
+    def take_recovery_notice(self) -> tuple[str, str] | None:
+        notice = self._recovery_notice
+        self._recovery_notice = None
+        return notice
 
     @staticmethod
     def _read_json(path: Path) -> dict:

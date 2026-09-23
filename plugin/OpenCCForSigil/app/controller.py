@@ -65,6 +65,7 @@ class Controller:
                     "ui": {},
                 }
             )
+            preference_recovery = self.storage.take_recovery_notice()
             default_config = _preferred_config(preferences, str(profile["conversion"]))
             self.session.transition(SessionState.SCANNING)
             # Always preflight the stable standard backend first. An optional
@@ -108,10 +109,26 @@ class Controller:
             set_ui_language(language)
 
             adapter = SigilBookAdapter(self.bk)
+            settings = RunSettings(self.storage, adapter, backend, preferences)
+            if settings.clear_profile_preference:
+                preferences = {**preferences, "profile_id": None}
+                self.storage.save_preferences(preferences)
+            recovery_notices = []
+            if preference_recovery:
+                recovery_notices.append(preference_recovery)
+            if settings.recovery_notice:
+                recovery_notices.append(settings.recovery_notice)
+            missing_rulesets = settings.take_missing_rulesets_notice()
+            if missing_rulesets:
+                recovery_notices.append(("rulesets_missing", ", ".join(missing_rulesets)))
             # Text-capable hosts always get an explicit scope chooser.  A host
             # without selected_iter simply opens it with no initial checks; it
             # must never silently widen the run to ALL_XHTML.
-            scope_outcome = choose_scope(adapter, initial_language=language)
+            if recovery_notices:
+                scope_outcome = choose_scope(
+                    adapter, initial_language=language, notice=tuple(recovery_notices))
+            else:
+                scope_outcome = choose_scope(adapter, initial_language=language)
             language = scope_outcome.language
             set_ui_language(language)
             scope_preferences = {
@@ -131,7 +148,6 @@ class Controller:
             # is constructed, including on a first launch with no preference.
             available_configs = backend.available_configs_nonblocking()
             from ui.run_options import configure_run_options
-            settings = RunSettings(self.storage, adapter, backend, preferences)
             while True:
                 initial_options = profile_options(settings.active)
                 previous_options = preferences.get("run_options")

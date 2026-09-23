@@ -20,6 +20,7 @@ _LABELS = {
         "new": "New",
         "jieba": "Advanced Jieba",
         "unavailable": "unavailable on this host",
+        "skipped_files": "Corrupt profiles skipped: {files}",
     },
     "zh-Hans": {
         "title": "配置方案",
@@ -31,6 +32,7 @@ _LABELS = {
         "new": "新建",
         "jieba": "高级 Jieba",
         "unavailable": "本机不可用",
+        "skipped_files": "已跳过损坏的方案文件：{files}",
     },
     "zh-Hant": {
         "title": "設定檔",
@@ -42,6 +44,7 @@ _LABELS = {
         "new": "新增",
         "jieba": "進階 Jieba",
         "unavailable": "此主機不可用",
+        "skipped_files": "已略過損毀的設定檔：{files}",
     },
 }
 STANDARD_CONFIGS = V1_CONFIGS
@@ -58,6 +61,7 @@ def show_profile_window(
     store: ProfileStore | None = None,
     selected_id: str | None = None,
     available_configs: Iterable[str] | None = None,
+    storage_errors: Iterable[str] = (),
 ) -> Profile | None:
     qt = _load_qt_widgets()
     _ensure_application(qt)
@@ -69,6 +73,7 @@ def show_profile_window(
         store=store,
         selected_id=selected_id,
         available_configs=available_configs,
+        storage_errors=storage_errors,
     )
     exec_method = getattr(dialog.dialog, "exec", None) or dialog.dialog.exec_
     exec_method()
@@ -85,11 +90,13 @@ class ProfileManagerDialog:
         store: ProfileStore | None = None,
         selected_id: str | None = None,
         available_configs: Iterable[str] | None = None,
+        storage_errors: Iterable[str] = (),
     ) -> None:
         self._qt = qt_widgets
         self._labels = _labels(translator)
         self._profiles = list(profiles)
         self._store = store
+        self._storage_errors = tuple(storage_errors)
         available = tuple(SUPPORTED_CONFIGS if available_configs is None else available_configs)
         self._available_configs = _base_config_options(available)
         self._available_config_ids = set(available)
@@ -112,6 +119,11 @@ class ProfileManagerDialog:
     def _build(self) -> None:
         qt = self._qt
         layout = qt.QVBoxLayout(self.dialog)
+        if self._storage_errors:
+            notice = qt.QLabel(self._labels["skipped_files"].format(
+                files=", ".join(self._storage_errors)))
+            notice.setWordWrap(True)
+            layout.addWidget(notice)
         self.combo = qt.QComboBox()
         for profile in self._profiles:
             self.combo.addItem(profile.name or profile.id, profile.id)
