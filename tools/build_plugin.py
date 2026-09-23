@@ -13,10 +13,12 @@ import zipfile
 import xml.etree.ElementTree as ET
 
 try:
+    from package_contract import package_asset_name, package_oslist, package_runtime_ids, payload_id
     from verify_vendor import validate_manifest
     from validate_artifact import validate as validate_artifact
     from runtime_subset import RuntimeSubsetError, derive_record, sha256_tree, validate_derivation
 except ModuleNotFoundError:  # Imported as tools.build_plugin by tests.
+    from tools.package_contract import package_asset_name, package_oslist, package_runtime_ids, payload_id
     from tools.verify_vendor import validate_manifest
     from tools.validate_artifact import validate as validate_artifact
     from tools.runtime_subset import RuntimeSubsetError, derive_record, sha256_tree, validate_derivation
@@ -133,7 +135,94 @@ def _prepare_runtime_subsets(package_root: Path) -> None:
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
-def build(output: Path, *, require_runtimes: bool = False) -> Path:
+def _prepare_package(
+    package_root: Path,
+    *,
+    version: str,
+    flavor: str,
+    runtime: str | None,
+) -> None:
+    manifest_path = package_root / "vendor" / "opencc" / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    vendor_root = manifest_path.parent
+    payloads = manifest.get("payloads")
+    if not isinstance(payloads, list) or not payloads or not all(
+        isinstance(record, dict) for record in payloads
+    ):
+        raise SystemExit("vendor manifest must contain payload records")
+    records = [record for record in payloads if isinstance(record, dict)]
+    try:
+        ids = [payload_id(record) for record in records]
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
+    if len(ids) != len(set(ids)):
+        raise SystemExit("vendor manifest contains duplicate payload ids")
+    if flavor == "fat":
+        if runtime is not None:
+            raise SystemExit("--runtime is only valid with --flavor platform")
+        selected = records
+    elif flavor == "platform":
+        if not runtime:
+            raise SystemExit("--runtime is required with --flavor platform")
+        selected = [record for record in records if payload_id(record) == runtime]
+        if len(selected) != 1:
+            raise SystemExit(f"vendor manifest does not contain exactly one runtime: {runtime}")
+    else:
+        raise SystemExit(f"unsupported package flavor: {flavor!r}")
+
+    selected_ids = package_runtime_ids(selected)
+    try:
+        asset_name = package_asset_name(
+            version, flavor, runtime if flavor == "platform" else None
+        )
+        oslist = package_oslist(selected)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
+
+    selected_paths = {str(record["payload_path"]) for record in selected}
+    for record in records:
+        relative = Path(str(record.get("payload_path", "")))
+        if str(record.get("payload_path", "")) not in selected_paths:
+            shutil.rmtree(vendor_root / relative)
+    manifest["payloads"] = selected
+    config_data = manifest.get("config_data")
+    if isinstance(config_data, dict) and isinstance(config_data.get("payloads"), dict):
+        config_data["payloads"] = {
+            str(record["payload_path"]): record["config_data"]
+            for record in selected
+            if isinstance(record.get("config_data"), dict)
+        }
+    manifest["package"] = {
+        "flavor": flavor,
+        "runtimes": selected_ids,
+        "asset_name": asset_name,
+    }
+    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+    plugin_xml = package_root / "plugin.xml"
+    source = plugin_xml.read_text(encoding="utf-8")
+    pattern = re.compile(r"(<oslist>).*?(</oslist>)", re.DOTALL)
+    output, replacements = pattern.subn(lambda match: f"{match.group(1)}{oslist}{match.group(2)}", source, count=1)
+    if replacements != 1:
+        raise SystemExit("plugin.xml must contain exactly one <oslist> element")
+    try:
+        parsed = ET.fromstring(output)
+    except ET.ParseError as exc:
+        raise SystemExit(f"generated plugin.xml is invalid: {exc}") from exc
+    if parsed.findtext("oslist") != oslist:
+        raise SystemExit("generated plugin.xml oslist does not match package runtimes")
+    plugin_xml.write_text(output, encoding="utf-8")
+
+
+def build(
+    output: Path,
+    *,
+    require_runtimes: bool = False,
+    flavor: str = "fat",
+    runtime: str | None = None,
+) -> Path:
+    if flavor == "platform" and require_runtimes:
+        raise SystemExit("--require-runtimes applies only to Fat packages")
     version = validate(require_runtimes=require_runtimes)
     output.parent.mkdir(parents=True, exist_ok=True)
     if output.exists():
@@ -142,6 +231,7 @@ def build(output: Path, *, require_runtimes: bool = False) -> Path:
         package_root = Path(temporary) / "OpenCCForSigil"
         shutil.copytree(PLUGIN_DIR, package_root, copy_function=shutil.copy2)
         _prepare_runtime_subsets(package_root)
+        _prepare_package(package_root, version=version, flavor=flavor, runtime=runtime)
         with zipfile.ZipFile(
             output,
             "w",
@@ -156,7 +246,12 @@ def build(output: Path, *, require_runtimes: bool = False) -> Path:
                 info.external_attr = _zip_mode(path) << 16
                 info.create_system = 3
                 archive.writestr(info, path.read_bytes())
-    validate_artifact(output, require_runtimes=require_runtimes)
+    validate_artifact(
+        output,
+        require_runtimes=require_runtimes,
+        flavor=flavor,
+        runtime=runtime,
+    )
     print(f"created {output} ({version})")
     return output
 
@@ -170,6 +265,16 @@ def main() -> int:
         help="require every supported Fat Plugin runtime identity",
     )
     parser.add_argument(
+        "--flavor",
+        choices=("fat", "platform"),
+        default="fat",
+        help="package all verified runtimes or one platform runtime",
+    )
+    parser.add_argument(
+        "--runtime",
+        help="payload id to include when --flavor platform is selected",
+    )
+    parser.add_argument(
         "--output",
         type=Path,
         help="output ZIP path (defaults to dist/OpenCCForSigil_<plugin version>.zip)",
@@ -179,8 +284,20 @@ def main() -> int:
     if args.check:
         print(f"plugin metadata valid ({version})")
         return 0
-    output = args.output or ROOT / "dist" / f"OpenCCForSigil_{version}.zip"
-    build(output, require_runtimes=args.require_runtimes)
+    if args.flavor == "platform" and not args.runtime:
+        parser.error("--runtime is required with --flavor platform")
+    if args.flavor == "fat" and args.runtime:
+        parser.error("--runtime is only valid with --flavor platform")
+    asset_name = package_asset_name(
+        version, args.flavor, args.runtime if args.flavor == "platform" else None
+    )
+    output = args.output or ROOT / "dist" / asset_name
+    build(
+        output,
+        require_runtimes=args.require_runtimes,
+        flavor=args.flavor,
+        runtime=args.runtime,
+    )
     return 0
 
 

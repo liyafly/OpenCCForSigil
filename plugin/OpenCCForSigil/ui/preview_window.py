@@ -514,6 +514,7 @@ def show_error(
     log_path: str,
     affected_files=(),
     translator: Translator | None = None,
+    summary: str | None = None,
 ) -> None:
     """Show a privacy-safe failure summary and copyable diagnostic context."""
 
@@ -529,7 +530,7 @@ def show_error(
         "SETTINGS_CHANGED": "error.settings_changed",
         "GROUP_PARTIAL": "error.group_partial",
     }.get(kind, "error.unexpected")
-    message = qt_widgets.QLabel(translator.text(message_key))
+    message = qt_widgets.QLabel(summary if summary is not None else translator.text(message_key))
     message.setWordWrap(True)
     layout.addWidget(message)
     write_key = "error.no_files_written" if not files_written else "error.some_files_written"

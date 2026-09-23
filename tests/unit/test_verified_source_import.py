@@ -26,15 +26,13 @@ def _copy_selected_payload(tmp_path: Path) -> tuple[Path, Path]:
     _, selected, source_root = selector.select()
     vendor_root = tmp_path / "vendor"
     vendor_root.mkdir()
-    payload_root = vendor_root / "payload"
+    payload_relative = Path(selected.payload_path)
+    payload_root = vendor_root / payload_relative
+    payload_root.parent.mkdir(parents=True)
     shutil.copytree(source_root, payload_root)
 
     manifest = json.loads(selector.manifest_path.read_text(encoding="utf-8"))
-    for payload in manifest["payloads"]:
-        if payload["payload_path"] == selected.payload_path:
-            payload["payload_path"] = "payload"
-            break
-    else:
+    if not any(payload["payload_path"] == selected.payload_path for payload in manifest["payloads"]):
         raise AssertionError(f"selected payload is absent from {selector.manifest_path}")
     manifest_path = vendor_root / "manifest.json"
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
@@ -88,8 +86,9 @@ def _run_import_subprocess(manifest_path: Path, script: str, **variables: Path) 
 
 def _rewrite_selected_record(manifest_path: Path, payload_root: Path) -> None:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    payload_relative = payload_root.relative_to(manifest_path.parent).as_posix()
     for payload in manifest["payloads"]:
-        if payload["payload_path"] == "payload":
+        if payload["payload_path"] == payload_relative:
             payload["payload_sha256"] = sha256_tree(payload_root)
             payload["native_plugins"] = {}
             break

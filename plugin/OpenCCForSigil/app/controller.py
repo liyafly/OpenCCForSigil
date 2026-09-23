@@ -16,10 +16,11 @@ from core.workflow import ConversionWorkflow, WorkflowCancelled, WorkflowCommitE
 from logging_ext.logger import SessionLogger
 from opencc_backend.backend import OpenCCBackend
 from opencc_backend.configs import SUPPORTED_CONFIGS, is_jieba_config
+from opencc_backend.errors import RuntimeSelectionError
 from sigil.adapter import SigilBookAdapter
 from sigil.storage import UserDataStore, resolve_user_data_dir
 from transforms.language_tags import target_language
-from ui.i18n import Translator
+from ui.i18n import Translator, choose_language
 
 
 class Controller:
@@ -68,6 +69,16 @@ class Controller:
                     "ui": {},
                 }
             )
+            preflight_ui = preferences.get("ui")
+            explicit_preflight_language = (
+                preflight_ui.get("language") if isinstance(preflight_ui, dict) else None
+            )
+            translator.set_language(
+                choose_language(
+                    explicit_preflight_language,
+                    getattr(self.bk, "sigil_ui_lang", None),
+                )
+            )
 
             def update_preferences(changes):
                 nonlocal preferences
@@ -96,7 +107,6 @@ class Controller:
                     message="BookContainer text API unavailable; preflight-only run",
                 )
 
-            from ui.i18n import choose_language
             from ui.preview_window import (
                 choose_conversion_config,
                 choose_scope,
@@ -610,15 +620,22 @@ class Controller:
                 (href_by_id.get(str(href), str(href)), tuple(codes))
                 for href, codes in getattr(exc, "affected_files", ())
             )
+            error_values = {
+                "translator": translator,
+                "kind": _error_kind(exc),
+                "detail": type(exc).__name__,
+                "files_written": files_written,
+                "log_path": str(self.logger.log_path),
+                "affected_files": affected_files,
+            }
+            if isinstance(exc, RuntimeSelectionError):
+                error_values["summary"] = _runtime_selection_summary(exc, translator)
             _show_error_safely(
                 self.logger,
-                translator=translator,
-                kind=_error_kind(exc),
-                detail=type(exc).__name__,
-                files_written=files_written,
-                log_path=str(self.logger.log_path),
-                affected_files=affected_files,
+                **error_values,
             )
+            if isinstance(exc, RuntimeSelectionError):
+                return 2
             raise
         finally:
             if backend is not None:
@@ -750,6 +767,54 @@ def _error_kind(error: BaseException) -> str:
     if "profiles or rules changed after preview" in str(error):
         return "SETTINGS_CHANGED"
     return "UNEXPECTED_ERROR"
+
+
+def _runtime_selection_summary(error: RuntimeSelectionError, translator: Translator) -> str:
+    detected = error.detected
+    runtime_label = (
+        f"{detected.get('os', 'unknown')}/{detected.get('architecture', 'unknown')}, "
+        f"{detected.get('implementation', 'Python')} "
+        f"{detected.get('python_version', 'unknown')} ({detected.get('abi', 'unknown')})"
+    )
+    if error.reason == "no_payload_in_package":
+        asset_suffix = {
+            ("linux", "aarch64"): "linux-aarch64",
+            ("linux", "x86_64"): "linux-x86_64",
+            ("macos", "arm64"): "macos-arm64",
+            ("macos", "x86_64"): "macos-x86_64",
+            ("windows", "x86_64"): "windows-x86_64",
+        }.get((detected.get("os", ""), detected.get("architecture", "")))
+        recommended_asset = (
+            f"OpenCCForSigil_{PLUGIN_VERSION}_{asset_suffix}.zip"
+            if asset_suffix
+            else f"OpenCCForSigil_{PLUGIN_VERSION}.zip"
+        )
+        return translator.text(
+            "error.runtime_no_payload",
+            package_runtimes=", ".join(error.package_runtimes) or "(none)",
+            detected=runtime_label,
+            recommended_asset=recommended_asset,
+            fat_asset=f"OpenCCForSigil_{PLUGIN_VERSION}.zip",
+        )
+    if error.reason == "unsupported_platform":
+        if detected.get("os") == "windows" and detected.get("architecture") in {
+            "arm64",
+            "aarch64",
+        }:
+            reason = translator.text("error.runtime_reason_windows_arm64")
+        else:
+            reason = translator.text("error.runtime_reason_unverified")
+        return translator.text(
+            "error.runtime_unsupported_platform",
+            detected=runtime_label,
+            reason=reason,
+        )
+    key = (
+        "error.runtime_python_version_linux"
+        if detected.get("os") == "linux"
+        else "error.runtime_python_version"
+    )
+    return translator.text(key, detected=runtime_label)
 
 
 def _show_error_safely(logger: SessionLogger, **values: object) -> None:

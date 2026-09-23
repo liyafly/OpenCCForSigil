@@ -32,8 +32,9 @@ def test_manifest_is_official_binding_only_and_payload_is_exact():
 
 def test_unmatched_runtime_fails_without_fallback():
     runtime = RuntimeKey("CPython", 3, 14, "cp314", "test-os", "test-arch")
-    with pytest.raises(RuntimeSelectionError, match="no exact vendored OpenCC payload"):
+    with pytest.raises(RuntimeSelectionError, match="Unsupported operating system or architecture") as caught:
         RuntimeSelector().manifest.select(runtime)
+    assert caught.value.reason == "unsupported_platform"
 
 
 def test_linux_aarch64_runtime_selects_the_exact_payload(monkeypatch, tmp_path: Path):
@@ -56,6 +57,59 @@ def test_linux_aarch64_runtime_selects_the_exact_payload(monkeypatch, tmp_path: 
 
     selected = RuntimeSelector(manifest_path=manifest_path).manifest.select(runtime.key)
     assert selected.payload_path == "payloads/linux-aarch64-cp314"
+
+
+def test_platform_package_mismatch_has_structured_runtime_details(tmp_path: Path):
+    source = json.loads(RuntimeSelector().manifest_path.read_text(encoding="utf-8"))
+    record = dict(source["payloads"][0])
+    record["os"] = "macos"
+    record["architecture"] = "arm64"
+    record["payload_path"] = "payloads/macos-arm64-cp314"
+    source["payloads"] = [record]
+    source["config_data"]["payloads"] = {record["payload_path"]: record["config_data"]}
+    source["package"] = {
+        "flavor": "platform",
+        "runtimes": ["macos-arm64-cp314"],
+        "asset_name": "OpenCCForSigil_0.1.0_macos-arm64.zip",
+    }
+    manifest_path = tmp_path / "vendor" / "opencc" / "manifest.json"
+    manifest_path.parent.mkdir(parents=True)
+    manifest_path.write_text(json.dumps(source), encoding="utf-8")
+    manifest = VendorManifest.load(manifest_path)
+
+    runtime = RuntimeKey("CPython", 3, 14, "cp314", "macos", "x86_64")
+    with pytest.raises(RuntimeSelectionError) as caught:
+        manifest.select(runtime)
+
+    assert caught.value.reason == "no_payload_in_package"
+    assert caught.value.detected == {
+        "implementation": "CPython",
+        "python_version": "3.14",
+        "abi": "cp314",
+        "os": "macos",
+        "architecture": "x86_64",
+    }
+    assert caught.value.package_flavor == "platform"
+    assert caught.value.package_runtimes == ("macos-arm64-cp314",)
+
+
+def test_windows_arm64_is_reported_as_unsupported_platform():
+    runtime = RuntimeKey("CPython", 3, 14, "cp314", "windows", "aarch64")
+    with pytest.raises(RuntimeSelectionError) as caught:
+        RuntimeSelector().manifest.select(runtime)
+
+    assert caught.value.reason == "unsupported_platform"
+    assert caught.value.detected["os"] == "windows"
+    assert caught.value.detected["architecture"] == "aarch64"
+
+
+def test_python_version_mismatch_has_structured_reason():
+    runtime = RuntimeKey("CPython", 3, 13, "cp313", "macos", "arm64")
+    with pytest.raises(RuntimeSelectionError) as caught:
+        RuntimeSelector().manifest.select(runtime)
+
+    assert caught.value.reason == "python_version"
+    assert caught.value.detected["python_version"] == "3.13"
 
 
 def test_backend_uses_official_binding_and_runs_self_test():

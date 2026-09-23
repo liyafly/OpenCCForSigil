@@ -10,8 +10,10 @@ from pathlib import Path
 from pathlib import PurePosixPath
 import re
 import zipfile
+import xml.etree.ElementTree as ET
 
 try:
+    from package_contract import package_asset_name, package_oslist, package_runtime_ids
     from runtime_matrix import (
         SUPPORTED_RUNTIME_IDENTITIES,
         format_runtime_identity,
@@ -20,6 +22,7 @@ try:
     from native_compatibility import NativeCompatibilityError, validate_binary_bytes
     from runtime_subset import RuntimeSubsetError, validate_derivation
 except ModuleNotFoundError:  # Imported as tools.validate_artifact by tests.
+    from tools.package_contract import package_asset_name, package_oslist, package_runtime_ids
     from tools.runtime_matrix import (
         SUPPORTED_RUNTIME_IDENTITIES,
         format_runtime_identity,
@@ -552,7 +555,88 @@ def _validate_relative_name(name: str) -> None:
         raise SystemExit(f"unsafe ZIP member name: {name!r}")
 
 
-def validate(artifact: Path, *, require_runtimes: bool = False) -> None:
+def _validate_package_contract(
+    archive: zipfile.ZipFile,
+    manifest: dict[str, object],
+    *,
+    requested_flavor: str | None,
+    runtime: str | None,
+) -> str:
+    package = manifest.get("package")
+    if not isinstance(package, dict) or package.get("flavor") not in {"fat", "platform"}:
+        raise SystemExit("plugin artifact package metadata must declare flavor 'fat' or 'platform'")
+    flavor = str(package["flavor"])
+    if requested_flavor is not None and flavor != requested_flavor:
+        raise SystemExit(
+            f"plugin artifact package flavor mismatch: expected {requested_flavor}, got {flavor}"
+        )
+    if runtime is not None and flavor != "platform":
+        raise SystemExit("--runtime is only valid for a platform package")
+    if flavor == "platform" and requested_flavor == "platform" and runtime is None:
+        raise SystemExit("--runtime is required to validate a platform package")
+
+    payloads = manifest.get("payloads")
+    if not isinstance(payloads, list) or not payloads or not all(
+        isinstance(record, dict) for record in payloads
+    ):
+        raise SystemExit("plugin artifact contains no valid runtime payload records")
+    records = [record for record in payloads if isinstance(record, dict)]
+    try:
+        runtime_ids = package_runtime_ids(records)
+        expected_oslist = package_oslist(records)
+    except ValueError as exc:
+        raise SystemExit(f"plugin artifact runtime metadata is invalid: {exc}") from exc
+    if len(runtime_ids) != len(set(runtime_ids)):
+        raise SystemExit("plugin artifact contains duplicate payload ids")
+    declared_runtimes = package.get("runtimes")
+    if declared_runtimes != runtime_ids:
+        raise SystemExit("plugin artifact package.runtimes differs from manifest payloads")
+    if flavor == "platform":
+        if len(records) != 1:
+            raise SystemExit("platform package must contain exactly one manifest payload")
+        if runtime is not None and runtime_ids != [runtime]:
+            raise SystemExit(
+                f"platform package runtime mismatch: expected {runtime}, got {runtime_ids[0]}"
+            )
+        package_runtime = runtime_ids[0]
+    else:
+        if runtime is not None:
+            raise SystemExit("--runtime is only valid for a platform package")
+        package_runtime = None
+
+    plugin_xml_name = "OpenCCForSigil/plugin.xml"
+    try:
+        plugin_root = ET.fromstring(archive.read(plugin_xml_name))
+    except ET.ParseError as exc:
+        raise SystemExit(f"plugin artifact plugin.xml is invalid: {exc}") from exc
+    if plugin_root.tag != "plugin":
+        raise SystemExit("plugin artifact plugin.xml root must be <plugin>")
+    version = plugin_root.findtext("version")
+    actual_oslist = plugin_root.findtext("oslist")
+    if not version:
+        raise SystemExit("plugin artifact plugin.xml is missing <version>")
+    if actual_oslist != expected_oslist:
+        raise SystemExit(
+            f"plugin.xml oslist differs from package runtimes: expected {expected_oslist}, got {actual_oslist}"
+        )
+    try:
+        expected_asset = package_asset_name(version, flavor, package_runtime)
+    except ValueError as exc:
+        raise SystemExit(f"plugin artifact package metadata is invalid: {exc}") from exc
+    if package.get("asset_name") != expected_asset:
+        raise SystemExit(
+            f"plugin artifact package.asset_name differs from contract: expected {expected_asset}"
+        )
+    return flavor
+
+
+def validate(
+    artifact: Path,
+    *,
+    require_runtimes: bool = False,
+    flavor: str | None = None,
+    runtime: str | None = None,
+) -> None:
     if not artifact.is_file():
         raise SystemExit(f"plugin artifact is missing: {artifact}")
     with zipfile.ZipFile(artifact) as archive:
@@ -585,20 +669,22 @@ def validate(artifact: Path, *, require_runtimes: bool = False) -> None:
         _validate_runtime_resources(archive)
 
         manifest = json.loads(archive.read("OpenCCForSigil/vendor/opencc/manifest.json"))
-        package = manifest.get("package")
-        flavor = "fat"
-        if package is not None:
-            if not isinstance(package, dict) or package.get("flavor") not in {"fat", "platform"}:
-                raise SystemExit("plugin artifact package.flavor must be 'fat' or 'platform'")
-            flavor = str(package["flavor"])
+        if not isinstance(manifest, dict):
+            raise SystemExit("plugin artifact vendor manifest must be an object")
+        actual_flavor = _validate_package_contract(
+            archive,
+            manifest,
+            requested_flavor=flavor,
+            runtime=runtime,
+        )
         size_limit = (
             MAX_PLATFORM_ARTIFACT_SIZE_BYTES
-            if flavor == "platform"
+            if actual_flavor == "platform"
             else MAX_FIRST_STAGE_FAT_ARTIFACT_SIZE_BYTES
         )
         if artifact.stat().st_size > size_limit:
             raise SystemExit(
-                f"plugin artifact exceeds the {flavor} size budget: "
+                f"plugin artifact exceeds the {actual_flavor} size budget: "
                 f"{artifact.stat().st_size} > {size_limit} bytes"
             )
         payloads = manifest.get("payloads", [])
@@ -608,6 +694,8 @@ def validate(artifact: Path, *, require_runtimes: bool = False) -> None:
         if len(identities) != len(payloads):
             raise SystemExit("plugin artifact contains duplicate payload runtime identities")
         if require_runtimes:
+            if actual_flavor != "fat":
+                raise SystemExit("--require-runtimes is valid only for a Fat package")
             expected = set(SUPPORTED_RUNTIME_IDENTITIES)
             missing = expected - identities
             unexpected = identities - expected
@@ -764,8 +852,24 @@ def main() -> int:
         action="store_true",
         help="require every supported Fat Plugin runtime identity",
     )
+    parser.add_argument(
+        "--flavor",
+        choices=("fat", "platform"),
+        help="expected package flavor",
+    )
+    parser.add_argument(
+        "--runtime",
+        help="expected payload id for a platform package",
+    )
     args = parser.parse_args()
-    validate(args.artifact, require_runtimes=args.require_runtimes)
+    if args.runtime and args.flavor != "platform":
+        parser.error("--runtime requires --flavor platform")
+    validate(
+        args.artifact,
+        require_runtimes=args.require_runtimes,
+        flavor=args.flavor,
+        runtime=args.runtime,
+    )
     return 0
 
 

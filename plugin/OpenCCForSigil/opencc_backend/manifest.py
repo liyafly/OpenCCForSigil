@@ -8,6 +8,25 @@ from typing import Any, Mapping, Optional, Tuple
 from opencc_backend.errors import ManifestError, RuntimeSelectionError
 
 
+_SUPPORTED_PLATFORM_ARCHITECTURES = {
+    ("linux", "aarch64"),
+    ("linux", "x86_64"),
+    ("macos", "arm64"),
+    ("macos", "x86_64"),
+    ("windows", "x86_64"),
+}
+
+
+def _payload_identifier(payload_path: str) -> str:
+    prefix = "payloads/"
+    if not payload_path.startswith(prefix):
+        raise ManifestError(f"manifest payload_path must start with {prefix!r}")
+    identifier = payload_path[len(prefix) :]
+    if not identifier or "/" in identifier or "\\" in identifier or identifier in {".", ".."}:
+        raise ManifestError("manifest payload_path must contain exactly one payload id")
+    return identifier
+
+
 @dataclass(frozen=True)
 class NativePluginRecord:
     """One manifest-approved native OpenCC plugin inside a wheel payload."""
@@ -166,6 +185,8 @@ class VendorManifest:
     payloads: Tuple[PayloadRecord, ...]
     config_data: Mapping[str, Any]
     python_compatibility: Mapping[str, Any]
+    package_flavor: str
+    package_runtimes: Tuple[str, ...]
 
     @classmethod
     def load(cls, path: Path) -> "VendorManifest":
@@ -180,6 +201,31 @@ class VendorManifest:
         if not isinstance(payloads_raw, list):
             raise ManifestError("vendor manifest payloads must be a list")
         payloads = tuple(PayloadRecord.from_mapping(item) for item in payloads_raw)
+        payload_ids = tuple(sorted(_payload_identifier(payload.payload_path) for payload in payloads))
+        package_raw = raw.get("package")
+        if package_raw is None:
+            package_flavor = "fat"
+            package_runtimes = payload_ids
+        else:
+            if not isinstance(package_raw, dict):
+                raise ManifestError("manifest package must be an object")
+            package_flavor = package_raw.get("flavor")
+            package_runtimes_raw = package_raw.get("runtimes")
+            if package_flavor not in {"fat", "platform"}:
+                raise ManifestError("manifest package flavor must be 'fat' or 'platform'")
+            if not isinstance(package_runtimes_raw, list) or not all(
+                isinstance(item, str) for item in package_runtimes_raw
+            ):
+                raise ManifestError("manifest package runtimes must be a string list")
+            package_runtimes = tuple(package_runtimes_raw)
+            if package_runtimes != tuple(sorted(set(package_runtimes))):
+                raise ManifestError("manifest package runtimes must be unique and sorted")
+            if package_runtimes != payload_ids:
+                raise ManifestError("manifest package runtimes differ from payload records")
+            if not isinstance(package_raw.get("asset_name"), str) or not package_raw["asset_name"]:
+                raise ManifestError("manifest package asset_name must be a non-empty string")
+            if package_flavor == "platform" and len(payloads) != 1:
+                raise ManifestError("platform package manifest must contain exactly one payload")
         required = (
             "opencc_version",
             "distribution_name",
@@ -227,9 +273,30 @@ class VendorManifest:
             payloads=payloads,
             config_data=config_data,
             python_compatibility=python_compatibility,
+            package_flavor=str(package_flavor),
+            package_runtimes=tuple(package_runtimes),
         )
 
     def select(self, runtime: RuntimeKey) -> PayloadRecord:
+        detected = {
+            "implementation": runtime.python_implementation,
+            "python_version": runtime.python_version,
+            "abi": runtime.python_abi,
+            "os": runtime.os,
+            "architecture": runtime.architecture,
+        }
+        error_context = {
+            "detected": detected,
+            "package_flavor": self.package_flavor,
+            "package_runtimes": self.package_runtimes,
+        }
+        if (runtime.os, runtime.architecture) not in _SUPPORTED_PLATFORM_ARCHITECTURES:
+            raise RuntimeSelectionError(
+                "Unsupported operating system or architecture: "
+                f"{runtime.os}/{runtime.architecture}",
+                reason="unsupported_platform",
+                **error_context,
+            )
         if (
             runtime.python_implementation != "CPython"
             or runtime.python_major != 3
@@ -237,20 +304,21 @@ class VendorManifest:
             or runtime.python_abi != "cp314"
         ):
             raise RuntimeSelectionError(
-                "OpenCCForSigil V1 supports only CPython 3.14.x with wheel ABI cp314; "
-                "patch versions do not affect payload selection. "
-                "Please switch Sigil Plugin Preferences back to Bundled Python."
+                "OpenCCForSigil V1 requires CPython 3.14.x with wheel ABI cp314; "
+                f"detected {runtime.python_implementation} {runtime.python_version} "
+                f"with ABI {runtime.python_abi}.",
+                reason="python_version",
+                **error_context,
             )
         for payload in self.payloads:
             if payload.runtime == runtime:
                 return payload
         raise RuntimeSelectionError(
-            "Unsupported external Python runtime or unavailable bundled payload: no exact "
-            "vendored OpenCC payload for "
+            "No OpenCC payload in this package matches "
             f"{runtime.python_implementation} {runtime.python_version} "
-            f"{runtime.python_abi} {runtime.os}/{runtime.architecture}; "
-            "OpenCCForSigil is built for Sigil's bundled Python runtime. "
-            "Please switch Sigil Plugin Preferences back to Bundled Python."
+            f"{runtime.python_abi} {runtime.os}/{runtime.architecture}.",
+            reason="no_payload_in_package",
+            **error_context,
         )
 
     def payload_root(self, payload: PayloadRecord) -> Path:

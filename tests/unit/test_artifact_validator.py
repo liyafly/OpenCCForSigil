@@ -23,6 +23,15 @@ def artifact(tmp_path_factory: pytest.TempPathFactory) -> Path:
     return build(tmp_path_factory.mktemp("artifact") / "plugin.zip")
 
 
+@pytest.fixture(scope="module")
+def platform_artifact(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    return build(
+        tmp_path_factory.mktemp("platform-artifact") / "plugin.zip",
+        flavor="platform",
+        runtime="macos-arm64-cp314",
+    )
+
+
 def _rewrite_archive(source: Path, target: Path, replacements: dict[str, bytes]) -> None:
     with zipfile.ZipFile(source) as source_archive, zipfile.ZipFile(target, "w") as target_archive:
         seen: set[str] = set()
@@ -215,23 +224,79 @@ def test_validator_rejects_excluded_wheel_files(
     ],
 )
 def test_validator_rejects_artifacts_over_size_budget(
-    artifact: Path, tmp_path: Path, flavor: str, limit: int
+    artifact: Path, platform_artifact: Path, tmp_path: Path, flavor: str, limit: int
 ):
-    manifest_name = "OpenCCForSigil/vendor/opencc/manifest.json"
-    manifest = _read_member(artifact, manifest_name)
-    manifest["package"] = {"flavor": flavor}
+    source = platform_artifact if flavor == "platform" else artifact
     target = tmp_path / f"oversized-{flavor}.zip"
     _rewrite_archive(
-        artifact,
+        source,
         target,
         {
-            manifest_name: json.dumps(manifest, ensure_ascii=False).encode("utf-8"),
             "OpenCCForSigil/oversized.bin": bytes(limit + 1),
         },
     )
 
     with pytest.raises(SystemExit, match=f"exceeds the {flavor} size budget"):
         validate_artifact(target)
+
+
+def test_platform_validator_rejects_a_second_payload(
+    platform_artifact: Path, tmp_path: Path
+):
+    manifest_name = "OpenCCForSigil/vendor/opencc/manifest.json"
+    manifest = _read_member(platform_artifact, manifest_name)
+    payload = dict(manifest["payloads"][0])
+    payload["os"] = "windows"
+    payload["architecture"] = "x86_64"
+    payload["payload_path"] = "payloads/windows-x86_64-cp314"
+    manifest["payloads"].append(payload)
+    manifest["package"]["runtimes"] = [
+        "macos-arm64-cp314",
+        "windows-x86_64-cp314",
+    ]
+    target = tmp_path / "platform-with-second-payload.zip"
+    _rewrite_archive(
+        platform_artifact,
+        target,
+        {manifest_name: json.dumps(manifest, ensure_ascii=False).encode("utf-8")},
+    )
+
+    with pytest.raises(SystemExit, match="platform package must contain exactly one manifest payload"):
+        validate_artifact(target, flavor="platform", runtime="macos-arm64-cp314")
+
+
+def test_platform_validator_rejects_a_wrong_oslist(
+    platform_artifact: Path, tmp_path: Path
+):
+    name = "OpenCCForSigil/plugin.xml"
+    with zipfile.ZipFile(platform_artifact) as archive:
+        plugin_xml = archive.read(name).decode("utf-8")
+    target = tmp_path / "platform-wrong-oslist.zip"
+    _rewrite_archive(
+        platform_artifact,
+        target,
+        {name: plugin_xml.replace("<oslist>osx</oslist>", "<oslist>osx,unx,win</oslist>").encode("utf-8")},
+    )
+
+    with pytest.raises(SystemExit, match="plugin.xml oslist differs from package runtimes"):
+        validate_artifact(target, flavor="platform", runtime="macos-arm64-cp314")
+
+
+def test_platform_validator_rejects_a_flavor_mismatch(
+    platform_artifact: Path, tmp_path: Path
+):
+    name = "OpenCCForSigil/vendor/opencc/manifest.json"
+    manifest = _read_member(platform_artifact, name)
+    manifest["package"]["flavor"] = "fat"
+    target = tmp_path / "platform-wrong-flavor.zip"
+    _rewrite_archive(
+        platform_artifact,
+        target,
+        {name: json.dumps(manifest, ensure_ascii=False).encode("utf-8")},
+    )
+
+    with pytest.raises(SystemExit, match="package flavor mismatch: expected platform, got fat"):
+        validate_artifact(target, flavor="platform", runtime="macos-arm64-cp314")
 
 
 class _ChunkedReader(io.BytesIO):
