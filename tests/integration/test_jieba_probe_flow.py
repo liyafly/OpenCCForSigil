@@ -53,7 +53,7 @@ def test_controller_starts_optional_probe_before_scope_and_opens_settings_pendin
         events.append("scope")
         return ScopeOutcome(True, TargetSelection(Scope.SINGLE, ("a",)), initial_language)
 
-    def choose_config(_configs, *, default_config, jieba_probe):
+    def choose_config(_configs, *, default_config, jieba_probe, **_kwargs):
         assert events[:2] == ["probe-start", "scope"]
         assert default_config == "s2t"
         assert jieba_probe.jieba_probe_state()[0] == "pending"

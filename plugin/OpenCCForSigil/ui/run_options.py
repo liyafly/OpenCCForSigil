@@ -26,6 +26,7 @@ def option_enablement(config: str, values: dict) -> dict[str, bool]:
     language_mode = values.get("language_metadata", "keep")
     language_preset = values.get("language_preset", "legacy")
     return {
+        "include_nav": bool(values.get("nav_available", True)),
         "force_pivot": bool(compatible_chains),
         "pivot_chain": bool(compatible_chains and values.get("force_pivot", False)),
         "language_preset": language_mode != "keep",
@@ -40,7 +41,8 @@ def option_enablement(config: str, values: dict) -> dict[str, bool]:
 
 class RunOptionsPanel:
     def __init__(
-        self, qt, translator, layout, *, initial=None, metadata_available=None, services=None
+        self, qt, translator, layout, *, initial=None, metadata_available=None,
+        nav_available=True, services=None, ui_preferences=None,
     ):
         self._qt = qt
         self._tr = translator
@@ -49,59 +51,153 @@ class RunOptionsPanel:
             _metadata_available if metadata_available is None else bool(metadata_available)
         )
         self._services = _services if services is None else services
+        self._nav_available = bool(nav_available)
+        self._ui_preferences = dict(ui_preferences or {})
+        self._advanced_expanded = bool(
+            self._ui_preferences.get("run_options_advanced_expanded", False))
         self._preferred_pivot_chain = _pivot_chain_key(self._initial.get("pivot_chain", ()))
         self._enablement = {}
         self._updating = False
         self.checks = {}
         self.combos = {}
         self.profile_label = qt.QLabel()
-        layout.addWidget(self.profile_label)
-        box = qt.QGroupBox(translator.text("options.title"))
-        form = qt.QFormLayout(box)
-        for name, default in (("include_nav", True), ("include_ncx", False),
-                              ("include_metadata", False), ("convert_alt", True),
-                              ("convert_title", True), ("convert_aria_label", False),
-                              ("convert_ruby_rt", False), ("convert_code_pre", False),
-                              ("decode_numeric_cjk_refs", False),
-                              ("force_pivot", False), ("diagnose_mixed", True),
-                              ("detailed_classification", True)):
-            control = qt.QCheckBox(translator.text("options." + name))
-            control.setChecked(bool(self._initial.get(name, default)))
-            if name == "include_metadata" and not self._metadata_available:
-                control.setChecked(False)
-                control.setEnabled(False)
-            self.checks[name] = control
-            form.addRow(control)
-        for name, values in (
-            ("language_metadata", ("keep", "suggest", "force")),
-            ("language_preset", ("legacy", "bcp47")),
-            ("language_region", ("", "zh-TW", "zh-HK")),
-            ("quotation_mode", ("keep", "curly", "corner", "nested_corner")),
-            ("punctuation_mode", ("keep", "horizontal")),
-        ):
-            combo = qt.QComboBox()
-            for value in values:
-                combo.addItem(translator.text("options." + (value or "no_region")), value)
-            index = combo.findData(self._initial.get(name, values[0]))
-            combo.setCurrentIndex(max(0, index))
-            self.combos[name] = combo
-            form.addRow(translator.text("options." + name), combo)
+        self.ruleset_label = qt.QLabel()
+        body = qt.QWidget()
+        body_layout = qt.QVBoxLayout(body)
+        profile_row = qt.QHBoxLayout()
+        profile_row.addWidget(self.profile_label, 1)
+        self.profile_buttons_layout = qt.QHBoxLayout()
+        profile_row.addLayout(self.profile_buttons_layout)
+        body_layout.addLayout(profile_row)
+        ruleset_row = qt.QHBoxLayout()
+        ruleset_row.addWidget(self.ruleset_label, 1)
+        self.rules_button_layout = qt.QHBoxLayout()
+        ruleset_row.addLayout(self.rules_button_layout)
+        body_layout.addLayout(ruleset_row)
 
-        chain_combo = qt.QComboBox()
-        self.combos["pivot_chain"] = chain_combo
-        form.addRow(translator.text("options.pivot_chain"), chain_combo)
-        note = qt.QLabel(translator.text("options.language_note"))
-        note.setWordWrap(True)
-        form.addRow(note)
+        documents = qt.QGroupBox(translator.text("options.documents"))
+        documents_layout = qt.QVBoxLayout(documents)
+        for name, default in (("include_nav", True), ("include_ncx", False),
+                              ("include_metadata", False)):
+            self._add_check(documents_layout, name, default)
+        body_layout.addWidget(documents)
+
+        tool_button = qt.QToolButton()
+        tool_button.setText(translator.text("settings.tools"))
+        popup_mode = _enum_value(qt.QToolButton, "InstantPopup")
+        if popup_mode is not None:
+            tool_button.setPopupMode(popup_mode)
+        self.tools_menu = qt.QMenu(tool_button)
+        tool_button.setMenu(self.tools_menu)
+        self._tool_actions = {}
+        action_type = getattr(getattr(qt, "QtGui", None), "QAction", None)
+        action_type = action_type or getattr(qt, "QAction", None)
+        if action_type is not None:
+            for name in ("history", "self_test"):
+                action = action_type(translator.text("settings." + name), tool_button)
+                action.triggered.connect(
+                    lambda _checked=False, selected=name: self._tool(selected))
+                self.tools_menu.addAction(action)
+                self._tool_actions[name] = action
+        self.advanced_button = qt.QToolButton()
+        self.advanced_button.setText(translator.text("options.advanced"))
+        self.advanced_button.setCheckable(True)
+        self.advanced_button.setChecked(self._advanced_expanded)
+        button_style = _enum_value(qt.Qt, "ToolButtonTextBesideIcon")
+        if button_style is not None:
+            self.advanced_button.setToolButtonStyle(button_style)
+        self.advanced_content = qt.QWidget()
+        advanced_layout = qt.QVBoxLayout(self.advanced_content)
+        self._add_option_group(advanced_layout, "options.attributes", (
+            ("convert_alt", True), ("convert_title", True),
+            ("convert_aria_label", False)))
+        self._add_option_group(advanced_layout, "options.content", (
+            ("convert_ruby_rt", False), ("convert_code_pre", False),
+            ("decode_numeric_cjk_refs", False)))
+        punctuation_group = qt.QGroupBox(translator.text("options.punctuation"))
+        punctuation_layout = qt.QFormLayout(punctuation_group)
+        self._add_combo(punctuation_layout, "quotation_mode",
+                        ("keep", "curly", "corner", "nested_corner"))
+        self._add_combo(punctuation_layout, "punctuation_mode", ("keep", "horizontal"))
+        advanced_layout.addWidget(punctuation_group)
+        language_group = qt.QGroupBox(translator.text("options.language_tags"))
+        language_form = qt.QFormLayout(language_group)
+        self._add_combo(language_form, "language_metadata", ("keep", "suggest", "force"))
+        self._add_combo(language_form, "language_preset", ("legacy", "bcp47"))
+        self._add_combo(language_form, "language_region", ("", "zh-TW", "zh-HK"))
+        language_note = qt.QLabel(translator.text("options.language_note"))
+        language_note.setWordWrap(True)
+        language_form.addRow(language_note)
+        advanced_layout.addWidget(language_group)
+        self._add_option_group(advanced_layout, "options.diagnostics", (
+            ("diagnose_mixed", True), ("detailed_classification", True)))
+        high_risk = qt.QGroupBox(translator.text("options.high_risk"))
+        high_risk_layout = qt.QFormLayout(high_risk)
+        self._add_check(high_risk_layout, "force_pivot", False)
+        self._add_combo(high_risk_layout, "pivot_chain", ())
+        advanced_layout.addWidget(high_risk)
+        body_layout.addWidget(self.advanced_button)
+        body_layout.addWidget(self.advanced_content)
+        self.advanced_content.setVisible(self._advanced_expanded)
+        self.advanced_button.toggled.connect(self._advanced_toggled)
+        self._advanced_toggled(self._advanced_expanded)
+        self.tool_layout = qt.QHBoxLayout()
+        self.tool_layout.addWidget(tool_button)
+        self.tool_layout.addStretch(1)
+        layout.addLayout(self.tool_layout)
         scroll = qt.QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setWidget(box)
+        scroll.setWidget(body)
         scroll.setMinimumHeight(280)
-        scroll.setMaximumHeight(420)
-        layout.addWidget(scroll)
-        self.tool_layout = qt.QHBoxLayout()
-        layout.addLayout(self.tool_layout)
+        layout.insertWidget(0, scroll)
         self._connect_option_changes()
+
+    def _add_check(self, layout, name, default):
+        control = self._qt.QCheckBox(self._tr.text("options." + name))
+        control.setChecked(bool(self._initial.get(name, default)))
+        self.checks[name] = control
+        if name == "include_nav" and not self._nav_available:
+            control.setChecked(False)
+            control.setEnabled(False)
+            control.setToolTip(self._tr.text("options.nav_unavailable"))
+        if name == "include_metadata" and not self._metadata_available:
+            control.setChecked(False)
+            control.setEnabled(False)
+        if hasattr(layout, "addRow"):
+            layout.addRow(control)
+        else:
+            layout.addWidget(control)
+        return control
+
+    def _add_combo(self, layout, name, values):
+        combo = self._qt.QComboBox()
+        for value in values:
+            combo.addItem(self._tr.text("options." + (value or "no_region")), value)
+        if values:
+            index = combo.findData(self._initial.get(name, values[0]))
+            combo.setCurrentIndex(max(0, index))
+        self.combos[name] = combo
+        if hasattr(layout, "addRow"):
+            layout.addRow(self._tr.text("options." + name), combo)
+        else:
+            layout.addWidget(combo)
+        return combo
+
+    def _add_option_group(self, parent_layout, title_key, fields):
+        group = self._qt.QGroupBox(self._tr.text(title_key))
+        group_layout = self._qt.QVBoxLayout(group)
+        for name, default in fields:
+            self._add_check(group_layout, name, default)
+        parent_layout.addWidget(group)
+
+    def _advanced_toggled(self, expanded):
+        self._advanced_expanded = bool(expanded)
+        self.advanced_content.setVisible(self._advanced_expanded)
+        arrow_name = "DownArrow" if self._advanced_expanded else "RightArrow"
+        arrow = _enum_value(self._qt.Qt, arrow_name)
+        if arrow is not None:
+            self.advanced_button.setArrowType(arrow)
+        self._ui_preferences["run_options_advanced_expanded"] = self._advanced_expanded
 
     def _connect_option_changes(self):
         for control in self.checks.values():
@@ -134,10 +230,14 @@ class RunOptionsPanel:
         self.update_enablement(config_getter())
         if self._services is None:
             return
-        for name in ("profiles", "save_profile", "rules", "history", "self_test"):
+        for name in ("profiles", "save_profile"):
             button = self._qt.QPushButton(self._tr.text("settings." + name))
             button.clicked.connect(lambda _checked=False, action=name: self._tool(action))
-            self.tool_layout.addWidget(button)
+            self.profile_buttons_layout.addWidget(button)
+        self.ruleset_button = self._qt.QPushButton(self._tr.text("settings.rules"))
+        self.ruleset_button.clicked.connect(lambda _checked=False: self._tool("rules"))
+        self.rules_button_layout.addWidget(self.ruleset_button)
+        self._update_profile_label(str(config_getter()))
 
     def update_enablement(self, config=None):
         if self._updating:
@@ -169,7 +269,14 @@ class RunOptionsPanel:
 
         values = self.values()
         values["metadata_available"] = self._metadata_available
+        values["nav_available"] = self._nav_available
         self._enablement = option_enablement(str(config), values)
+        if not self._enablement["include_nav"]:
+            self.checks["include_nav"].setChecked(False)
+        self.checks["include_nav"].setEnabled(self._enablement["include_nav"])
+        self.checks["include_nav"].setToolTip(
+            "" if self._enablement["include_nav"]
+            else self._tr.text("options.nav_unavailable"))
         if not self._enablement["force_pivot"]:
             self.checks["force_pivot"].setChecked(False)
         self.checks["force_pivot"].setEnabled(self._enablement["force_pivot"])
@@ -215,6 +322,11 @@ class RunOptionsPanel:
                   if settings_hash(current) != settings_hash(active) else "")
         self.profile_label.setText(self._tr.text(
             "options.current_profile", name=active.name or active.id, status=status))
+        self.ruleset_label.setText(self._tr.text(
+            "options.active_rulesets", ids=", ".join(active.ruleset_ids) or "—"))
+
+    def ui_state(self):
+        return {"run_options_advanced_expanded": self._advanced_expanded}
 
     def _tool(self, name):
         from app.settings import profile_options
@@ -257,6 +369,17 @@ def _decode_pivot_chain(value):
 
 def _pivot_chain_key(value):
     return ">".join(_decode_pivot_chain(value))
+
+
+def _enum_value(namespace, name):
+    value = getattr(namespace, name, None)
+    if value is not None:
+        return value
+    for enum_name in ("ToolButtonPopupMode", "ToolButtonStyle", "ArrowType"):
+        value = getattr(getattr(namespace, enum_name, None), name, None)
+        if value is not None:
+            return value
+    return None
 
 
 def get_run_services():

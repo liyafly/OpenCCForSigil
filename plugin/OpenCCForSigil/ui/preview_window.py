@@ -351,6 +351,12 @@ def choose_conversion_config(
     *,
     default_config: str = "s2t",
     jieba_probe=None,
+    initial_options=None,
+    metadata_available=True,
+    nav_available=True,
+    services=None,
+    ui_preferences=None,
+    save_ui_preferences=None,
 ) -> ConfigOutcome:
     """Ask for an explicit conversion direction before building a plan.
 
@@ -373,10 +379,21 @@ def choose_conversion_config(
     }
     dialog = _ConversionConfigDialog(
         qt_widgets, configs, default_config, jieba_configs, translator=_translator,
-        jieba_probe=jieba_probe,
+        jieba_probe=jieba_probe, initial_options=initial_options,
+        metadata_available=metadata_available, nav_available=nav_available,
+        services=services, ui_preferences=ui_preferences,
     )
     exec_method = getattr(dialog.dialog, "exec", None) or dialog.dialog.exec_
     exec_method()
+    if callable(save_ui_preferences):
+        state = {**dict(ui_preferences or {}), **dialog.options_panel.ui_state()}
+        size = getattr(dialog.dialog, "size", None)
+        size = size() if callable(size) else None
+        if size is not None:
+            width, height = getattr(size, "width", None), getattr(size, "height", None)
+            if callable(width) and callable(height):
+                state["conversion_dialog_size"] = [int(width()), int(height())]
+        save_ui_preferences(state)
     return ConfigOutcome(dialog.action, dialog.selected_config)
 
 
@@ -398,6 +415,9 @@ def choose_scope(
         selected_ids = tuple(initial_selection.file_ids)
         initial_scope = initial_selection.scope
     spine_ids = _spine_ids(adapter)
+    inventory = _ordered_scope_inventory(inventory, spine_ids)
+    nav_getter = getattr(adapter, "nav_id", None)
+    nav_id = nav_getter() if callable(nav_getter) else None
     language = initial_language or _translator.language
     _translator.set_language(language)
     qt_widgets = _load_qt_widgets()
@@ -410,6 +430,7 @@ def choose_scope(
         _translator,
         ignored_non_xhtml=ignored_non_xhtml,
         spine_ids=spine_ids,
+        nav_id=nav_id,
         recovery_notices=notice,
         initial_scope=initial_scope,
         checkpoint_notice_enabled=checkpoint_notice_enabled,
@@ -463,6 +484,22 @@ def _spine_ids(adapter: Any) -> Tuple[str, ...]:
         return tuple(file_id for file_id, _href in text_files(Scope.SPINE))
     except (AttributeError, TypeError, ValueError):
         return ()
+
+
+def _ordered_scope_inventory(
+    inventory: Sequence[TextFile], spine_ids: Sequence[str]
+) -> Tuple[TextFile, ...]:
+    """Show spine resources in reading order and other XHTML paths afterward."""
+
+    spine_order = {file_id: index for index, file_id in enumerate(spine_ids)}
+    return tuple(sorted(
+        inventory,
+        key=lambda item: (
+            0 if item.file_id in spine_order else 1,
+            spine_order.get(item.file_id, 0),
+            "" if item.file_id in spine_order else item.href,
+        ),
+    ))
 
 
 def show_preview(planned: Sequence[PlannedDocument]) -> PreviewOutcome:
@@ -1603,11 +1640,17 @@ class _ConversionConfigDialog:
         *,
         translator: Translator,
         jieba_probe=None,
+        initial_options=None,
+        metadata_available=True,
+        nav_available=True,
+        services=None,
+        ui_preferences=None,
     ) -> None:
         self._qt = qt_widgets
         self._jieba_configs = jieba_configs
         self._translator = translator
         self._jieba_probe = jieba_probe
+        self._ui_preferences = dict(ui_preferences or {})
         self._probe_error = None
         self._probe_state = "not_started"
         self._default_base = BASE_CONFIG_BY_JIEBA.get(default_config, default_config)
@@ -1619,23 +1662,43 @@ class _ConversionConfigDialog:
         self.action = "cancel"
         self.dialog = qt_widgets.QDialog()
         self.dialog.setWindowTitle(self._translator.text("config.title"))
+        size = self._ui_preferences.get("conversion_dialog_size")
+        if (isinstance(size, (tuple, list)) and len(size) == 2
+                and all(isinstance(item, int) and item > 0 for item in size)):
+            self.dialog.resize(size[0], size[1])
+        else:
+            self.dialog.resize(720, 720)
         self.dialog.setMinimumWidth(460)
 
         layout = qt_widgets.QVBoxLayout(self.dialog)
-        label = qt_widgets.QLabel(
-            self._translator.text("config.explanation")
-        )
+        label = qt_widgets.QLabel(self._translator.text("config.explanation"))
         label.setWordWrap(True)
         layout.addWidget(label)
 
+        layout.addWidget(qt_widgets.QLabel(self._translator.text("config.direction")))
         self.combo = qt_widgets.QComboBox()
-        for config in configs:
-            self.combo.addItem(
-                self._translator.text(f"config.{config}")
-                if self._translator.text(f"config.{config}") != f"config.{config}"
-                else CONVERSION_LABELS[config],
-                config,
-            )
+        config_groups = (
+            ("general", ("s2t", "t2s")),
+            ("regional", ("s2tw", "s2twp", "s2hk", "s2hkp", "tw2s", "tw2sp",
+                           "hk2s", "hk2sp", "t2tw", "t2hk", "tw2t", "hk2t")),
+            ("japanese", ("t2jp", "jp2t")),
+        )
+        available = set(configs)
+        groups_added = 0
+        for _group, group_configs in config_groups:
+            group_values = tuple(config for config in group_configs if config in available)
+            if not group_values:
+                continue
+            if groups_added:
+                insert_separator = getattr(self.combo, "insertSeparator", None)
+                if callable(insert_separator):
+                    insert_separator(self.combo.count())
+            for config in group_values:
+                label = self._translator.text(f"config.{config}")
+                if label == f"config.{config}":
+                    label = CONVERSION_LABELS[config]
+                self.combo.addItem(label, config)
+            groups_added += 1
         layout.addWidget(self.combo)
 
         self.jieba_status = qt_widgets.QLabel()
@@ -1650,17 +1713,44 @@ class _ConversionConfigDialog:
         layout.addWidget(self.jieba_details_button)
 
         from ui.run_options import RunOptionsPanel
-        self.options_panel = RunOptionsPanel(qt_widgets, translator, layout)
+        self.options_panel = RunOptionsPanel(
+            qt_widgets, translator, layout, initial=initial_options,
+            metadata_available=metadata_available, nav_available=nav_available,
+            services=services, ui_preferences=self._ui_preferences,
+        )
         self.options_panel.bind(self._get_config, self._set_config, self.dialog)
 
-        buttons = qt_widgets.QHBoxLayout()
-        self.back_button = qt_widgets.QPushButton(self._translator.text("scope.back"))
-        self.cancel_button = qt_widgets.QPushButton(self._translator.text("common.cancel"))
-        self.continue_button = qt_widgets.QPushButton(self._translator.text("config.continue"))
-        buttons.addWidget(self.back_button)
-        buttons.addWidget(self.cancel_button)
-        buttons.addWidget(self.continue_button)
-        layout.addLayout(buttons)
+        button_box_type = getattr(qt_widgets, "QDialogButtonBox", None)
+        if button_box_type is not None:
+            self.button_box = button_box_type(self.dialog)
+            roles = getattr(button_box_type, "ButtonRole", button_box_type)
+            action_role = getattr(roles, "ActionRole", 0)
+            accept_role = getattr(roles, "AcceptRole", 0)
+            self.back_button = self.button_box.addButton(
+                self._translator.text("scope.back"), action_role)
+            standard = getattr(button_box_type, "StandardButton", button_box_type)
+            cancel_standard = getattr(standard, "Cancel", None)
+            if cancel_standard is not None:
+                self.cancel_button = self.button_box.addButton(cancel_standard)
+            else:
+                reject_role = getattr(roles, "RejectRole", 0)
+                self.cancel_button = self.button_box.addButton(
+                    self._translator.text("common.cancel"), reject_role)
+            self.continue_button = self.button_box.addButton(
+                self._translator.text("config.continue"), accept_role)
+            self.continue_button.setDefault(True)
+            layout.addWidget(self.button_box)
+        else:
+            buttons = qt_widgets.QHBoxLayout()
+            self.back_button = qt_widgets.QPushButton(self._translator.text("scope.back"))
+            self.cancel_button = qt_widgets.QPushButton(self._translator.text("common.cancel"))
+            self.continue_button = qt_widgets.QPushButton(
+                self._translator.text("config.continue"))
+            self.continue_button.setDefault(True)
+            buttons.addWidget(self.back_button)
+            buttons.addWidget(self.cancel_button)
+            buttons.addWidget(self.continue_button)
+            layout.addLayout(buttons)
         self.cancel_button.clicked.connect(self.dialog.reject)
         self.cancel_button.clicked.connect(self._stop_probe_timer)
         self.back_button.clicked.connect(self._back_to_scope)
@@ -1822,6 +1912,7 @@ class _ScopeDialog:
         *,
         ignored_non_xhtml: int = 0,
         spine_ids: Tuple[str, ...] = (),
+        nav_id: str | None = None,
         recovery_notices=(),
         initial_scope: Scope | None = None,
         checkpoint_notice_enabled: bool = False,
@@ -1834,6 +1925,10 @@ class _ScopeDialog:
         self.language = language
         self.ignored_non_xhtml = max(0, ignored_non_xhtml)
         self.spine_ids = tuple(file_id for file_id in spine_ids if file_id)
+        self.nav_id = nav_id
+        self._manual_selection_ids = set(initial_ids)
+        self._single_selected_id = next(iter(initial_ids), None)
+        self._updating_items = False
         self.checkpoint_notice_shown = bool(checkpoint_notice_enabled)
         self._hide_checkpoint_notice_callback = hide_checkpoint_notice
         self._checkpoint_notice_hidden = False
@@ -1864,7 +1959,7 @@ class _ScopeDialog:
 
         self.single_radio = qt_widgets.QRadioButton(translator.text("scope.single"))
         self.selected_radio = qt_widgets.QRadioButton(translator.text("scope.selected"))
-        self.spine_radio = qt_widgets.QRadioButton(_ui_text("scope.spine"))
+        self.spine_radio = qt_widgets.QRadioButton(translator.text("scope.spine"))
         self.all_radio = qt_widgets.QRadioButton(translator.text("scope.all"))
         self.selected_radio.setChecked(True)
         radio_row = qt_widgets.QHBoxLayout()
@@ -1877,6 +1972,10 @@ class _ScopeDialog:
         self.filter_edit.setPlaceholderText(translator.text("scope.filter"))
         self.filter_edit.textChanged.connect(self._refresh_list)
         layout.addWidget(self.filter_edit)
+        self.guide_label = qt_widgets.QLabel(translator.text("scope.selection_guide"))
+        self.guide_label.setWordWrap(True)
+        self.guide_label.setVisible(not bool(initial_ids))
+        layout.addWidget(self.guide_label)
         self.list_widget = qt_widgets.QListWidget()
         layout.addWidget(self.list_widget)
         action_row = qt_widgets.QHBoxLayout()
@@ -1895,6 +1994,12 @@ class _ScopeDialog:
         button_row = qt_widgets.QHBoxLayout()
         self.cancel_button = qt_widgets.QPushButton(translator.text("common.cancel"))
         self.analyze_button = qt_widgets.QPushButton(translator.text("scope.analyze"))
+        set_default = getattr(self.analyze_button, "setDefault", None)
+        if callable(set_default):
+            set_default(True)
+        set_auto_default = getattr(self.analyze_button, "setAutoDefault", None)
+        if callable(set_auto_default):
+            set_auto_default(True)
         button_row.addStretch(1)
         button_row.addWidget(self.cancel_button)
         button_row.addWidget(self.analyze_button)
@@ -1905,8 +2010,12 @@ class _ScopeDialog:
         self.clear_visible.clicked.connect(lambda: self._set_visible(False))
 
         initial = set(initial_ids)
+        navigation_suffix = self._translator.text("scope.navigation_suffix")
         for item in inventory:
-            row = qt_widgets.QListWidgetItem(item.href)
+            label = item.href
+            if item.file_id == self.nav_id:
+                label += " " + navigation_suffix
+            row = qt_widgets.QListWidgetItem(label)
             row.setData(qt_widgets.Qt.UserRole, item.file_id)
             row.setFlags(row.flags() | qt_widgets.Qt.ItemIsUserCheckable)
             row.setCheckState(
@@ -1914,6 +2023,9 @@ class _ScopeDialog:
             )
             self.list_widget.addItem(row)
         self.list_widget.itemChanged.connect(self._item_changed)
+        current_row_changed = getattr(self.list_widget, "currentRowChanged", None)
+        if current_row_changed is not None:
+            current_row_changed.connect(self._current_row_changed)
         if initial_scope is Scope.SINGLE:
             self.single_radio.setChecked(True)
         elif initial_scope is Scope.SELECTED:
@@ -1931,7 +2043,19 @@ class _ScopeDialog:
 
     def _item_changed(self, _item: Any) -> None:
         """Refresh counts and validity for direct checkbox changes."""
+        if self._updating_items:
+            return
+        if self.selected_radio.isChecked():
+            self._manual_selection_ids = set(self._checked_ids())
+        elif self.all_radio.isChecked() or self.spine_radio.isChecked():
+            self._refresh_mode_items()
+        self._refresh_count()
+        self._update_analyze_enabled()
 
+    def _current_row_changed(self, row: int) -> None:
+        if self.single_radio.isChecked() and row >= 0:
+            item = self.list_widget.item(row)
+            self._single_selected_id = item.data(self._qt.Qt.UserRole)
         self._refresh_count()
         self._update_analyze_enabled()
 
@@ -1943,7 +2067,7 @@ class _ScopeDialog:
         self.language_label.setText(self._translator.text("language.label"))
         self.single_radio.setText(self._translator.text("scope.single"))
         self.selected_radio.setText(self._translator.text("scope.selected"))
-        self.spine_radio.setText(_ui_text("scope.spine"))
+        self.spine_radio.setText(self._translator.text("scope.spine"))
         self.all_radio.setText(self._translator.text("scope.all"))
         self.filter_edit.setPlaceholderText(self._translator.text("scope.filter"))
         self.select_visible.setText(self._translator.text("scope.select_visible"))
@@ -2000,7 +2124,19 @@ class _ScopeDialog:
         )
 
     def selected_ids(self) -> Tuple[str, ...]:
-        return self._checked_ids()
+        if self.single_radio.isChecked():
+            row = self.list_widget.currentRow()
+            if row < 0:
+                return ()
+            item = self.list_widget.item(row)
+            return (item.data(self._qt.Qt.UserRole),)
+        if self.all_radio.isChecked():
+            return tuple(item.file_id for item in self._inventory)
+        if self.spine_radio.isChecked():
+            available = {item.file_id for item in self._inventory}
+            return tuple(file_id for file_id in self.spine_ids if file_id in available)
+        return tuple(item.file_id for item in self._inventory
+                     if item.file_id in self._manual_selection_ids)
 
     def _refresh_list(self) -> None:
         query = self.filter_edit.text().strip().lower()
@@ -2010,6 +2146,8 @@ class _ScopeDialog:
         self._refresh_count()
 
     def _set_visible(self, checked: bool) -> None:
+        if not self.selected_radio.isChecked():
+            return
         state = self._qt.Qt.Checked if checked else self._qt.Qt.Unchecked
         self.list_widget.blockSignals(True)
         try:
@@ -2019,22 +2157,17 @@ class _ScopeDialog:
                     item.setCheckState(state)
         finally:
             self.list_widget.blockSignals(False)
+        self._manual_selection_ids = set(self._checked_ids())
         self._refresh_count()
         self._update_analyze_enabled()
 
     def _refresh_count(self) -> None:
         total = self.list_widget.count()
-        if self.all_radio.isChecked():
-            self.count_label.setText(
-                self._translator.text("scope.all_count", total=total)
-            )
-        elif self.spine_radio.isChecked():
-            self.count_label.setText(_ui_text("scope.spine_count", total=len(self.spine_ids)))
-        else:
-            selected = len(self._checked_ids())
-            self.count_label.setText(
-                self._translator.text("scope.selected_count", selected=selected, total=total)
-            )
+        selected = len(self.selected_ids()) if hasattr(self, "list_widget") else 0
+        visible = sum(not self.list_widget.item(index).isHidden()
+                      for index in range(total))
+        self.count_label.setText(self._translator.text(
+            "scope.selection_count", selected=selected, total=total, visible=visible))
         if self.ignored_non_xhtml:
             self.ignored_label.setText(
                 self._translator.text(
@@ -2049,14 +2182,59 @@ class _ScopeDialog:
     def _refresh_enabled(self) -> None:
         if not hasattr(self, "filter_edit"):
             return
-        custom = self.single_radio.isChecked() or self.selected_radio.isChecked()
-        self.filter_edit.setEnabled(custom)
-        self.list_widget.setEnabled(custom)
+        custom = self.selected_radio.isChecked()
+        self.filter_edit.setEnabled(True)
+        self.list_widget.setEnabled(True)
         self.select_visible.setEnabled(custom)
         self.clear_visible.setEnabled(custom)
         self.spine_radio.setEnabled(bool(self.spine_ids))
+        self._refresh_mode_items()
         self._refresh_count()
         self._update_analyze_enabled()
+
+    def _refresh_mode_items(self) -> None:
+        if not hasattr(self, "list_widget"):
+            return
+        mode = ("single" if self.single_radio.isChecked() else
+                "spine" if self.spine_radio.isChecked() else
+                "all" if self.all_radio.isChecked() else "selected")
+        qt = self._qt.Qt
+        checkable = getattr(qt, "ItemIsUserCheckable", 16)
+        self._updating_items = True
+        self.list_widget.blockSignals(True)
+        try:
+            available = {item.file_id for item in self._inventory}
+            fixed_ids = (set(self.spine_ids) & available if mode == "spine" else
+                         available if mode == "all" else set())
+            if mode == "single":
+                if self._single_selected_id not in available:
+                    self._single_selected_id = next(
+                        (file_id for file_id in self._inventory_ids()
+                         if file_id in self._manual_selection_ids), None)
+                for index in range(self.list_widget.count()):
+                    item = self.list_widget.item(index)
+                    item.setFlags(item.flags() & ~checkable)
+                    item.setCheckState(qt.Unchecked)
+                row = next((index for index in range(self.list_widget.count())
+                            if self.list_widget.item(index).data(qt.UserRole)
+                            == self._single_selected_id), -1)
+                self.list_widget.setCurrentRow(row)
+            else:
+                for index in range(self.list_widget.count()):
+                    item = self.list_widget.item(index)
+                    item.setFlags(item.flags() | checkable)
+                    file_id = item.data(qt.UserRole)
+                    checked = (file_id in self._manual_selection_ids if mode == "selected"
+                               else file_id in fixed_ids)
+                    item.setCheckState(qt.Checked if checked else qt.Unchecked)
+            self.guide_label.setVisible(
+                mode in {"selected", "single"} and not self._manual_selection_ids)
+        finally:
+            self.list_widget.blockSignals(False)
+            self._updating_items = False
+
+    def _inventory_ids(self) -> Tuple[str, ...]:
+        return tuple(item.file_id for item in self._inventory)
 
     def _update_analyze_enabled(self) -> None:
         if not hasattr(self, "analyze_button"):

@@ -1,8 +1,15 @@
+from types import SimpleNamespace
+
 import pytest
 
 from sigil.scope import Scope, ScopeSelectionError, TargetSelection, TextFile, resolve_target_selection
 from sigil.adapter import SigilBookAdapter
-from ui.preview_window import _selected_xhtml_ids_and_ignored, _spine_ids
+from ui.preview_window import (
+    _ScopeDialog,
+    _ordered_scope_inventory,
+    _selected_xhtml_ids_and_ignored,
+    _spine_ids,
+)
 
 
 FILES = (
@@ -103,3 +110,63 @@ def test_spine_ids_are_read_from_adapter_metadata_without_content_reads():
     assert _spine_ids(adapter) == ("spine-a", "spine-b")
     assert calls == [Scope.SPINE]
     assert resolve_target_selection(FILES, Scope.SPINE, ("a", "b")).file_ids == ("a", "b")
+
+
+def test_scope_inventory_uses_spine_order_then_path_order():
+    inventory = (
+        TextFile("loose-z", "Text/z.xhtml"),
+        TextFile("spine-b", "Text/b.xhtml"),
+        TextFile("loose-a", "Text/a.xhtml"),
+        TextFile("spine-a", "Text/a-spine.xhtml"),
+    )
+
+    ordered = _ordered_scope_inventory(inventory, ("spine-b", "spine-a"))
+
+    assert tuple(item.file_id for item in ordered) == (
+        "spine-b", "spine-a", "loose-a", "loose-z")
+
+
+def test_single_scope_uses_one_row_selection_and_manual_selection_is_independent():
+    class Radio:
+        def __init__(self, checked):
+            self.checked = checked
+
+        def isChecked(self):
+            return self.checked
+
+    class Item:
+        def __init__(self, identifier):
+            self.identifier = identifier
+
+        def data(self, _role):
+            return self.identifier
+
+    class List:
+        def __init__(self):
+            self.row = 1
+
+        def currentRow(self):
+            return self.row
+
+        def item(self, row):
+            return (Item("one"), Item("two"))[row]
+
+        def count(self):
+            return 2
+
+    dialog = object.__new__(_ScopeDialog)
+    dialog.single_radio = Radio(True)
+    dialog.selected_radio = Radio(False)
+    dialog.spine_radio = Radio(False)
+    dialog.all_radio = Radio(False)
+    dialog.list_widget = List()
+    dialog._inventory = (TextFile("one", "Text/one.xhtml"),
+                        TextFile("two", "Text/two.xhtml"))
+    dialog._qt = SimpleNamespace(Qt=SimpleNamespace(UserRole=32))
+    dialog._manual_selection_ids = {"one"}
+    dialog._single_selected_id = "one"
+
+    assert dialog.selected_ids() == ("two",)
+    dialog.single_radio.checked = False
+    dialog.selected_radio.checked = True
+    assert dialog.selected_ids() == ("one",)

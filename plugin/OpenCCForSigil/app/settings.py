@@ -263,8 +263,7 @@ class RunSettings:
         if name == "self_test":
             from app.self_test import run_self_test
             report = run_self_test(data_dir=self.storage.paths.root)
-            self.show_text(json.dumps(report.as_dict(), ensure_ascii=False, indent=2),
-                           translator.text("settings.self_test"), qt, parent)
+            self.show_self_test(report, translator, qt, parent)
         elif name == "history":
             from ui.history_window import show_history
             dialog = show_history(
@@ -274,6 +273,50 @@ class RunSettings:
                     record, full, diff, translator, qt, parent))
             if dialog is not None:
                 dialog.exec()
+
+    @staticmethod
+    def show_self_test(report, translator, qt, parent):
+        payload = json.dumps(report.as_dict(), ensure_ascii=False, indent=2)
+        dialog = qt.QDialog(parent)
+        dialog.setWindowTitle(translator.text("settings.self_test"))
+        dialog.resize(620, 480)
+        layout = qt.QVBoxLayout(dialog)
+        table = qt.QTableWidget(len(report.checks), 2, dialog)
+        table.setHorizontalHeaderLabels((
+            translator.text("settings.self_test_check"),
+            translator.text("settings.self_test_result"),
+        ))
+        view = qt.QAbstractItemView
+        no_edit = getattr(view, "NoEditTriggers", None)
+        if no_edit is None:
+            no_edit = getattr(getattr(view, "EditTrigger", None), "NoEditTriggers", 0)
+        table.setEditTriggers(no_edit)
+        selection = getattr(view, "SelectionBehavior", view)
+        table.setSelectionBehavior(getattr(selection, "SelectRows", 1))
+        for row, (name, passed) in enumerate(sorted(report.checks.items())):
+            table.setItem(row, 0, qt.QTableWidgetItem(name))
+            result = translator.text(
+                "settings.self_test_passed" if passed else "settings.self_test_failed")
+            table.setItem(row, 1, qt.QTableWidgetItem(result))
+        layout.addWidget(table)
+        details = qt.QPlainTextEdit(dialog)
+        details.setReadOnly(True)
+        details.setPlainText(payload)
+        details.setVisible(False)
+        details_button = qt.QPushButton(translator.text("settings.self_test_details"), dialog)
+        details_button.clicked.connect(lambda: details.setVisible(not details.isVisible()))
+        layout.addWidget(details_button)
+        layout.addWidget(details)
+        buttons = qt.QHBoxLayout()
+        copy_button = qt.QPushButton(translator.text("settings.self_test_copy"), dialog)
+        close_button = qt.QPushButton(translator.text("common.close"), dialog)
+        copy_button.clicked.connect(lambda: qt.QApplication.clipboard().setText(payload))
+        close_button.clicked.connect(dialog.accept)
+        buttons.addWidget(copy_button)
+        buttons.addWidget(close_button)
+        layout.addLayout(buttons)
+        exec_method = getattr(dialog, "exec", None) or dialog.exec_
+        exec_method()
 
     def inspect_report(self, record, translator, qt, parent):
         from logging_ext.report import render_markdown

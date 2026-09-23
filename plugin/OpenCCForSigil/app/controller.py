@@ -188,7 +188,6 @@ class Controller:
             # The language choice is now settled before the direction dialog
             # is constructed, including on a first launch with no preference.
             available_configs = backend.available_configs_nonblocking()
-            from ui.run_options import configure_run_options
             while True:
                 initial_options = profile_options(settings.active)
                 previous_options = preferences.get("run_options")
@@ -197,14 +196,26 @@ class Controller:
                     if settings.active_profile_is_saved:
                         previous_options.pop("ruleset_ids", None)
                     initial_options.update(previous_options)
-                configure_run_options(initial_options, metadata_available=adapter.metadata_supported(),
-                                      services=settings)
                 _probe_state, probe_error, _elapsed_ms = backend.jieba_probe_state()
                 set_jieba_status(probe_error)
+
+                def save_run_ui_preferences(values):
+                    nonlocal preferences, ui_preferences
+                    ui_preferences = {**ui_preferences, **values}
+                    preferences = {**preferences, "ui": ui_preferences}
+                    self.storage.save_preferences(preferences)
+
                 selected_config = choose_conversion_config(
                     available_configs,
                     default_config=default_config,
                     jieba_probe=backend,
+                    initial_options=initial_options,
+                    metadata_available=adapter.metadata_supported(),
+                    nav_available=bool(
+                        adapter.nav_id() and adapter.nav_id() in targets.file_ids),
+                    services=settings,
+                    ui_preferences=ui_preferences,
+                    save_ui_preferences=save_run_ui_preferences,
                 )
                 action = getattr(selected_config, "action", None)
                 if action == "back_to_scope":
