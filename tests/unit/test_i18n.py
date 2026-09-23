@@ -1,18 +1,66 @@
+import ast
 from pathlib import Path
+import re
 from types import SimpleNamespace
 
 from ui.i18n import (
     Translator,
     choose_language,
+    configuration_label,
     diagnostic_summary,
     load_catalogs,
     normalize_language,
+    profile_display_name,
     rule_validation_message,
     settings_error_message,
     show_error_details,
 )
 from ui import preview_window, qt as qt_helpers
+from ui.qt import ask_confirmation
 from opencc_backend.configs import V1_CONFIGS
+
+
+_TEXT_ARGUMENTS = {
+    "QLabel": (0,), "QPushButton": (0,), "QCheckBox": (0,),
+    "QGroupBox": (0,), "QRadioButton": (0,), "QAction": (0,), "QToolButton": (0,),
+    "QMenu": (0,), "QTableWidgetItem": (0,), "QListWidgetItem": (0,),
+    "setText": (0,), "setPlainText": (0,), "setWindowTitle": (0,),
+    "setToolTip": (0,), "setPlaceholderText": (0,), "setStatusTip": (0,),
+    "setTitle": (0,), "setDetailedText": (0,), "setInformativeText": (0,),
+    "showMessage": (0,), "addAction": (0,), "addMenu": (0,), "addButton": (0,),
+    "addRow": (0,), "warning": (1, 2), "information": (1, 2),
+    "critical": (1, 2), "question": (1, 2), "getText": (1, 2), "getItem": (1, 2),
+}
+
+
+def _contains_hardcoded_words(node):
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        text = node.value
+    elif isinstance(node, ast.JoinedStr):
+        text = "".join(
+            value.value for value in node.values if isinstance(value, ast.Constant)
+        )
+    elif isinstance(node, ast.BinOp):
+        return _contains_hardcoded_words(node.left) or _contains_hardcoded_words(node.right)
+    else:
+        return False
+    return bool(re.search(r"[A-Za-z\u4e00-\u9fff]{2,}", text))
+
+
+def test_qt_text_arguments_use_translation_catalogs():
+    root = Path(preview_window.__file__).parents[1]
+    paths = sorted((root / "ui").glob("*.py")) + [root / "app/settings.py"]
+    failures = []
+    for path in paths:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            name = node.func.attr if isinstance(node.func, ast.Attribute) else None
+            for index in _TEXT_ARGUMENTS.get(name, ()):
+                if index < len(node.args) and _contains_hardcoded_words(node.args[index]):
+                    failures.append(f"{path.name}:{node.lineno}: {name}")
+    assert failures == []
 
 
 def test_supported_catalogs_have_same_keys_and_render_placeholders():
@@ -118,6 +166,64 @@ def test_error_dialog_keeps_original_exception_in_detailed_text():
     assert MessageBox.instance.summary == "localized summary"
     assert MessageBox.instance.detail == "ValueError: original English error"
     assert MessageBox.instance.executed
+
+
+def test_confirmation_uses_translated_yes_and_no_buttons():
+    class MessageBox:
+        AcceptRole = 1
+        RejectRole = 2
+        instance = None
+
+        def __init__(self, _parent):
+            type(self).instance = self
+            self.buttons = []
+
+        def setWindowTitle(self, _title):
+            pass
+
+        def setText(self, _message):
+            pass
+
+        def addButton(self, label, role):
+            button = SimpleNamespace(label=label, role=role)
+            self.buttons.append(button)
+            return button
+
+        def setDefaultButton(self, button):
+            self.default = button
+
+        def exec(self):
+            pass
+
+        def clickedButton(self):
+            return self.buttons[0]
+
+    assert ask_confirmation(
+        SimpleNamespace(QMessageBox=MessageBox), None, "title", "confirm",
+        Translator("zh-Hans"),
+    )
+    translator = Translator("zh-Hans")
+    assert [button.label for button in MessageBox.instance.buttons] == [
+        translator.text("common.yes"), translator.text("common.no")]
+    assert MessageBox.instance.default is MessageBox.instance.buttons[1]
+
+
+def test_configuration_labels_translate_standard_and_jieba_ids():
+    for language in ("zh-Hans", "zh-Hant"):
+        translator = Translator(language)
+        label = configuration_label(translator, "s2t")
+        assert "s2t" not in label
+        assert label in translator.text("config.s2t")
+        jieba_label = configuration_label(translator, "s2twp_jieba")
+        assert translator.text("config.jieba") in jieba_label
+        assert "s2twp_jieba" not in jieba_label
+
+
+def test_builtin_profile_display_name_follows_ui_language():
+    profile = SimpleNamespace(id="conservative", name="Conservative")
+    for language in ("zh-Hans", "zh-Hant", "en"):
+        translator = Translator(language)
+        assert profile_display_name(profile, translator) == translator.text("profile.default_name")
 
 
 def test_dialogs_share_one_qapplication_instance(monkeypatch):

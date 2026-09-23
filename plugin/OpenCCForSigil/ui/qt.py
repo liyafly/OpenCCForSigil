@@ -49,4 +49,40 @@ def exec_dialog(dialog: Any) -> Any:
     return execute()
 
 
-__all__ = ["ensure_application", "exec_dialog", "load_qt"]
+def enum_value(namespace: Any, name: str) -> Any:
+    """Resolve an enum member across flat Qt 5 and nested Qt 6 APIs."""
+
+    if namespace is None:
+        return None
+    value = getattr(namespace, name, None)
+    if value is not None:
+        return value
+    for enum_name in (
+        "WindowType", "Key", "ItemDataRole", "Orientation", "SelectionBehavior",
+        "SelectionMode", "ResizeMode", "ShortcutContext", "ToolButtonPopupMode",
+        "ToolButtonStyle", "ArrowType", "ButtonRole",
+    ):
+        enum = getattr(namespace, enum_name, None)
+        value = getattr(enum, name, None) if enum is not None else None
+        if value is not None:
+            return value
+    return None
+
+
+def ask_confirmation(qt: Any, parent: Any, title: str, message: str, translator: Any) -> bool:
+    """Show a yes/no confirmation with plugin-localized button labels."""
+
+    message_box = qt.QMessageBox
+    box = message_box(parent)
+    box.setWindowTitle(title)
+    box.setText(message)
+    accept_role = enum_value(message_box, "AcceptRole")
+    reject_role = enum_value(message_box, "RejectRole")
+    yes = box.addButton(translator.text("common.yes"), accept_role)
+    no = box.addButton(translator.text("common.no"), reject_role)
+    box.setDefaultButton(no)
+    exec_dialog(box)
+    return box.clickedButton() is yes
+
+
+__all__ = ["ask_confirmation", "ensure_application", "enum_value", "exec_dialog", "load_qt"]

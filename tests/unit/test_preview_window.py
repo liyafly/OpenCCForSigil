@@ -3,92 +3,14 @@ from types import SimpleNamespace
 from core.models import ConversionPlan, Diagnostic, SourceSpan, TokenChange
 from core.preview import PreviewSession
 from core.workflow import ConversionWorkflow
-from ui.preview_window import _PreviewDialog, _guarded_preview_dialog
+from tests.support.fake_qt import make_with_table
+from ui.preview_window import (
+    _PreviewDialog,
+    _create_preview_table_model,
+    _guarded_preview_dialog,
+    format_change_row,
+)
 from ui.i18n import Translator
-
-
-class _FakeItem:
-    def __init__(self, text: str) -> None:
-        self.text = text
-        self.set_calls = 0
-
-    def setText(self, text: str) -> None:
-        self.text = text
-        self.set_calls += 1
-
-
-class _FakeListWidget:
-    def __init__(self, items: list[_FakeItem], current_row: int) -> None:
-        self.items = items
-        self.current_row = current_row
-        self.signals_blocked = False
-
-    def currentRow(self) -> int:
-        return self.current_row
-
-    def item(self, row: int) -> _FakeItem | None:
-        return self.items[row] if 0 <= row < len(self.items) else None
-
-    def count(self) -> int:
-        return len(self.items)
-
-    def clear(self) -> None:
-        self.items.clear()
-
-    def addItem(self, text: str) -> None:
-        self.items.append(_FakeItem(text))
-
-    def setCurrentRow(self, row: int) -> None:
-        self.current_row = row
-
-    def blockSignals(self, blocked: bool) -> None:
-        self.signals_blocked = blocked
-
-    def setUpdatesEnabled(self, _enabled: bool) -> None:
-        pass
-
-
-class _FakeLabel:
-    def __init__(self) -> None:
-        self.text = ""
-
-    def setText(self, text: str) -> None:
-        self.text = text
-
-
-class _FakeButton:
-    def __init__(self) -> None:
-        self.enabled = None
-        self.text = ""
-        self.tooltip = ""
-        self.default = True
-        self.auto_default = True
-
-    def setEnabled(self, enabled: bool) -> None:
-        self.enabled = enabled
-
-    def setText(self, text: str) -> None:
-        self.text = text
-
-    def setToolTip(self, text: str) -> None:
-        self.tooltip = text
-
-    def setDefault(self, value: bool) -> None:
-        self.default = value
-
-    def setAutoDefault(self, value: bool) -> None:
-        self.auto_default = value
-
-
-class _FakeDetail:
-    def __init__(self) -> None:
-        self.text = ""
-
-    def setPlainText(self, text: str) -> None:
-        self.text = text
-
-    def clear(self) -> None:
-        self.text = ""
 
 
 class _FakeDialog:
@@ -101,14 +23,6 @@ class _FakeDialog:
 
     def reject(self) -> None:
         self.reject_calls += 1
-
-
-class _FakeCombo:
-    def __init__(self, value=None) -> None:
-        self.value = value
-
-    def currentData(self):
-        return self.value
 
 
 def _preview_dialog(change_count: int = 3, current_row: int = 1):
@@ -128,45 +42,64 @@ def _preview_dialog(change_count: int = 3, current_row: int = 1):
         for index, (source, target) in enumerate((("甲", "乙"), ("丙", "丁"), ("戊", "己")))
     )[:change_count]
     preview = PreviewSession(ConversionPlan(source_sha256="", changes=changes))
-    entries = tuple((preview, change) for change in preview.changes)
-    items = [_FakeItem(_PreviewDialog._entry_text(preview, change)) for _, change in entries]
-
-    dialog = object.__new__(_PreviewDialog)
-    dialog._translator = Translator("en")
-    dialog._services = None
-    dialog._previews = (preview,)
-    dialog._entries = entries
-    dialog.applied = False
-    dialog.back_to_settings = False
-    dialog._allow_reject = False
-    dialog.list_widget = _FakeListWidget(items, current_row)
-    dialog.summary = _FakeLabel()
-    dialog.detail = _FakeDetail()
-    for name in (
-        "accept_this_button",
-        "reject_this_button",
-        "accept_file_button",
-        "reject_file_button",
-        "accept_all_button",
-        "reject_all_button",
-        "accept_filter_button",
-        "reject_filter_button",
-        "export_button",
-        "apply_button",
-        "back_settings_button",
-        "cancel_button",
-    ):
-        setattr(dialog, name, _FakeButton())
+    planned = (SimpleNamespace(
+        source=SimpleNamespace(file_id="chapter.xhtml", href="Text/chapter.xhtml",
+                               document_kind="xhtml"),
+        plan=preview.plan,
+    ),)
+    qt = make_with_table()
+    dialog = _PreviewDialog(qt, planned, (preview,), Translator("en"), None)
     dialog.dialog = _FakeDialog()
-    dialog._qt = object()
-    return dialog, preview, items
+    if current_row >= 0:
+        dialog._set_current_row(current_row)
+    return dialog, preview, dialog.table_model
+
+
+def _table_dialog(entries, previews, *, current_row=0, category="all", file_id=None,
+                  language="en"):
+    qt = make_with_table()
+    dialog = object.__new__(_PreviewDialog)
+    dialog._qt = qt
+    dialog._translator = Translator(language)
+    dialog._previews = tuple(previews)
+    dialog._entries = tuple(entries)
+    dialog._visible_entries_cache = tuple(entries)
+    dialog._planned = ()
+    dialog._href_by_id = {}
+    dialog._kind_by_id = {}
+    dialog._group_stats = {}
+    dialog.file_filter = qt.QComboBox()
+    dialog.file_filter.addItem("All", None)
+    for value in dict.fromkeys(change.file_id for _, change in entries):
+        dialog.file_filter.addItem(value, value)
+    if file_id is not None:
+        dialog.file_filter.setCurrentIndex(dialog.file_filter.findData(file_id))
+    dialog.category_filter = qt.QComboBox()
+    dialog.category_filter.addItem("All", None)
+    for value in sorted({change.category for _, change in entries}):
+        dialog.category_filter.addItem(value, value)
+    if category != "all":
+        dialog.category_filter.setCurrentIndex(dialog.category_filter.findData(category))
+    dialog.risk_filter = qt.QComboBox()
+    dialog.summary = qt.QLabel()
+    dialog.detail = qt.QPlainTextEdit()
+    dialog.apply_button = qt.QPushButton()
+    dialog.apply_status_label = qt.QLabel()
+    dialog.table_view = qt.QTableView()
+    dialog.table_model = _create_preview_table_model(
+        qt, entries, {}, translator=dialog._translator)(dialog.table_view)
+    dialog.table_view.setModel(dialog.table_model)
+    dialog._set_current_row(current_row)
+    return dialog
+
+
+def _display(dialog, row, column):
+    index = dialog.table_model.index(row, column)
+    return dialog.table_model.data(index, dialog._qt.Qt.DisplayRole)
 
 
 def test_preview_dialog_buttons_are_never_default_or_auto_default():
-    dialog, _preview, _items = _preview_dialog()
-    dialog._qt = SimpleNamespace(QPushButton=_FakeButton)
-
-    dialog._disable_default_buttons()
+    dialog, _preview, _model = _preview_dialog()
 
     buttons = (
         dialog.accept_this_button, dialog.reject_this_button,
@@ -176,39 +109,36 @@ def test_preview_dialog_buttons_are_never_default_or_auto_default():
         dialog.export_button, dialog.apply_button,
         dialog.back_settings_button, dialog.cancel_button,
     )
-    assert all(not button.default and not button.auto_default for button in buttons)
+    assert all(not button.default and button.auto_default is False for button in buttons)
 
 
 def test_preview_dialog_single_decisions_update_only_selected_row_and_summary():
-    dialog, preview, items = _preview_dialog()
+    dialog, preview, _model = _preview_dialog()
 
     dialog._accept_this()
-    assert dialog.list_widget.currentRow() == 2
-    assert items[0].set_calls == 0
-    assert items[1].set_calls == 1
-    assert items[2].set_calls == 0
-    assert items[1].text.startswith("✓ ")
-    assert dialog.apply_button.text == "Apply changes to 1 file"
-    assert "Accepted: 1" in dialog.summary.text
-    assert "Undecided: 2" in dialog.summary.text
-    assert "己" in dialog.detail.text
-    assert dialog.apply_button.enabled is False
+    assert dialog._current_row() == 2
+    assert _display(dialog, 1, 0) == "Accepted"
+    assert _display(dialog, 0, 0) == "Pending"
+    assert "Accepted: 1" in dialog.summary.text()
+    assert "Undecided: 2" in dialog.summary.text()
+    assert "Remaining: 2" == dialog.apply_status_label.text()
+    assert "己" in dialog.detail.toPlainText()
+    assert dialog.apply_button.isEnabled() is False
 
-    dialog.list_widget.current_row = 2
     dialog._reject_this()
-    assert dialog.list_widget.currentRow() == 0
-    assert items[0].set_calls == 0
-    assert items[1].set_calls == 1
-    assert items[2].set_calls == 1
-    assert items[2].text.startswith("× ")
-    assert "Accepted: 1" in dialog.summary.text
-    assert "Skipped: 1" in dialog.summary.text
-    assert "Undecided: 1" in dialog.summary.text
-    assert "乙" in dialog.detail.text
+    assert dialog._current_row() == 0
+    assert _display(dialog, 2, 0) == "Skipped"
+    assert "Accepted: 1" in dialog.summary.text()
+    assert "Skipped: 1" in dialog.summary.text()
+    assert "Undecided: 1" in dialog.summary.text()
+    assert "乙" in dialog.detail.toPlainText()
+    dialog._accept_this()
+    assert dialog.apply_status_label.text() == "Ready to apply."
+    assert dialog.apply_button.text() == "Apply 2 changes to 1 file"
 
 
 def test_preview_dialog_apply_blocks_undecided_and_accepts_decided_without_finalizing():
-    dialog, preview, _items = _preview_dialog(change_count=2, current_row=0)
+    dialog, preview, _model = _preview_dialog(change_count=2, current_row=0)
     finalize_calls = []
     preview.finalize = lambda: finalize_calls.append(True)
 
@@ -216,37 +146,37 @@ def test_preview_dialog_apply_blocks_undecided_and_accepts_decided_without_final
     assert dialog.applied is False
     assert dialog.dialog.accept_calls == 0
     assert finalize_calls == []
-    assert dialog.apply_button.enabled is False
-    assert dialog.apply_button.tooltip == Translator("en").text("preview.incomplete")
+    assert dialog.apply_button.isEnabled() is False
+    assert dialog.apply_button.toolTip() == Translator("en").text("preview.incomplete")
 
     dialog._accept_this()
-    dialog.list_widget.current_row = 1
+    dialog._set_current_row(1)
     dialog._reject_this()
-    assert dialog.apply_button.enabled is True
+    assert dialog.apply_button.isEnabled() is True
 
     dialog._apply()
     assert dialog.applied is True
     assert dialog.dialog.accept_calls == 1
     assert finalize_calls == []
-    assert dialog.apply_button.enabled is False
+    assert dialog.apply_button.isEnabled() is False
 
     dialog._apply()
     assert dialog.dialog.accept_calls == 1
 
 
 def test_preview_dialog_next_and_previous_select_undecided_entries_only():
-    dialog, preview, _items = _preview_dialog(change_count=3, current_row=1)
+    dialog, preview, _model = _preview_dialog(change_count=3, current_row=1)
     preview.accept_this("change-1")
 
     dialog._previous_undecided()
-    assert dialog.list_widget.currentRow() == 0
+    assert dialog._current_row() == 0
     dialog._next_undecided()
-    assert dialog.list_widget.currentRow() == 2
+    assert dialog._current_row() == 2
 
     preview.accept_all(overwrite=True)
-    dialog.list_widget.current_row = 1
+    dialog._set_current_row(1)
     dialog._next_undecided()
-    assert dialog.list_widget.currentRow() == 1
+    assert dialog._current_row() == 1
 
 
 def test_refresh_restores_current_change_id_after_filtering():
@@ -258,24 +188,78 @@ def test_refresh_restores_current_change_id_after_filtering():
         change_id="second", file_id="b.xhtml", category="phrase")
     preview = PreviewSession(ConversionPlan(source_sha256="", changes=(first, second)))
     entries = tuple((preview, change) for change in preview.changes)
-    dialog = object.__new__(_PreviewDialog)
-    dialog._translator = Translator("en")
-    dialog._previews = (preview,)
-    dialog._entries = entries
-    dialog._visible_entries_cache = entries
-    dialog.file_filter = _FakeCombo()
-    dialog.category_filter = _FakeCombo("phrase")
-    dialog.risk_filter = _FakeCombo()
-    dialog.list_widget = _FakeListWidget([_FakeItem("first"), _FakeItem("second")], 1)
-    dialog.summary = _FakeLabel()
-    dialog.detail = _FakeDetail()
-    dialog.apply_button = _FakeButton()
-    dialog._planned = ()
+    dialog = _table_dialog(entries, (preview,), current_row=1, category="phrase")
 
     dialog._refresh()
 
     assert dialog._visible_entries_cache == ((preview, second),)
-    assert dialog.list_widget.currentRow() == 0
+    assert dialog._current_row() == 0
+
+
+def test_file_filter_counts_refresh_without_changing_selection():
+    dialog, _preview, _model = _preview_dialog(change_count=3, current_row=0)
+    file_filter = dialog.file_filter
+    file_filter.setCurrentIndex(file_filter.findData("chapter.xhtml"))
+    selected = file_filter.currentData()
+
+    dialog._accept_all()
+
+    assert file_filter.currentData() == selected
+    assert file_filter.itemText(file_filter.currentIndex()).endswith("3 changes / 0 undecided")
+
+
+def test_apply_status_has_pending_ready_and_no_change_states_in_both_chinese_and_english():
+    for language in ("en", "zh-Hans"):
+        dialog, preview, _model = _preview_dialog(change_count=2, current_row=0)
+        dialog._translator = Translator(language)
+        dialog._update_summary()
+        assert dialog.apply_button.toolTip() == dialog._translator.text("preview.incomplete")
+        assert "2" in dialog.apply_status_label.text()
+
+        preview.accept_all(overwrite=True)
+        dialog._update_summary()
+        assert dialog.apply_status_label.text() == dialog._translator.text(
+            "preview.apply_status_ready")
+        assert "2" in dialog.apply_button.text()
+
+        preview.reject_all(overwrite=True)
+        dialog._update_summary()
+        assert dialog.apply_button.text() == dialog._translator.text(
+            "preview.apply_no_changes")
+        assert dialog.apply_status_label.text() == dialog._translator.text(
+            "preview.apply_status_none")
+
+
+def test_preview_decoding_is_display_only_and_group_feedback_clears_on_normal_action():
+    change = TokenChange(
+        source="A&amp;", target="A&amp;B", span=SourceSpan(0, 6),
+        rule_source="test", change_id="normal", file_id="a.xhtml",
+        category="character", risk="LOW",
+    )
+    group_change = TokenChange(
+        source="zh-CN", target="zh-TW", span=SourceSpan(0, 5),
+        rule_source="language_metadata", change_id="group", file_id="a.xhtml",
+        category="language_metadata", risk="HIGH", group_id="language_metadata",
+    )
+    preview = PreviewSession(ConversionPlan(source_sha256="", changes=(group_change, change)))
+    dialog = _table_dialog(
+        tuple((preview, item) for item in preview.changes), (preview,), current_row=0)
+    dialog._group_stats = {"language_metadata": (1, 1)}
+    dialog.table_model.rows.group_stats = dialog._group_stats
+    dialog._accept_this()
+    assert dialog._last_group_feedback
+    dialog._set_current_row(1)
+    dialog._show_current(1)
+    row = dialog.table_model.rows.row_values(1)
+
+    assert row[3] == "【A&B】"
+    assert "A&B" in dialog.detail.toPlainText()
+    assert "A&amp;B" not in dialog.detail.toPlainText()
+    assert change.target == "A&amp;B"
+
+    dialog._reject_this()
+    assert dialog._last_group_feedback == ""
+    assert "Decided together" not in dialog.summary.text()
 
 
 def test_filtered_group_decision_reaches_hidden_language_metadata_entries():
@@ -300,11 +284,9 @@ def test_filtered_group_decision_reaches_hidden_language_metadata_entries():
     )
     first = PreviewSession(ConversionPlan(source_sha256="", changes=(changes[0], changes[2])))
     second = PreviewSession(ConversionPlan(source_sha256="", changes=(changes[1],)))
-    dialog = object.__new__(_PreviewDialog)
-    dialog._translator = Translator("en")
-    dialog._previews = (first, second)
-    dialog._entries = tuple((preview, change) for preview in dialog._previews for change in preview.changes)
-    dialog.file_filter = _FakeCombo("chapter.xhtml")
+    dialog = _table_dialog(
+        tuple((preview, change) for preview in (first, second) for change in preview.changes),
+        (first, second), current_row=0, file_id="chapter.xhtml")
     dialog._refresh = lambda: None
     dialog._decide_filtered(True)
 
@@ -342,19 +324,8 @@ def test_accept_file_leaves_language_group_pending_until_separate_group_action()
     second = PreviewSession(ConversionPlan(source_sha256="", changes=changes[2:]))
     previews = (first, second)
     entries = tuple((preview, change) for preview in previews for change in preview.changes)
-    dialog = object.__new__(_PreviewDialog)
-    dialog._translator = Translator("en")
-    dialog._previews = previews
-    dialog._entries = entries
+    dialog = _table_dialog(entries, previews, current_row=0, file_id="a.xhtml")
     dialog._visible_entries_cache = entries[:2]
-    dialog.file_filter = _FakeCombo("a.xhtml")
-    dialog.category_filter = _FakeCombo()
-    dialog.risk_filter = _FakeCombo()
-    dialog.list_widget = _FakeListWidget([_FakeItem("lang"), _FakeItem("normal")], 0)
-    dialog.summary = _FakeLabel()
-    dialog.detail = _FakeDetail()
-    dialog.apply_button = _FakeButton()
-    dialog._planned = ()
     dialog._group_stats = {"language_metadata": (2, 2)}
 
     dialog._accept_file()
@@ -408,12 +379,10 @@ def test_preview_row_truncates_long_text_but_detail_keeps_full_text():
         source=source, target="後" * 300, span=SourceSpan(0, 300),
         rule_source="OpenCC:s2t", change_id="long", file_id="chapter.xhtml",
     )
-    preview = PreviewSession(ConversionPlan(source_sha256="", changes=(change,)))
-    row = _PreviewDialog._entry_text(preview, change)
+    row = format_change_row(change, {"chapter.xhtml": "Text/chapter.xhtml"}, Translator("en"))
 
-    assert len(row) < 220
-    assert source not in row
-    assert "…" in row
+    assert source in row[1]
+    assert "後" * 300 in row[2]
 
 
 def test_plan_diagnostics_are_visible_in_summary_and_detail():
@@ -422,10 +391,7 @@ def test_plan_diagnostics_are_visible_in_summary_and_detail():
         change_id="diagnostic", file_id="chapter.xhtml",
     )
     preview = PreviewSession(ConversionPlan(source_sha256="", changes=(change,)))
-    dialog = object.__new__(_PreviewDialog)
-    dialog._translator = Translator("en")
-    dialog._previews = (preview,)
-    dialog._entries = ((preview, change),)
+    dialog = _table_dialog(((preview, change),), (preview,))
     dialog._planned = (
         type("Planned", (), {"plan": ConversionPlan(
             source_sha256="", file_id="chapter.xhtml", diagnostics=(
@@ -434,19 +400,15 @@ def test_plan_diagnostics_are_visible_in_summary_and_detail():
             ),
         )})(),
     )
-    dialog.list_widget = _FakeListWidget([_FakeItem("row")], 0)
-    dialog.summary = _FakeLabel()
-    dialog.detail = _FakeDetail()
-    dialog.apply_button = _FakeButton()
 
     dialog._update_summary()
     dialog._show_current(0)
 
     translator = Translator("en")
-    assert translator.text("diagnostic.mixed_script", count=1) in dialog.summary.text
-    assert translator.text("diagnostic.inline_boundary", count=1) in dialog.summary.text
-    assert translator.text("diagnostic.mixed_script", count=1) in dialog.detail.text
-    assert "mixed script input" not in dialog.detail.text
+    assert translator.text("diagnostic.mixed_script", count=1) in dialog.summary.text()
+    assert translator.text("diagnostic.inline_boundary", count=1) in dialog.summary.text()
+    assert translator.text("diagnostic.mixed_script", count=1) in dialog.detail.toPlainText()
+    assert "mixed script input" not in dialog.detail.toPlainText()
 
 
 def test_summary_lists_skipped_source_href_with_original_line_and_column():
@@ -464,13 +426,14 @@ def test_summary_lists_skipped_source_href_with_original_line_and_column():
             ),
         ),
     )
-    dialog.summary = _FakeLabel()
-    dialog.apply_button = _FakeButton()
+    dialog.summary = make_with_table().QLabel()
+    dialog.apply_button = make_with_table().QPushButton()
+    dialog.apply_status_label = make_with_table().QLabel()
 
     dialog._update_summary()
 
-    assert "Text/bad.xhtml" in dialog.summary.text
-    assert "第 5 行第 10 列" in dialog.summary.text
+    assert "Text/bad.xhtml" in dialog.summary.text()
+    assert "第 5 行第 10 列" in dialog.summary.text()
 
 
 def test_preview_exit_confirmation_protects_decisions_and_allows_empty_exit():

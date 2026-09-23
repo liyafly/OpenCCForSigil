@@ -1,6 +1,8 @@
 from types import SimpleNamespace
 
 from app.profiles import Profile, ProfileStore
+from ui.i18n import CatalogView, Translator
+from ui import profile_window
 from ui.profile_window import ProfileManagerDialog
 
 
@@ -42,6 +44,7 @@ def _manager(profiles, store, *, active=None, current=None, selected_id=None,
     manager._profiles = list(profiles)
     manager._store = store
     manager._on_delete = on_delete
+    manager._translator = Translator("en")
     manager._labels = {
         "title": "Profiles", "use": "Use", "rename": "Rename", "copy": "Copy",
         "delete": "Delete", "from_current": "From current settings", "close": "Close",
@@ -97,7 +100,7 @@ def test_use_changes_only_selected_profile_and_does_not_write_it(tmp_path):
     assert path.stat().st_mtime_ns == before
 
 
-def test_delete_removes_profile_and_clears_preference_callback(tmp_path):
+def test_delete_removes_profile_and_clears_preference_callback(tmp_path, monkeypatch):
     store = ProfileStore(tmp_path)
     profile = Profile(id="profile-a", name="A")
     path = store.save(profile)
@@ -110,6 +113,7 @@ def test_delete_removes_profile_and_clears_preference_callback(tmp_path):
     manager = _manager((profile,), store, active=profile, current=profile,
                        answer=1, on_delete=clear_deleted)
     manager._refresh = lambda: None
+    monkeypatch.setattr(profile_window, "ask_confirmation", lambda *_args: True)
 
     manager._delete()
 
@@ -142,6 +146,33 @@ def test_modified_current_profile_cannot_be_deleted(tmp_path):
     assert manager.warning == "modified"
 
 
+def test_unchanged_active_profile_can_be_renamed_or_deleted(tmp_path):
+    profile = Profile(id="profile-a", name="A", conversion="s2t")
+    store = ProfileStore(tmp_path)
+    store.save(profile)
+    manager = _manager((profile,), store, active=profile, current=profile)
+
+    assert manager._can_delete(profile)
+    manager._refresh_summary()
+    assert manager.rename_button.enabled
+    assert manager.delete_button.enabled
+
+
+def test_profile_summary_uses_localized_direction_and_option_labels(tmp_path):
+    profile = Profile(id="profile-a", name="A", conversion="s2twp")
+    manager = _manager((profile,), ProfileStore(tmp_path))
+    manager._translator = Translator("zh-Hans")
+    manager._labels = CatalogView(manager._translator, "profile")
+    manager._available_config_ids = {"s2twp"}
+
+    manager._refresh_summary()
+
+    assert "s2twp" not in manager.summary_text
+    assert "包含所选 XHTML 中的 NAV 目录" in manager.summary_text
+    assert "启用" in manager.summary_text
+    assert "metadata" not in manager.summary_text
+
+
 def test_profile_summary_marks_unavailable_jieba_without_rewriting_it(tmp_path):
     profile = Profile(id="jieba", name="Jieba", conversion="s2twp_jieba",
                       segmentation="jieba")
@@ -149,5 +180,6 @@ def test_profile_summary_marks_unavailable_jieba_without_rewriting_it(tmp_path):
     manager._available_config_ids = {"s2twp"}
     manager._refresh_summary()
 
-    assert "s2twp_jieba (unavailable)" in manager.summary_text
+    assert "unavailable)" in manager.summary_text
+    assert "s2twp_jieba" not in manager.summary_text
     assert manager._current().conversion == "s2twp_jieba"

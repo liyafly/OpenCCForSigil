@@ -7,9 +7,16 @@ from typing import Any, Iterable
 from uuid import uuid4
 
 from app.profiles import Profile, ProfileStore
+from app.settings import _duplicate_profile_name
 from opencc_backend.configs import SUPPORTED_CONFIGS, base_config_options
-from ui.i18n import CatalogView, Translator, show_error_details
-from ui.qt import ensure_application, exec_dialog, load_qt
+from ui.i18n import (
+    CatalogView,
+    Translator,
+    configuration_label,
+    profile_display_name,
+    show_error_details,
+)
+from ui.qt import ask_confirmation, ensure_application, exec_dialog, load_qt
 
 
 
@@ -144,7 +151,7 @@ class ProfileManagerDialog:
         selected_row = -1
         role = getattr(self._qt.Qt, "UserRole", 32)
         for row, profile in enumerate(self._profiles):
-            item = self._qt.QListWidgetItem(profile.name or profile.id)
+            item = self._qt.QListWidgetItem(profile_display_name(profile, self._translator))
             item.setData(role, profile.id)
             self.profile_list.addItem(item)
             if profile.id == self._selected_id:
@@ -173,14 +180,24 @@ class ProfileManagerDialog:
             if unavailable and self._jieba_pending
             else self._labels["unavailable"] if unavailable else ""
         )
-        status = f" ({status_label})" if status_label else ""
+        status = self._translator.text("profile.status", status=status_label) if status_label else ""
         options = ", ".join(
-            f"{key}: {'on' if getattr(profile, field) else 'off'}"
-            for key, field in (("NAV", "convert_nav"), ("NCX", "convert_ncx"),
-                               ("metadata", "convert_metadata"),
-                               ("alt", "convert_alt"), ("title", "convert_title")))
+            self._translator.text(
+                "profile.summary_option",
+                label=self._translator.text(label_key),
+                value=self._translator.text(
+                    "profile.enabled" if getattr(profile, field) else "profile.disabled"),
+            )
+            for label_key, field in (
+                ("options.include_nav", "convert_nav"),
+                ("options.include_ncx", "convert_ncx"),
+                ("options.include_metadata", "convert_metadata"),
+                ("options.convert_alt", "convert_alt"),
+                ("options.convert_title", "convert_title"),
+            )
+        )
         values = (
-            f"{self._labels['conversion']}: {conversion}{status}",
+            f"{self._labels['conversion']}: {configuration_label(self._translator, conversion)}{status}",
             f"{self._labels['options']}: {options}",
             f"{self._labels['rules']}: {', '.join(profile.ruleset_ids) or '—'}",
         )
@@ -226,8 +243,8 @@ class ProfileManagerDialog:
         if not name:
             self._warn(self._labels["invalid_name"])
             return None
-        if any(item.name.casefold() == name.casefold()
-               and item.id != exclude_id for item in self._profiles):
+        existing = tuple(item for item in self._profiles if item.id != exclude_id)
+        if _duplicate_profile_name(name, existing):
             self._warn(self._labels["duplicate_name"])
             return None
         return name
@@ -236,7 +253,10 @@ class ProfileManagerDialog:
         profile = self._current()
         if profile is None or not self._profile_is_saved(profile):
             return
-        name = self._ask_name(self._labels["ask_name"], profile.name, exclude_id=profile.id)
+        name = self._ask_name(
+            self._labels["ask_name"], profile_display_name(profile, self._translator),
+            exclude_id=profile.id,
+        )
         if name is None:
             return
         updated = replace(profile, name=name)
@@ -248,7 +268,10 @@ class ProfileManagerDialog:
         profile = self._current()
         if profile is None or self._store is None:
             return
-        name = self._ask_name(self._labels["ask_name"], profile.name + self._labels["copied"])
+        name = self._ask_name(
+            self._labels["ask_name"],
+            profile_display_name(profile, self._translator) + self._labels["copied"],
+        )
         if name is None:
             return
         copied = replace(profile, id=str(uuid4()), name=name)
@@ -261,7 +284,8 @@ class ProfileManagerDialog:
     def _from_current(self) -> None:
         if self._current_profile is None or self._store is None:
             return
-        name = self._ask_name(self._labels["ask_name"], self._current_profile.name)
+        name = self._ask_name(
+            self._labels["ask_name"], profile_display_name(self._current_profile, self._translator))
         if name is None:
             return
         created = replace(self._current_profile, id=str(uuid4()), name=name)
@@ -278,13 +302,10 @@ class ProfileManagerDialog:
         if not self._can_delete(profile):
             self._warn(self._labels["delete_modified"])
             return
-        answer = self._qt.QMessageBox.question(
-            self.dialog, self._labels["title"],
-            self._labels["confirm_delete"].format(name=profile.name),
-        )
-        yes = getattr(self._qt.QMessageBox, "Yes", getattr(
-            getattr(self._qt.QMessageBox, "StandardButton", object), "Yes", None))
-        if answer != yes:
+        if not ask_confirmation(
+                self._qt, self.dialog, self._labels["title"],
+                self._labels["confirm_delete"].format(
+                    name=profile_display_name(profile, self._translator)), self._translator):
             return
         try:
             path = self._store._path(profile.id)

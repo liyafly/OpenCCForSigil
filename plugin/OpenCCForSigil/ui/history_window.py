@@ -9,7 +9,7 @@ from typing import Any, Callable, Mapping, Sequence
 from logging_ext.history import HistoryError, HistoryStore
 from logging_ext.retention import RetentionResult, cleanup, retention_policy
 from ui.i18n import Translator
-from ui.qt import ensure_application, exec_dialog, load_qt
+from ui.qt import ask_confirmation, ensure_application, exec_dialog, load_qt
 
 
 
@@ -168,12 +168,11 @@ def show_history(
 
     def do_cleanup() -> None:
         def confirm(preview: RetentionResult) -> bool:
-            answer = qt_widgets.QMessageBox.question(
-                dialog, translator.text("history.cleanup"),
+            return ask_confirmation(
+                qt_widgets, dialog, translator.text("history.cleanup"),
                 translator.text("history.cleanup_prompt", sessions=len(preview.removed_sessions),
-                                logs=len(preview.removed_log_files)),
+                                logs=len(preview.removed_log_files)), translator,
             )
-            return answer == _yes_value(qt_widgets)
 
         completed, result = cleanup_with_confirmation(Path(history_root), logs_root, confirm)
         if not completed:
@@ -228,11 +227,6 @@ def _configure_history_table(table, qt):
 def _descending_order(qt):
     order = getattr(qt.Qt, "SortOrder", qt.Qt)
     return getattr(order, "DescendingOrder", 1)
-
-
-def _yes_value(qt):
-    box = qt.QMessageBox
-    return getattr(box, "Yes", getattr(getattr(box, "StandardButton", object), "Yes", 1))
 
 
 def backup_and_rebuild_history(history_root: Path) -> Path:

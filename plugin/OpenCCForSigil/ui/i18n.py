@@ -104,6 +104,30 @@ def settings_error_message(translator: Translator, error: BaseException) -> str:
     return translator.text("options.invalid")
 
 
+def configuration_label(translator: Translator, config: str) -> str:
+    """Render a conversion configuration without exposing its internal ID."""
+
+    from opencc_backend.configs import BASE_CONFIG_BY_JIEBA
+
+    base = BASE_CONFIG_BY_JIEBA.get(str(config), str(config))
+    label = translator.text(f"config.{base}")
+    for identifier in {str(config), base}:
+        label = label.replace(f" ({identifier})", "").replace(f"（{identifier}）", "")
+    if str(config) != base:
+        label = translator.text(
+            "config.jieba_combination", config=label,
+            segmentation=translator.text("config.jieba"))
+    return label
+
+
+def profile_display_name(profile: Any, translator: Translator) -> str:
+    """Use the current locale for the built-in profile's visible name."""
+
+    if getattr(profile, "id", None) == "conservative":
+        return translator.text("profile.default_name")
+    return str(getattr(profile, "name", "") or getattr(profile, "id", ""))
+
+
 def diagnostic_summary(translator: Translator, code: str, count: int = 1) -> str:
     """Localize known planner diagnostics without exposing internal English text."""
 
@@ -170,6 +194,8 @@ __all__ = [
     "SUPPORTED_LANGUAGES",
     "Translator",
     "choose_language",
+    "configuration_label",
+    "profile_display_name",
     "load_catalogs",
     "normalize_language",
     "diagnostic_summary",

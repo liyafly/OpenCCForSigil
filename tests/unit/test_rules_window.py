@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from tests.support.fake_qt import make_with_table
 
 from rules.models import Rule
 from rules.models import RuleSnapshot
@@ -6,6 +7,7 @@ from rules.importers import import_rules
 from rules.conflicts import find_conflicts
 from opencc_backend.configs import comparison_configs
 from ui.rules_window import (
+    DictionaryInspection,
     RuleManagerDialog,
     _configure_rule_table,
     _conflict_summary,
@@ -14,6 +16,7 @@ from ui.rules_window import (
     review_import,
 )
 from ui.i18n import Translator
+from ui import rules_window
 
 
 class Signal:
@@ -279,6 +282,42 @@ def test_dictionary_inspection_applies_profile_rules_and_comparison_configs():
 
     assert inspection.matched_rules == ("profile-rule",)
     assert tuple(name for name, _value in inspection.comparisons) == ("s2t", "s2tw", "s2twp")
+
+
+def test_dictionary_inspector_localizes_config_classification_and_rule_labels(monkeypatch):
+    inspection = DictionaryInspection(
+        input="軟體", config="s2tw", comparisons=(("s2t", "软件"),),
+        final="軟體", matched_rules=("mine",), attribution="OpenCC:s2tw/comparative_config_diff",
+        classifications=(SimpleNamespace(
+            source="软件", target="軟體", category="regional",
+            attribution_confidence="high", comparison_stage="s2tw-vs-s2t",
+        ),),
+    )
+    qt = make_with_table()
+    captured = []
+
+    class CaptureText(qt.QPlainTextEdit):
+        def __init__(self, *args):
+            super().__init__(*args)
+            captured.append(self)
+
+    qt.QPlainTextEdit = CaptureText
+    monkeypatch.setattr(rules_window, "load_qt", lambda: qt)
+    monkeypatch.setattr(rules_window, "ensure_application", lambda *_args: None)
+    monkeypatch.setattr(rules_window, "exec_dialog", lambda *_args: None)
+    monkeypatch.setattr(rules_window, "inspect_dictionary", lambda *_args, **_kwargs: inspection)
+
+    rules_window.show_dictionary_inspector(
+        "軟體", config="s2tw", official_convert=lambda *_args: "",
+        translator=Translator("zh-Hans"),
+    )
+    text = captured[0].toPlainText()
+
+    assert "s2tw" not in text
+    assert "regional" not in text
+    assert "high" not in text
+    assert "'软件'" not in text
+    assert "用户规则：mine" in text
 
 
 def test_ruleset_id_with_slash_is_rejected_with_localized_error():

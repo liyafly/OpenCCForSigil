@@ -2,7 +2,8 @@
 
 from core.transformation import FORCE_PIVOT_CHAINS
 from opencc_backend.configs import base_config
-from ui.i18n import settings_error_message, show_error_details
+from ui.i18n import profile_display_name, settings_error_message, show_error_details
+from ui.qt import enum_value
 
 
 def option_enablement(config: str, values: dict) -> dict[str, bool]:
@@ -69,7 +70,7 @@ class RunOptionsPanel:
 
         tool_button = qt.QToolButton()
         tool_button.setText(translator.text("settings.tools"))
-        popup_mode = _enum_value(qt.QToolButton, "InstantPopup")
+        popup_mode = enum_value(qt.QToolButton, "InstantPopup")
         if popup_mode is not None:
             tool_button.setPopupMode(popup_mode)
         self.tools_menu = qt.QMenu(tool_button)
@@ -88,7 +89,7 @@ class RunOptionsPanel:
         self.advanced_button.setText(translator.text("options.advanced"))
         self.advanced_button.setCheckable(True)
         self.advanced_button.setChecked(self._advanced_expanded)
-        button_style = _enum_value(qt.Qt, "ToolButtonTextBesideIcon")
+        button_style = enum_value(qt.Qt, "ToolButtonTextBesideIcon")
         if button_style is not None:
             self.advanced_button.setToolButtonStyle(button_style)
         self.advanced_content = qt.QWidget()
@@ -129,12 +130,12 @@ class RunOptionsPanel:
         self.tool_layout = qt.QHBoxLayout()
         self.tool_layout.addWidget(tool_button)
         self.tool_layout.addStretch(1)
-        layout.addLayout(self.tool_layout)
         scroll = qt.QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setWidget(body)
         scroll.setMinimumHeight(280)
-        layout.insertWidget(0, scroll)
+        layout.addWidget(scroll)
+        layout.addLayout(self.tool_layout)
         self._connect_option_changes()
 
     def _add_check(self, layout, name, default):
@@ -177,7 +178,7 @@ class RunOptionsPanel:
         self._advanced_expanded = bool(expanded)
         self.advanced_content.setVisible(self._advanced_expanded)
         arrow_name = "DownArrow" if self._advanced_expanded else "RightArrow"
-        arrow = _enum_value(self._qt.Qt, arrow_name)
+        arrow = enum_value(self._qt.Qt, arrow_name)
         if arrow is not None:
             self.advanced_button.setArrowType(arrow)
         self._ui_preferences["run_options_advanced_expanded"] = self._advanced_expanded
@@ -311,14 +312,16 @@ class RunOptionsPanel:
         self._option_changed()
 
     def _update_profile_label(self, config):
-        from app.settings import settings_hash
+        from app.settings import profile_options, settings_hash
 
         current = self._services.current_profile(config, self.values())
         active = self._services.active
+        normalized_active = self._services.current_profile(
+            active.conversion, profile_options(active))
         status = (self._tr.text("options.profile_modified")
-                  if settings_hash(current) != settings_hash(active) else "")
+        if settings_hash(current) != settings_hash(normalized_active) else "")
         self.profile_label.setText(self._tr.text(
-            "options.current_profile", name=active.name or active.id, status=status))
+            "options.current_profile", name=profile_display_name(active, self._tr), status=status))
         self.ruleset_label.setText(self._tr.text(
             "options.active_rulesets", ids=", ".join(active.ruleset_ids) or "—"))
 
@@ -332,7 +335,11 @@ class RunOptionsPanel:
             if name == "profiles":
                 profile = self._services.pick_profile(config, self.values(), self._tr)
                 if profile is not None:
+                    validate_profile = getattr(self._services, "validate_profile", None)
+                    if callable(validate_profile):
+                        profile = validate_profile(profile)
                     values = profile_options(profile)
+                    # Validate the profile before touching the active settings.
                     self._set_config(profile.conversion)
                     self._updating = True
                     try:
@@ -349,6 +356,11 @@ class RunOptionsPanel:
                                 self._preferred_pivot_chain = value
                     finally:
                         self._updating = False
+                    commit_profile = getattr(self._services, "commit_profile", None)
+                    if callable(commit_profile):
+                        commit_profile(profile)
+                    elif hasattr(self._services, "active"):
+                        self._services.active = profile
                     self.update_enablement(profile.conversion)
             elif name == "save_profile":
                 self._services.save_profile(config, self.values(), self._tr, self._qt, self._parent)
@@ -375,17 +387,6 @@ def _decode_pivot_chain(value):
 
 def _pivot_chain_key(value):
     return ">".join(_decode_pivot_chain(value))
-
-
-def _enum_value(namespace, name):
-    value = getattr(namespace, name, None)
-    if value is not None:
-        return value
-    for enum_name in ("ToolButtonPopupMode", "ToolButtonStyle", "ArrowType"):
-        value = getattr(getattr(namespace, enum_name, None), name, None)
-        if value is not None:
-            return value
-    return None
 
 
 __all__ = ["ConfigurationChoice", "RunOptionsPanel", "option_enablement"]

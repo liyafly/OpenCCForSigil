@@ -9,7 +9,11 @@ import zipfile
 import pytest
 
 from tools.build_plugin import build
-from tools.validate_artifact import _zip_tree_hash, validate as validate_artifact
+from tools.validate_artifact import (
+    _I18N_REQUIRED_KEYS,
+    _zip_tree_hash,
+    validate as validate_artifact,
+)
 
 
 @pytest.fixture(scope="module")
@@ -32,6 +36,17 @@ def _rewrite_archive(source: Path, target: Path, replacements: dict[str, bytes])
             info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
             info.compress_type = zipfile.ZIP_DEFLATED
             target_archive.writestr(info, value)
+
+
+def test_all_runtime_error_and_settings_keys_are_required_by_artifact_validation():
+    catalog = json.loads(Path(
+        "plugin/OpenCCForSigil/resources/i18n/en.json").read_text(encoding="utf-8"))
+    runtime_keys = {
+        key for key in catalog
+        if key.startswith(("error.", "settings."))
+    } | {"options.current_profile", "options.profile_modified"}
+
+    assert runtime_keys <= _I18N_REQUIRED_KEYS
 
 
 def _read_member(source: Path, name: str) -> object:

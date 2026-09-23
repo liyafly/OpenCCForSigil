@@ -10,7 +10,8 @@ from app.profiles import Profile, ProfileFutureSchemaError, ProfileStore
 from core.models import RuleSnapshot
 from rules.store import RuleSet, RuleSetFutureSchemaError, RuleStore
 from opencc_backend.configs import comparison_configs
-from ui.qt import exec_dialog
+from ui.i18n import profile_display_name, show_error_details
+from ui.qt import ask_confirmation, exec_dialog
 
 
 ALIASES = {"include_nav": "convert_nav", "include_ncx": "convert_ncx",
@@ -77,10 +78,12 @@ class RunSettings:
         self.backend = backend
 
     def _conservative_profile(self, preferences):
+        from ui.i18n import Translator
+
         options = preferences.get("run_options")
         saved_ids = options.get("ruleset_ids", ()) if isinstance(options, dict) else ()
         return Profile(
-            id="conservative", name="Conservative",
+            id="conservative", name=Translator(self.language).text("profile.default_name"),
             ruleset_ids=self._existing_ruleset_ids(saved_ids),
         )
 
@@ -216,21 +219,48 @@ class RunSettings:
             jieba_pending=jieba_pending,
             available_rulesets=("default", *(ruleset.id for ruleset in rulesets)),
             current_profile=draft,
-            active_profile=self.active,
+            active_profile=self.current_profile(
+                self.active.conversion, profile_options(self.active)),
             on_delete=profile_deleted,
             storage_errors=self._storage_error_labels(errors, translator),
         )
-        if selected is not None:
-            self.active = selected
-            self.preserve_profile_preference = False
         return selected
+
+    def validate_profile(self, profile):
+        """Validate the selected profile and its rule snapshot before activation."""
+
+        if self.backend is not None:
+            available, _pending = self._available_config_options()
+            if profile.conversion not in available:
+                raise ValueError("profile configuration is unavailable on this host")
+        candidate = replace(
+            profile,
+            ruleset_ids=self._existing_ruleset_ids(profile.ruleset_ids),
+        )
+        if candidate.force_pivot and (
+                not candidate.pivot_chain or candidate.pivot_chain[-1] != candidate.conversion):
+            raise ValueError("force-pivot must end in the selected configuration")
+        self.freeze_rules(candidate)
+        return candidate
+
+    def commit_profile(self, profile):
+        self.active = profile
+        self.preserve_profile_preference = False
 
     def save_profile(self, config, options, translator, qt, parent):
         name, accepted = qt.QInputDialog.getText(parent, translator.text("settings.save_profile"),
                                                translator.text("settings.name"))
-        if not accepted or not name.strip():
+        name = str(name).strip()
+        if not accepted or not name:
             return
-        profile = replace(self.current_profile(config, options), id=str(uuid4()), name=name.strip())
+        profiles, _errors = self.profiles.load_all()
+        if _duplicate_profile_name(name, profiles):
+            qt.QMessageBox.warning(
+                parent, translator.text("settings.save_profile"),
+                translator.text("settings.profile_duplicate"),
+            )
+            return
+        profile = replace(self.current_profile(config, options), id=str(uuid4()), name=name)
         self.profiles.save(profile)
         self.active = profile
 
@@ -286,15 +316,11 @@ class RunSettings:
             updated = replace(self.active, ruleset_ids=updated_rule_ids)
             if (self.active_profile_is_saved
                     and selected_id not in self.active.ruleset_ids):
-                response = qt.QMessageBox.question(
-                    parent, translator.text("settings.rules"),
-                    translator.text("settings.add_ruleset_to_profile",
-                                    ruleset=selected_id,
-                                    profile=self.active.name or self.active.id),
-                    qt.QMessageBox.Yes | qt.QMessageBox.No,
-                    qt.QMessageBox.No,
-                )
-                if response == qt.QMessageBox.Yes:
+                if ask_confirmation(
+                        qt, parent, translator.text("settings.rules"),
+                        translator.text("settings.add_ruleset_to_profile",
+                                        ruleset=selected_id,
+                                        profile=profile_display_name(self.active, translator)), translator):
                     self.profiles.save(updated)
                 else:
                     qt.QMessageBox.information(
@@ -457,7 +483,10 @@ class RunSettings:
             exporter(Path(path), record["summary"], record["commit_manifest"], record["provenance"],
                      include_full_diff=full, full_diff=diff)
         except (OSError, ValueError) as exc:
-            qt.QMessageBox.warning(parent, translator.text("settings.history"), str(exc))
+            show_error_details(
+                qt, parent, translator.text("settings.history"),
+                translator.text("settings.export_failed"), str(exc),
+            )
 
     def export_preview(self, planned, previews, include_full_diff, qt, parent):
         from core.staging import apply_changes, source_sha256
@@ -507,6 +536,12 @@ class RunSettings:
 def settings_hash(profile):
     return sha256(json.dumps(profile.to_dict(), sort_keys=True,
                              ensure_ascii=False).encode()).hexdigest()
+
+
+def _duplicate_profile_name(name, profiles):
+    normalized = str(name).strip().casefold()
+    return bool(normalized) and any(
+        str(profile.name).strip().casefold() == normalized for profile in profiles)
 
 
 def tokenizer_policy(profile):

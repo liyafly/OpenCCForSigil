@@ -14,7 +14,13 @@ from rules.validators import RuleValidationError, validate_rules
 from opencc_backend.configs import base_config_options
 from rules.store import RuleSet
 from rules.importers import ImportResult, rule_dedup_key
-from ui.i18n import CatalogView, Translator, rule_validation_message, show_error_details
+from ui.i18n import (
+    CatalogView,
+    Translator,
+    configuration_label,
+    rule_validation_message,
+    show_error_details,
+)
 from ui.qt import ensure_application, exec_dialog, load_qt
 
 
@@ -136,23 +142,47 @@ def show_dictionary_inspector(
     qt = load_qt()
     ensure_application(qt)
     dialog = qt.QDialog()
-    labels = _labels(translator)
+    active_translator = translator or Translator("en")
+    labels = _labels(active_translator)
     dialog.setWindowTitle(labels["inspector_title"])
     layout = qt.QVBoxLayout(dialog)
     view = qt.QPlainTextEdit()
     view.setReadOnly(True)
     lines = [
         f"{labels['input_label']}: {inspection.input}",
-        f"{labels['config_label']}: {inspection.config}",
+        f"{labels['config_label']}: {configuration_label(active_translator, inspection.config)}",
     ]
-    lines.extend(f"{name}: {value}" for name, value in inspection.comparisons)
+    lines.extend(
+        f"{configuration_label(active_translator, name)}: {value}"
+        for name, value in inspection.comparisons
+    )
     lines.append(f"{labels['final_label']}: {inspection.final}")
-    lines.append(f"{labels['attribution_label']}: {inspection.attribution}")
-    lines.extend(f"{item.source!r} → {item.target!r}: {item.category} "
-                 f"({item.attribution_confidence}; {item.comparison_stage or config})"
-                 for item in inspection.classifications)
+    attribution_key = (
+        "rules.attribution_opencc" if inspection.attribution.startswith("OpenCC")
+        else "rules.attribution_user"
+    )
+    lines.append(f"{labels['attribution_label']}: {active_translator.text(attribution_key)}")
+    for item in inspection.classifications:
+        category = active_translator.text(f"preview.category_value.{item.category}")
+        if category == f"preview.category_value.{item.category}":
+            category = active_translator.text("rules.category_unknown")
+        confidence = active_translator.text(
+            f"rules.confidence.{item.attribution_confidence or 'low'}")
+        stage = item.comparison_stage or config
+        stage_configs = tuple(stage.split("-vs-"))
+        stage_label = " / ".join(configuration_label(active_translator, value)
+                                 for value in stage_configs)
+        lines.append(active_translator.text(
+            "rules.classification",
+            source=item.source,
+            target=item.target,
+            category=category,
+            confidence=confidence,
+            stage=stage_label,
+        ))
     if inspection.matched_rules:
-        lines.append("UserRule: " + ", ".join(inspection.matched_rules))
+        lines.append(active_translator.text(
+            "rules.matched_user_rules", rules=", ".join(inspection.matched_rules)))
     view.setPlainText("\n".join(lines))
     layout.addWidget(view)
     close = qt.QPushButton(labels["close"])
@@ -628,9 +658,10 @@ class RuleManagerDialog:
                 lines.append(self._labels["no_hits"])
             self.test_output.setPlainText("\n".join(lines))
         except Exception as exc:
-            self.test_output.setPlainText(
-                self._labels["operation_failed"] + "\n"
-                + self._translator.text("common.error_details") + ": " + str(exc))
+            show_error_details(
+                self._qt, self.dialog, self._labels["title"],
+                self._labels["operation_failed"], str(exc),
+            )
 
     def _inspect(self) -> None:
         if self._official_convert is None:
@@ -656,9 +687,10 @@ class RuleManagerDialog:
                 translator=self._translator,
             )
         except Exception as exc:
-            self.test_output.setPlainText(
-                self._labels["operation_failed"] + "\n"
-                + self._translator.text("common.error_details") + ": " + str(exc))
+            show_error_details(
+                self._qt, self.dialog, self._labels["title"],
+                self._labels["operation_failed"], str(exc),
+            )
 
     def _import(self) -> None:
         from rules.importers import import_rules

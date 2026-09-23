@@ -47,6 +47,7 @@ class Base:
         self._enabled = True
         self._text = ""
         self._tooltip = ""
+        self._plain_text = ""
         self.calls = []
         self.args = args
         for name in self._signals + (
@@ -125,6 +126,22 @@ class Base:
 
     def toolTip(self):
         return self._tooltip
+
+    def setPlainText(self, value):
+        self._plain_text = str(value)
+
+    def toPlainText(self):
+        return self._plain_text
+
+    def clear(self):
+        self._text = ""
+        self._plain_text = ""
+
+    def setWidget(self, widget):
+        self._widget = widget
+
+    def widget(self):
+        return getattr(self, "_widget", None)
 
 
 class Layout(Base):

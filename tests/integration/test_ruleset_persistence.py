@@ -64,16 +64,36 @@ class RuleDialogQt:
             return "mine", True
 
     class QMessageBox:
-        Yes = 1
-        No = 2
-        response = 1
+        AcceptRole = 0
+        RejectRole = 1
+        response = True
         questions = []
         information_messages = []
 
-        @classmethod
-        def question(cls, _parent, title, message, *_args):
-            cls.questions.append((title, message))
-            return cls.response
+        def __init__(self, _parent=None):
+            type(self).current = self
+            self.buttons = []
+
+        def setWindowTitle(self, title):
+            self.title = title
+
+        def setText(self, message):
+            self.message = message
+
+        def addButton(self, label, role):
+            button = SimpleNamespace(label=label, role=role)
+            self.buttons.append(button)
+            return button
+
+        def setDefaultButton(self, button):
+            self.default = button
+
+        def exec(self):
+            type(self).questions.append((self.title, self.message))
+
+        def clickedButton(self):
+            role = self.AcceptRole if type(self).response else self.RejectRole
+            return next(button for button in self.buttons if button.role == role)
 
         @classmethod
         def information(cls, _parent, title, message):
@@ -97,7 +117,7 @@ def _saved_profile_settings(tmp_path):
 def test_saved_profile_can_confirm_adding_ruleset(monkeypatch, tmp_path):
     settings, profiles = _saved_profile_settings(tmp_path)
     before = profiles.load("saved")
-    RuleDialogQt.QMessageBox.response = RuleDialogQt.QMessageBox.Yes
+    RuleDialogQt.QMessageBox.response = True
     RuleDialogQt.QMessageBox.questions = []
     RuleDialogQt.QMessageBox.information_messages = []
     monkeypatch.setattr("ui.rules_window.show_rules_window", lambda *args, **kwargs:
@@ -114,7 +134,7 @@ def test_saved_profile_can_confirm_adding_ruleset(monkeypatch, tmp_path):
 def test_saved_profile_rejection_keeps_change_session_only(monkeypatch, tmp_path):
     settings, profiles = _saved_profile_settings(tmp_path)
     before = profiles.load("saved")
-    RuleDialogQt.QMessageBox.response = RuleDialogQt.QMessageBox.No
+    RuleDialogQt.QMessageBox.response = False
     RuleDialogQt.QMessageBox.questions = []
     RuleDialogQt.QMessageBox.information_messages = []
     monkeypatch.setattr("ui.rules_window.show_rules_window", lambda *args, **kwargs:
@@ -151,7 +171,7 @@ def test_renamed_ruleset_id_can_be_reused_without_deleting_the_new_set(
         ),
         renamed=(("A", "B"),),
     )
-    RuleDialogQt.QMessageBox.response = RuleDialogQt.QMessageBox.Yes
+    RuleDialogQt.QMessageBox.response = True
     monkeypatch.setattr("ui.rules_window.show_rules_window",
                         lambda *_args, **_kwargs: result)
 
@@ -162,6 +182,39 @@ def test_renamed_ruleset_id_can_be_reused_without_deleting_the_new_set(
     assert rules.load("B").name == "Renamed B"
     assert settings.active.ruleset_ids == ("default", "B", "A")
     assert profile_store.load("saved").ruleset_ids == ("default", "B", "A")
+
+
+def test_profile_selection_is_validated_before_activation(monkeypatch, tmp_path):
+    settings, _profiles = _saved_profile_settings(tmp_path)
+    active = settings.active
+    selected = Profile(id="new", name="New", conversion="s2t")
+    monkeypatch.setattr("ui.profile_window.show_profile_window",
+                        lambda *_args, **_kwargs: selected)
+
+    result = settings.pick_profile("s2t", {}, Translator())
+
+    assert result is selected
+    assert settings.active is active
+    validated = settings.validate_profile(result)
+    assert settings.active is active
+    settings.commit_profile(validated)
+    assert settings.active.id == "new"
+
+
+def test_unavailable_profile_validation_does_not_change_active_profile(tmp_path):
+    settings, _profiles = _saved_profile_settings(tmp_path)
+    active = settings.active
+    selected = Profile(
+        id="jieba", name="Jieba", conversion="s2twp_jieba", segmentation="jieba")
+
+    try:
+        settings.validate_profile(selected)
+    except ValueError as exc:
+        assert "unavailable" in str(exc)
+    else:
+        raise AssertionError("unavailable Jieba profile should be rejected")
+
+    assert settings.active is active
 
 
 class Book:

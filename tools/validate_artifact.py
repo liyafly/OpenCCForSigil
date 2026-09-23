@@ -368,6 +368,42 @@ _I18N_REQUIRED_KEYS = _I18N_REQUIRED_KEYS | frozenset(
 )
 _I18N_REQUIRED_KEYS = _I18N_REQUIRED_KEYS | frozenset(
     {
+        "common.no",
+        "common.yes",
+        "config.jieba_combination",
+        "options.current_profile",
+        "options.profile_modified",
+        "preview.apply_accepted",
+        "preview.apply_accepted_many",
+        "preview.apply_accepted_one",
+        "preview.apply_no_changes",
+        "preview.apply_status_none",
+        "preview.apply_status_pending",
+        "preview.apply_status_ready",
+        "profile.default_name",
+        "profile.disabled",
+        "profile.enabled",
+        "profile.status",
+        "profile.summary_option",
+        "rules.attribution_opencc",
+        "rules.attribution_user",
+        "rules.category_unknown",
+        "rules.classification",
+        "rules.confidence.high",
+        "rules.confidence.low",
+        "rules.confidence.medium",
+        "rules.matched_user_rules",
+    }
+)
+_I18N_CATALOG = json.loads(
+    (ROOT / "plugin/OpenCCForSigil/resources/i18n/en.json").read_text(encoding="utf-8")
+)
+_I18N_REQUIRED_KEYS = _I18N_REQUIRED_KEYS | frozenset(
+    key for key in _I18N_CATALOG
+    if key.startswith(("error.", "settings."))
+)
+_I18N_REQUIRED_KEYS = _I18N_REQUIRED_KEYS | frozenset(
+    {
         "common.error_details",
         "language.name.en",
         "language.name.zh-Hans",

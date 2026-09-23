@@ -12,6 +12,7 @@ from ui.run_options import (
     _pivot_chain_key,
     option_enablement,
 )
+from ui.preview_window import _ConversionConfigDialog
 
 
 def test_option_enablement_truth_table():
@@ -324,6 +325,7 @@ def test_profile_label_marks_changed_settings(tmp_path):
     panel = object.__new__(RunOptionsPanel)
     panel._services = settings
     panel._tr = SimpleNamespace(text=lambda key, **values: {
+        "profile.default_name": "Conservative",
         "options.profile_modified": " (modified)",
         "options.current_profile": "Current: {name}{status}",
         "options.active_rulesets": "Rules: {ids}",
@@ -335,6 +337,166 @@ def test_profile_label_marks_changed_settings(tmp_path):
     panel._update_profile_label("s2t")
 
     assert panel.label == "Current: Conservative (modified)"
+
+
+def test_profile_label_does_not_mark_an_untouched_profile_modified(tmp_path):
+    from app.settings import profile_options
+
+    storage = SimpleNamespace(paths=SimpleNamespace(
+        root=tmp_path, profiles=tmp_path / "profiles", rules=tmp_path / "rules"))
+    settings = RunSettings(
+        storage, SimpleNamespace(), {}, language="en", session_id="test-session")
+    panel = object.__new__(RunOptionsPanel)
+    panel._services = settings
+    panel._tr = SimpleNamespace(text=lambda key, **values: {
+        "profile.default_name": "Conservative",
+        "options.profile_modified": " (modified)",
+        "options.current_profile": "Current: {name}{status}",
+        "options.active_rulesets": "Rules: {ids}",
+    }[key].format(**values))
+    panel.profile_label = SimpleNamespace(setText=lambda value: setattr(panel, "label", value))
+    panel.ruleset_label = SimpleNamespace(setText=lambda value: setattr(panel, "rules", value))
+    panel.values = lambda: profile_options(settings.active)
+
+    panel._update_profile_label(settings.active.conversion)
+
+    assert panel.label == "Current: Conservative"
+
+
+def test_profile_validation_failure_leaves_config_options_and_active_profile_unchanged(
+        monkeypatch):
+    import ui.run_options as run_options
+
+    profile = Profile(
+        id="new", name="New", conversion="t2s", convert_alt=False,
+        ruleset_ids=("default",),
+    )
+    active = Profile(id="active", name="Active", conversion="s2t", convert_alt=True)
+    panel = _live_options_panel({"conversion": "s2t", "convert_alt": True})
+
+    def reject_profile(_profile):
+        raise ValueError("bad profile")
+
+    panel._services = SimpleNamespace(
+        active=active,
+        pick_profile=lambda *_args: profile,
+        validate_profile=reject_profile,
+    )
+    state = {"config": "s2t"}
+    panel._get_config = lambda: state["config"]
+    panel._set_config = lambda value: state.update(config=value)
+    panel._parent = None
+    monkeypatch.setattr(run_options, "show_error_details", lambda *_args: None)
+
+    panel._tool("profiles")
+
+    assert state["config"] == "s2t"
+    assert panel.checks["convert_alt"].isChecked()
+    assert panel._services.active is active
+
+
+def test_conversion_dialog_keeps_direction_panel_and_footer_in_order():
+    qt = make_fake_qt()
+    dialog = _ConversionConfigDialog(
+        qt, ("s2t", "t2s"), "s2t", {}, translator=Translator("en"))
+    outer = dialog.dialog._layout.children
+
+    assert [type(item).__name__ for item in outer[:7]] == [
+        "QLabel", "QLabel", "QComboBox", "QLabel", "QCheckBox", "QPushButton",
+        "QScrollArea",
+    ]
+    footer = outer[7]
+    assert footer is dialog.options_panel.tool_layout
+    scroll_body = outer[6].widget()
+    assert [type(item).__name__ for item in scroll_body._layout.children] == [
+        "QHBoxLayout", "QHBoxLayout", "QGroupBox", "QToolButton", "QWidget",
+    ]
+    assert footer.children[0]._text == Translator("en").text("settings.tools")
+    assert footer.children[-1] is dialog.button_box
+    assert dialog.cancel_button.text() == Translator("en").text("common.cancel")
+
+
+def test_save_profile_rejects_duplicate_names_case_insensitively(tmp_path):
+    from app.settings import profile_options
+
+    storage = SimpleNamespace(paths=SimpleNamespace(
+        root=tmp_path, profiles=tmp_path / "profiles", rules=tmp_path / "rules"))
+    settings = RunSettings(
+        storage, SimpleNamespace(), {}, language="en", session_id="test-session")
+    settings.profiles.save(Profile(id="existing", name="Mine"))
+    warnings = []
+    qt = SimpleNamespace(
+        QInputDialog=SimpleNamespace(getText=lambda *_args: (" mine ", True)),
+        QMessageBox=SimpleNamespace(warning=lambda *_args: warnings.append(_args[-1])),
+    )
+
+    settings.save_profile(
+        "s2t", profile_options(settings.active), Translator("en"), qt, None)
+
+    assert warnings == [Translator("en").text("settings.profile_duplicate")]
+    assert [profile.id for profile in settings.profiles.load_all()[0]] == ["existing"]
+
+
+def test_settings_windows_query_nonblocking_config_availability(tmp_path):
+    calls = []
+
+    class Backend:
+        jieba_probe_pending = True
+
+        def available_configs_nonblocking(self):
+            calls.append("nonblocking")
+            return {"s2t"}
+
+        def available_configs(self):
+            raise AssertionError("blocking config check was called")
+
+    storage = SimpleNamespace(paths=SimpleNamespace(
+        root=tmp_path, profiles=tmp_path / "profiles", rules=tmp_path / "rules"))
+    settings = RunSettings(
+        storage, SimpleNamespace(), {}, language="en", session_id="test-session")
+    settings.backend = Backend()
+
+    assert settings._available_config_options() == (("s2t",), True)
+    assert calls == ["nonblocking"]
+
+
+def test_report_export_exception_is_put_in_details_with_localized_summary(
+        monkeypatch, tmp_path):
+    import app.settings as settings_module
+    from logging_ext import report as report_module
+
+    storage = SimpleNamespace(paths=SimpleNamespace(
+        root=tmp_path, profiles=tmp_path / "profiles", rules=tmp_path / "rules",
+        exports=tmp_path / "exports"))
+    settings = RunSettings(
+        storage, SimpleNamespace(), {}, language="zh-Hans", session_id="test-session")
+    details = []
+
+    def fail_export(*_args, **_kwargs):
+        raise OSError("raw export failure")
+
+    monkeypatch.setattr(report_module, "export_markdown", fail_export)
+    monkeypatch.setattr(settings_module, "show_error_details", lambda *args: details.append(args))
+    qt = SimpleNamespace(QFileDialog=SimpleNamespace(
+        getSaveFileName=lambda *_args: ("/tmp/report.md", "")))
+    record = {"summary": {}, "commit_manifest": {}, "provenance": {}, "session_id": "session"}
+
+    settings.export_report(record, False, None, Translator("zh-Hans"), qt, None)
+
+    assert details[0][3] == Translator("zh-Hans").text("settings.export_failed")
+    assert details[0][4] == "raw export failure"
+
+
+def test_new_default_profile_name_uses_selected_ui_language(tmp_path):
+    for language in ("zh-Hans", "zh-Hant", "en"):
+        storage = SimpleNamespace(paths=SimpleNamespace(
+            root=tmp_path / language, profiles=tmp_path / language / "profiles",
+            rules=tmp_path / language / "rules"))
+        settings = RunSettings(
+            storage, SimpleNamespace(), {}, language=language, session_id="test-session")
+
+        assert settings.active.id == "conservative"
+        assert settings.active.name == Translator(language).text("profile.default_name")
 
 
 def test_advanced_options_fold_state_is_saved_in_ui_preferences():
