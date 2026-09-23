@@ -1,0 +1,6 @@
+# Review scripts inherit the repository lint rules. Each script must import
+# ``_env`` before project modules, so module-level imports follow a bootstrap.
+extend = "../../../../pyproject.toml"
+
+[lint]
+per-file-ignores = { "*.py" = ["E402"] }
