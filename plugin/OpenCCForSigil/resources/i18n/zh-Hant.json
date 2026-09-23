@@ -62,6 +62,7 @@
   "scope.ignored_non_xhtml": "已忽略 {count} 個選取的非 XHTML 檔案",
   "scope.none": "尚未選擇 XHTML 檔案",
   "scope.analyze": "繼續選擇轉換方向",
+  "scope.back": "上一步：更改檔案",
   "scope.filter": "篩選檔案",
   "scope.select_visible": "選取可見項目",
   "scope.clear_visible": "清除可見項目",

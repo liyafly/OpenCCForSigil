@@ -86,6 +86,7 @@ _I18N_REQUIRED_KEYS = frozenset(
         "scope.ignored_non_xhtml",
         "scope.none",
         "scope.analyze",
+        "scope.back",
         "scope.filter",
         "scope.select_visible",
         "scope.clear_visible",

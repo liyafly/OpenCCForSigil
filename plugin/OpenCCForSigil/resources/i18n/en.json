@@ -62,6 +62,7 @@
   "scope.ignored_non_xhtml": "Ignored {count} selected non-XHTML file(s)",
   "scope.none": "No XHTML files selected",
   "scope.analyze": "Continue to direction",
+  "scope.back": "Previous: change files",
   "scope.filter": "Filter files",
   "scope.select_visible": "Select visible",
   "scope.clear_visible": "Clear visible",

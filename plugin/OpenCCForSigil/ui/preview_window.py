@@ -36,6 +36,12 @@ class ScopeOutcome:
     language: str
 
 
+@dataclass(frozen=True)
+class ConfigOutcome:
+    action: str
+    configuration: object | None = None
+
+
 class ProgressReporter:
     """A lightweight progress view driven by workflow file boundaries."""
 
@@ -273,7 +279,7 @@ def choose_conversion_config(
     *,
     default_config: str = "s2t",
     jieba_probe=None,
-) -> str | None:
+) -> ConfigOutcome:
     """Ask for an explicit conversion direction before building a plan.
 
     This selector exposes pinned upstream standard configs and, when the
@@ -299,14 +305,24 @@ def choose_conversion_config(
     )
     exec_method = getattr(dialog.dialog, "exec", None) or dialog.dialog.exec_
     exec_method()
-    return dialog.selected_config if dialog.accepted else None
+    return ConfigOutcome(dialog.action, dialog.selected_config)
 
 
-def choose_scope(adapter: Any, *, initial_language: str = "en", notice=()) -> ScopeOutcome:
+def choose_scope(
+    adapter: Any,
+    *,
+    initial_language: str = "en",
+    notice=(),
+    initial_selection: TargetSelection | None = None,
+) -> ScopeOutcome:
     """Choose a frozen XHTML target set after enumerating metadata only."""
 
     inventory = tuple(adapter.text_file_inventory())
     selected_ids, ignored_non_xhtml = _selected_xhtml_ids_and_ignored(adapter, inventory)
+    initial_scope = None
+    if initial_selection is not None:
+        selected_ids = tuple(initial_selection.file_ids)
+        initial_scope = initial_selection.scope
     spine_ids = _spine_ids(adapter)
     language = initial_language or _translator.language
     _translator.set_language(language)
@@ -321,6 +337,7 @@ def choose_scope(adapter: Any, *, initial_language: str = "en", notice=()) -> Sc
         ignored_non_xhtml=ignored_non_xhtml,
         spine_ids=spine_ids,
         recovery_notices=notice,
+        initial_scope=initial_scope,
     )
     exec_method = getattr(dialog.dialog, "exec", None) or dialog.dialog.exec_
     exec_method()
@@ -990,6 +1007,7 @@ class _ConversionConfigDialog:
         self._updating_jieba = False
         self.accepted = False
         self.selected_config = None
+        self.action = "cancel"
         self.dialog = qt_widgets.QDialog()
         self.dialog.setWindowTitle(self._translator.text("config.title"))
         self.dialog.setMinimumWidth(460)
@@ -1027,13 +1045,16 @@ class _ConversionConfigDialog:
         self.options_panel.bind(self._get_config, self._set_config, self.dialog)
 
         buttons = qt_widgets.QHBoxLayout()
+        self.back_button = qt_widgets.QPushButton(self._translator.text("scope.back"))
         self.cancel_button = qt_widgets.QPushButton(self._translator.text("common.cancel"))
         self.continue_button = qt_widgets.QPushButton(self._translator.text("config.continue"))
+        buttons.addWidget(self.back_button)
         buttons.addWidget(self.cancel_button)
         buttons.addWidget(self.continue_button)
         layout.addLayout(buttons)
         self.cancel_button.clicked.connect(self.dialog.reject)
         self.cancel_button.clicked.connect(self._stop_probe_timer)
+        self.back_button.clicked.connect(self._back_to_scope)
         self.continue_button.clicked.connect(self._accept)
         self.combo.currentIndexChanged.connect(self._direction_changed)
         self.jieba_checkbox.stateChanged.connect(self._update_jieba_state)
@@ -1170,7 +1191,13 @@ class _ConversionConfigDialog:
         self._stop_probe_timer()
         self.selected_config = ConfigurationChoice(config, options)
         self.accepted = True
+        self.action = "continue"
         self.dialog.accept()
+
+    def _back_to_scope(self) -> None:
+        self.action = "back_to_scope"
+        self._stop_probe_timer()
+        self.dialog.reject()
 
 
 class _ScopeDialog:
@@ -1187,6 +1214,7 @@ class _ScopeDialog:
         ignored_non_xhtml: int = 0,
         spine_ids: Tuple[str, ...] = (),
         recovery_notices=(),
+        initial_scope: Scope | None = None,
     ) -> None:
         self._qt = qt_widgets
         self._inventory = inventory
@@ -1270,7 +1298,15 @@ class _ScopeDialog:
             )
             self.list_widget.addItem(row)
         self.list_widget.itemChanged.connect(self._item_changed)
-        if len(initial_ids) == 1:
+        if initial_scope is Scope.SINGLE:
+            self.single_radio.setChecked(True)
+        elif initial_scope is Scope.SELECTED:
+            self.selected_radio.setChecked(True)
+        elif initial_scope is Scope.SPINE:
+            self.spine_radio.setChecked(True)
+        elif initial_scope is Scope.ALL_XHTML:
+            self.all_radio.setChecked(True)
+        elif len(initial_ids) == 1:
             self.single_radio.setChecked(True)
         elif not initial_ids:
             self.selected_radio.setChecked(True)

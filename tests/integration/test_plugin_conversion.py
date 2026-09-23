@@ -67,7 +67,7 @@ class _NoProgress:
 
 
 def _patch_scoped_ui(monkeypatch, events=None):
-    def choose_scope(adapter, initial_language):
+    def choose_scope(adapter, initial_language, **_kwargs):
         if events is not None:
             events.append("scope")
         return ScopeOutcome(
@@ -270,3 +270,60 @@ def test_malformed_xhtml_is_skipped_while_other_files_convert(monkeypatch, tmp_p
     assert [file_id for file_id, _data in book.writes] == ["good"]
     assert result_calls[-1]["files_scanned"] == 2
     assert result_calls[-1]["files_changed"] == 1
+
+
+def test_returning_from_preview_reselects_scope_and_discards_old_plan(
+    monkeypatch, tmp_path
+):
+    class Book:
+        def __init__(self):
+            self.files = {key: f"<p>{value}</p>" for key, value in (
+                ("a", "漢字"), ("b", "漢字"), ("c", "漢字"))}
+            self.reads = []
+            self.writes = []
+
+        def text_iter(self):
+            for file_id in self.files:
+                yield file_id, f"Text/{file_id}.xhtml"
+
+        def readfile(self, file_id):
+            self.reads.append(file_id)
+            return self.files[file_id]
+
+        def writefile(self, file_id, data):
+            self.writes.append((file_id, data))
+
+    book = Book()
+    scope_calls = []
+    preview_plans = []
+
+    def choose_scope(_adapter, initial_language, **_kwargs):
+        scope_calls.append(True)
+        selected = "a" if len(scope_calls) == 1 else "c"
+        return ScopeOutcome(
+            accepted=True,
+            selection=TargetSelection(Scope.SINGLE, (selected,)),
+            language=initial_language,
+        )
+
+    def show_preview(planned):
+        preview_plans.append(tuple(item.source.file_id for item in planned))
+        if len(preview_plans) == 1:
+            return PreviewOutcome(accepted=False, previews=(), back_to_settings=True)
+        return _accept_all_preview(planned)
+
+    monkeypatch.setattr("ui.preview_window.choose_scope", choose_scope)
+    monkeypatch.setattr(
+        "ui.preview_window.choose_conversion_config",
+        lambda available_configs, default_config, **_kwargs: "t2s",
+    )
+    monkeypatch.setattr("ui.preview_window.show_preview", show_preview)
+    monkeypatch.setattr(
+        "ui.preview_window.create_progress_reporter", lambda _total: _NoProgress())
+
+    assert Controller(book, data_dir=tmp_path / "plugin-data").run() == 0
+
+    assert len(scope_calls) == 2
+    assert preview_plans == [("a",), ("c",)]
+    assert "b" not in book.reads
+    assert [file_id for file_id, _data in book.writes] == ["c"]

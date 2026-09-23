@@ -144,6 +144,31 @@ class Controller:
                 return 1
             targets = scope_outcome.selection
 
+            def reselect_scope(previous_selection):
+                nonlocal language, preferences, ui_preferences, scope_preferences, targets
+                preferences = self.storage.load_preferences()
+                saved_ui = preferences.get("ui")
+                ui_preferences = dict(saved_ui) if isinstance(saved_ui, dict) else {}
+                scope_outcome = choose_scope(
+                    adapter,
+                    initial_language=language,
+                    initial_selection=previous_selection,
+                )
+                language = scope_outcome.language
+                set_ui_language(language)
+                scope_preferences = {
+                    **preferences,
+                    "ui": {**ui_preferences, "language": language},
+                }
+                if not scope_outcome.accepted or scope_outcome.selection is None:
+                    self.storage.save_preferences(scope_preferences)
+                    self.session.cancel()
+                    self.logger.summary(self._summary(
+                        status="cancelled", files_scanned=0, changes=0, files_changed=0))
+                    return False
+                targets = scope_outcome.selection
+                return True
+
             # The language choice is now settled before the direction dialog
             # is constructed, including on a first launch with no preference.
             available_configs = backend.available_configs_nonblocking()
@@ -165,13 +190,29 @@ class Controller:
                     default_config=default_config,
                     jieba_probe=backend,
                 )
-                if selected_config is None:
+                action = getattr(selected_config, "action", None)
+                if action == "back_to_scope":
+                    current_choice = getattr(selected_config, "configuration", None)
+                    if current_choice is not None:
+                        choice_options = dict(getattr(current_choice, "options", {}))
+                        preferences = {
+                            **preferences,
+                            "last_conversion_config": str(current_choice),
+                            "run_options": choice_options,
+                        }
+                        self.storage.save_preferences(preferences)
+                    if not reselect_scope(targets):
+                        return 1
+                    continue
+                if action == "cancel" or selected_config is None:
                     self.storage.save_preferences(scope_preferences)
                     self.session.cancel()
                     self.logger.summary(
                         self._summary(status="cancelled", files_scanned=0, changes=0, files_changed=0)
                     )
                     return 1
+                if action == "continue":
+                    selected_config = selected_config.configuration
                 options = dict(getattr(selected_config, "options", {}))
                 selected_config = str(selected_config)
                 language_tag = target_language(
@@ -273,9 +314,10 @@ class Controller:
                 self.session.transition(SessionState.PREVIEWING)
                 preview = show_preview(planned)
                 if getattr(preview, "back_to_settings", False):
-                    preferences = self.storage.load_preferences()
                     default_config = selected_config
                     settings.backend = backend
+                    if not reselect_scope(targets):
+                        return 1
                     self.session.transition(SessionState.SCANNING)
                     continue
                 if not preview.accepted:
