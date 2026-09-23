@@ -6,7 +6,7 @@ import pytest
 from core.models import ConvertRequest, RuleSnapshot
 from core.preview import PreviewSession
 from core.staging import apply_changes
-from core.workflow import ConversionWorkflow
+from core.workflow import ConversionWorkflow, WorkflowError
 from rules.models import Rule, RuleSnapshot as Rules
 from sigil.adapter import SigilBookAdapter
 from document.tokenizer import TokenizerOptions
@@ -81,8 +81,9 @@ def test_replacement_text_is_xml_escaped_and_snapshot_guard_precedes_all_writes(
     flow = ConversionWorkflow(SigilBookAdapter(book), Backend(), request, snapshot_guard=changed)
     _, staged = stage_all(flow)
     assert staged[0].converted == '<p title="A &amp; &lt;B> &quot;C&quot;">A &amp; &lt;B> "C"</p>'
-    with pytest.raises(ValueError, match="snapshot changed"):
+    with pytest.raises(WorkflowError, match="snapshot changed") as error:
         flow.commit(staged)
+    assert error.value.code == "SETTINGS_CHANGED"
     assert book.writes == []
 
 
@@ -127,10 +128,16 @@ def test_inline_boundary_stays_separate_and_has_diagnostic():
 
 
 def test_malformed_xhtml_is_not_written_even_when_lexical_shape_is_unchanged():
-    flow = ConversionWorkflow(SigilBookAdapter(Book('<p title="汉" title="字">汉</p>')),
+    book = Book('<p title="汉" title="字">汉</p>')
+    flow = ConversionWorkflow(SigilBookAdapter(book),
                               Backend(), ConvertRequest("s2t"))
-    with pytest.raises(RuntimeError, match="structural verification failed"):
-        stage_all(flow)
+    planned, staged = stage_all(flow)
+    assert planned[0].plan.changes == ()
+    assert "SOURCE_INVALID_XHTML" in {
+        diagnostic.code for diagnostic in planned[0].plan.diagnostics
+    }
+    assert staged == ()
+    assert book.writes == []
 
 
 def test_xhtml_validation_never_fetches_external_dtd_and_keeps_named_entities():
