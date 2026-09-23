@@ -7,6 +7,7 @@ from app.profiles import Profile, ProfileStore
 from core.preview import PreviewSession
 from rules.models import Rule
 from rules.store import RuleSet, RuleStore
+from ui.rules_window import RuleWindowResult
 from sigil.scope import Scope, TargetSelection
 from ui.preview_window import PreviewOutcome, ScopeOutcome
 from ui.run_options import ConfigurationChoice
@@ -95,7 +96,8 @@ def test_saved_profile_can_confirm_adding_ruleset(monkeypatch, tmp_path):
     RuleDialogQt.QMessageBox.response = RuleDialogQt.QMessageBox.Yes
     RuleDialogQt.QMessageBox.questions = []
     RuleDialogQt.QMessageBox.information_messages = []
-    monkeypatch.setattr("ui.rules_window.show_rules_window", lambda *args, **kwargs: ())
+    monkeypatch.setattr("ui.rules_window.show_rules_window", lambda *args, **kwargs:
+                        RuleWindowResult("mine", (RuleSet("mine"),)))
 
     settings.edit_rules("s2t", Translator(), RuleDialogQt, object())
 
@@ -111,7 +113,8 @@ def test_saved_profile_rejection_keeps_change_session_only(monkeypatch, tmp_path
     RuleDialogQt.QMessageBox.response = RuleDialogQt.QMessageBox.No
     RuleDialogQt.QMessageBox.questions = []
     RuleDialogQt.QMessageBox.information_messages = []
-    monkeypatch.setattr("ui.rules_window.show_rules_window", lambda *args, **kwargs: ())
+    monkeypatch.setattr("ui.rules_window.show_rules_window", lambda *args, **kwargs:
+                        RuleWindowResult("mine", (RuleSet("mine"),)))
 
     settings.edit_rules("s2t", Translator(), RuleDialogQt, object())
 

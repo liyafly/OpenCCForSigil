@@ -33,6 +33,14 @@ class ImportResult:
         return any(item.blocking for item in self.conflicts)
 
 
+def rule_dedup_key(rule: Rule) -> tuple:
+    """Return the stable semantic key shared by imports and the rule UI."""
+
+    return (rule.direction, rule.scope, rule.type, rule.source, rule.target, rule.priority,
+            rule.profile_id if rule.scope == "profile" else "",
+            rule.book_fingerprint if rule.scope == "book" else "")
+
+
 def import_rules(
     source: str | bytes | Path | TextIO,
     *,
@@ -55,6 +63,7 @@ def import_rules(
             profile_id=profile_id,
             book_fingerprint=book_fingerprint,
             diagnostics=diagnostics,
+            strict=strict,
         )
     elif fmt == "csv":
         values = _rows_to_rules(
@@ -64,13 +73,15 @@ def import_rules(
             profile_id=profile_id,
             book_fingerprint=book_fingerprint,
             diagnostics=diagnostics,
+            strict=strict,
         )
     elif fmt in {"txt", "opencc", "opencc-txt"}:
         if not direction:
             raise RuleValidationError(
                 "OpenCC TXT import requires an explicit direction", field="direction"
             )
-        values = _opencc_rows(text, direction, scope, profile_id, book_fingerprint, diagnostics)
+        values = _opencc_rows(
+            text, direction, scope, profile_id, book_fingerprint, diagnostics, strict=strict)
     elif fmt == "json":
         values = _json_rules(
             text,
@@ -93,9 +104,7 @@ def import_rules(
     duplicates: list[Rule] = []
     seen: set[tuple] = set()
     for rule in valid:
-        key = (rule.direction, rule.scope, rule.type, rule.source, rule.target, rule.priority,
-               rule.profile_id if rule.scope == "profile" else "",
-               rule.book_fingerprint if rule.scope == "book" else "")
+        key = rule_dedup_key(rule)
         if key in seen:
             duplicates.append(rule)
         else:
@@ -152,6 +161,7 @@ def _rows_to_rules(
     profile_id: str,
     book_fingerprint: str,
     diagnostics: list[ImportDiagnostic],
+    strict: bool,
 ) -> list[Rule]:
     rows = list(rows)
     if rows and _is_header(rows[0][1]):
@@ -160,19 +170,24 @@ def _rows_to_rules(
     for line, row in rows:
         if not row or not any(value.strip() for value in row):
             continue
-        if len(row) < 3:
-            raise RuleValidationError("expected direction, source, target, comment", index=line)
-        values = {
-            "direction": row[0].strip() or (direction or ""),
-            "source": row[1],
-            "target": row[2],
-            "scope": scope,
-            "profile_id": profile_id,
-            "book_fingerprint": book_fingerprint,
-        }
-        if len(row) > 3:
-            values["comment"] = row[3]
-        result.append(Rule.from_dict(values))
+        try:
+            if len(row) < 3:
+                raise RuleValidationError("expected direction, source, target, comment", index=line)
+            values = {
+                "direction": row[0].strip() or (direction or ""),
+                "source": row[1],
+                "target": row[2],
+                "scope": scope,
+                "profile_id": profile_id,
+                "book_fingerprint": book_fingerprint,
+            }
+            if len(row) > 3:
+                values["comment"] = row[3]
+            result.append(Rule.from_dict(values))
+        except RuleValidationError as exc:
+            if strict:
+                raise
+            diagnostics.append(ImportDiagnostic(line, str(exc), "error"))
     return result
 
 
@@ -183,33 +198,40 @@ def _opencc_rows(
     profile_id: str,
     book_fingerprint: str,
     diagnostics: list[ImportDiagnostic],
+    *,
+    strict: bool,
 ) -> list[Rule]:
     result: list[Rule] = []
     for line, raw in enumerate(text.splitlines(), 1):
         if not raw.strip() or raw.lstrip().startswith("#"):
             continue
-        fields = raw.split("\t")
-        if len(fields) < 2:
-            raise RuleValidationError("expected source<TAB>target", index=line)
-        candidates = fields[1].split()
-        if not candidates:
-            raise RuleValidationError("target is empty", index=line)
-        if len(candidates) > 1:
-            diagnostics.append(
-                ImportDiagnostic(line, "discarded candidates: " + " ".join(candidates[1:]))
+        try:
+            fields = raw.split("\t")
+            if len(fields) < 2:
+                raise RuleValidationError("expected source<TAB>target", index=line)
+            candidates = fields[1].split()
+            if not candidates:
+                raise RuleValidationError("target is empty", index=line)
+            if len(candidates) > 1:
+                diagnostics.append(
+                    ImportDiagnostic(line, "discarded candidates: " + " ".join(candidates[1:]))
+                )
+            result.append(
+                Rule.from_dict(
+                    {
+                        "direction": direction,
+                        "source": fields[0],
+                        "target": candidates[0],
+                        "scope": scope,
+                        "profile_id": profile_id,
+                        "book_fingerprint": book_fingerprint,
+                    }
+                )
             )
-        result.append(
-            Rule.from_dict(
-                {
-                    "direction": direction,
-                    "source": fields[0],
-                    "target": candidates[0],
-                    "scope": scope,
-                    "profile_id": profile_id,
-                    "book_fingerprint": book_fingerprint,
-                }
-            )
-        )
+        except RuleValidationError as exc:
+            if strict:
+                raise
+            diagnostics.append(ImportDiagnostic(line, str(exc), "error"))
     return result
 
 
@@ -253,4 +275,5 @@ __all__ = [
     "import_rules",
     "import_tsv",
     "parse_rules",
+    "rule_dedup_key",
 ]

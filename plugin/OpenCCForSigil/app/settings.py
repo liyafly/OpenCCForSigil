@@ -9,6 +9,7 @@ from uuid import uuid4
 from app.profiles import Profile, ProfileStore
 from core.models import RuleSnapshot
 from rules.store import RuleSet, RuleStore
+from opencc_backend.configs import comparison_configs
 
 
 ALIASES = {"include_nav": "convert_nav", "include_ncx": "convert_ncx",
@@ -173,43 +174,55 @@ class RunSettings:
         from ui.rules_window import show_rules_window
 
         rulesets, errors = self.rules.list()
-        identifiers = tuple(dict.fromkeys((*self.active.ruleset_ids,
-                                          *(item.id for item in rulesets), "default")))
-        identifier, accepted = qt.QInputDialog.getItem(
-            parent, translator.text("settings.rules"), translator.text("settings.ruleset"),
-            list(identifiers), 0, True)
-        if not accepted or not identifier.strip():
-            return
-        identifier = identifier.strip()
-        path = self.rules.directory / f"{identifier}.json"
-        # Validate IDs before either reading or saving paths supplied by the UI.
-        self.rules._validate_id(identifier)
-        if path.exists():
-            try:
-                ruleset = self.rules.load(identifier)
-            except (OSError, ValueError):
-                try:
-                    self.storage.quarantine(path)
-                except Exception:
-                    pass
-                errors = (*errors, (path.name, "corrupt ruleset backed up"))
-                ruleset = RuleSet(identifier)
-        else:
-            ruleset = RuleSet(identifier)
+        previous = {item.id: item for item in rulesets}
+        values = {item.id: item for item in rulesets}
+        values.setdefault("default", RuleSet("default"))
+        identifiers = tuple(dict.fromkeys((*self.active.ruleset_ids, *values)))
+        initial_id = next((item for item in self.active.ruleset_ids if item in values),
+                          identifiers[0] if identifiers else "default")
+        for identifier in identifiers:
+            values.setdefault(identifier, RuleSet(identifier))
         result = show_rules_window(
-            ruleset.rules, translator=translator, official_convert=self.backend,
+            values[initial_id].rules, translator=translator, official_convert=self.backend,
             config=config, profile_id=self.active.id, book_fingerprint=self.book_fingerprint,
             available_configs=self.backend.available_configs(),
-            storage_errors=tuple(name for name, _error in errors))
+            comparison_configs=comparison_configs(config),
+            storage_errors=tuple(name for name, _error in errors),
+            rulesets=tuple(values.values()), ruleset_id=initial_id,
+        )
         if result is not None:
-            self.rules.save(RuleSet(identifier, result, ruleset.name))
-            updated = replace(self.active, ruleset_ids=tuple(dict.fromkeys(
-                (*self.active.ruleset_ids, identifier))))
-            if self.active_profile_is_saved:
+            if isinstance(result, tuple):
+                # Keep compatibility with callers/tests that still provide the
+                # previous rules-only result shape.
+                selected_id = initial_id
+                result_sets = (RuleSet(selected_id, result, values[selected_id].name),)
+                renamed = ()
+            else:
+                selected_id = result.selected_id
+                result_sets = result.rulesets
+                renamed = result.renamed
+            for item in result_sets:
+                old = previous.get(item.id)
+                if old != item and (item.id != "default" or item.rules):
+                    self.rules.save(item)
+            if renamed:
+                self._replace_ruleset_references(renamed)
+                for old_id, _new_id in renamed:
+                    old_path = self.rules.directory / f"{old_id}.json"
+                    old_path.unlink(missing_ok=True)
+            self.rules._validate_id(selected_id)
+            updated_rule_ids = tuple(dict.fromkeys(
+                [dict(renamed).get(item, item) for item in self.active.ruleset_ids]
+                + [selected_id]
+            ))
+            updated = replace(self.active, ruleset_ids=updated_rule_ids)
+            if (self.active_profile_is_saved
+                    and selected_id not in self.active.ruleset_ids):
                 response = qt.QMessageBox.question(
                     parent, translator.text("settings.rules"),
                     translator.text("settings.add_ruleset_to_profile",
-                                    ruleset=identifier, profile=self.active.name or self.active.id),
+                                    ruleset=selected_id,
+                                    profile=self.active.name or self.active.id),
                     qt.QMessageBox.Yes | qt.QMessageBox.No,
                     qt.QMessageBox.No,
                 )
@@ -218,9 +231,23 @@ class RunSettings:
                 else:
                     qt.QMessageBox.information(
                         parent, translator.text("settings.rules"),
-                        translator.text("settings.ruleset_session_only", ruleset=identifier),
+                        translator.text("settings.ruleset_session_only", ruleset=selected_id),
                     )
             self.active = updated
+
+    def _replace_ruleset_references(self, renames):
+        replacements = dict(renames)
+        profiles, _errors = self.profiles.load_all()
+        for profile in profiles:
+            changed = tuple(dict.fromkeys(replacements.get(item, item)
+                                          for item in profile.ruleset_ids))
+            if changed != profile.ruleset_ids:
+                self.profiles.save(replace(profile, ruleset_ids=changed))
+        self.active = replace(
+            self.active,
+            ruleset_ids=tuple(dict.fromkeys(
+                replacements.get(item, item) for item in self.active.ruleset_ids)),
+        )
 
     def freeze_rules(self, profile):
         identifiers = self._existing_ruleset_ids(profile.ruleset_ids)
@@ -281,7 +308,8 @@ class RunSettings:
         elif name == "history":
             from ui.history_window import show_history
             dialog = show_history(
-                self.storage.paths.history, parent=parent, language=translator.language,
+                self.storage.paths.history, logs_root=self.storage.paths.logs,
+                parent=parent, language=translator.language, translator=translator,
                 on_inspect=lambda record: self.inspect_report(record, translator, qt, parent),
                 on_export=lambda record, full, diff: self.export_report(
                     record, full, diff, translator, qt, parent))

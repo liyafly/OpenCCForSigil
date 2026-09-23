@@ -12,6 +12,41 @@ from rules.models import Rule, RuleSnapshot
 from rules.precedence import base_direction
 from rules.validators import RuleValidationError, validate_rules
 from opencc_backend.configs import V1_CONFIGS
+from rules.store import RuleSet
+from rules.importers import ImportResult, rule_dedup_key
+
+
+@dataclass(frozen=True)
+class RuleImportReview:
+    additions: tuple[Rule, ...]
+    duplicate_count: int
+    diagnostics: tuple[object, ...]
+    conflicts: tuple[object, ...]
+
+
+@dataclass(frozen=True)
+class RuleWindowResult:
+    selected_id: str
+    rulesets: tuple[RuleSet, ...]
+    renamed: tuple[tuple[str, str], ...] = ()
+
+
+def review_import(existing: Iterable[Rule], imported: ImportResult) -> RuleImportReview:
+    """Prepare additions without changing the current rule list."""
+
+    existing_rules = tuple(existing)
+    known = {rule_dedup_key(rule) for rule in existing_rules}
+    additions = []
+    duplicates = len(imported.duplicates)
+    for rule in imported.rules:
+        key = rule_dedup_key(rule)
+        if key in known:
+            duplicates += 1
+        else:
+            known.add(key)
+            additions.append(rule)
+    conflicts = tuple(find_conflicts((*existing_rules, *additions)))
+    return RuleImportReview(tuple(additions), duplicates, imported.diagnostics, conflicts)
 
 
 _LABELS = {
@@ -48,6 +83,27 @@ _LABELS = {
         "priority": "Priority",
         "exact": "exact",
         "protect": "protect",
+        "ruleset": "Rule set",
+        "new_ruleset": "New",
+        "rename_ruleset": "Rename",
+        "scope_global": "Global",
+        "scope_profile": "Current profile",
+        "scope_book": "Current book",
+        "editor_group": "Edit rules",
+        "transfer_group": "Import / export",
+        "test_group": "Test",
+        "import_format": "Format",
+        "skip_invalid": "Skip invalid rows and report them",
+        "import_add": "Add imported rules",
+        "import_cancel": "Cancel",
+        "import_summary": "New: {new}\nDuplicates: {duplicates}\nDiscarded candidates: {discarded}\nError rows: {errors}",
+        "import_line": "Line {line}: {message}",
+        "rule_hit": "{id}: {source} → {target} at {start}–{end}",
+        "no_hits": "No user rules matched.",
+        "duplicate_ruleset": "A rule set with this ID already exists.",
+        "invalid_ruleset": "Rule set IDs must be simple file names without slashes.",
+        "no_converter": "No official conversion callback supplied.",
+        "input_required": "Enter text for dictionary inspection.",
     },
     "zh-Hans": {
         "title": "规则管理",
@@ -82,6 +138,27 @@ _LABELS = {
         "priority": "优先级",
         "exact": "精确",
         "protect": "保护",
+        "ruleset": "规则集",
+        "new_ruleset": "新建",
+        "rename_ruleset": "重命名",
+        "scope_global": "全局",
+        "scope_profile": "当前方案",
+        "scope_book": "当前书",
+        "editor_group": "编辑规则",
+        "transfer_group": "导入 / 导出",
+        "test_group": "测试",
+        "import_format": "格式",
+        "skip_invalid": "跳过错误行并报告",
+        "import_add": "加入导入规则",
+        "import_cancel": "取消",
+        "import_summary": "新增：{new}\n重复：{duplicates}\n丢弃候选：{discarded}\n错误行：{errors}",
+        "import_line": "第 {line} 行：{message}",
+        "rule_hit": "{id}：{source} → {target}，位置 {start}–{end}",
+        "no_hits": "未命中用户规则。",
+        "duplicate_ruleset": "已有此 ID 的规则集。",
+        "invalid_ruleset": "规则集 ID 必须是简单文件名，不能包含斜线。",
+        "no_converter": "没有提供官方转换回调。",
+        "input_required": "请输入要检查的文本。",
     },
     "zh-Hant": {
         "title": "規則管理",
@@ -116,6 +193,27 @@ _LABELS = {
         "priority": "優先級",
         "exact": "精確",
         "protect": "保護",
+        "ruleset": "規則集",
+        "new_ruleset": "新增",
+        "rename_ruleset": "重新命名",
+        "scope_global": "全域",
+        "scope_profile": "目前設定檔",
+        "scope_book": "目前書籍",
+        "editor_group": "編輯規則",
+        "transfer_group": "匯入 / 匯出",
+        "test_group": "測試",
+        "import_format": "格式",
+        "skip_invalid": "略過錯誤列並回報",
+        "import_add": "加入匯入規則",
+        "import_cancel": "取消",
+        "import_summary": "新增：{new}\n重複：{duplicates}\n捨棄候選：{discarded}\n錯誤列：{errors}",
+        "import_line": "第 {line} 列：{message}",
+        "rule_hit": "{id}：{source} → {target}，位置 {start}–{end}",
+        "no_hits": "未命中使用者規則。",
+        "duplicate_ruleset": "已有此 ID 的規則集。",
+        "invalid_ruleset": "規則集 ID 必須是簡單檔名，不能包含斜線。",
+        "no_converter": "沒有提供官方轉換回呼。",
+        "input_required": "請輸入要檢查的文字。",
     },
 }
 
@@ -186,6 +284,8 @@ def show_dictionary_inspector(
     official_convert: Callable[[str], str] | object,
     comparison_configs: Iterable[str] = (),
     snapshot: RuleSnapshot | None = None,
+    profile_id: str | None = None,
+    book_fingerprint: str | None = None,
     translator: Any = None,
 ) -> DictionaryInspection:
     """Display read-only independent comparison results and return them."""
@@ -196,6 +296,8 @@ def show_dictionary_inspector(
         official_convert=official_convert,
         comparison_configs=comparison_configs,
         snapshot=snapshot,
+        profile_id=profile_id,
+        book_fingerprint=book_fingerprint,
     )
     qt = _load_qt_widgets()
     _ensure_application(qt)
@@ -262,7 +364,9 @@ def show_rules_window(
     available_configs: Iterable[str] | None = None,
     comparison_configs: Iterable[str] = (),
     storage_errors: Iterable[str] = (),
-) -> tuple[Rule, ...] | None:
+    rulesets: Iterable[RuleSet] | None = None,
+    ruleset_id: str | None = None,
+) -> tuple[Rule, ...] | RuleWindowResult | None:
     """Open the manager and return committed rules, or ``None`` on cancel."""
 
     qt = _load_qt_widgets()
@@ -278,10 +382,16 @@ def show_rules_window(
         available_configs=available_configs,
         comparison_configs=comparison_configs,
         storage_errors=storage_errors,
+        rulesets=rulesets,
+        ruleset_id=ruleset_id,
     )
     exec_method = getattr(dialog.dialog, "exec", None) or dialog.dialog.exec_
     exec_method()
-    return tuple(dialog.rules) if dialog.accepted else None
+    if not dialog.accepted:
+        return None
+    if dialog._managed:
+        return dialog.result
+    return tuple(dialog.rules)
 
 
 class RuleManagerDialog:
@@ -298,11 +408,22 @@ class RuleManagerDialog:
         available_configs: Iterable[str] | None = None,
         comparison_configs: Iterable[str] = (),
         storage_errors: Iterable[str] = (),
+        rulesets: Iterable[RuleSet] | None = None,
+        ruleset_id: str | None = None,
     ) -> None:
         self._qt = qt_widgets
         self._translator = translator
         self._labels = _labels(translator)
-        self.rules = list(rules)
+        self._managed = rulesets is not None
+        values = tuple(rulesets or (RuleSet(ruleset_id or "default", tuple(rules)),))
+        if not values:
+            values = (RuleSet(ruleset_id or "default", tuple(rules)),)
+        self._rulesets = {item.id: item for item in values}
+        selected = ruleset_id if ruleset_id in self._rulesets else values[0].id
+        self._ruleset_id = selected
+        self._renamed: list[tuple[str, str]] = []
+        self.rules = list(self._rulesets[selected].rules)
+        self.result: RuleWindowResult | None = None
         self._official_convert = official_convert
         self._config = config
         self._profile_id = profile_id
@@ -315,6 +436,7 @@ class RuleManagerDialog:
         self.dialog.setWindowTitle(self._labels["title"])
         self.dialog.resize(840, 540)
         self._build()
+        self._populate_rulesets()
         self._refresh()
 
     def _build(self) -> None:
@@ -325,6 +447,17 @@ class RuleManagerDialog:
                 files=", ".join(self._storage_errors)))
             notice.setWordWrap(True)
             layout.addWidget(notice)
+
+        ruleset_row = qt.QHBoxLayout()
+        ruleset_row.addWidget(qt.QLabel(self._labels["ruleset"]))
+        self.ruleset_combo = qt.QComboBox()
+        self.new_ruleset_button = qt.QPushButton(self._labels["new_ruleset"])
+        self.rename_ruleset_button = qt.QPushButton(self._labels["rename_ruleset"])
+        ruleset_row.addWidget(self.ruleset_combo, 1)
+        ruleset_row.addWidget(self.new_ruleset_button)
+        ruleset_row.addWidget(self.rename_ruleset_button)
+        layout.addLayout(ruleset_row)
+
         self.table = qt.QTableWidget(0, 6)
         self.table.setHorizontalHeaderLabels(
             [
@@ -348,7 +481,8 @@ class RuleManagerDialog:
         self.target_edit = qt.QLineEdit()
         self.scope_combo = qt.QComboBox()
         for scope in ("global", "profile", "book"):
-            self.scope_combo.addItem(scope, scope)
+            self.scope_combo.addItem(self._labels[f"scope_{scope}"], scope)
+        self._set_book_scope_enabled()
         self.priority_edit = qt.QSpinBox()
         self.priority_edit.setRange(-100000, 100000)
         self.priority_edit.setValue(100)
@@ -365,36 +499,51 @@ class RuleManagerDialog:
             form.addWidget(qt.QLabel(self._labels[key]), row // 3, (row % 3) * 2)
             form.addWidget(widget, row // 3, (row % 3) * 2 + 1)
         layout.addLayout(form)
-        buttons = qt.QHBoxLayout()
+        editor_box = qt.QGroupBox(self._labels["editor_group"])
+        buttons = qt.QHBoxLayout(editor_box)
         self.add_button = qt.QPushButton(self._labels["add"])
         self.update_button = qt.QPushButton(self._labels["update"])
         self.remove_button = qt.QPushButton(self._labels["remove"])
-        self.test_button = qt.QPushButton(self._labels["test"])
-        self.inspect_button = qt.QPushButton(self._labels["inspect"])
+        for button in (self.add_button, self.update_button, self.remove_button):
+            buttons.addWidget(button)
+        layout.addWidget(editor_box)
+
+        transfer_box = qt.QGroupBox(self._labels["transfer_group"])
+        transfer = qt.QHBoxLayout(transfer_box)
         self.import_button = qt.QPushButton(self._labels["import"])
         self.export_button = qt.QPushButton(self._labels["export"])
-        self.apply_button = qt.QPushButton(self._labels["apply"])
-        self.cancel_button = qt.QPushButton(self._labels["cancel"])
-        for button in (
-            self.add_button,
-            self.update_button,
-            self.remove_button,
-            self.test_button,
-            self.inspect_button,
-            self.import_button,
-            self.export_button,
-            self.apply_button,
-            self.cancel_button,
-        ):
-            buttons.addWidget(button)
-        layout.addLayout(buttons)
-        self.test_input = qt.QLineEdit()
+        transfer.addWidget(self.import_button)
+        transfer.addWidget(self.export_button)
+        layout.addWidget(transfer_box)
+
+        test_box = qt.QGroupBox(self._labels["test_group"])
+        test_layout = qt.QVBoxLayout(test_box)
+        test_buttons = qt.QHBoxLayout()
+        self.test_button = qt.QPushButton(self._labels["test"])
+        self.inspect_button = qt.QPushButton(self._labels["inspect"])
+        test_buttons.addWidget(self.test_button)
+        test_buttons.addWidget(self.inspect_button)
+        test_layout.addLayout(test_buttons)
+        self.test_input = qt.QPlainTextEdit()
         self.test_input.setPlaceholderText(self._labels["input"])
-        layout.addWidget(self.test_input)
+        test_layout.addWidget(self.test_input)
         self.test_output = qt.QPlainTextEdit()
         self.test_output.setReadOnly(True)
         self.test_output.setPlaceholderText(self._labels["output"])
-        layout.addWidget(self.test_output)
+        test_layout.addWidget(self.test_output)
+        layout.addWidget(test_box, 1)
+
+        actions = qt.QHBoxLayout()
+        actions.addStretch(1)
+        self.apply_button = qt.QPushButton(self._labels["apply"])
+        self.cancel_button = qt.QPushButton(self._labels["cancel"])
+        actions.addWidget(self.cancel_button)
+        actions.addWidget(self.apply_button)
+        layout.addLayout(actions)
+
+        self.ruleset_combo.currentIndexChanged.connect(self._ruleset_changed)
+        self.new_ruleset_button.clicked.connect(self._new_ruleset)
+        self.rename_ruleset_button.clicked.connect(self._rename_ruleset)
         self.add_button.clicked.connect(self._add)
         self.update_button.clicked.connect(self._update_selected)
         self.remove_button.clicked.connect(self._remove)
@@ -407,6 +556,97 @@ class RuleManagerDialog:
         self.type_combo.currentIndexChanged.connect(self._type_changed)
         self.table.itemSelectionChanged.connect(self._selection_changed)
 
+    def _populate_rulesets(self) -> None:
+        self.ruleset_combo.blockSignals(True)
+        self.ruleset_combo.clear()
+        for identifier, ruleset in self._rulesets.items():
+            self.ruleset_combo.addItem(ruleset.name or identifier, identifier)
+        index = self.ruleset_combo.findData(self._ruleset_id)
+        if index >= 0:
+            self.ruleset_combo.setCurrentIndex(index)
+        self.ruleset_combo.blockSignals(False)
+
+    def _stash_ruleset(self) -> None:
+        if self._ruleset_id in self._rulesets:
+            current = self._rulesets[self._ruleset_id]
+            self._rulesets[self._ruleset_id] = RuleSet(
+                current.id, tuple(self.rules), current.name)
+
+    def _ruleset_changed(self, *_args) -> None:
+        identifier = self.ruleset_combo.currentData()
+        if not identifier or identifier == self._ruleset_id:
+            return
+        self._stash_ruleset()
+        if identifier not in self._rulesets:
+            return
+        self._ruleset_id = str(identifier)
+        self.rules = list(self._rulesets[self._ruleset_id].rules)
+        self._refresh()
+
+    def _new_ruleset(self) -> None:
+        identifier, accepted = self._qt.QInputDialog.getText(
+            self.dialog, self._labels["title"], self._labels["ruleset"])
+        identifier = str(identifier).strip()
+        if not accepted:
+            return
+        try:
+            _validate_ruleset_id(identifier)
+        except ValueError:
+            self._warn(self._labels["invalid_ruleset"])
+            return
+        if identifier in self._rulesets:
+            self._warn(self._labels["duplicate_ruleset"])
+            return
+        self._stash_ruleset()
+        self._rulesets[identifier] = RuleSet(identifier)
+        self._ruleset_id = identifier
+        self.rules = []
+        self._populate_rulesets()
+        self._refresh()
+
+    def _rename_ruleset(self) -> None:
+        old = self._ruleset_id
+        identifier, accepted = self._qt.QInputDialog.getText(
+            self.dialog, self._labels["title"], self._labels["ruleset"],
+            text=old)
+        identifier = str(identifier).strip()
+        if not accepted or identifier == old:
+            return
+        try:
+            _validate_ruleset_id(identifier)
+        except ValueError:
+            self._warn(self._labels["invalid_ruleset"])
+            return
+        if identifier in self._rulesets:
+            self._warn(self._labels["duplicate_ruleset"])
+            return
+        self._stash_ruleset()
+        ruleset = self._rulesets.pop(old)
+        self._rulesets[identifier] = RuleSet(identifier, ruleset.rules, ruleset.name)
+        previous = next((index for index, pair in enumerate(self._renamed)
+                         if pair[1] == old), None)
+        if previous is None:
+            self._renamed.append((old, identifier))
+        else:
+            original, _current = self._renamed[previous]
+            self._renamed[previous] = (original, identifier)
+        self._ruleset_id = identifier
+        self.rules = list(ruleset.rules)
+        self._populate_rulesets()
+        self._refresh()
+
+    def _set_book_scope_enabled(self) -> None:
+        index = self.scope_combo.findData("book")
+        if index < 0:
+            return
+        model = self.scope_combo.model()
+        item = model.item(index) if model is not None else None
+        if item is not None:
+            item.setEnabled(bool(self._book_fingerprint))
+
+    def _warn(self, message: str) -> None:
+        self._qt.QMessageBox.warning(self.dialog, self._labels["title"], message)
+
     def _refresh(self) -> None:
         self.table.setRowCount(0)
         for rule in self.rules:
@@ -417,7 +657,7 @@ class RuleManagerDialog:
                 rule.direction,
                 rule.source,
                 rule.target or rule.source,
-                rule.scope,
+                self._labels.get(f"scope_{rule.scope}", rule.scope),
                 str(rule.priority),
             )
             for column, value in enumerate(values):
@@ -517,43 +757,45 @@ class RuleManagerDialog:
 
     def _test(self) -> None:
         if self._official_convert is None:
-            self.test_output.setPlainText("No official conversion callback supplied")
+            self.test_output.setPlainText(self._labels["no_converter"])
             return
         try:
             result = convert_with_overlay(
-                self.test_input.text(),
+                self.test_input.toPlainText(),
                 lambda value: convert_for(self._config, value, self._official_convert),
                 config=self._config,
                 snapshot=RuleSnapshot.freeze(self.rules),
                 profile_id=self._profile_id,
                 book_fingerprint=self._book_fingerprint,
             )
-            self.test_output.setPlainText(
-                "\n".join(
-                    (
+            lines = [
                         f"{self._labels['original_label']}: {result.original}",
                         f"{self._labels['pre_rules_label']}: {result.after_pre_rules}",
                         f"{self._labels['opencc_label']}: {result.after_opencc}",
                         f"{self._labels['post_rules_label']}: {result.after_post_rules}",
                         f"{self._labels['final_label']}: {result.final}",
                         f"{self._labels['hits_label']}: {len(result.rule_hits)}",
-                    )
-                )
-            )
+            ]
+            lines.extend(self._labels["rule_hit"].format(
+                id=hit.rule_id, source=hit.source, target=hit.target,
+                start=hit.start, end=hit.end) for hit in result.rule_hits)
+            if not result.rule_hits:
+                lines.append(self._labels["no_hits"])
+            self.test_output.setPlainText("\n".join(lines))
         except Exception as exc:
             self.test_output.setPlainText(str(exc))
 
     def _inspect(self) -> None:
         if self._official_convert is None:
-            self.test_output.setPlainText("No official conversion callback supplied")
+            self.test_output.setPlainText(self._labels["no_converter"])
             return
-        text = self.test_input.text()
+        text = self.test_input.toPlainText()
         if not text:
             row = self.table.currentRow()
             if 0 <= row < len(self.rules):
                 text = self.rules[row].source
         if not text:
-            self.test_output.setPlainText("Enter text for dictionary inspection")
+            self.test_output.setPlainText(self._labels["input_required"])
             return
         try:
             show_dictionary_inspector(
@@ -562,6 +804,8 @@ class RuleManagerDialog:
                 official_convert=self._official_convert,
                 comparison_configs=self._comparison_configs,
                 snapshot=RuleSnapshot.freeze(self.rules),
+                profile_id=self._profile_id,
+                book_fingerprint=self._book_fingerprint,
                 translator=self._translator,
             )
         except Exception as exc:
@@ -579,17 +823,117 @@ class RuleManagerDialog:
         if not path:
             return
         try:
-            result = import_rules(path, direction=str(self.direction_combo.currentData()))
-            self.rules.extend(result.rules)
-            self._refresh()
-            if result.conflicts:
-                self._qt.QMessageBox.warning(
-                    self.dialog,
-                    self._labels["title"],
-                    "\n".join(conflict.message for conflict in result.conflicts),
-                )
+            options = self._import_options(path)
+            if options is None:
+                return
+            result = import_rules(
+                path,
+                format=options["format"],
+                direction=options["direction"],
+                scope=options["scope"],
+                profile_id=self._profile_id or "",
+                book_fingerprint=self._book_fingerprint or "",
+                strict=options["strict"],
+            )
+            review = review_import(self.rules, result)
+            if self._confirm_import(review):
+                self.rules.extend(review.additions)
+                self._refresh()
         except Exception as exc:
-            self._qt.QMessageBox.warning(self.dialog, self._labels["title"], str(exc))
+            self._warn(str(exc))
+
+    def _import_options(self, path):
+        qt = self._qt
+        dialog = qt.QDialog(self.dialog)
+        dialog.setWindowTitle(self._labels["import"])
+        layout = qt.QVBoxLayout(dialog)
+        form = qt.QFormLayout()
+        format_combo = qt.QComboBox()
+        formats = (("json", "JSON"), ("tsv", "TSV"), ("csv", "CSV"), ("txt", "OpenCC TXT"))
+        for value, label in formats:
+            format_combo.addItem(label, value)
+        suffix = str(path).rsplit(".", 1)[-1].lower() if "." in str(path) else "json"
+        suffix = "txt" if suffix in {"opencc", "opencc-txt"} else suffix
+        format_index = format_combo.findData(suffix)
+        if format_index >= 0:
+            format_combo.setCurrentIndex(format_index)
+        direction_combo = qt.QComboBox()
+        for direction in self._available_configs:
+            direction_combo.addItem(direction, direction)
+        _select_default_direction(direction_combo, self._config)
+        scope_combo = qt.QComboBox()
+        for scope in ("global", "profile", "book"):
+            scope_combo.addItem(self._labels[f"scope_{scope}"], scope)
+        if not self._book_fingerprint:
+            index = scope_combo.findData("book")
+            model = scope_combo.model()
+            item = model.item(index) if model is not None and index >= 0 else None
+            if item is not None:
+                item.setEnabled(False)
+        skip_invalid = qt.QCheckBox(self._labels["skip_invalid"])
+        skip_invalid.setChecked(True)
+        form.addRow(self._labels["import_format"], format_combo)
+        form.addRow(self._labels["direction"], direction_combo)
+        form.addRow(self._labels["scope"], scope_combo)
+        form.addRow(skip_invalid)
+        layout.addLayout(form)
+        buttons = qt.QHBoxLayout()
+        cancel = qt.QPushButton(self._labels["import_cancel"])
+        accept = qt.QPushButton(self._labels["import_add"])
+        buttons.addStretch(1)
+        buttons.addWidget(cancel)
+        buttons.addWidget(accept)
+        layout.addLayout(buttons)
+        state = {"accepted": False}
+        cancel.clicked.connect(dialog.reject)
+        accept.clicked.connect(lambda: (state.update(accepted=True), dialog.accept()))
+        execute = getattr(dialog, "exec", None) or dialog.exec_
+        execute()
+        if not state["accepted"]:
+            return None
+        return {
+            "format": str(format_combo.currentData()),
+            "direction": str(direction_combo.currentData()),
+            "scope": str(scope_combo.currentData()),
+            "strict": not skip_invalid.isChecked(),
+        }
+
+    def _confirm_import(self, review: RuleImportReview) -> bool:
+        diagnostics = tuple(review.diagnostics)
+        errors = sum(getattr(item, "severity", "") == "error" for item in diagnostics)
+        discarded = len(diagnostics) - errors
+        message = self._labels["import_summary"].format(
+            new=len(review.additions), duplicates=review.duplicate_count,
+            discarded=discarded, errors=errors,
+        )
+        detail_lines = [self._labels["import_line"].format(
+            line=item.line, message=item.message) for item in diagnostics]
+        detail_lines.extend(conflict.message for conflict in review.conflicts)
+        detail = "\n".join(detail_lines)
+        qt = self._qt
+        dialog = qt.QDialog(self.dialog)
+        dialog.setWindowTitle(self._labels["import"])
+        layout = qt.QVBoxLayout(dialog)
+        summary = qt.QLabel(message)
+        summary.setWordWrap(True)
+        layout.addWidget(summary)
+        details = qt.QPlainTextEdit()
+        details.setReadOnly(True)
+        details.setPlainText(detail)
+        layout.addWidget(details, 1)
+        buttons = qt.QHBoxLayout()
+        cancel = qt.QPushButton(self._labels["import_cancel"])
+        accept = qt.QPushButton(self._labels["import_add"])
+        buttons.addStretch(1)
+        buttons.addWidget(cancel)
+        buttons.addWidget(accept)
+        layout.addLayout(buttons)
+        state = {"accepted": False}
+        cancel.clicked.connect(dialog.reject)
+        accept.clicked.connect(lambda: (state.update(accepted=True), dialog.accept()))
+        execute = getattr(dialog, "exec", None) or dialog.exec_
+        execute()
+        return bool(state["accepted"])
 
     def _export(self) -> None:
         from rules.exporters import export_rules
@@ -609,8 +953,18 @@ class RuleManagerDialog:
             self._qt.QMessageBox.warning(self.dialog, self._labels["title"], str(exc))
 
     def _apply(self) -> None:
+        self._stash_ruleset()
         self.accepted = True
+        if self._managed:
+            self.result = RuleWindowResult(
+                self._ruleset_id, tuple(self._rulesets.values()), tuple(self._renamed))
         self.dialog.accept()
+
+
+def _validate_ruleset_id(identifier: str) -> None:
+    if (not identifier or identifier in {".", ".."}
+            or any(char in identifier for char in ("/", "\\", ":", "\x00"))):
+        raise ValueError("ruleset id must be a simple filename-safe identifier")
 
 
 def _load_qt_widgets() -> Any:
@@ -668,10 +1022,13 @@ def _select_default_direction(combo, config):
 
 __all__ = [
     "DictionaryInspection",
+    "RuleImportReview",
     "RuleManagerDialog",
+    "RuleWindowResult",
     "STANDARD_CONFIGS",
     "convert_for",
     "inspect_dictionary",
+    "review_import",
     "show_dictionary_inspector",
     "show_rules_window",
 ]

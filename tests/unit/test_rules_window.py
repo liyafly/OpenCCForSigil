@@ -1,10 +1,15 @@
 from types import SimpleNamespace
 
 from rules.models import Rule
+from rules.models import RuleSnapshot
+from rules.importers import import_rules
+from opencc_backend.configs import comparison_configs
 from ui.rules_window import (
     RuleManagerDialog,
     _configure_rule_table,
     _select_default_direction,
+    inspect_dictionary,
+    review_import,
 )
 
 
@@ -214,3 +219,113 @@ def test_rule_table_is_not_editable_and_conflict_can_select_a_rule():
     assert manager.conflict_list.items
     manager._select_conflict_item(manager.conflict_list.items[0])
     assert manager.table.currentRow() == 0
+
+
+def test_nonstrict_txt_import_reports_candidates_and_invalid_rows_with_scope():
+    imported = import_rules(
+        "术语\t专名 其他候选\n空目标\t\n",
+        format="txt",
+        direction="s2t",
+        scope="profile",
+        profile_id="current-profile",
+        strict=False,
+    )
+
+    assert len(imported.rules) == 1
+    assert imported.rules[0].scope == "profile"
+    assert imported.rules[0].profile_id == "current-profile"
+    assert len(imported.diagnostics) == 2
+    assert [item.severity for item in imported.diagnostics] == ["warning", "error"]
+
+
+def test_import_review_counts_existing_rules_as_duplicates_without_adding():
+    existing = Rule(id="existing", source="术语", target="专名", direction="s2t")
+    imported = import_rules(
+        '[{"type":"exact","direction":"s2t","source":"术语","target":"专名"}]',
+        format="json",
+    )
+
+    review = review_import((existing,), imported)
+
+    assert review.additions == ()
+    assert review.duplicate_count == 1
+
+
+def test_dictionary_inspection_applies_profile_rules_and_comparison_configs():
+    rule = Rule(id="profile-rule", source="术语", target="专名", direction="s2twp",
+                scope="profile", profile_id="current-profile")
+    inspection = inspect_dictionary(
+        "术语",
+        config="s2twp",
+        official_convert=lambda _config, value: value,
+        comparison_configs=comparison_configs("s2twp"),
+        snapshot=RuleSnapshot.freeze((rule,)),
+        profile_id="current-profile",
+    )
+
+    assert inspection.matched_rules == ("profile-rule",)
+    assert tuple(name for name, _value in inspection.comparisons) == ("s2t", "s2tw", "s2twp")
+
+
+def test_ruleset_id_with_slash_is_rejected_with_localized_error():
+    manager = object.__new__(RuleManagerDialog)
+    manager.dialog = object()
+    manager._labels = {"title": "Rules", "ruleset": "Rule set",
+                       "invalid_ruleset": "localized invalid ID"}
+    manager._rulesets = {}
+    manager.rules = []
+    manager._ruleset_id = "default"
+    manager._renamed = []
+    manager._qt = SimpleNamespace(
+        QInputDialog=SimpleNamespace(getText=lambda *_args, **_kwargs: ("bad/name", True)),
+        QMessageBox=SimpleNamespace(warning=lambda _parent, _title, message:
+                                   setattr(manager, "warning", message)),
+    )
+    manager._warn = lambda message: setattr(manager, "warning", message)
+
+    manager._new_ruleset()
+
+    assert manager.warning == "localized invalid ID"
+    assert manager._rulesets == {}
+
+
+def test_switching_ruleset_stashes_edits_and_loads_selected_rules():
+    first = Rule(id="first", source="甲", target="乙", direction="s2t")
+    second = Rule(id="second", source="丙", target="丁", direction="s2t")
+    manager = object.__new__(RuleManagerDialog)
+    manager._ruleset_id = "one"
+    manager._rulesets = {"one": SimpleNamespace(id="one", rules=(first,), name=""),
+                         "two": SimpleNamespace(id="two", rules=(second,), name="")}
+    manager.rules = [first]
+    manager.ruleset_combo = SimpleNamespace(currentData=lambda: "two")
+    manager._refresh = lambda: None
+
+    manager._ruleset_changed()
+
+    assert manager._ruleset_id == "two"
+    assert manager.rules == [second]
+    assert manager._rulesets["one"].rules == (first,)
+
+
+def test_sandbox_lists_rule_id_source_target_and_match_location():
+    rule = Rule(id="known-rule", source="术语", target="专名", direction="s2t")
+    manager = object.__new__(RuleManagerDialog)
+    manager.rules = [rule]
+    manager._official_convert = lambda _config, text: text
+    manager._config = "s2t"
+    manager._profile_id = "profile"
+    manager._book_fingerprint = "book-hash"
+    manager._labels = {
+        "no_converter": "no converter", "original_label": "Original",
+        "pre_rules_label": "Pre", "opencc_label": "OpenCC",
+        "post_rules_label": "Post", "final_label": "Final", "hits_label": "Hits",
+        "rule_hit": "{id}: {source} -> {target} at {start}-{end}",
+        "no_hits": "No matches",
+    }
+    manager.test_input = SimpleNamespace(toPlainText=lambda: "术语")
+    manager.test_output = SimpleNamespace(setPlainText=lambda text:
+                                           setattr(manager, "output", text))
+
+    manager._test()
+
+    assert "known-rule: 术语 -> 专名 at 0-2" in manager.output
