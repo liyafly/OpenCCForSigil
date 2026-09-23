@@ -6,6 +6,7 @@ import pytest
 from app.controller import Controller
 from core.preview import PreviewSession
 from core.workflow import WorkflowError
+from logging_ext.history import _TEXT_KEYS
 from rules.models import Rule
 from rules.store import RuleSet, RuleStore
 from sigil.scope import Scope, TargetSelection
@@ -16,6 +17,10 @@ from ui.run_options import ConfigurationChoice
 class Book:
     def __init__(self):
         self.writes = []
+        self.epub_path = None
+
+    def get_epub_filepath(self):
+        return self.epub_path
 
     def text_iter(self):
         yield "a", "a.xhtml"
@@ -72,6 +77,7 @@ def test_back_to_settings_discards_old_plan_and_rebuilds(monkeypatch, tmp_path):
 
 def test_controller_records_hashes_and_counts_without_document_text(monkeypatch, tmp_path):
     book = Book()
+    book.epub_path = "/x/书.epub"
     ui(monkeypatch)
     monkeypatch.setattr("ui.preview_window.show_preview", accept)
     assert Controller(book, data_dir=tmp_path).run() == 0
@@ -79,6 +85,8 @@ def test_controller_records_hashes_and_counts_without_document_text(monkeypatch,
     record = history["sessions"][0]
     assert record["summary"]["changes"] == 1
     assert record["summary"]["config"] == "t2s"
+    assert record["summary"]["book_label"] == "书.epub"
+    assert not (_TEXT_KEYS & record["summary"].keys())
     assert record["commit_manifest"]["files"][0]["change_count"] == 1
     assert "漢字" not in json.dumps(history, ensure_ascii=False)
     assert "汉字" not in json.dumps(history, ensure_ascii=False)

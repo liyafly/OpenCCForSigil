@@ -5,8 +5,10 @@ under the plugin's user-data directory, never inside the EPUB or bundled data.
 Conversion and self-tests run locally without runtime downloads.
 
 Persisted history contains completed-session summaries, counts, file IDs,
-source/result hashes, and backend provenance. It contains no book bodies or
-full diff. Cancelled/failed runs retain their structured session log and status.
+source/result hashes, backend provenance, and the EPUB filename basename when
+the host supplies a path. It does not store the full path, EPUB title metadata,
+book bodies, or full diff. Cancelled/failed runs retain their structured
+session log and status.
 
 Markdown/JSON reports default to the same metadata. During Preview, the user
 may explicitly check **Include full diff** and choose an export path; that

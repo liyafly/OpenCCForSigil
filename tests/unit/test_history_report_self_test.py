@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -10,7 +11,7 @@ from app.self_test import run_self_test
 from logging_ext.history import HistoryError, HistoryStore
 from logging_ext.report import ReportError, export_json, export_markdown
 from logging_ext.retention import cleanup
-from ui.history_window import history_rows
+from ui.history_window import _configure_history_table, cleanup_with_confirmation, history_rows
 
 
 SESSION_ID = "123e4567-e89b-12d3-a456-426614174000"
@@ -149,17 +150,81 @@ def test_self_test_uses_injected_backend_and_writes_no_book(tmp_path: Path):
 
 
 def test_history_rows_expose_metadata_only():
+    class Translator:
+        def text(self, key, **_values):
+            return {"history.empty_value": "—", "history.status.success": "已完成"}.get(key, key)
+
     rows = history_rows(
         [
             {
                 "recorded_at": "2026-01-01T00:00:00+00:00",
                 "summary": {
-                    "book_name": "Book.epub",
+                    "book_label": "Book.epub",
                     "config": "s2t",
                     "changes": 3,
                     "status": "success",
                 },
             }
-        ]
+        ],
+        translator=Translator(),
     )
-    assert rows == [("2026-01-01T00:00:00+00:00", "Book.epub", "", "s2t", "0", "3", "success")]
+    expected_date = datetime.fromisoformat("2026-01-01T00:00:00+00:00").astimezone().strftime(
+        "%Y-%m-%d %H:%M")
+    assert rows == [(expected_date, "Book.epub", "—", "s2t", "0", "3", "已完成")]
+
+
+def test_history_old_records_show_empty_book_label():
+    rows = history_rows([{"recorded_at": "2026-01-01T00:00:00+00:00", "summary": {}}])
+    assert rows[0][1] == "—"
+
+
+def test_cleanup_confirmation_runs_dry_run_before_delete_and_respects_cancel(tmp_path):
+    history_root = tmp_path / "history"
+    logs_root = tmp_path / "logs"
+    store = HistoryStore(history_root)
+    old_id = "123e4567-e89b-12d3-a456-426614174002"
+    old_time = datetime.now(timezone.utc) - timedelta(days=60)
+    store.record_session({**SUMMARY, "session_id": old_id},
+                         {**MANIFEST, "session_id": old_id}, PROVENANCE,
+                         recorded_at=old_time)
+    month = logs_root / old_time.strftime("%Y-%m")
+    month.mkdir(parents=True)
+    log = month / f"{old_id}.jsonl"
+    log.write_text("{}\n", encoding="utf-8")
+    prompts = []
+
+    completed, _preview = cleanup_with_confirmation(
+        history_root, logs_root,
+        lambda result: prompts.append((len(result.removed_sessions),
+                                       len(result.removed_log_files))) or False,
+        now=datetime.now(timezone.utc),
+    )
+    assert not completed
+    assert prompts == [(1, 1)]
+    assert len(HistoryStore(history_root).load()) == 1
+    assert log.exists()
+
+    completed, result = cleanup_with_confirmation(
+        history_root, logs_root, lambda _preview: True, now=datetime.now(timezone.utc))
+    assert completed
+    assert len(result.removed_sessions) == 1
+    assert HistoryStore(history_root).load() == []
+    assert not log.exists()
+
+
+def test_history_table_is_not_editable_and_selects_whole_rows():
+    class View:
+        NoEditTriggers = 7
+        SelectRows = 9
+
+    class Table:
+        def setEditTriggers(self, value):
+            self.edit_triggers = value
+
+        def setSelectionBehavior(self, value):
+            self.selection = value
+
+    table = Table()
+    _configure_history_table(table, SimpleNamespace(QAbstractItemView=View))
+    assert table.edit_triggers == View.NoEditTriggers
+    assert table.selection == View.SelectRows

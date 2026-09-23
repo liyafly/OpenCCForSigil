@@ -601,6 +601,16 @@ class Controller:
         }
         try:
             summary = json.loads(self.logger.summary_path.read_text(encoding="utf-8"))
+            book_path = ""
+            get_book_path = getattr(self.bk, "get_epub_filepath", None)
+            if callable(get_book_path):
+                try:
+                    raw_path = get_book_path()
+                    if raw_path:
+                        book_path = Path(str(raw_path)).name
+                except Exception:
+                    book_path = ""
+            summary["book_label"] = book_path
             HistoryStore(self.storage.paths.history).record_session(
                 summary, manifest, backend.provenance().as_dict())
             self.logger.event("commit_manifest", **manifest)
