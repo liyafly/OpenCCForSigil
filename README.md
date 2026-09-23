@@ -33,12 +33,13 @@ See [document conversion](docs/extended-document-conversion.md),
 [current validation boundaries](docs/deviations.md). Rules, preferences, logs,
 profiles, and history live outside the plugin installation and the EPUB.
 
-The checked-in payload is macOS arm64/cp314. CI assembles the five-platform Fat
-Plugin and inspects actual native OS/ABI requirements: macOS deployment target
-13.0 or earlier, and Linux GLIBC/GLIBCXX at most 2.35/3.4.30. This does not
-replace installing, applying, saving, and reopening an EPUB in each real Sigil
-host. Linux aarch64 is supported through its native payload. Windows ARM and
-Python minor versions other than 3.14 are not declared supported payloads.
+The checked-in payload is macOS arm64/cp314. CI assembles a five-platform Fat
+Plugin and five platform packages, then inspects actual native OS/ABI
+requirements: macOS deployment target 13.0 or earlier, and Linux
+GLIBC/GLIBCXX at most 2.35/3.4.30. This does not replace installing, applying,
+saving, and reopening an EPUB in each real Sigil host. Linux aarch64 is
+supported through its native payload. Windows ARM and Python minor versions
+other than 3.14 are not declared supported payloads.
 
 Standard preflight is independent of optional Jieba loading. An optional load
 failure disables Jieba with its reason; corruption/provenance failures block
@@ -49,6 +50,28 @@ V1 formally supports CPython 3.14.x with wheel ABI `cp314`; the current Sigil
 bundled Python 3.14.2 is the production baseline. The reproducible development
 and CI baseline is Python 3.14.7, uv 0.12.9, and Ruff 0.16.6. Patch versions
 are recorded in provenance but do not participate in payload selection.
+
+## Choose and install a package
+
+Download a ZIP asset from the GitHub release and install it through Sigil's
+plugin manager. GitHub's automatically generated source archives are not
+installable plugins. Older releases may have fewer package assets; use the
+assets actually attached to that release. Every package requires CPython
+3.14.x with ABI `cp314`.
+
+| Asset | Use it when |
+| --- | --- |
+| `OpenCCForSigil_<version>.zip` | Universal Fat Plugin for all five supported runtimes; choose this if you are unsure. |
+| `OpenCCForSigil_<version>_macos-arm64.zip` | Sigil runs as Apple Silicon. |
+| `OpenCCForSigil_<version>_macos-x86_64.zip` | Sigil runs as Intel, including under Rosetta. |
+| `OpenCCForSigil_<version>_windows-x86_64.zip` | Sigil runs as Windows x64. |
+| `OpenCCForSigil_<version>_linux-x86_64.zip` | `uname -m` reports `x86_64`. |
+| `OpenCCForSigil_<version>_linux-aarch64.zip` | `uname -m` reports `aarch64`. |
+
+To check Sigil's process architecture, use **Activity Monitor → Sigil → Kind**
+on macOS (`Apple` or `Intel`), **Task Manager → Details → Platform** on
+Windows, or `uname -m` on Linux. Choose the platform package that matches the
+running Sigil process. The Fat Plugin works when you are not sure.
 
 ## Development
 
@@ -67,7 +90,8 @@ make package
 ```
 
 GitHub Actions builds the native payload matrix on hosted Ubuntu, macOS, and
-Windows runners, then assembles the verified Fat Plugin artifact. See
+Windows runners, then assembles and smoke-tests the Fat Plugin and all five
+platform ZIPs. See
 [`docs/release.md`](docs/release.md) for the matrix and artifact workflow; a
 local Windows/Linux installation is not required.
 
@@ -78,13 +102,12 @@ runtime subset. When the cache is absent, the locked wheels and native build
 are reproduced on the matching hosted runners. The release job requires all
 five supported runtime payloads and rechecks their hashes from the final ZIP.
 
-For future workflow runs, the CI job uploads one Actions artifact named
-`OpenCCForSigil-fat-plugin-${{ github.sha }}` containing
-`OpenCCForSigil_${{ github.sha }}.zip`. On a tagged run, the publish job verifies
-that artifact, renames the product ZIP to `OpenCCForSigil_<version>.zip`, and
-uploads that version-named file as the release's one product asset. GitHub may
-also expose its automatically generated source archives for the tag; those are
-source snapshots rather than installable plugin assets.
+For future workflow runs, the CI job uploads the six package ZIPs and
+`SHA256SUMS.txt` in one Actions artifact named
+`OpenCCForSigil-packages-${{ github.sha }}`. A tagged run publishes those same
+seven files after every package has passed smoke tests on its native runner.
+GitHub may also expose its automatically generated source archives for the tag;
+those are source snapshots rather than installable plugin assets.
 
 The generated ZIP has exactly one top-level directory, `OpenCCForSigil/`, as
 required by the Sigil plugin packaging contract. Normative and maintainer

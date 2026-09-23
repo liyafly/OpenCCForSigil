@@ -1,16 +1,24 @@
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 import shutil
 import subprocess
 import tomllib
+import zipfile
 import xml.etree.ElementTree as ET
 
 import pytest
 
 from app.version import PLUGIN_VERSION
 from tools.build_plugin import validate as validate_plugin
+from tools.release_assets import (
+    expected_zip_names,
+    validate_plugin_zip_version,
+    validate_release_assets,
+    write_checksums,
+)
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -51,7 +59,7 @@ def _extract_run_block(workflow: str, step_name: str) -> str:
     return "\n".join(lines)
 
 
-def test_ci_and_release_contract_uses_sha_then_versioned_product_asset():
+def test_ci_and_release_contract_smokes_each_package_and_publishes_seven_assets():
     workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     release_job = workflow.split("  publish-release:", maxsplit=1)[1]
     release_shell = _extract_run_block(release_job, "Create GitHub release")
@@ -61,10 +69,93 @@ def test_ci_and_release_contract_uses_sha_then_versioned_product_asset():
     assert "spec_zip" not in release_job
     assert "spec-bundle" not in (ROOT / "Makefile").read_text(encoding="utf-8")
     assert not (ROOT / "tools" / "build_spec_bundle.py").exists()
-    assert "OpenCCForSigil-fat-plugin-${{ github.sha }}" in workflow
-    assert "dist/OpenCCForSigil_${{ github.sha }}.zip" in workflow
+    assert "  build-packages:" in workflow
+    assert "  package-smoke:" in workflow
+    assert "needs: build-packages" in workflow.split("  package-smoke:", maxsplit=1)[1]
+    assert "needs: package-smoke" in release_job
+    assert "OpenCCForSigil-packages-${{ github.sha }}" in workflow
+    assert "tools/package_smoke.py" in workflow
+    assert "tools/release_assets.py" in workflow
     assert release_shell.count("gh release create") == 1
     assert '"release-artifacts/OpenCCForSigil_${version}.zip"' in release_shell
+    assert '"release-artifacts/OpenCCForSigil_${version}_macos-arm64.zip"' in release_shell
+    assert '"release-artifacts/OpenCCForSigil_${version}_macos-x86_64.zip"' in release_shell
+    assert '"release-artifacts/OpenCCForSigil_${version}_windows-x86_64.zip"' in release_shell
+    assert '"release-artifacts/OpenCCForSigil_${version}_linux-x86_64.zip"' in release_shell
+    assert '"release-artifacts/OpenCCForSigil_${version}_linux-aarch64.zip"' in release_shell
+    assert '"release-artifacts/SHA256SUMS.txt"' in release_shell
+
+
+def test_expected_release_zip_names_cover_fat_and_five_platforms():
+    names = expected_zip_names("0.1.0")
+    assert len(names) == 6
+    assert names["fat"] == "OpenCCForSigil_0.1.0.zip"
+    assert set(names.values()) == {
+        "OpenCCForSigil_0.1.0.zip",
+        "OpenCCForSigil_0.1.0_macos-arm64.zip",
+        "OpenCCForSigil_0.1.0_macos-x86_64.zip",
+        "OpenCCForSigil_0.1.0_windows-x86_64.zip",
+        "OpenCCForSigil_0.1.0_linux-x86_64.zip",
+        "OpenCCForSigil_0.1.0_linux-aarch64.zip",
+    }
+
+
+def test_release_asset_zip_version_must_match_the_tag(tmp_path: Path):
+    archive_path = tmp_path / "OpenCCForSigil_0.1.0.zip"
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        archive.writestr(
+            "OpenCCForSigil/plugin.xml",
+            '<plugin><version>0.1.1</version></plugin>',
+        )
+
+    with pytest.raises(SystemExit, match="does not match release version"):
+        validate_plugin_zip_version(archive_path, "0.1.0")
+
+
+def test_release_asset_set_checksums_and_package_contracts(tmp_path: Path):
+    version = "0.1.0"
+    names = expected_zip_names(version)
+    records = [
+        ("linux-aarch64-cp314", "linux", "aarch64"),
+        ("linux-x86_64-cp314", "linux", "x86_64"),
+        ("macos-arm64-cp314", "macos", "arm64"),
+        ("macos-x86_64-cp314", "macos", "x86_64"),
+        ("windows-x86_64-cp314", "windows", "x86_64"),
+    ]
+
+    for runtime, filename in names.items():
+        selected = records if runtime == "fat" else [record for record in records if record[0] == runtime]
+        payloads = [
+            {
+                "payload_path": f"payloads/{payload_id}",
+                "os": os_name,
+                "architecture": architecture,
+            }
+            for payload_id, os_name, architecture in selected
+        ]
+        flavor = "fat" if runtime == "fat" else "platform"
+        package = {"flavor": flavor, "runtimes": sorted(item["payload_path"][9:] for item in payloads),
+                   "asset_name": filename}
+        oslist = "osx,unx,win" if flavor == "fat" else {
+            "macos": "osx", "linux": "unx", "windows": "win",
+        }[payloads[0]["os"]]
+        manifest = {"package": package, "payloads": payloads}
+        archive_path = tmp_path / filename
+        with zipfile.ZipFile(archive_path, "w") as archive:
+            archive.writestr(
+                "OpenCCForSigil/plugin.xml",
+                f"<plugin><version>{version}</version><oslist>{oslist}</oslist></plugin>",
+            )
+            archive.writestr(
+                "OpenCCForSigil/vendor/opencc/manifest.json",
+                json.dumps(manifest),
+            )
+
+    write_checksums(tmp_path, version)
+    validate_release_assets(tmp_path, version)
+    (tmp_path / "SHA256SUMS.txt").write_text("tampered\n", encoding="ascii")
+    with pytest.raises(SystemExit, match="invalid or duplicate checksum line"):
+        validate_release_assets(tmp_path, version)
 
 
 @pytest.mark.parametrize(
@@ -88,7 +179,17 @@ def test_extracted_release_shell_uploads_the_version_named_zip_with_mock_gh(
 
     release_artifacts = tmp_path / "release-artifacts"
     release_artifacts.mkdir()
-    (release_artifacts / f"OpenCCForSigil_{version}.zip").write_bytes(b"plugin artifact")
+    assets = [
+        f"OpenCCForSigil_{version}.zip",
+        f"OpenCCForSigil_{version}_macos-arm64.zip",
+        f"OpenCCForSigil_{version}_macos-x86_64.zip",
+        f"OpenCCForSigil_{version}_windows-x86_64.zip",
+        f"OpenCCForSigil_{version}_linux-x86_64.zip",
+        f"OpenCCForSigil_{version}_linux-aarch64.zip",
+        "SHA256SUMS.txt",
+    ]
+    for asset in assets:
+        (release_artifacts / asset).write_bytes(b"release artifact")
     notes_path = f"docs/releases/v{version}.md"
     if has_notes:
         (tmp_path / "docs" / "releases").mkdir(parents=True)
@@ -117,5 +218,5 @@ def test_extracted_release_shell_uploads_the_version_named_zip_with_mock_gh(
         f"OpenCCForSigil v{version}",
         *release_flags,
         *(["--notes-file", notes_path] if has_notes else ["--generate-notes"]),
-        f"release-artifacts/OpenCCForSigil_{version}.zip",
+        *(f"release-artifacts/{asset}" for asset in assets),
     ]

@@ -139,8 +139,8 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  build-fat-plugin:
-    name: Assemble and validate Fat Plugin
+  build-packages:
+    name: Assemble and validate all Plugin packages
     needs: build-payload
     runs-on: ubuntu-latest
     steps:
@@ -170,24 +170,149 @@ jobs:
       - name: Run repository tests
         run: mise exec -- uv run pytest
 
-      - name: Build and validate the Fat Plugin ZIP
-        run: mise exec -- uv run python tools/build_plugin.py --require-runtimes --output dist/OpenCCForSigil_${{ github.sha }}.zip
+      - name: Read package version
+        id: package-version
+        shell: bash
+        run: |
+          version="$(sed -n 's/^PLUGIN_VERSION = "\([^"]*\)"/\1/p' plugin/OpenCCForSigil/app/version.py)"
+          test -n "$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - name: Revalidate the exact final ZIP
-        run: mise exec -- uv run python tools/validate_artifact.py --require-runtimes dist/OpenCCForSigil_${{ github.sha }}.zip
+      - name: Build the Fat Plugin ZIP
+        run: mise exec -- uv run python tools/build_plugin.py --require-runtimes --output "dist/OpenCCForSigil_${{ steps.package-version.outputs.version }}.zip"
 
-      - name: Upload final artifacts
+      - name: Revalidate the Fat Plugin ZIP
+        run: mise exec -- uv run python tools/validate_artifact.py --require-runtimes --flavor fat "dist/OpenCCForSigil_${{ steps.package-version.outputs.version }}.zip"
+
+      - name: Build the five platform ZIPs
+        shell: bash
+        run: |
+          for runtime in \
+            linux-aarch64-cp314 \
+            linux-x86_64-cp314 \
+            macos-arm64-cp314 \
+            macos-x86_64-cp314 \
+            windows-x86_64-cp314; do
+            mise exec -- uv run python tools/build_plugin.py --flavor platform --runtime "$runtime"
+          done
+
+      - name: Revalidate each platform ZIP
+        shell: bash
+        env:
+          PLUGIN_VERSION: ${{ steps.package-version.outputs.version }}
+        run: |
+          for runtime in \
+            linux-aarch64-cp314 \
+            linux-x86_64-cp314 \
+            macos-arm64-cp314 \
+            macos-x86_64-cp314 \
+            windows-x86_64-cp314; do
+            suffix="${runtime%-cp314}"
+            mise exec -- uv run python tools/validate_artifact.py \
+              --flavor platform --runtime "$runtime" \
+              "dist/OpenCCForSigil_${PLUGIN_VERSION}_${suffix}.zip"
+          done
+
+      - name: Smoke-test the Fat Plugin on Linux x86_64
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          mkdir -p build/package-smoke/fat
+          unzip -q "dist/OpenCCForSigil_${{ steps.package-version.outputs.version }}.zip" -d build/package-smoke/fat
+          mise exec -- uv run python tools/package_smoke.py \
+            --plugin-root build/package-smoke/fat/OpenCCForSigil \
+            --expected-runtime linux-x86_64-cp314
+
+      - name: Generate release checksum manifest
+        run: mise exec -- uv run python tools/release_assets.py --asset-dir dist --version "${{ steps.package-version.outputs.version }}" --write-checksums
+
+      - name: Upload all validated release assets
         uses: actions/upload-artifact@v7
         with:
-          name: OpenCCForSigil-fat-plugin-${{ github.sha }}
-          path: dist/OpenCCForSigil_${{ github.sha }}.zip
+          name: OpenCCForSigil-packages-${{ github.sha }}
+          path: dist/
           if-no-files-found: error
           retention-days: 14
+
+  package-smoke:
+    name: Smoke ${{ matrix.id }} packages
+    needs: build-packages
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: linux-aarch64
+            runner: ubuntu-22.04-arm
+            runtime: linux-aarch64-cp314
+            suffix: linux-aarch64
+          - id: linux-x86_64
+            runner: ubuntu-22.04
+            runtime: linux-x86_64-cp314
+            suffix: linux-x86_64
+          - id: macos-arm64
+            runner: macos-15
+            runtime: macos-arm64-cp314
+            suffix: macos-arm64
+          - id: macos-x86_64
+            runner: macos-15-intel
+            runtime: macos-x86_64-cp314
+            suffix: macos-x86_64
+          - id: windows-x86_64
+            runner: windows-2022
+            runtime: windows-x86_64-cp314
+            suffix: windows-x86_64
+    runs-on: ${{ matrix.runner }}
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+
+      - name: Install mise toolchain
+        uses: jdx/mise-action@v4
+
+      - name: Install locked Python dependencies
+        run: mise exec -- uv sync --locked
+
+      - name: Read package version
+        id: package-version
+        shell: bash
+        run: |
+          version="$(sed -n 's/^PLUGIN_VERSION = "\([^"]*\)"/\1/p' plugin/OpenCCForSigil/app/version.py)"
+          test -n "$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Download validated packages
+        uses: actions/download-artifact@v8
+        with:
+          name: OpenCCForSigil-packages-${{ github.sha }}
+          path: packages
+
+      - name: Extract this platform package and the Fat Plugin
+        shell: bash
+        env:
+          PLUGIN_VERSION: ${{ steps.package-version.outputs.version }}
+          PLATFORM_SUFFIX: ${{ matrix.suffix }}
+        run: |
+          mkdir -p build/package-smoke/platform build/package-smoke/fat
+          unzip -q "packages/OpenCCForSigil_${PLUGIN_VERSION}_${PLATFORM_SUFFIX}.zip" -d build/package-smoke/platform
+          unzip -q "packages/OpenCCForSigil_${PLUGIN_VERSION}.zip" -d build/package-smoke/fat
+
+      - name: Smoke-test both extracted packages without bytecode caches
+        shell: bash
+        env:
+          EXPECTED_RUNTIME: ${{ matrix.runtime }}
+        run: |
+          for flavor in platform fat; do
+            mise exec -- uv run python tools/package_smoke.py \
+              --plugin-root "build/package-smoke/${flavor}/OpenCCForSigil" \
+              --expected-runtime "$EXPECTED_RUNTIME"
+          done
 
   publish-release:
     name: Publish tagged GitHub release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: build-fat-plugin
+    needs: package-smoke
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -198,39 +323,19 @@ jobs:
       - name: Check out release notes
         uses: actions/checkout@v7
 
-      - name: Download the validated Fat Plugin artifact
+      - name: Download all smoke-tested package assets
         uses: actions/download-artifact@v8
         with:
-          name: OpenCCForSigil-fat-plugin-${{ github.sha }}
+          name: OpenCCForSigil-packages-${{ github.sha }}
           path: release-artifacts
 
-      - name: Verify tag matches plugin metadata and prepare release assets
+      - name: Verify tag version, package metadata, and checksums
         shell: bash
         env:
           RELEASE_TAG: ${{ github.ref_name }}
-          RELEASE_SHA: ${{ github.sha }}
         run: |
           version="${RELEASE_TAG#v}"
-          plugin_zip="$(find release-artifacts -type f -name "OpenCCForSigil_${RELEASE_SHA}.zip" -print -quit)"
-          test -n "$plugin_zip"
-          test -f "$plugin_zip"
-          python - "$plugin_zip" "$version" <<'PY'
-          from pathlib import Path
-          import sys
-          import zipfile
-          import xml.etree.ElementTree as ET
-
-          archive_path = Path(sys.argv[1])
-          expected = sys.argv[2]
-          with zipfile.ZipFile(archive_path) as archive:
-              metadata = ET.fromstring(archive.read("OpenCCForSigil/plugin.xml"))
-          actual = metadata.findtext("version")
-          if actual != expected:
-              raise SystemExit(
-                  f"release tag version {expected!r} does not match plugin.xml {actual!r}"
-              )
-          PY
-          mv "$plugin_zip" "release-artifacts/OpenCCForSigil_${version}.zip"
+          python tools/release_assets.py --asset-dir release-artifacts --version "$version"
 
       - name: Create GitHub release
         shell: bash
@@ -243,6 +348,15 @@ jobs:
           if [[ "$version" == *-* ]]; then
             release_flags=(--prerelease --latest=false)
           fi
+          assets=(
+            "release-artifacts/OpenCCForSigil_${version}.zip"
+            "release-artifacts/OpenCCForSigil_${version}_macos-arm64.zip"
+            "release-artifacts/OpenCCForSigil_${version}_macos-x86_64.zip"
+            "release-artifacts/OpenCCForSigil_${version}_windows-x86_64.zip"
+            "release-artifacts/OpenCCForSigil_${version}_linux-x86_64.zip"
+            "release-artifacts/OpenCCForSigil_${version}_linux-aarch64.zip"
+            "release-artifacts/SHA256SUMS.txt"
+          )
           notes_path="docs/releases/${RELEASE_TAG}.md"
           notes_flags=(--generate-notes)
           if [[ -f "$notes_path" ]]; then
@@ -253,4 +367,4 @@ jobs:
             --title "OpenCCForSigil ${RELEASE_TAG}" \
             "${release_flags[@]}" \
             "${notes_flags[@]}" \
-            "release-artifacts/OpenCCForSigil_${version}.zip"
+            "${assets[@]}"
