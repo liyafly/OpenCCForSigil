@@ -31,26 +31,37 @@ def diagnose_mixed_script(
     *,
     min_evidence: int = 2,
     include_outputs: bool = False,
+    known_output_config: str | None = None,
+    known_output: str | None = None,
 ) -> ScriptDiagnostic:
     """Classify simplified/traditional evidence without a hand-written table.
 
-    ``s2t`` and ``t2s`` are each called with the original input.  Short or
-    punctuation-only inputs remain ``unknown`` because one conversion result
-    is not enough evidence for a document-level direction.
+    ``s2t`` and ``t2s`` are each called with the original input. Short or
+    punctuation-only inputs remain ``unknown`` without invoking the backend.
+    A caller may provide one already-computed official result for reuse.
     """
 
     if not isinstance(text, str):
         raise TypeError("diagnostic input must be text")
-    simplified = _invoke_official(official_convert, "s2t", text)
-    traditional = _invoke_official(official_convert, "t2s", text)
     evidence_length = sum(char.isalpha() and _is_han(char) for char in text)
+    if evidence_length < min_evidence:
+        return ScriptDiagnostic(
+            status="unknown",
+            simplified_changed=False,
+            traditional_changed=False,
+            source_length=len(text),
+            evidence_length=evidence_length,
+            warning="insufficient Han text for script diagnosis",
+        )
+
+    simplified = (known_output if known_output_config == "s2t" and known_output is not None
+                  else _invoke_official(official_convert, "s2t", text))
+    traditional = (known_output if known_output_config == "t2s" and known_output is not None
+                   else _invoke_official(official_convert, "t2s", text))
     simplified_changed = simplified != text
     traditional_changed = traditional != text
 
-    if evidence_length < min_evidence:
-        status = "unknown"
-        warning = "insufficient Han text for script diagnosis"
-    elif simplified_changed and traditional_changed:
+    if simplified_changed and traditional_changed:
         status = "mixed"
         warning = "current text contains mixed simplified and traditional evidence"
     elif simplified_changed:

@@ -51,7 +51,12 @@ class OfficialBackendConverter:
         target = normalize_punctuation(quoted, request.punctuation_mode)
         diagnostics = []
         if request.diagnose_mixed and callable(compare) and text:
-            diagnosis = diagnose_mixed_script(text, compare)
+            diagnosis = diagnose_mixed_script(
+                text,
+                compare,
+                known_output_config=request.config if request.config in {"s2t", "t2s"} else None,
+                known_output=official if request.config in {"s2t", "t2s"} else None,
+            )
             if diagnosis.status == "mixed":
                 diagnostics.append(Diagnostic("MIXED_SCRIPT", diagnosis.warning))
         if target == text:
