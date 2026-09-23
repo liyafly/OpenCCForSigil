@@ -26,6 +26,8 @@ class _FakeProgressDialog:
         self.values = []
         self.maximums = []
         self.labels = []
+        self.cancel_buttons = []
+        self.show_calls = 0
         self.modality = None
         self.close_calls = 0
 
@@ -53,11 +55,11 @@ class _FakeProgressDialog:
     def setLabelText(self, value) -> None:
         self.labels.append(value)
 
-    def setCancelButton(self, _button) -> None:
-        return None
+    def setCancelButton(self, button) -> None:
+        self.cancel_buttons.append(button)
 
     def show(self) -> None:
-        return None
+        self.show_calls += 1
 
     def close(self) -> None:
         self.close_calls += 1
@@ -107,3 +109,15 @@ def test_unparented_progress_reporter_is_modal_only_inside_plugin_application():
     assert reporter.dialog.parent is None
     assert reporter.dialog.modality == "application-modal"
     assert reporter.dialog.labels[0] == "Analyzing: 0/0 — …"
+
+
+def test_cancelling_keeps_window_visible_and_preserves_cancelling_label():
+    preview_window.set_ui_language("en")
+    reporter = preview_window.ProgressReporter(_FakeQt, 2)
+
+    reporter.set_cancelling()
+    reporter.update("planning", 1, 2, "Text/a.xhtml")
+
+    assert reporter.dialog.labels[-1] == "Cancelling… stopping after the current file"
+    assert reporter.dialog.cancel_buttons[-1] is None
+    assert reporter.dialog.show_calls >= 2

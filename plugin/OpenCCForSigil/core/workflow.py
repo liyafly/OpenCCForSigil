@@ -72,6 +72,15 @@ def _report_progress(
         raise WorkflowCancelled(cancel_message)
 
 
+def _set_progress_cancelling(progress) -> None:
+    if progress is None:
+        return
+    reporter = getattr(progress, "__self__", progress)
+    set_cancelling = getattr(reporter, "set_cancelling", None)
+    if callable(set_cancelling):
+        set_cancelling()
+
+
 class ConversionWorkflow:
     """Coordinate pure core phases around a narrow Sigil adapter."""
 
@@ -227,6 +236,7 @@ class ConversionWorkflow:
                 backend.close()
 
         last = ("planning", 0, len(sources), sources[0].href)
+        cancellation_notified = False
         with ThreadPoolExecutor(max_workers=1, thread_name_prefix="OpenCC-plan") as pool:
             future = pool.submit(work)
             try:
@@ -235,10 +245,18 @@ class ConversionWorkflow:
                         last = updates.get(timeout=0.025)
                     except Empty:
                         pass
+                    while True:
+                        try:
+                            last = updates.get_nowait()
+                        except Empty:
+                            break
                     if progress:
                         progress(*last)
                     if cancelled and cancelled():
                         stop.set()
+                        if not cancellation_notified:
+                            _set_progress_cancelling(progress)
+                            cancellation_notified = True
                 result = future.result()
                 if cancelled and cancelled():
                     stop.set()

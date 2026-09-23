@@ -55,6 +55,7 @@
   "preview.before": "Before",
   "preview.change": "Change",
   "progress.title": "OpenCCForSigil progress",
+  "progress.cancelling": "Cancelling… stopping after the current file",
   "progress.status": "{phase}: {index}/{total} — {file}",
   "progress.phase.analyzing": "Analyzing",
   "progress.phase.planning": "Planning",

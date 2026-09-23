@@ -5,7 +5,7 @@ import pytest
 
 from core.models import ConvertRequest
 from core.preview import PreviewSession
-from core.workflow import ConversionWorkflow, WorkflowCancelled
+from core.workflow import ConversionWorkflow, SourceDocument, WorkflowCancelled
 from sigil.adapter import SigilBookAdapter
 
 
@@ -94,9 +94,45 @@ def test_cancel_during_worker_discards_plan_without_writes():
             return True
         return False
 
+    class Progress:
+        def __init__(self):
+            self.updates = []
+            self.cancelling_count = 0
+
+        def update(self, *values):
+            self.updates.append(values)
+
+        def set_cancelling(self):
+            self.cancelling_count += 1
+
     flow = ConversionWorkflow(SigilBookAdapter(Book()), None, ConvertRequest("s2t"))
+    progress = Progress()
     with pytest.raises(WorkflowCancelled):
-        flow.plan_in_worker(Backend, cancelled=cancelled)
+        flow.plan_in_worker(Backend, progress=progress.update, cancelled=cancelled)
     assert closed.is_set()
     assert flow._planned == ()
     assert tuple(flow.staging.values()) == ()
+    assert progress.cancelling_count == 1
+
+
+def test_worker_progress_coalesces_large_update_bursts():
+    flow = ConversionWorkflow(None, None, ConvertRequest("s2t"))
+    flow._sources = tuple(
+        SourceDocument(str(index), f"Text/{index}.xhtml", "") for index in range(500)
+    )
+    flow.scan = lambda **_kwargs: flow._sources
+    flow._plan_document = lambda source, **_kwargs: source
+
+    class Backend:
+        def __init__(self, _config):
+            pass
+
+        def close(self):
+            pass
+
+    updates = []
+    result = flow.plan_in_worker(Backend, progress=lambda *values: updates.append(values))
+
+    assert len(result) == 500
+    assert updates[-1][1:3] == (500, 500)
+    assert len(updates) < 100

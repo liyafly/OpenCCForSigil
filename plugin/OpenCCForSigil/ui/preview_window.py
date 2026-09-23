@@ -42,6 +42,7 @@ class ProgressReporter:
     def __init__(self, qt_widgets: Any, total: int, parent: Any = None) -> None:
         self._qt = qt_widgets
         self._cancelled = False
+        self._cancelling = False
         self._closed = False
         self._phase = "analyzing"
         self._total = max(int(total), 1)
@@ -108,15 +109,16 @@ class ProgressReporter:
         requested = max(int(index), 0)
         self._value = min(max(requested, self._value), self._total)
         self.dialog.setValue(self._value)
-        self.dialog.setLabelText(
-            _translator.text(
-                "progress.status",
-                phase=_translator.text(f"progress.phase.{self._phase}"),
-                index=self._value,
-                total=total,
-                file=href,
+        if not self._cancelling:
+            self.dialog.setLabelText(
+                _translator.text(
+                    "progress.status",
+                    phase=_translator.text(f"progress.phase.{self._phase}"),
+                    index=self._value,
+                    total=total,
+                    file=href,
+                )
             )
-        )
         self._process_events()
 
     def cancelled(self) -> bool:
@@ -130,6 +132,17 @@ class ProgressReporter:
         if callable(set_cancel_button):
             set_cancel_button(None)
         self._cancelled = False
+
+    def set_cancelling(self) -> None:
+        """Keep the progress window visible while the worker reaches a safe stop."""
+
+        self._cancelling = True
+        self.dialog.setLabelText(_translator.text("progress.cancelling"))
+        set_cancel_button = getattr(self.dialog, "setCancelButton", None)
+        if callable(set_cancel_button):
+            set_cancel_button(None)
+        self.dialog.show()
+        self._process_events()
 
     def close(self) -> None:
         if self._closed:
