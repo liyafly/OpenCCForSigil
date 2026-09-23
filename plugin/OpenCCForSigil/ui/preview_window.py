@@ -577,7 +577,10 @@ def _recovery_notice_text(kind: str, value: str, translator: Translator) -> str:
         "preferences_corrupt": "recovery.preferences_corrupt",
         "preferences_future_schema": "recovery.preferences_future_schema",
         "profile_recovered": "recovery.profile_recovered",
+        "profile_future_schema": "recovery.profile_future_schema",
         "rulesets_missing": "recovery.rulesets_missing",
+        "rulesets_future_schema": "recovery.rulesets_future_schema",
+        "rulesets_recovered": "recovery.rulesets_recovered",
     }.get(kind, "recovery.generic")
     return translator.text(key, value=value)
 

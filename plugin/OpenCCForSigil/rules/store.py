@@ -16,6 +16,13 @@ from .validators import RuleValidationError, validate_rules
 RULESET_SCHEMA_VERSION = 1
 
 
+class RuleSetFutureSchemaError(RuleValidationError):
+    """The rule set uses a newer schema and must be preserved for a newer plugin."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+
+
 @dataclass(frozen=True)
 class RuleSet:
     id: str
@@ -142,6 +149,11 @@ def migrate_ruleset_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
     version = result.get("schema_version", 0)
     if version == RULESET_SCHEMA_VERSION:
         return result
+    if (isinstance(version, int) and not isinstance(version, bool)
+            and version > RULESET_SCHEMA_VERSION):
+        raise RuleSetFutureSchemaError(
+            f"unsupported future ruleset schema_version {version}; requires a newer plugin; "
+            "file was not changed")
     if version == 0:
         if not isinstance(result.get("rules"), list):
             raise RuleValidationError(
@@ -167,6 +179,7 @@ def load_ruleset(root: str | Path, ruleset_id: str) -> RuleSet:
 __all__ = [
     "RULESET_SCHEMA_VERSION",
     "RuleSet",
+    "RuleSetFutureSchemaError",
     "RuleStore",
     "load_ruleset",
     "migrate_ruleset_payload",

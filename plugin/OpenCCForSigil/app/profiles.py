@@ -94,6 +94,10 @@ class ProfileValidationError(ValueError):
     """Actionable profile validation failure."""
 
 
+class ProfileFutureSchemaError(ProfileValidationError):
+    """The profile was written by a newer plugin and must remain untouched."""
+
+
 @dataclass(frozen=True)
 class Profile:
     schema_version: int = CURRENT_PROFILE_SCHEMA
@@ -361,6 +365,11 @@ def migrate_profile_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
     version = result.get("schema_version", 0)
     if version == CURRENT_PROFILE_SCHEMA:
         return result
+    if (isinstance(version, int) and not isinstance(version, bool)
+            and version > CURRENT_PROFILE_SCHEMA):
+        raise ProfileFutureSchemaError(
+            f"unsupported future profile schema_version {version}; requires a newer plugin; "
+            "file was not changed")
     if version == 0:
         result["schema_version"] = CURRENT_PROFILE_SCHEMA
         result.setdefault("id", result.get("name") or str(uuid.uuid4()))
@@ -463,6 +472,7 @@ def _safe_file_id(value: str) -> bool:
 __all__ = [
     "CURRENT_PROFILE_SCHEMA",
     "Profile",
+    "ProfileFutureSchemaError",
     "ProfileStore",
     "ProfileValidationError",
     "load_profile",

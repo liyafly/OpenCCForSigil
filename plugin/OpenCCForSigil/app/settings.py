@@ -6,9 +6,9 @@ import json
 from pathlib import Path
 from uuid import uuid4
 
-from app.profiles import Profile, ProfileStore
+from app.profiles import Profile, ProfileFutureSchemaError, ProfileStore
 from core.models import RuleSnapshot
-from rules.store import RuleSet, RuleStore
+from rules.store import RuleSet, RuleSetFutureSchemaError, RuleStore
 from opencc_backend.configs import comparison_configs
 from ui.qt import exec_dialog
 
@@ -37,11 +37,17 @@ class RunSettings:
         self._pending_missing_rulesets: tuple[str, ...] = ()
         self._reported_missing_rulesets: set[str] = set()
         self.recovery_notice: tuple[str, str] | None = None
+        self._recovery_notices: list[tuple[str, str]] = []
         self.clear_profile_preference = False
+        self.preserve_profile_preference = False
         identifier = preferences.get("profile_id")
         if identifier:
             try:
                 self.active = self.profiles.load(identifier)
+            except ProfileFutureSchemaError:
+                self.active = self._conservative_profile(preferences)
+                self.preserve_profile_preference = True
+                self._add_recovery_notice(("profile_future_schema", f"{identifier}.json"))
             except (OSError, ValueError):
                 backup_name = ""
                 try:
@@ -51,8 +57,8 @@ class RunSettings:
                 except Exception:
                     pass
                 self.active = self._conservative_profile(preferences)
-                self.recovery_notice = (
-                    "profile_recovered", backup_name or str(identifier))
+                self._add_recovery_notice(
+                    ("profile_recovered", backup_name or str(identifier)))
                 self.clear_profile_preference = True
         else:
             self.active = self._conservative_profile(preferences)
@@ -111,12 +117,27 @@ class RunSettings:
         elif not isinstance(identifiers, (tuple, list, set, frozenset)):
             identifiers = ()
         values = tuple(dict.fromkeys(str(item) for item in identifiers if item))
-        available = {path.stem for path in self.rules.directory.glob("*.json")}
-        kept = tuple(item for item in values if item == "default" or item in available)
-        missing = tuple(item for item in values if item != "default" and item not in available)
+        kept = []
+        missing = []
+        for identifier in values:
+            if identifier == "default":
+                kept.append(identifier)
+                continue
+            path = self.rules.directory / f"{identifier}.json"
+            if not path.is_file():
+                missing.append(identifier)
+                continue
+            try:
+                self.rules.load(identifier)
+            except RuleSetFutureSchemaError:
+                self._add_recovery_notice(("rulesets_future_schema", identifier))
+            except (OSError, ValueError):
+                missing.append(identifier)
+            else:
+                kept.append(identifier)
         self._pending_missing_rulesets = tuple(dict.fromkeys(
             (*self._pending_missing_rulesets, *missing)))
-        return kept
+        return tuple(kept)
 
     def _validate_active_rulesets(self, identifiers):
         valid = []
@@ -127,12 +148,18 @@ class RunSettings:
                 continue
             try:
                 self.rules.load(identifier)
+            except RuleSetFutureSchemaError:
+                self._add_recovery_notice(("rulesets_future_schema", identifier))
+                continue
             except (OSError, ValueError):
+                backup_name = ""
                 if path.is_file():
                     try:
-                        self.storage.quarantine(path)
+                        backup_name = self.storage.quarantine(path).name
                     except Exception:
                         pass
+                if backup_name:
+                    self._add_recovery_notice(("rulesets_recovered", backup_name))
                 self._pending_missing_rulesets = tuple(dict.fromkeys(
                     (*self._pending_missing_rulesets, identifier)))
                 continue
@@ -146,6 +173,27 @@ class RunSettings:
         self._pending_missing_rulesets = ()
         return pending
 
+    def _add_recovery_notice(self, notice):
+        if notice not in self._recovery_notices:
+            self._recovery_notices.append(notice)
+        if self.recovery_notice is None:
+            self.recovery_notice = notice
+
+    def take_recovery_notices(self):
+        notices = tuple(self._recovery_notices)
+        self._recovery_notices.clear()
+        return notices
+
+    @staticmethod
+    def _storage_error_labels(errors, translator):
+        labels = []
+        for name, error in errors:
+            if "requires a newer plugin" in error:
+                labels.append(translator.text("recovery.future_schema_file", file=name))
+            else:
+                labels.append(name)
+        return tuple(labels)
+
     def pick_profile(self, config, options, translator):
         from ui.profile_window import show_profile_window
 
@@ -157,8 +205,7 @@ class RunSettings:
         def profile_deleted(identifier):
             preferences = self.storage.load_preferences()
             if preferences.get("profile_id") == identifier:
-                preferences.pop("profile_id", None)
-                self.storage.save_preferences(preferences)
+                self.storage.update_preferences({"profile_id": None})
 
         available_configs, jieba_pending = self._available_config_options()
 
@@ -171,10 +218,11 @@ class RunSettings:
             current_profile=draft,
             active_profile=self.active,
             on_delete=profile_deleted,
-            storage_errors=tuple(name for name, _error in errors),
+            storage_errors=self._storage_error_labels(errors, translator),
         )
         if selected is not None:
             self.active = selected
+            self.preserve_profile_preference = False
         return selected
 
     def save_profile(self, config, options, translator, qt, parent):
@@ -205,7 +253,7 @@ class RunSettings:
             available_configs=available_configs,
             jieba_pending=jieba_pending,
             comparison_configs=comparison_configs(config),
-            storage_errors=tuple(name for name, _error in errors),
+            storage_errors=self._storage_error_labels(errors, translator),
             rulesets=tuple(values.values()), ruleset_id=initial_id,
         )
         if result is not None:
@@ -285,13 +333,18 @@ class RunSettings:
                 continue
             try:
                 rules.extend(self.rules.load(identifier).rules)
+            except RuleSetFutureSchemaError:
+                self._add_recovery_notice(("rulesets_future_schema", identifier))
             except (OSError, ValueError):
                 path = self.rules.directory / f"{identifier}.json"
+                backup_name = ""
                 if path.is_file():
                     try:
-                        self.storage.quarantine(path)
+                        backup_name = self.storage.quarantine(path).name
                     except Exception:
                         pass
+                if backup_name:
+                    self._add_recovery_notice(("rulesets_recovered", backup_name))
                 self._pending_missing_rulesets = tuple(dict.fromkeys(
                     (*self._pending_missing_rulesets, identifier)))
         from rules.models import RuleSnapshot as Snapshot
@@ -324,8 +377,7 @@ class RunSettings:
 
     def hide_checkpoint_notice(self):
         if not self.adapter.save_checkpoint_notice_preference(False):
-            preferences = self.storage.load_preferences()
-            self.storage.save_preferences({**preferences, "checkpoint_notice": False})
+            self.storage.update_preferences({"checkpoint_notice": False})
 
     def open_tool(self, name, translator, qt, parent):
         if name == "self_test":

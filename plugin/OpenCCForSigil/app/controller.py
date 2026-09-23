@@ -68,6 +68,12 @@ class Controller:
                     "ui": {},
                 }
             )
+
+            def update_preferences(changes):
+                nonlocal preferences
+                preferences = self.storage.update_preferences(changes)
+                return preferences
+
             preference_recovery = self.storage.take_recovery_notice()
             default_config = _preferred_config(preferences, str(profile["conversion"]))
             self.session.transition(SessionState.SCANNING)
@@ -116,13 +122,11 @@ class Controller:
             )
             settings.bind_run(settings.active, backend)
             if settings.clear_profile_preference:
-                preferences = {**preferences, "profile_id": None}
-                self.storage.save_preferences(preferences)
+                update_preferences({"profile_id": None})
             recovery_notices = []
             if preference_recovery:
                 recovery_notices.append(preference_recovery)
-            if settings.recovery_notice:
-                recovery_notices.append(settings.recovery_notice)
+            recovery_notices.extend(settings.take_recovery_notices())
             missing_rulesets = settings.take_missing_rulesets_notice()
             if missing_rulesets:
                 recovery_notices.append(("rulesets_missing", ", ".join(missing_rulesets)))
@@ -151,12 +155,8 @@ class Controller:
             language = scope_outcome.language
             translator.set_language(language)
             settings.language = language
-            scope_preferences = {
-                **preferences,
-                "ui": {**ui_preferences, "language": language},
-            }
             if not scope_outcome.accepted or scope_outcome.selection is None:
-                self.storage.save_preferences(scope_preferences)
+                update_preferences({"ui": {"language": language}})
                 self.session.cancel()
                 self.logger.summary(
                     self._summary(status="cancelled", files_scanned=0, changes=0, files_changed=0)
@@ -165,7 +165,7 @@ class Controller:
             targets = scope_outcome.selection
 
             def reselect_scope(previous_selection):
-                nonlocal language, preferences, ui_preferences, scope_preferences, targets
+                nonlocal language, preferences, ui_preferences, targets
                 nonlocal default_config
                 nonlocal checkpoint_notice_shown
                 preferences = self.storage.load_preferences()
@@ -184,12 +184,8 @@ class Controller:
                 language = scope_outcome.language
                 translator.set_language(language)
                 settings.language = language
-                scope_preferences = {
-                    **preferences,
-                    "ui": {**ui_preferences, "language": language},
-                }
                 if not scope_outcome.accepted or scope_outcome.selection is None:
-                    self.storage.save_preferences(scope_preferences)
+                    update_preferences({"ui": {"language": language}})
                     self.session.cancel()
                     self.logger.summary(self._summary(
                         status="cancelled", files_scanned=0, changes=0, files_changed=0))
@@ -216,8 +212,10 @@ class Controller:
                 def save_run_ui_preferences(values):
                     nonlocal preferences, ui_preferences
                     ui_preferences = {**ui_preferences, **values}
-                    preferences = {**preferences, "ui": ui_preferences}
-                    self.storage.save_preferences(preferences)
+                    preferences = update_preferences({"ui": values})
+                    saved_ui = preferences.get("ui")
+                    ui_preferences = (dict(saved_ui) if isinstance(saved_ui, dict)
+                                      else ui_preferences)
 
                 selected_config = choose_conversion_config(
                     available_configs,
@@ -240,17 +238,15 @@ class Controller:
                             current_choice, "preference_options",
                             getattr(current_choice, "options", {}),
                         ))
-                        preferences = {
-                            **preferences,
+                        update_preferences({
                             "last_conversion_config": str(current_choice),
                             "run_options": choice_options,
-                        }
-                        self.storage.save_preferences(preferences)
+                        })
                     if not reselect_scope(targets):
                         return 1
                     continue
                 if action == "cancel" or selected_config is None:
-                    self.storage.save_preferences(scope_preferences)
+                    update_preferences({"ui": {"language": language}})
                     self.session.cancel()
                     self.logger.summary(
                         self._summary(status="cancelled", files_scanned=0, changes=0, files_changed=0)
@@ -272,16 +268,18 @@ class Controller:
                                   update_language=bool(language_tag))
                 active_profile = settings.current_profile(selected_config, options)
                 frozen_rules = settings.freeze_rules(active_profile)
-                self.storage.save_preferences(
-                    {
-                        **preferences,
-                        "profile_id": (active_profile.id if
-                            (settings.profiles.directory / f"{active_profile.id}.json").exists() else None),
-                        "last_conversion_config": selected_config,
-                        "run_options": preference_options,
-                        "ui": {**ui_preferences, "language": language},
-                    }
+                profile_preference = (
+                    preferences.get("profile_id") if settings.preserve_profile_preference
+                    else active_profile.id if (
+                        settings.profiles.directory / f"{active_profile.id}.json").exists()
+                    else None
                 )
+                update_preferences({
+                    "profile_id": profile_preference,
+                    "last_conversion_config": selected_config,
+                    "run_options": preference_options,
+                    "ui": {"language": language},
+                })
                 if selected_config != backend.config:
                     backend.close()
                     backend = OpenCCBackend(selected_config, jieba_probe=jieba_probe)

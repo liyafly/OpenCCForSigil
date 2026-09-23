@@ -1,5 +1,6 @@
 """User-data location and schema-aware storage helpers."""
 
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
@@ -60,6 +61,7 @@ class UserDataStore:
         self.paths = StoragePaths.from_root(root)
         self.read_only_preferences = False
         self._recovery_notice: tuple[str, str] | None = None
+        self._preferences_memory: dict[str, Any] | None = None
 
     def ensure_layout(self) -> StoragePaths:
         for directory in (
@@ -77,32 +79,72 @@ class UserDataStore:
     def load_preferences(self, default: Optional[Mapping[str, Any]] = None) -> dict:
         """Load schema version 1 preferences without silently resetting data."""
 
+        if self.read_only_preferences and self._preferences_memory is not None:
+            return dict(self._preferences_memory)
         if not self.paths.preferences.exists():
-            return dict(default or {"schema_version": SCHEMA_VERSION})
+            payload = dict(self._preferences_memory or default or {"schema_version": SCHEMA_VERSION})
+            self._preferences_memory = payload
+            return dict(payload)
         try:
             payload = self._read_json(self.paths.preferences)
         except StorageError:
             backup = self.quarantine(self.paths.preferences)
             self._recovery_notice = ("preferences_corrupt", backup.name)
-            return dict(default or {"schema_version": SCHEMA_VERSION})
+            payload = dict(default or {"schema_version": SCHEMA_VERSION})
+            self._preferences_memory = payload
+            return dict(payload)
         version = payload.get("schema_version")
         if isinstance(version, int) and not isinstance(version, bool) and version > SCHEMA_VERSION:
             self.read_only_preferences = True
             self._recovery_notice = ("preferences_future_schema", str(version))
+            self._preferences_memory = dict(payload)
             return payload
         if version != SCHEMA_VERSION:
             backup = self.quarantine(self.paths.preferences)
             self._recovery_notice = ("preferences_corrupt", backup.name)
-            return dict(default or {"schema_version": SCHEMA_VERSION})
+            payload = dict(default or {"schema_version": SCHEMA_VERSION})
+            self._preferences_memory = payload
+            return dict(payload)
+        self._preferences_memory = dict(payload)
         return payload
 
     def save_preferences(self, values: Mapping[str, Any]) -> None:
         if self.read_only_preferences:
+            self._preferences_memory = self._merge_preferences(
+                {}, values)
             return
         payload = dict(values)
         payload.setdefault("schema_version", SCHEMA_VERSION)
         self._validate_schema(payload, self.paths.preferences)
         self._write_json(self.paths.preferences, payload)
+        self._preferences_memory = payload
+
+    def update_preferences(self, changes: Mapping[str, Any]) -> dict[str, Any]:
+        """Merge preference fields into the latest file and write atomically.
+
+        Future-schema preferences stay on disk unchanged; updates are merged
+        into the in-memory copy so the active run can still use its own state.
+        """
+        if not isinstance(changes, Mapping):
+            raise TypeError("preference changes must be a mapping")
+        base = (self._preferences_memory or {}) if self.read_only_preferences else self.load_preferences()
+        payload = self._merge_preferences(base, changes)
+        if self.read_only_preferences:
+            self._preferences_memory = payload
+            return dict(payload)
+        self.save_preferences(payload)
+        return dict(payload)
+
+    @classmethod
+    def _merge_preferences(cls, base: Mapping[str, Any], changes: Mapping[str, Any]) -> dict:
+        result = deepcopy(dict(base))
+        for key, value in changes.items():
+            previous = result.get(key)
+            if isinstance(previous, Mapping) and isinstance(value, Mapping):
+                result[key] = cls._merge_preferences(previous, value)
+            else:
+                result[key] = deepcopy(value)
+        return result
 
     def quarantine(self, path: str | Path) -> Path:
         """Rename one plugin-owned data file to a timestamped recovery copy."""

@@ -36,14 +36,53 @@ def test_future_preferences_are_read_only_and_unchanged(tmp_path):
     storage.paths.preferences.write_text(original, encoding="utf-8")
     before = storage.paths.preferences.stat().st_mtime_ns
 
-    values = storage.load_preferences()
-    storage.save_preferences({**values, "profile_id": None})
+    storage.load_preferences()
+    updated = storage.update_preferences({
+        "profile_id": None,
+        "ui": {"run_options_advanced_expanded": True},
+    })
 
     assert storage.read_only_preferences
     assert storage.paths.preferences.read_text(encoding="utf-8") == original
     assert storage.paths.preferences.stat().st_mtime_ns == before
     assert not tuple(tmp_path.glob("preferences.json.corrupt-*"))
     assert storage.take_recovery_notice() == ("preferences_future_schema", "9")
+    assert updated["ui"] == {
+        "language": "en", "run_options_advanced_expanded": True,
+    }
+    assert storage.load_preferences() == updated
+
+
+def test_update_preferences_merges_fresh_disk_fields_and_nested_ui_values(tmp_path):
+    storage = _store(tmp_path)
+    storage.save_preferences({
+        "schema_version": 1,
+        "ui": {"language": "en", "conversion_dialog_size": [700, 500]},
+        "checkpoint_notice": True,
+    })
+    stale = storage.load_preferences()
+    storage.paths.preferences.write_text(json.dumps({
+        "schema_version": 1,
+        "ui": {
+            "language": "zh-Hans", "conversion_dialog_size": [800, 600],
+            "run_options_advanced_expanded": True,
+        },
+        "checkpoint_notice": False,
+        "external_value": "fresh",
+    }), encoding="utf-8")
+
+    updated = storage.update_preferences({
+        "ui": {"language": "zh-Hant"}, "last_conversion_config": "s2tw",
+    })
+
+    assert stale["ui"]["conversion_dialog_size"] == [700, 500]
+    assert updated["ui"] == {
+        "language": "zh-Hant", "conversion_dialog_size": [800, 600],
+        "run_options_advanced_expanded": True,
+    }
+    assert updated["checkpoint_notice"] is False
+    assert updated["external_value"] == "fresh"
+    assert updated["last_conversion_config"] == "s2tw"
 
 
 def test_missing_or_corrupt_active_profile_falls_back_and_clears_preference(tmp_path):
@@ -61,6 +100,46 @@ def test_missing_or_corrupt_active_profile_falls_back_and_clears_preference(tmp_
     backup = storage.paths.profiles / settings.recovery_notice[1]
     assert backup.read_text(encoding="utf-8") == "not json"
     assert not profile_path.exists()
+
+
+def test_future_profile_schema_is_preserved_and_selection_is_retained(tmp_path):
+    storage = _store(tmp_path)
+    path = storage.paths.profiles / "future.json"
+    original = '{"schema_version": 2, "id": "future", "conversion": "s2tw"}\n'
+    path.write_text(original, encoding="utf-8")
+    before = path.stat().st_mtime_ns
+
+    settings = RunSettings(
+        storage, SimpleNamespace(), {"profile_id": "future"},
+        language="en", session_id="test-session")
+
+    assert settings.active.id == "conservative"
+    assert settings.preserve_profile_preference
+    assert not settings.clear_profile_preference
+    assert storage.paths.profiles.joinpath("future.json").read_text(encoding="utf-8") == original
+    assert path.stat().st_mtime_ns == before
+    assert not tuple(storage.paths.profiles.glob("*.corrupt-*"))
+    assert settings.take_recovery_notices() == (("profile_future_schema", "future.json"),)
+
+
+def test_future_ruleset_schema_is_preserved_and_not_reported_as_corrupt(tmp_path):
+    storage = _store(tmp_path)
+    ProfileStore(storage.paths.profiles).save(
+        Profile(id="custom", name="Custom", ruleset_ids=("newer",)))
+    path = storage.paths.rules / "newer.json"
+    original = '{"schema_version": 2, "id": "newer", "rules": []}\n'
+    path.write_text(original, encoding="utf-8")
+    before = path.stat().st_mtime_ns
+
+    settings = RunSettings(
+        storage, SimpleNamespace(), {"profile_id": "custom"},
+        language="en", session_id="test-session")
+
+    assert settings.active.ruleset_ids == ()
+    assert path.read_text(encoding="utf-8") == original
+    assert path.stat().st_mtime_ns == before
+    assert not tuple(storage.paths.rules.glob("*.corrupt-*"))
+    assert settings.take_recovery_notices() == (("rulesets_future_schema", "newer"),)
 
 
 def test_profile_and_ruleset_lists_skip_corrupt_files_and_report_names(tmp_path):
@@ -96,6 +175,9 @@ def test_corrupt_or_missing_active_rulesets_are_backed_up_and_reported(tmp_path)
     backups = tuple(storage.paths.rules.glob("broken.json.corrupt-*"))
     assert len(backups) == 1
     assert backups[0].read_text(encoding="utf-8") == "not json"
+    assert settings.take_recovery_notices() == (
+        ("rulesets_recovered", backups[0].name),
+    )
 
 
 def test_history_recovery_preserves_corrupt_index_and_rebuilds_empty_store(tmp_path):
