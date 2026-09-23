@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from core.models import ConversionPlan, Diagnostic, SourceSpan, TokenChange
 from core.preview import PreviewSession
 from core.workflow import ConversionWorkflow
-from ui.preview_window import _PreviewDialog, _guarded_preview_dialog, _translator
+from ui.preview_window import _PreviewDialog, _guarded_preview_dialog
 from ui.i18n import Translator
 
 
@@ -124,6 +124,8 @@ def _preview_dialog(change_count: int = 3, current_row: int = 1):
     items = [_FakeItem(_PreviewDialog._entry_text(preview, change)) for _, change in entries]
 
     dialog = object.__new__(_PreviewDialog)
+    dialog._translator = Translator("en")
+    dialog._services = None
     dialog._previews = (preview,)
     dialog._entries = entries
     dialog.applied = False
@@ -148,7 +150,6 @@ def _preview_dialog(change_count: int = 3, current_row: int = 1):
 
 
 def test_preview_dialog_single_decisions_update_only_selected_row_and_summary():
-    _translator.set_language("en")
     dialog, preview, items = _preview_dialog()
 
     dialog._accept_this()
@@ -177,7 +178,6 @@ def test_preview_dialog_single_decisions_update_only_selected_row_and_summary():
 
 
 def test_preview_dialog_apply_blocks_undecided_and_accepts_decided_without_finalizing():
-    _translator.set_language("en")
     dialog, preview, _items = _preview_dialog(change_count=2, current_row=0)
     finalize_calls = []
     preview.finalize = lambda: finalize_calls.append(True)
@@ -187,7 +187,7 @@ def test_preview_dialog_apply_blocks_undecided_and_accepts_decided_without_final
     assert dialog.dialog.accept_calls == 0
     assert finalize_calls == []
     assert dialog.apply_button.enabled is False
-    assert dialog.apply_button.tooltip == _translator.text("preview.incomplete")
+    assert dialog.apply_button.tooltip == Translator("en").text("preview.incomplete")
 
     dialog._accept_this()
     dialog.list_widget.current_row = 1
@@ -229,6 +229,7 @@ def test_refresh_restores_current_change_id_after_filtering():
     preview = PreviewSession(ConversionPlan(source_sha256="", changes=(first, second)))
     entries = tuple((preview, change) for change in preview.changes)
     dialog = object.__new__(_PreviewDialog)
+    dialog._translator = Translator("en")
     dialog._previews = (preview,)
     dialog._entries = entries
     dialog._visible_entries_cache = entries
@@ -270,6 +271,7 @@ def test_filtered_group_decision_reaches_hidden_language_metadata_entries():
     first = PreviewSession(ConversionPlan(source_sha256="", changes=(changes[0], changes[2])))
     second = PreviewSession(ConversionPlan(source_sha256="", changes=(changes[1],)))
     dialog = object.__new__(_PreviewDialog)
+    dialog._translator = Translator("en")
     dialog._previews = (first, second)
     dialog._entries = tuple((preview, change) for preview in dialog._previews for change in preview.changes)
     dialog.file_filter = _FakeCombo("chapter.xhtml")
@@ -311,6 +313,7 @@ def test_accept_file_leaves_language_group_pending_until_separate_group_action()
     previews = (first, second)
     entries = tuple((preview, change) for preview in previews for change in preview.changes)
     dialog = object.__new__(_PreviewDialog)
+    dialog._translator = Translator("en")
     dialog._previews = previews
     dialog._entries = entries
     dialog._visible_entries_cache = entries[:2]
@@ -342,7 +345,6 @@ def test_accept_file_leaves_language_group_pending_until_separate_group_action()
 
 
 def test_language_group_row_includes_change_and_file_counts():
-    _translator.set_language("en")
     changes = (
         TokenChange(
             source="zh-CN", target="zh-TW", span=SourceSpan(0, 5),
@@ -363,7 +365,7 @@ def test_language_group_row_includes_change_and_file_counts():
     row = _PreviewTableData(
         ((preview, changes[0]),),
         {"a.xhtml": "Text/a.xhtml"},
-        _translator,
+        Translator("en"),
         {"language_metadata": (2, 2)},
     ).row_values(0)
 
@@ -391,6 +393,7 @@ def test_plan_diagnostics_are_visible_in_summary_and_detail():
     )
     preview = PreviewSession(ConversionPlan(source_sha256="", changes=(change,)))
     dialog = object.__new__(_PreviewDialog)
+    dialog._translator = Translator("en")
     dialog._previews = (preview,)
     dialog._entries = ((preview, change),)
     dialog._planned = (

@@ -37,12 +37,12 @@ def ui(monkeypatch, config="t2s"):
         True, TargetSelection(Scope.SINGLE, ("a",)), "en"))
     monkeypatch.setattr("ui.preview_window.choose_conversion_config",
                         lambda *_args, **_kw: config)
-    monkeypatch.setattr("ui.preview_window.create_progress_reporter", lambda *_args: SimpleNamespace(
+    monkeypatch.setattr("ui.preview_window.create_progress_reporter", lambda *_args, **_kwargs: SimpleNamespace(
         update=lambda *_a: None, close=lambda: None, cancelled=lambda: False))
     monkeypatch.setattr("ui.preview_window.show_result", lambda **_kw: None)
 
 
-def accept(planned):
+def accept(planned, **_kwargs):
     previews = tuple(PreviewSession(item.plan) for item in planned)
     for item in previews:
         item.accept_all()
@@ -59,7 +59,7 @@ def test_back_to_settings_discards_old_plan_and_rebuilds(monkeypatch, tmp_path):
     monkeypatch.setattr("ui.preview_window.show_result",
                         lambda **values: results.append(values) or "close")
 
-    def preview(planned):
+    def preview(planned, **_kwargs):
         calls.append(planned)
         if len(calls) == 1:
             return SimpleNamespace(accepted=False, previews=(), back_to_settings=True)
@@ -98,7 +98,7 @@ def test_editing_rule_storage_after_preview_blocks_every_book_write(monkeypatch,
     rules.save(RuleSet("default", (Rule(id="one", source="漢字", target="文本", direction="t2s"),)))
     ui(monkeypatch, ConfigurationChoice("t2s", {"ruleset_ids": ["default"]}))
 
-    def preview(planned):
+    def preview(planned, **_kwargs):
         rules.save(RuleSet("default", (Rule(id="one", source="漢字", target="不同", direction="t2s"),)))
         return accept(planned)
 

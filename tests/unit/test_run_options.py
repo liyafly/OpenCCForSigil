@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+import pytest
+
 from app.settings import RunSettings
 from app.profiles import Profile
 from ui.run_options import (
@@ -205,7 +207,8 @@ def test_values_only_returns_controls_and_profile_references():
 def test_current_profile_rebuilds_attributes_from_visible_checkboxes(tmp_path):
     storage = SimpleNamespace(paths=SimpleNamespace(
         root=tmp_path, profiles=tmp_path / "profiles", rules=tmp_path / "rules"))
-    settings = RunSettings(storage, SimpleNamespace(), SimpleNamespace(), {})
+    settings = RunSettings(
+        storage, SimpleNamespace(), {}, language="en", session_id="test-session")
     settings.active = Profile(id="conservative", name="Conservative")
 
     current = settings.current_profile("s2t", {
@@ -226,7 +229,8 @@ def test_current_profile_rebuilds_attributes_from_visible_checkboxes(tmp_path):
 def test_profile_label_marks_changed_settings(tmp_path):
     storage = SimpleNamespace(paths=SimpleNamespace(
         root=tmp_path, profiles=tmp_path / "profiles", rules=tmp_path / "rules"))
-    settings = RunSettings(storage, SimpleNamespace(), SimpleNamespace(), {})
+    settings = RunSettings(
+        storage, SimpleNamespace(), {}, language="en", session_id="test-session")
     panel = object.__new__(RunOptionsPanel)
     panel._services = settings
     panel._tr = SimpleNamespace(text=lambda key, **values: {
@@ -259,3 +263,13 @@ def test_advanced_options_fold_state_is_saved_in_ui_preferences():
 
     assert panel.advanced_content.visible is True
     assert panel.ui_state() == {"run_options_advanced_expanded": True}
+
+
+def test_export_preview_requires_a_bound_run_context(tmp_path):
+    storage = SimpleNamespace(paths=SimpleNamespace(
+        root=tmp_path, profiles=tmp_path / "profiles", rules=tmp_path / "rules"))
+    settings = RunSettings(
+        storage, SimpleNamespace(), {}, language="en", session_id="test-session")
+
+    with pytest.raises(RuntimeError, match="not bound to an active profile and backend"):
+        settings.export_preview((), (), False, None, None)

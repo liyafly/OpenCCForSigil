@@ -51,9 +51,9 @@ def test_missing_or_corrupt_active_profile_falls_back_and_clears_preference(tmp_
     profile_path = storage.paths.profiles / "broken.json"
     profile_path.write_text("not json", encoding="utf-8")
     adapter = SimpleNamespace()
-    backend = SimpleNamespace()
-
-    settings = RunSettings(storage, adapter, backend, {"profile_id": "broken"})
+    settings = RunSettings(
+        storage, adapter, {"profile_id": "broken"},
+        language="en", session_id="test-session")
 
     assert settings.active.id == "conservative"
     assert settings.clear_profile_preference
@@ -87,7 +87,8 @@ def test_corrupt_or_missing_active_rulesets_are_backed_up_and_reported(tmp_path)
     broken.write_text("not json", encoding="utf-8")
 
     settings = RunSettings(
-        storage, SimpleNamespace(), SimpleNamespace(), {"profile_id": "custom"})
+        storage, SimpleNamespace(), {"profile_id": "custom"},
+        language="en", session_id="test-session")
 
     assert settings.active.ruleset_ids == ()
     assert settings.take_missing_rulesets_notice() == ("broken", "missing")

@@ -10,6 +10,7 @@ from app.profiles import Profile, ProfileStore
 from core.models import RuleSnapshot
 from rules.store import RuleSet, RuleStore
 from opencc_backend.configs import comparison_configs
+from ui.qt import exec_dialog
 
 
 ALIASES = {"include_nav": "convert_nav", "include_ncx": "convert_ncx",
@@ -25,8 +26,12 @@ def profile_options(profile):
 
 
 class RunSettings:
-    def __init__(self, storage, adapter, backend, preferences):
-        self.storage, self.adapter, self.backend = storage, adapter, backend
+    def __init__(self, storage, adapter, preferences, *, language, session_id):
+        self.storage, self.adapter = storage, adapter
+        self.language = language
+        self.session_id = session_id
+        self.profile = None
+        self.backend = None
         self.profiles = ProfileStore(storage.paths.profiles)
         self.rules = RuleStore(storage.paths.rules)
         self._pending_missing_rulesets: tuple[str, ...] = ()
@@ -56,6 +61,14 @@ class RunSettings:
             ruleset_ids=self._validate_active_rulesets(self.active.ruleset_ids),
         )
         self._book_fingerprint = None
+
+    def bind_run(self, profile, backend):
+        """Bind the selected run profile and backend before preview actions."""
+
+        if profile is None or backend is None:
+            raise ValueError("run profile and backend must be bound")
+        self.profile = profile
+        self.backend = backend
 
     def _conservative_profile(self, preferences):
         options = preferences.get("run_options")
@@ -314,7 +327,7 @@ class RunSettings:
                 on_export=lambda record, full, diff: self.export_report(
                     record, full, diff, translator, qt, parent))
             if dialog is not None:
-                dialog.exec()
+                exec_dialog(dialog)
 
     @staticmethod
     def show_self_test(report, translator, qt, parent):
@@ -357,8 +370,7 @@ class RunSettings:
         buttons.addWidget(copy_button)
         buttons.addWidget(close_button)
         layout.addLayout(buttons)
-        exec_method = getattr(dialog, "exec", None) or dialog.exec_
-        exec_method()
+        exec_dialog(dialog)
 
     def inspect_report(self, record, translator, qt, parent):
         from logging_ext.report import render_markdown
@@ -384,8 +396,10 @@ class RunSettings:
     def export_preview(self, planned, previews, include_full_diff, qt, parent):
         from core.staging import apply_changes, source_sha256
         from ui.i18n import Translator
-        translator = Translator(getattr(self, "language", "en"))
-        session_id = getattr(self, "session_id", str(uuid4()))
+        if self.profile is None or self.backend is None:
+            raise RuntimeError("run settings are not bound to an active profile and backend")
+        translator = Translator(self.language)
+        session_id = self.session_id
         summary = {"session_id": session_id, "status": "preview (not committed)",
                    "files_scanned": len(planned), "config": self.profile.conversion,
                    "profile_id": self.profile.id,
@@ -421,7 +435,7 @@ class RunSettings:
         view.setReadOnly(True)
         view.setPlainText(text)
         layout.addWidget(view)
-        dialog.exec()
+        exec_dialog(dialog)
 
 
 def settings_hash(profile):

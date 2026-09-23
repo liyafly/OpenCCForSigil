@@ -19,6 +19,7 @@ from opencc_backend.configs import SUPPORTED_CONFIGS, is_jieba_config
 from sigil.adapter import SigilBookAdapter
 from sigil.storage import UserDataStore, resolve_user_data_dir
 from transforms.language_tags import target_language
+from ui.i18n import Translator
 
 
 class Controller:
@@ -57,6 +58,7 @@ class Controller:
         accepted_change_count = 0
         skipped_change_count = 0
         files_written = 0
+        translator = Translator("en")
         try:
             profile = _load_conservative_profile()
             preferences = self.storage.load_preferences(
@@ -92,8 +94,6 @@ class Controller:
                 choose_conversion_config,
                 choose_scope,
                 create_progress_reporter,
-                set_ui_language,
-                set_jieba_status,
                 show_result,
                 show_preview,
             )
@@ -106,10 +106,14 @@ class Controller:
             explicit_language = ui_preferences.get("language")
             host_language = getattr(self.bk, "sigil_ui_lang", None)
             language = choose_language(explicit_language, host_language)
-            set_ui_language(language)
+            translator.set_language(language)
 
             adapter = SigilBookAdapter(self.bk)
-            settings = RunSettings(self.storage, adapter, backend, preferences)
+            settings = RunSettings(
+                self.storage, adapter, preferences, language=language,
+                session_id=self.session.session_id,
+            )
+            settings.bind_run(settings.active, backend)
             if settings.clear_profile_preference:
                 preferences = {**preferences, "profile_id": None}
                 self.storage.save_preferences(preferences)
@@ -129,6 +133,7 @@ class Controller:
                 scope_outcome = choose_scope(
                     adapter,
                     initial_language=language,
+                    translator=translator,
                     notice=tuple(recovery_notices),
                     checkpoint_notice_enabled=checkpoint_notice_enabled,
                     hide_checkpoint_notice=settings.hide_checkpoint_notice,
@@ -137,12 +142,14 @@ class Controller:
                 scope_outcome = choose_scope(
                     adapter,
                     initial_language=language,
+                    translator=translator,
                     checkpoint_notice_enabled=checkpoint_notice_enabled,
                     hide_checkpoint_notice=settings.hide_checkpoint_notice,
                 )
             checkpoint_notice_shown = bool(scope_outcome.checkpoint_notice_shown)
             language = scope_outcome.language
-            set_ui_language(language)
+            translator.set_language(language)
+            settings.language = language
             scope_preferences = {
                 **preferences,
                 "ui": {**ui_preferences, "language": language},
@@ -165,13 +172,15 @@ class Controller:
                 scope_outcome = choose_scope(
                     adapter,
                     initial_language=language,
+                    translator=translator,
                     initial_selection=previous_selection,
                     checkpoint_notice_enabled=False,
                 )
                 checkpoint_notice_shown = (
                     checkpoint_notice_shown or scope_outcome.checkpoint_notice_shown)
                 language = scope_outcome.language
-                set_ui_language(language)
+                translator.set_language(language)
+                settings.language = language
                 scope_preferences = {
                     **preferences,
                     "ui": {**ui_preferences, "language": language},
@@ -196,8 +205,6 @@ class Controller:
                     if settings.active_profile_is_saved:
                         previous_options.pop("ruleset_ids", None)
                     initial_options.update(previous_options)
-                _probe_state, probe_error, _elapsed_ms = backend.jieba_probe_state()
-                set_jieba_status(probe_error)
 
                 def save_run_ui_preferences(values):
                     nonlocal preferences, ui_preferences
@@ -216,6 +223,7 @@ class Controller:
                     services=settings,
                     ui_preferences=ui_preferences,
                     save_ui_preferences=save_run_ui_preferences,
+                    translator=translator,
                 )
                 action = getattr(selected_config, "action", None)
                 if action == "back_to_scope":
@@ -268,9 +276,7 @@ class Controller:
                     self._run_backend_self_test(backend)
 
                 settings.language = language
-                settings.session_id = self.session.session_id
-                settings.profile = active_profile
-                settings.backend = backend
+                settings.bind_run(active_profile, backend)
                 self.session.metadata.update(config=selected_config, profile_id=active_profile.id,
                                              profile_hash=settings_hash(active_profile),
                                              rules_hash=frozen_rules.rules_hash)
@@ -299,7 +305,7 @@ class Controller:
                     profile_id=active_profile.id,
                     snapshot_guard=settings.snapshot_guard(),
                 )
-                progress = create_progress_reporter(len(targets.file_ids))
+                progress = create_progress_reporter(len(targets.file_ids), translator=translator)
                 try:
                     planned = workflow.plan_in_worker(
                         OpenCCBackend,
@@ -312,7 +318,7 @@ class Controller:
                         self._summary(status="cancelled", files_scanned=0, changes=0, files_changed=0)
                     )
                     _show_result_safely(
-                        show_result,
+                        show_result, translator=translator,
                         status="cancelled",
                         files_scanned=0,
                         files_changed=0,
@@ -348,7 +354,7 @@ class Controller:
                     self.session.transition(SessionState.PREVIEWING)
                     self.session.metadata["checkpoint_notice_shown"] = checkpoint_notice_shown
                     result_action = _show_result_safely(
-                        show_result,
+                        show_result, translator=translator,
                         status="success",
                         files_scanned=len(planned),
                         files_changed=0,
@@ -383,10 +389,10 @@ class Controller:
                     return 0
 
                 self.session.transition(SessionState.PREVIEWING)
-                preview = show_preview(planned)
+                preview = show_preview(planned, translator=translator, services=settings)
                 if getattr(preview, "back_to_settings", False):
                     default_config = selected_config
-                    settings.backend = backend
+                    settings.bind_run(active_profile, backend)
                     if not reselect_scope(targets):
                         return 1
                     self.session.transition(SessionState.SCANNING)
@@ -403,7 +409,7 @@ class Controller:
                         )
                     )
                     _show_result_safely(
-                        show_result,
+                        show_result, translator=translator,
                         status="cancelled",
                         files_scanned=len(planned),
                         files_changed=0,
@@ -428,7 +434,7 @@ class Controller:
             )
 
             self.session.transition(SessionState.APPLYING_TO_STAGE)
-            post_preview_progress = create_progress_reporter(len(planned))
+            post_preview_progress = create_progress_reporter(len(planned), translator=translator)
             try:
                 # Staging and verification happen before the write boundary;
                 # keep the user informed without offering a cancellation
@@ -473,7 +479,7 @@ class Controller:
             )
             report_text = self._record_history(planned, staged, backend)
             _show_result_safely(
-                show_result,
+                show_result, translator=translator,
                 status="success",
                 files_scanned=len(planned),
                 files_changed=len(staged),
@@ -516,7 +522,7 @@ class Controller:
                 )
             )
             _show_result_safely(
-                show_result,
+                show_result, translator=translator,
                 status="partial_failure",
                 files_scanned=len(planned),
                 files_changed=files_changed,
@@ -547,6 +553,7 @@ class Controller:
             )
             _show_error_safely(
                 self.logger,
+                translator=translator,
                 kind=_error_kind(exc),
                 detail=type(exc).__name__,
                 files_written=files_written,
@@ -658,11 +665,13 @@ class Controller:
         return summary
 
 
-def _show_result_safely(show_result: Any, **values: object) -> Any:
+def _show_result_safely(
+    show_result: Any, *, translator: Translator | None = None, **values: object,
+) -> Any:
     """Keep headless/test hosts usable when Qt cannot show a result dialog."""
 
     try:
-        return show_result(**values)
+        return show_result(**values, translator=translator)
     except Exception:
         # Result presentation is best effort after the write boundary has
         # completed; the structured session summary remains authoritative.

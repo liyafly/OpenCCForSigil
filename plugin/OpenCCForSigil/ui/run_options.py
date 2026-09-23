@@ -5,20 +5,6 @@ from opencc_backend.configs import base_config
 from ui.i18n import settings_error_message, show_error_details
 
 
-_initial = {}
-_metadata_available = True
-_services = None
-
-
-def configure_run_options(initial=None, *, metadata_available=True, services=None):
-    """Temporary compatibility wrapper for callers not yet using constructor injection."""
-
-    global _initial, _metadata_available, _services
-    _initial = dict(initial) if isinstance(initial, dict) else {}
-    _services = services
-    _metadata_available = metadata_available
-
-
 def option_enablement(config: str, values: dict) -> dict[str, bool]:
     """Return option-control availability for one direction and current values."""
 
@@ -47,11 +33,9 @@ class RunOptionsPanel:
     ):
         self._qt = qt
         self._tr = translator
-        self._initial = dict(_initial if initial is None else initial)
-        self._metadata_available = (
-            _metadata_available if metadata_available is None else bool(metadata_available)
-        )
-        self._services = _services if services is None else services
+        self._initial = dict(initial) if isinstance(initial, dict) else {}
+        self._metadata_available = True if metadata_available is None else bool(metadata_available)
+        self._services = services
         self._nav_available = bool(nav_available)
         self._ui_preferences = dict(ui_preferences or {})
         self._advanced_expanded = bool(
@@ -386,12 +370,7 @@ def _enum_value(namespace, name):
     return None
 
 
-def get_run_services():
-    return _services
-
-
-__all__ = ["ConfigurationChoice", "RunOptionsPanel", "configure_run_options",
-           "get_run_services", "option_enablement"]
+__all__ = ["ConfigurationChoice", "RunOptionsPanel", "option_enablement"]
 
 
 class ConfigurationChoice(str):

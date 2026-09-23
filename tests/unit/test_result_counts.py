@@ -82,9 +82,9 @@ def test_result_done_states_unwritten_files_include_unchanged_subset(
 ):
     _MessageBox.messages = []
     fake_qt = type("FakeQt", (), {"QMessageBox": _MessageBox})
-    monkeypatch.setattr(preview_window, "_load_qt_widgets", lambda: fake_qt)
-    monkeypatch.setattr(preview_window, "_ensure_application", lambda _qt: None)
-    preview_window.set_ui_language(language)
+    monkeypatch.setattr(preview_window, "load_qt", lambda: fake_qt)
+    monkeypatch.setattr(preview_window, "ensure_application", lambda _qt: None)
+    translator = Translator(language)
 
     preview_window.show_result(
         status="success",
@@ -94,6 +94,7 @@ def test_result_done_states_unwritten_files_include_unchanged_subset(
         skipped_changes=skipped_changes,
         files_not_written=files_not_written,
         files_without_changes=files_without_changes,
+        translator=translator,
     )
 
     assert len(_MessageBox.messages) == 1
@@ -103,7 +104,6 @@ def test_result_done_states_unwritten_files_include_unchanged_subset(
     assert str(accepted_changes) in lines[3]
     assert str(skipped_changes) in lines[3]
     assert lines[4] == expected_unwritten
-    preview_window.set_ui_language("en")
 
 
 def test_noop_result_offers_scope_return_and_lists_invalid_sources(monkeypatch):
@@ -153,9 +153,9 @@ def test_noop_result_offers_scope_return_and_lists_invalid_sources(monkeypatch):
             return self.buttons[0] if self.response == "back" else self.buttons[1]
 
     fake_qt = type("FakeQt", (), {"QMessageBox": MessageBox})
-    monkeypatch.setattr(preview_window, "_load_qt_widgets", lambda: fake_qt)
-    monkeypatch.setattr(preview_window, "_ensure_application", lambda _qt: None)
-    preview_window.set_ui_language("zh-Hans")
+    monkeypatch.setattr(preview_window, "load_qt", lambda: fake_qt)
+    monkeypatch.setattr(preview_window, "ensure_application", lambda _qt: None)
+    translator = Translator("zh-Hans")
 
     values = dict(
         status="success",
@@ -165,6 +165,7 @@ def test_noop_result_offers_scope_return_and_lists_invalid_sources(monkeypatch):
         skipped_changes=0,
         return_to_scope=True,
         diagnostics=(("Text/bad.xhtml", "SOURCE_INVALID_XHTML", "line 1, column 2"),),
+        translator=translator,
     )
     assert preview_window.show_result(**values) == "back_to_scope"
     back_box = MessageBox.instances[-1]
@@ -181,7 +182,6 @@ def test_noop_result_offers_scope_return_and_lists_invalid_sources(monkeypatch):
     assert preview_window.show_result(**values) == "close"
     close_box = MessageBox.instances[-1]
     assert close_box.default_button is close_box.buttons[1]
-    preview_window.set_ui_language("en")
 
 
 @pytest.mark.parametrize("language", ("en", "zh-Hans", "zh-Hant"))
@@ -200,9 +200,8 @@ def test_result_status_and_count_rows_are_localized_line_by_line(
 ):
     _MessageBox.messages = []
     fake_qt = type("FakeQt", (), {"QMessageBox": _MessageBox})
-    monkeypatch.setattr(preview_window, "_load_qt_widgets", lambda: fake_qt)
-    monkeypatch.setattr(preview_window, "_ensure_application", lambda _qt: None)
-    preview_window.set_ui_language(language)
+    monkeypatch.setattr(preview_window, "load_qt", lambda: fake_qt)
+    monkeypatch.setattr(preview_window, "ensure_application", lambda _qt: None)
     translator = Translator(language)
 
     preview_window.show_result(
@@ -214,6 +213,7 @@ def test_result_status_and_count_rows_are_localized_line_by_line(
         files_not_written=3,
         files_without_changes=1,
         failed_file="Text/ch.xhtml",
+        translator=translator,
     )
 
     assert len(_MessageBox.messages) == 1
@@ -230,7 +230,6 @@ def test_result_status_and_count_rows_are_localized_line_by_line(
         assert lines[6] == translator.text("result.save_reminder")
     else:
         assert translator.text("result.save_reminder") not in lines
-    preview_window.set_ui_language("en")
 
 
 def test_success_result_opens_this_sessions_markdown_report(monkeypatch):
@@ -275,16 +274,15 @@ def test_success_result_opens_this_sessions_markdown_report(monkeypatch):
             return self.buttons[self.clicked_index]
 
     fake_qt = type("FakeQt", (), {"QMessageBox": MessageBox})
-    monkeypatch.setattr(preview_window, "_load_qt_widgets", lambda: fake_qt)
-    monkeypatch.setattr(preview_window, "_ensure_application", lambda _qt: None)
+    monkeypatch.setattr(preview_window, "load_qt", lambda: fake_qt)
+    monkeypatch.setattr(preview_window, "ensure_application", lambda _qt: None)
     opened = []
     monkeypatch.setattr(
-        preview_window, "_show_report_text", lambda _qt, text: opened.append(text))
-    preview_window.set_ui_language("zh-Hans")
-
+        preview_window, "_show_report_text", lambda _qt, text, _translator: opened.append(text))
+    translator = Translator("zh-Hans")
     assert preview_window.show_result(
         status="success", files_scanned=1, files_changed=1,
         accepted_changes=1, skipped_changes=0, report_text="# session report",
+        translator=translator,
     ) == "close"
     assert opened == ["# session report"]
-    preview_window.set_ui_language("en")

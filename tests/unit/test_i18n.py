@@ -11,7 +11,7 @@ from ui.i18n import (
     settings_error_message,
     show_error_details,
 )
-from ui import preview_window
+from ui import preview_window, qt as qt_helpers
 from opencc_backend.configs import V1_CONFIGS
 
 
@@ -120,7 +120,7 @@ def test_error_dialog_keeps_original_exception_in_detailed_text():
     assert MessageBox.instance.executed
 
 
-def test_dialogs_share_one_qapplication_instance():
+def test_dialogs_share_one_qapplication_instance(monkeypatch):
     class FakeApplication:
         current = None
         created = 0
@@ -136,10 +136,11 @@ def test_dialogs_share_one_qapplication_instance():
     class FakeQt:
         QApplication = FakeApplication
 
-    first = preview_window._ensure_application(FakeQt)
-    second = preview_window._ensure_application(FakeQt)
+    monkeypatch.setattr(qt_helpers, "_application", None)
+    first = qt_helpers.ensure_application(FakeQt)
+    second = qt_helpers.ensure_application(FakeQt)
     assert first is second
-    assert preview_window._application is first
+    assert qt_helpers._application is first
     assert FakeApplication.created == 1
 
 
@@ -218,9 +219,8 @@ def test_result_dialog_explains_files_without_a_write(monkeypatch):
     class FakeQt:
         QMessageBox = MessageBox
 
-    monkeypatch.setattr(preview_window, "_load_qt_widgets", lambda: FakeQt)
-    monkeypatch.setattr(preview_window, "_ensure_application", lambda _qt: None)
-    preview_window.set_ui_language("zh-Hans")
+    monkeypatch.setattr(preview_window, "load_qt", lambda: FakeQt)
+    monkeypatch.setattr(preview_window, "ensure_application", lambda _qt: None)
 
     preview_window.show_result(
         status="success",
@@ -229,6 +229,7 @@ def test_result_dialog_explains_files_without_a_write(monkeypatch):
         accepted_changes=37,
         skipped_changes=0,
         files_without_changes=1,
+        translator=Translator("zh-Hans"),
     )
 
     assert len(messages) == 1
@@ -237,4 +238,3 @@ def test_result_dialog_explains_files_without_a_write(monkeypatch):
     assert lines[3] == "已写回：37 个文件（应用 37 项修改，跳过 0 项）"
     assert lines[4] == "未写回：1 个文件（其中没有建议变更：1 个）"
     assert lines[6] == "修改已交给 Sigil，请在 Sigil 中检查并保存 EPUB。"
-    preview_window.set_ui_language("en")

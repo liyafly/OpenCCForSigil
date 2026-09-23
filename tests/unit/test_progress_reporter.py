@@ -109,7 +109,6 @@ class _FakeEvent:
 
 
 def test_progress_reporter_resets_each_phase_and_clamps_repeated_updates():
-    preview_window.set_ui_language("en")
     reporter = preview_window.ProgressReporter(_FakeQt, 2)
 
     reporter.update("analyzing", 1, 2, "Text/a.xhtml")
@@ -146,7 +145,6 @@ def test_unparented_progress_reporter_is_modal_only_inside_plugin_application():
 
 
 def test_cancelling_keeps_window_visible_and_preserves_cancelling_label():
-    preview_window.set_ui_language("en")
     reporter = preview_window.ProgressReporter(_FakeQt, 2)
 
     reporter.set_cancelling()
@@ -178,7 +176,6 @@ def test_non_cancellable_progress_ignores_cancel_close_and_escape():
 
 
 def test_analysis_cancel_restores_the_window_with_cancelling_message():
-    preview_window.set_ui_language("en")
     reporter = preview_window.ProgressReporter(_FakeQt, 2)
     reporter.dialog.canceled.emit()
 

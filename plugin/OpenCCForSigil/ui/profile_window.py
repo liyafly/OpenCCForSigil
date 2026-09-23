@@ -7,8 +7,9 @@ from typing import Any, Iterable
 from uuid import uuid4
 
 from app.profiles import Profile, ProfileStore
-from opencc_backend.configs import SUPPORTED_CONFIGS, V1_CONFIGS
+from opencc_backend.configs import SUPPORTED_CONFIGS, base_config_options
 from ui.i18n import CatalogView, Translator, show_error_details
+from ui.qt import ensure_application, exec_dialog, load_qt
 
 
 
@@ -32,16 +33,15 @@ def show_profile_window(
     on_delete=None,
     storage_errors: Iterable[str] = (),
 ) -> Profile | None:
-    qt = _load_qt_widgets()
-    _ensure_application(qt)
+    qt = load_qt()
+    ensure_application(qt)
     manager = ProfileManagerDialog(
         qt, tuple(profiles), translator=translator, store=store, selected_id=selected_id,
         available_configs=available_configs, available_rulesets=available_rulesets,
         current_profile=current_profile, active_profile=active_profile, on_delete=on_delete,
         storage_errors=storage_errors,
     )
-    exec_method = getattr(manager.dialog, "exec", None) or manager.dialog.exec_
-    exec_method()
+    exec_dialog(manager.dialog)
     return manager.selected if manager.accepted else None
 
 
@@ -71,7 +71,7 @@ class ProfileManagerDialog:
         self._current_profile = current_profile or (self._profiles[0] if self._profiles else None)
         self._active_profile = active_profile
         available = tuple(SUPPORTED_CONFIGS if available_configs is None else available_configs)
-        self._available_configs = _base_config_options(available)
+        self._available_configs = base_config_options(available)
         self._available_config_ids = set(available)
         self._available_rulesets = tuple(dict.fromkeys(
             ("default", *available_rulesets,
@@ -318,43 +318,4 @@ def _profile_signature(profile: Profile) -> tuple:
                         for key, value in payload.items()))
 
 
-def _load_qt_widgets() -> Any:
-    try:
-        from PySide6 import QtCore, QtWidgets
-
-        QtWidgets.Qt = QtCore.Qt
-        return QtWidgets
-    except ImportError:
-        try:
-            from PyQt5 import QtCore, QtWidgets
-
-            QtWidgets.Qt = QtCore.Qt
-            return QtWidgets
-        except ImportError as exc:
-            raise RuntimeError("Sigil Qt runtime is unavailable") from exc
-
-
-_application: Any = None
-
-
-def _base_config_options(available_configs: Iterable[str] | None) -> tuple[str, ...]:
-    values = tuple(V1_CONFIGS if available_configs is None else available_configs)
-    seen = set(values)
-    from opencc_backend.configs import BASE_CONFIG_BY_JIEBA
-    seen.update(BASE_CONFIG_BY_JIEBA[value] for value in values if value in BASE_CONFIG_BY_JIEBA)
-    return tuple(config for config in V1_CONFIGS if config in seen)
-
-
-def _ensure_application(qt: Any) -> Any:
-    global _application
-    app = qt.QApplication.instance()
-    if app is None:
-        import sys
-
-        app = qt.QApplication(sys.argv)
-    _application = app
-    return app
-
-
-__all__ = ["ProfileManagerDialog", "STANDARD_CONFIGS", "show_profile_window"]
-STANDARD_CONFIGS = V1_CONFIGS
+__all__ = ["ProfileManagerDialog", "show_profile_window"]

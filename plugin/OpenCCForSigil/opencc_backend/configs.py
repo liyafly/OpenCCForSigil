@@ -1,6 +1,6 @@
 """Official OpenCC config families and comparison metadata."""
 
-from typing import Dict, Tuple
+from typing import Dict, Iterable, Tuple
 
 from app.errors import DependencyError
 
@@ -75,6 +75,14 @@ def is_jieba_config(config: str) -> bool:
 
 def base_config(config: str) -> str:
     return BASE_CONFIG_BY_JIEBA.get(config, config)
+
+
+def base_config_options(available_configs: Iterable[str] | None = None) -> Tuple[str, ...]:
+    """Return standard directions represented by an available config set."""
+
+    available = set(SUPPORTED_CONFIGS if available_configs is None else available_configs)
+    bases = {base_config(str(config)) for config in available}
+    return tuple(config for config in V1_CONFIGS if config in bases)
 
 
 def comparison_configs(config: str) -> Tuple[str, ...]:

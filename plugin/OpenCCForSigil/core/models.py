@@ -152,10 +152,3 @@ class VerificationResult:
     passed: bool
     diagnostics: Tuple[Diagnostic, ...] = ()
     checked_change_ids: Tuple[str, ...] = ()
-
-
-class ChineseConverter:
-    """Structural protocol placeholder for the Phase 1 converter."""
-
-    def convert(self, text: str, request: ConvertRequest) -> ConvertResult:
-        raise NotImplementedError

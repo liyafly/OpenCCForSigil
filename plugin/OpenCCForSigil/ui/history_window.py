@@ -9,6 +9,7 @@ from typing import Any, Callable, Mapping, Sequence
 from logging_ext.history import HistoryError, HistoryStore
 from logging_ext.retention import RetentionResult, cleanup, retention_policy
 from ui.i18n import Translator
+from ui.qt import ensure_application, exec_dialog, load_qt
 
 
 
@@ -69,22 +70,6 @@ def cleanup_with_confirmation(
     return True, result
 
 
-def _load_qt_widgets() -> Any:
-    try:
-        from PySide6 import QtCore, QtWidgets
-
-        QtWidgets.Qt = QtCore.Qt
-        return QtWidgets
-    except ImportError:
-        try:
-            from PyQt5 import QtCore, QtWidgets
-
-            QtWidgets.Qt = QtCore.Qt
-            return QtWidgets
-        except ImportError as exc:
-            raise RuntimeError("Sigil Qt runtime is unavailable") from exc
-
-
 def show_history(
     history_root: Path,
     *,
@@ -98,7 +83,8 @@ def show_history(
 ) -> Any:
     """Show recent sessions and invoke root callbacks for inspect/export."""
 
-    qt_widgets = qt_widgets or _load_qt_widgets()
+    qt_widgets = qt_widgets or load_qt()
+    ensure_application(qt_widgets)
     translator = translator or Translator(language)
     logs_root = Path(logs_root) if logs_root is not None else Path(history_root).parent / "logs"
     try:
@@ -113,8 +99,7 @@ def show_history(
         recover_button = box.addButton(
             translator.text("history.backup_rebuild"), box.ButtonRole.AcceptRole)
         box.addButton(translator.text("history.close"), box.ButtonRole.RejectRole)
-        exec_method = getattr(box, "exec", None) or box.exec_
-        exec_method()
+        exec_dialog(box)
         if box.clickedButton() is not recover_button:
             return None
         backup = backup_and_rebuild_history(Path(history_root))

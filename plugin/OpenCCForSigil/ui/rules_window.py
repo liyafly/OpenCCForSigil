@@ -11,10 +11,11 @@ from rules.engine import convert_with_overlay
 from rules.models import Rule, RuleSnapshot
 from rules.precedence import base_direction
 from rules.validators import RuleValidationError, validate_rules
-from opencc_backend.configs import V1_CONFIGS
+from opencc_backend.configs import base_config_options
 from rules.store import RuleSet
 from rules.importers import ImportResult, rule_dedup_key
 from ui.i18n import CatalogView, Translator, rule_validation_message, show_error_details
+from ui.qt import ensure_application, exec_dialog, load_qt
 
 
 @dataclass(frozen=True)
@@ -50,8 +51,6 @@ def review_import(existing: Iterable[Rule], imported: ImportResult) -> RuleImpor
     return RuleImportReview(tuple(additions), duplicates, imported.diagnostics, conflicts)
 
 
-
-STANDARD_CONFIGS = V1_CONFIGS
 
 def _labels(translator: Any) -> CatalogView:
     return CatalogView(translator or Translator("en"), "rules")
@@ -134,8 +133,8 @@ def show_dictionary_inspector(
         profile_id=profile_id,
         book_fingerprint=book_fingerprint,
     )
-    qt = _load_qt_widgets()
-    _ensure_application(qt)
+    qt = load_qt()
+    ensure_application(qt)
     dialog = qt.QDialog()
     labels = _labels(translator)
     dialog.setWindowTitle(labels["inspector_title"])
@@ -159,8 +158,7 @@ def show_dictionary_inspector(
     close = qt.QPushButton(labels["close"])
     close.clicked.connect(dialog.accept)
     layout.addWidget(close)
-    exec_method = getattr(dialog, "exec", None) or dialog.exec_
-    exec_method()
+    exec_dialog(dialog)
     return inspection
 
 
@@ -204,8 +202,8 @@ def show_rules_window(
 ) -> tuple[Rule, ...] | RuleWindowResult | None:
     """Open the manager and return committed rules, or ``None`` on cancel."""
 
-    qt = _load_qt_widgets()
-    _ensure_application(qt)
+    qt = load_qt()
+    ensure_application(qt)
     dialog = RuleManagerDialog(
         qt,
         tuple(rules),
@@ -220,8 +218,7 @@ def show_rules_window(
         rulesets=rulesets,
         ruleset_id=ruleset_id,
     )
-    exec_method = getattr(dialog.dialog, "exec", None) or dialog.dialog.exec_
-    exec_method()
+    exec_dialog(dialog.dialog)
     if not dialog.accepted:
         return None
     if dialog._managed:
@@ -263,7 +260,7 @@ class RuleManagerDialog:
         self._config = config
         self._profile_id = profile_id
         self._book_fingerprint = book_fingerprint
-        self._available_configs = _base_config_options(available_configs)
+        self._available_configs = base_config_options(available_configs)
         self._comparison_configs = tuple(comparison_configs)
         self._storage_errors = tuple(storage_errors)
         self.accepted = False
@@ -730,8 +727,7 @@ class RuleManagerDialog:
         state = {"accepted": False}
         cancel.clicked.connect(dialog.reject)
         accept.clicked.connect(lambda: (state.update(accepted=True), dialog.accept()))
-        execute = getattr(dialog, "exec", None) or dialog.exec_
-        execute()
+        exec_dialog(dialog)
         if not state["accepted"]:
             return None
         return {
@@ -776,8 +772,7 @@ class RuleManagerDialog:
         state = {"accepted": False}
         cancel.clicked.connect(dialog.reject)
         accept.clicked.connect(lambda: (state.update(accepted=True), dialog.accept()))
-        execute = getattr(dialog, "exec", None) or dialog.exec_
-        execute()
+        exec_dialog(dialog)
         return bool(state["accepted"])
 
     def _export(self) -> None:
@@ -830,48 +825,6 @@ def _conflict_summary(conflict, translator: Translator) -> str:
     return text
 
 
-def _load_qt_widgets() -> Any:
-    try:
-        from PySide6 import QtCore, QtWidgets
-
-        QtWidgets.Qt = QtCore.Qt
-        return QtWidgets
-    except ImportError:
-        try:
-            from PyQt5 import QtCore, QtWidgets
-
-            QtWidgets.Qt = QtCore.Qt
-            return QtWidgets
-        except ImportError as exc:
-            raise RuntimeError("Sigil Qt runtime is unavailable") from exc
-
-
-_application: Any = None
-
-
-def _ensure_application(qt: Any) -> Any:
-    global _application
-    app = qt.QApplication.instance()
-    if app is None:
-        import sys
-
-        app = qt.QApplication(sys.argv)
-    _application = app
-    return app
-
-
-def _base_config_options(available_configs: Iterable[str] | None) -> tuple[str, ...]:
-    values = STANDARD_CONFIGS if available_configs is None else available_configs
-    seen: set[str] = set()
-    result: list[str] = []
-    for value in values:
-        direction = base_direction(str(value))
-        if direction in STANDARD_CONFIGS and direction not in seen:
-            seen.add(direction)
-            result.append(direction)
-    return tuple(result)
-
-
 def _configure_rule_table(table, qt):
     table.setEditTriggers(qt.QAbstractItemView.NoEditTriggers)
     table.setSelectionBehavior(qt.QAbstractItemView.SelectRows)
@@ -888,7 +841,6 @@ __all__ = [
     "RuleImportReview",
     "RuleManagerDialog",
     "RuleWindowResult",
-    "STANDARD_CONFIGS",
     "convert_for",
     "inspect_dictionary",
     "review_import",

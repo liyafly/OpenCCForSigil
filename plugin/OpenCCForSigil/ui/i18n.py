@@ -7,6 +7,8 @@ from pathlib import Path
 import re
 from typing import Any, Mapping
 
+from ui.qt import exec_dialog
+
 
 SUPPORTED_LANGUAGES = ("zh-Hans", "en", "zh-Hant")
 _RESOURCE_DIR = Path(__file__).resolve().parents[1] / "resources" / "i18n"
@@ -130,9 +132,8 @@ def show_error_details(qt: Any, parent: Any, title: str, summary: str, detail: s
     set_details = getattr(box, "setDetailedText", None)
     if callable(set_details):
         set_details(detail)
-    execute = getattr(box, "exec", None) or getattr(box, "exec_", None)
-    if callable(execute):
-        execute()
+    if callable(getattr(box, "exec", None)) or callable(getattr(box, "exec_", None)):
+        exec_dialog(box)
     else:
         message_box.warning(parent, title, summary)
 

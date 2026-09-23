@@ -208,13 +208,6 @@ def _segment_changes(
     return changes
 
 
-# Readable aliases used by callers that describe the operation as applying an
-# overlay rather than converting with one.
-apply_overlay = convert_with_overlay
-match_locked_spans = lock_spans
-convert_text = convert_with_overlay
-
-
 class RuleEngine:
     """Small state-free facade for callers that prefer an object API."""
 
@@ -262,9 +255,6 @@ __all__ = [
     "OverlayResult",
     "RuleEngine",
     "RuleHit",
-    "apply_overlay",
     "convert_with_overlay",
-    "convert_text",
     "lock_spans",
-    "match_locked_spans",
 ]

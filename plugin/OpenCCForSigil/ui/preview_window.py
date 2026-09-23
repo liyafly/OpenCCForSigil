@@ -15,6 +15,7 @@ from opencc_backend.configs import (
     V1_CONFIGS,
 )
 from sigil.scope import Scope, ScopeSelectionError, TargetSelection, TextFile, resolve_target_selection
+from ui.qt import ensure_application, exec_dialog, load_qt
 from ui.i18n import (
     SUPPORTED_LANGUAGES,
     Translator,
@@ -53,8 +54,12 @@ class ConfigOutcome:
 class ProgressReporter:
     """A lightweight progress view driven by workflow file boundaries."""
 
-    def __init__(self, qt_widgets: Any, total: int, parent: Any = None) -> None:
+    def __init__(
+        self, qt_widgets: Any, total: int, parent: Any = None,
+        translator: Translator | None = None,
+    ) -> None:
         self._qt = qt_widgets
+        self._translator = translator or Translator("en")
         self._cancelled = False
         self._cancelling = False
         self._non_cancellable = False
@@ -63,9 +68,9 @@ class ProgressReporter:
         self._total = max(int(total), 1)
         self._value = 0
         self.dialog = qt_widgets.QProgressDialog(
-            "", _translator.text("common.cancel"), 0, self._total, parent
+            "", self._translator.text("common.cancel"), 0, self._total, parent
         )
-        self.dialog.setWindowTitle(_translator.text("progress.title"))
+        self.dialog.setWindowTitle(self._translator.text("progress.title"))
         # A parent supplied by a future plugin-owned QWidget scopes modality to
         # that window.  The current entry point has no stable host QWidget, so
         # the unparented dialog is application-modal only within this plugin's
@@ -90,9 +95,9 @@ class ProgressReporter:
         self.dialog.setMaximum(self._total)
         self.dialog.setValue(0)
         self.dialog.setLabelText(
-            _translator.text(
+            self._translator.text(
                 "progress.status",
-                phase=_translator.text("progress.phase.analyzing"),
+                phase=self._translator.text("progress.phase.analyzing"),
                 index=0,
                 total=max(int(total), 0),
                 file="…",
@@ -127,9 +132,9 @@ class ProgressReporter:
         self.dialog.setValue(self._value)
         if not self._cancelling:
             self.dialog.setLabelText(
-                _translator.text(
+                self._translator.text(
                     "progress.status",
-                    phase=_translator.text(f"progress.phase.{self._phase}"),
+                    phase=self._translator.text(f"progress.phase.{self._phase}"),
                     index=self._value,
                     total=total,
                     file=href,
@@ -188,7 +193,7 @@ class ProgressReporter:
         """Keep the progress window visible while the worker reaches a safe stop."""
 
         self._cancelling = True
-        self.dialog.setLabelText(_translator.text("progress.cancelling"))
+        self.dialog.setLabelText(self._translator.text("progress.cancelling"))
         set_cancel_button = getattr(self.dialog, "setCancelButton", None)
         if callable(set_cancel_button):
             set_cancel_button(None)
@@ -207,25 +212,14 @@ class ProgressReporter:
             process_events()
 
 
-_translator = Translator("en")
-_jieba_unavailable_reason: str | None = None
-
-
-
-
-
-def set_jieba_status(reason: str | None) -> None:
-    global _jieba_unavailable_reason
-    _jieba_unavailable_reason = reason
-
-
-def set_ui_language(language: str) -> None:
-    """Set the language used by all dialogs in this plugin invocation."""
-
-    _translator.set_language(language)
-
-
 CONFIG_SELECTION_ORDER = V1_CONFIGS
+
+
+def _load_ui_qt(translator: Translator):
+    try:
+        return load_qt()
+    except RuntimeError as exc:
+        raise UIUnavailableError(translator.text("error.ui_unavailable")) from exc
 
 
 def choose_conversion_config(
@@ -239,6 +233,7 @@ def choose_conversion_config(
     services=None,
     ui_preferences=None,
     save_ui_preferences=None,
+    translator: Translator | None = None,
 ) -> ConfigOutcome:
     """Ask for an explicit conversion direction before building a plan.
 
@@ -247,26 +242,26 @@ def choose_conversion_config(
     Jieba checkbox. The selected concrete config is frozen into the plan.
     """
 
-    qt_widgets = _load_qt_widgets()
+    translator = translator or Translator("en")
+    qt_widgets = _load_ui_qt(translator)
     available = set(available_configs)
     configs = tuple(config for config in CONFIG_SELECTION_ORDER if config in available)
     if not configs:
-        raise UIUnavailableError(_translator.text("error.no_config"))
+        raise UIUnavailableError(translator.text("error.no_config"))
 
-    _ensure_application(qt_widgets)
+    ensure_application(qt_widgets)
     jieba_configs = {
         base: plugin
         for base, plugin in JIEBA_CONFIG_BY_BASE.items()
         if plugin in available
     }
     dialog = _ConversionConfigDialog(
-        qt_widgets, configs, default_config, jieba_configs, translator=_translator,
+        qt_widgets, configs, default_config, jieba_configs, translator=translator,
         jieba_probe=jieba_probe, initial_options=initial_options,
         metadata_available=metadata_available, nav_available=nav_available,
         services=services, ui_preferences=ui_preferences,
     )
-    exec_method = getattr(dialog.dialog, "exec", None) or dialog.dialog.exec_
-    exec_method()
+    exec_dialog(dialog.dialog)
     if callable(save_ui_preferences):
         state = {**dict(ui_preferences or {}), **dialog.options_panel.ui_state()}
         size = getattr(dialog.dialog, "size", None)
@@ -287,6 +282,7 @@ def choose_scope(
     initial_selection: TargetSelection | None = None,
     checkpoint_notice_enabled: bool = False,
     hide_checkpoint_notice=None,
+    translator: Translator | None = None,
 ) -> ScopeOutcome:
     """Choose a frozen XHTML target set after enumerating metadata only."""
 
@@ -300,16 +296,17 @@ def choose_scope(
     inventory = _ordered_scope_inventory(inventory, spine_ids)
     nav_getter = getattr(adapter, "nav_id", None)
     nav_id = nav_getter() if callable(nav_getter) else None
-    language = initial_language or _translator.language
-    _translator.set_language(language)
-    qt_widgets = _load_qt_widgets()
-    _ensure_application(qt_widgets)
+    translator = translator or Translator(initial_language or "en")
+    language = initial_language or translator.language
+    translator.set_language(language)
+    qt_widgets = _load_ui_qt(translator)
+    ensure_application(qt_widgets)
     dialog = _ScopeDialog(
         qt_widgets,
         inventory,
         selected_ids,
         language,
-        _translator,
+        translator,
         ignored_non_xhtml=ignored_non_xhtml,
         spine_ids=spine_ids,
         nav_id=nav_id,
@@ -318,12 +315,11 @@ def choose_scope(
         checkpoint_notice_enabled=checkpoint_notice_enabled,
         hide_checkpoint_notice=hide_checkpoint_notice,
     )
-    exec_method = getattr(dialog.dialog, "exec", None) or dialog.dialog.exec_
-    exec_method()
+    exec_dialog(dialog.dialog)
     if not dialog.accepted:
         return ScopeOutcome(
             False, None, dialog.language, dialog.checkpoint_notice_shown)
-    _translator.set_language(dialog.language)
+    translator.set_language(dialog.language)
     selection = resolve_target_selection(
         inventory,
         dialog.scope,
@@ -333,12 +329,15 @@ def choose_scope(
         True, selection, dialog.language, dialog.checkpoint_notice_shown)
 
 
-def create_progress_reporter(total: int, parent: Any = None) -> ProgressReporter:
+def create_progress_reporter(
+    total: int, parent: Any = None, *, translator: Translator | None = None,
+) -> ProgressReporter:
     """Create a progress reporter using Sigil's already available Qt runtime."""
 
-    qt_widgets = _load_qt_widgets()
-    _ensure_application(qt_widgets)
-    return ProgressReporter(qt_widgets, total, parent)
+    translator = translator or Translator("en")
+    qt_widgets = _load_ui_qt(translator)
+    ensure_application(qt_widgets)
+    return ProgressReporter(qt_widgets, total, parent, translator)
 
 
 def _selected_xhtml_ids_and_ignored(
@@ -384,15 +383,18 @@ def _ordered_scope_inventory(
     ))
 
 
-def show_preview(planned: Sequence[PlannedDocument]) -> PreviewOutcome:
+def show_preview(
+    planned: Sequence[PlannedDocument], *, translator: Translator | None = None,
+    services: Any = None,
+) -> PreviewOutcome:
     """Show a preview and return the sessions containing user decisions."""
 
-    qt_widgets = _load_qt_widgets()
+    translator = translator or Translator("en")
+    qt_widgets = _load_ui_qt(translator)
     previews = tuple(PreviewSession(item.plan) for item in planned)
-    _ensure_application(qt_widgets)
-    dialog = _PreviewDialog(qt_widgets, planned, previews)
-    exec_method = getattr(dialog.dialog, "exec", None) or dialog.dialog.exec_
-    exec_method()
+    ensure_application(qt_widgets)
+    dialog = _PreviewDialog(qt_widgets, planned, previews, translator, services)
+    exec_dialog(dialog.dialog)
     return PreviewOutcome(
         accepted=dialog.applied,
         previews=previews,
@@ -414,93 +416,93 @@ def show_result(
     return_to_scope: bool = False,
     diagnostics=(),
     report_text: str | None = None,
+    translator: Translator | None = None,
 ) -> str | None:
     """Show a concise localized terminal result after the write boundary."""
 
-    qt_widgets = _load_qt_widgets()
-    _ensure_application(qt_widgets)
+    translator = translator or Translator("en")
+    qt_widgets = _load_ui_qt(translator)
+    ensure_application(qt_widgets)
     not_written = (
         max(files_scanned - files_changed, 0)
         if files_not_written is None
         else max(int(files_not_written), 0)
     )
     rows = (
-        _translator.text("result.row.scanned", count=max(int(files_scanned), 0)),
-        _translator.text(
+        translator.text("result.row.scanned", count=max(int(files_scanned), 0)),
+        translator.text(
             "result.row.written", files=max(int(files_changed), 0),
             accepted=max(int(accepted_changes), 0), skipped=max(int(skipped_changes), 0)),
-        _translator.text(
+        translator.text(
             "result.row.unwritten", files=not_written,
             unchanged=max(int(files_without_changes), 0)),
     )
     if status == "partial_failure":
-        status_line = _translator.text("result.status.partial", file=failed_file or "?")
+        status_line = translator.text("result.status.partial", file=failed_file or "?")
         method = getattr(qt_widgets.QMessageBox, "warning")
     elif status == "cancelled":
-        status_line = _translator.text("result.status.cancelled")
+        status_line = translator.text("result.status.cancelled")
         method = getattr(qt_widgets.QMessageBox, "information")
     elif accepted_changes == 0 and skipped_changes:
-        status_line = _translator.text("result.status.skipped")
+        status_line = translator.text("result.status.skipped")
         method = getattr(qt_widgets.QMessageBox, "information")
     elif accepted_changes == 0:
-        status_line = _translator.text("result.status.noop")
+        status_line = translator.text("result.status.noop")
         method = getattr(qt_widgets.QMessageBox, "information")
     else:
-        status_line = _translator.text("result.status.success")
+        status_line = translator.text("result.status.success")
         method = getattr(qt_widgets.QMessageBox, "information")
     message = status_line + "\n\n" + "\n".join(rows)
     if status == "success" and accepted_changes > 0:
-        message += "\n\n" + _translator.text("result.save_reminder")
+        message += "\n\n" + translator.text("result.save_reminder")
     diagnostics = tuple(diagnostics)
     if diagnostics:
         rows = []
         for item in diagnostics:
             if isinstance(item, (tuple, list)) and len(item) >= 2:
                 file_name, code = item[:2]
-                row = f"{file_name}: {diagnostic_summary(_translator, str(code))}"
+                row = f"{file_name}: {diagnostic_summary(translator, str(code))}"
                 rows.append(row)
             else:
                 rows.append(str(item))
-        message += "\n\n" + _translator.text("result.invalid_sources") + "\n" + "\n".join(rows)
+        message += "\n\n" + translator.text("result.invalid_sources") + "\n" + "\n".join(rows)
     if return_to_scope or report_text:
         box = qt_widgets.QMessageBox()
-        box.setWindowTitle(_translator.text("app.title"))
+        box.setWindowTitle(translator.text("app.title"))
         box.setText(message)
         back = None
         if return_to_scope:
             back = box.addButton(
-                _translator.text("result.back_to_scope"), qt_widgets.QMessageBox.RejectRole)
+                translator.text("result.back_to_scope"), qt_widgets.QMessageBox.RejectRole)
         view_report = None
         if report_text:
             view_report = box.addButton(
-                _translator.text("result.view_report"), qt_widgets.QMessageBox.ActionRole)
-        close = box.addButton(_translator.text("common.close"), qt_widgets.QMessageBox.AcceptRole)
+                translator.text("result.view_report"), qt_widgets.QMessageBox.ActionRole)
+        close = box.addButton(translator.text("common.close"), qt_widgets.QMessageBox.AcceptRole)
         box.setDefaultButton(close)
-        exec_method = getattr(box, "exec", None) or box.exec_
-        exec_method()
+        exec_dialog(box)
         clicked = box.clickedButton()
         if view_report is not None and clicked is view_report:
-            _show_report_text(qt_widgets, report_text)
+            _show_report_text(qt_widgets, report_text, translator)
             return "close"
         return "back_to_scope" if back is not None and clicked is back else "close"
-    method(None, _translator.text("app.title"), message)
+    method(None, translator.text("app.title"), message)
     return None
 
 
-def _show_report_text(qt_widgets, report_text: str) -> None:
+def _show_report_text(qt_widgets, report_text: str, translator: Translator) -> None:
     dialog = qt_widgets.QDialog()
-    dialog.setWindowTitle(_translator.text("result.view_report"))
+    dialog.setWindowTitle(translator.text("result.view_report"))
     dialog.resize(760, 560)
     layout = qt_widgets.QVBoxLayout(dialog)
     view = qt_widgets.QPlainTextEdit()
     view.setReadOnly(True)
     view.setPlainText(report_text)
     layout.addWidget(view)
-    close = qt_widgets.QPushButton(_translator.text("common.close"))
+    close = qt_widgets.QPushButton(translator.text("common.close"))
     close.clicked.connect(dialog.accept)
     layout.addWidget(close)
-    exec_method = getattr(dialog, "exec", None) or dialog.exec_
-    exec_method()
+    exec_dialog(dialog)
 
 
 def show_error(
@@ -510,13 +512,15 @@ def show_error(
     files_written: int,
     log_path: str,
     affected_files=(),
+    translator: Translator | None = None,
 ) -> None:
     """Show a privacy-safe failure summary and copyable diagnostic context."""
 
-    qt_widgets = _load_qt_widgets()
-    _ensure_application(qt_widgets)
+    translator = translator or Translator("en")
+    qt_widgets = _load_ui_qt(translator)
+    ensure_application(qt_widgets)
     dialog = qt_widgets.QDialog()
-    dialog.setWindowTitle(_translator.text("error.title"))
+    dialog.setWindowTitle(translator.text("error.title"))
     layout = qt_widgets.QVBoxLayout(dialog)
     message_key = {
         "VERIFY_FAILED": "error.verify_failed",
@@ -524,30 +528,30 @@ def show_error(
         "SETTINGS_CHANGED": "error.settings_changed",
         "GROUP_PARTIAL": "error.group_partial",
     }.get(kind, "error.unexpected")
-    message = qt_widgets.QLabel(_translator.text(message_key))
+    message = qt_widgets.QLabel(translator.text(message_key))
     message.setWordWrap(True)
     layout.addWidget(message)
     write_key = "error.no_files_written" if not files_written else "error.some_files_written"
     write_status = qt_widgets.QLabel(
-        _translator.text(write_key, count=max(int(files_written), 0)))
+        translator.text(write_key, count=max(int(files_written), 0)))
     write_status.setWordWrap(True)
     layout.addWidget(write_status)
-    next_step = qt_widgets.QLabel(_translator.text("error.next_step"))
+    next_step = qt_widgets.QLabel(translator.text("error.next_step"))
     next_step.setWordWrap(True)
     layout.addWidget(next_step)
 
     lines = [
-        _translator.text("error.code_line", code=kind),
-        _translator.text("error.type_line", detail=detail),
+        translator.text("error.code_line", code=kind),
+        translator.text("error.type_line", detail=detail),
     ]
     for href, codes in affected_files:
-        lines.append(_translator.text("error.file_line", file=href))
+        lines.append(translator.text("error.file_line", file=href))
         if codes:
-            lines.append(_translator.text("error.diagnostics_line", codes=", ".join(codes)))
-    lines.append(_translator.text("error.log_line", path=log_path))
+            lines.append(translator.text("error.diagnostics_line", codes=", ".join(codes)))
+    lines.append(translator.text("error.log_line", path=log_path))
     diagnostic = "\n".join(lines)
 
-    details_button = qt_widgets.QPushButton(_translator.text("error.details"))
+    details_button = qt_widgets.QPushButton(translator.text("error.details"))
     details = qt_widgets.QPlainTextEdit()
     details.setReadOnly(True)
     details.setPlainText(diagnostic)
@@ -557,50 +561,25 @@ def show_error(
     layout.addWidget(details)
 
     buttons = qt_widgets.QHBoxLayout()
-    copy_button = qt_widgets.QPushButton(_translator.text("error.copy_diagnostics"))
-    close_button = qt_widgets.QPushButton(_translator.text("common.close"))
+    copy_button = qt_widgets.QPushButton(translator.text("error.copy_diagnostics"))
+    close_button = qt_widgets.QPushButton(translator.text("common.close"))
     copy_button.clicked.connect(lambda: qt_widgets.QApplication.clipboard().setText(diagnostic))
     close_button.clicked.connect(dialog.accept)
     buttons.addWidget(copy_button)
     buttons.addWidget(close_button)
     layout.addLayout(buttons)
-    exec_method = getattr(dialog, "exec", None) or dialog.exec_
-    exec_method()
+    exec_dialog(dialog)
 
 
-def _result_count_values(
-    *,
-    files_scanned: int,
-    files_changed: int,
-    accepted_changes: int,
-    skipped_changes: int,
-    files_not_written: int,
-    files_without_changes: int,
-) -> dict[str, str]:
-    return {
-        "files": _result_count_phrase("files", files_scanned),
-        "written": _result_count_phrase("files", files_changed),
-        "accepted": _result_count_phrase("changes", accepted_changes),
-        "skipped": _result_count_phrase("changes", skipped_changes),
-        "not_written": _result_count_phrase("not_written", files_not_written),
-        "unchanged": _result_count_phrase("unchanged", files_without_changes),
-    }
 
-
-def _result_count_phrase(kind: str, count: int) -> str:
-    value = max(int(count), 0)
-    form = "one" if value == 1 else "many"
-    return _translator.text(f"result.{kind}_{form}", count=value)
-
-
-def _recovery_notice_text(kind: str, value: str) -> str:
+def _recovery_notice_text(kind: str, value: str, translator: Translator) -> str:
     key = {
         "preferences_corrupt": "recovery.preferences_corrupt",
         "preferences_future_schema": "recovery.preferences_future_schema",
         "profile_recovered": "recovery.profile_recovered",
         "rulesets_missing": "recovery.rulesets_missing",
     }.get(kind, "recovery.generic")
-    return _translator.text(key, value=value)
+    return translator.text(key, value=value)
 
 
 def _guarded_preview_dialog(qt_widgets, guard):
@@ -612,56 +591,6 @@ def _guarded_preview_dialog(qt_widgets, guard):
                 super().reject()
 
     return GuardedPreviewDialog()
-
-
-_application: Any = None
-
-
-def _ensure_application(qt_widgets: Any) -> Any:
-    """Return the one process-level QApplication used by every plugin dialog."""
-
-    global _application
-    application = qt_widgets.QApplication.instance()
-    if application is None:
-        import sys
-
-        application = qt_widgets.QApplication(sys.argv)
-    # Keep a strong module-level reference.  Some Qt bindings only retain a
-    # weak ownership handle for an application created from Python.
-    _application = application
-    return application
-
-
-def _load_qt_widgets() -> Any:
-    try:
-        from PySide6 import QtCore, QtWidgets
-
-        QtWidgets.QtCore = QtCore
-        from PySide6 import QtGui
-
-        QtWidgets.QtGui = QtGui
-        QtWidgets.QShortcut = getattr(QtGui, "QShortcut", None) or getattr(
-            QtWidgets, "QShortcut", None)
-        QtWidgets.QKeySequence = QtGui.QKeySequence
-        QtWidgets.Qt = QtCore.Qt
-        QtWidgets.QTimer = QtCore.QTimer
-        return QtWidgets
-    except ImportError:
-        try:
-            from PyQt5 import QtCore, QtWidgets
-
-            QtWidgets.QtCore = QtCore
-            from PyQt5 import QtGui
-
-            QtWidgets.QtGui = QtGui
-            QtWidgets.QShortcut = getattr(QtWidgets, "QShortcut", None) or getattr(
-                QtGui, "QShortcut", None)
-            QtWidgets.QKeySequence = QtGui.QKeySequence
-            QtWidgets.Qt = QtCore.Qt
-            QtWidgets.QTimer = QtCore.QTimer
-            return QtWidgets
-        except ImportError as exc:
-            raise UIUnavailableError(_translator.text("error.ui_unavailable")) from exc
 
 
 def _enum_value(namespace: Any, name: str) -> Any:
@@ -753,19 +682,22 @@ class _PreviewTableData:
         return (status, *values)
 
 
-def _create_preview_table_model(qt_widgets, entries, href_by_id, group_stats=None):
+def _create_preview_table_model(
+    qt_widgets, entries, href_by_id, group_stats=None, translator: Translator | None = None,
+):
+    translator = translator or Translator("en")
     qt_core = getattr(qt_widgets, "QtCore", None)
     if qt_core is None:
         raise UIUnavailableError("Qt table model support is unavailable")
     qabstract_model = qt_core.QAbstractTableModel
     qt = getattr(qt_widgets, "Qt", None)
     gui = getattr(qt_widgets, "QtGui", None)
-    headers = tuple(_translator.text(f"preview.column.{name}") for name in _PREVIEW_COLUMNS)
+    headers = tuple(translator.text(f"preview.column.{name}") for name in _PREVIEW_COLUMNS)
 
     class PreviewTableModel(qabstract_model):
         def __init__(self, parent=None):
             super().__init__(parent)
-            self.rows = _PreviewTableData(entries, href_by_id, _translator, group_stats)
+            self.rows = _PreviewTableData(entries, href_by_id, translator, group_stats)
 
         def rowCount(self, parent=None):
             if parent is not None and parent.isValid():
@@ -786,9 +718,9 @@ def _create_preview_table_model(qt_widgets, entries, href_by_id, group_stats=Non
                 return values[index.column()]
             if role == _enum_value(qt, "ForegroundRole") and gui is not None:
                 colors = {
-                    _translator.text("preview.status.accepted"): "#267a35",
-                    _translator.text("preview.status.skipped"): "#777777",
-                    _translator.text("preview.status.pending"): "#a15c00",
+                    translator.text("preview.status.accepted"): "#267a35",
+                    translator.text("preview.status.skipped"): "#777777",
+                    translator.text("preview.status.pending"): "#a15c00",
                 }
                 color = colors.get(values[0]) if index.column() == 0 else None
                 return gui.QColor(color) if color else None
@@ -809,7 +741,7 @@ def _create_preview_table_model(qt_widgets, entries, href_by_id, group_stats=Non
         def set_entries(self, next_entries):
             self.beginResetModel()
             self.rows = _PreviewTableData(
-                next_entries, href_by_id, _translator, group_stats)
+                next_entries, href_by_id, translator, group_stats)
             self.endResetModel()
 
         def refresh(self):
@@ -822,8 +754,13 @@ def _create_preview_table_model(qt_widgets, entries, href_by_id, group_stats=Non
 
 
 class _PreviewDialog:
-    def __init__(self, qt_widgets: Any, planned, previews: Tuple[PreviewSession, ...]) -> None:
+    def __init__(
+        self, qt_widgets: Any, planned, previews: Tuple[PreviewSession, ...],
+        translator: Translator, services: Any = None,
+    ) -> None:
         self._qt = qt_widgets
+        self._translator = translator
+        self._services = services
         self._planned = planned
         self._previews = previews
         # Plans are immutable, so the preview rows never change identity.  A
@@ -861,7 +798,7 @@ class _PreviewDialog:
         self._allow_reject = False
 
         self.dialog = _guarded_preview_dialog(qt_widgets, self._guard_reject)
-        self.dialog.setWindowTitle(_translator.text("preview.title"))
+        self.dialog.setWindowTitle(self._translator.text("preview.title"))
         self.dialog.resize(900, 620)
         self._build()
         self._refresh()
@@ -875,9 +812,9 @@ class _PreviewDialog:
         group_row = qt.QHBoxLayout()
         self.group_guidance = qt.QLabel()
         self.accept_group_button = qt.QPushButton(
-            _translator.text("preview.accept_language_group"))
+            self._translator.text("preview.accept_language_group"))
         self.reject_group_button = qt.QPushButton(
-            _translator.text("preview.skip_language_group"))
+            self._translator.text("preview.skip_language_group"))
         self.accept_group_button.clicked.connect(
             lambda: self._decide_current_file_groups(True))
         self.reject_group_button.clicked.connect(
@@ -910,10 +847,10 @@ class _PreviewDialog:
         )
         file_values = [
             (
-                _translator.text(
+                self._translator.text(
                     "preview.filter_file_option",
                     href=(
-                        _translator.text("preview.file.metadata")
+                        self._translator.text("preview.file.metadata")
                         if self._kind_by_id.get(file_id) == "metadata"
                         else self._href_by_id.get(file_id, file_id)
                     ),
@@ -926,25 +863,25 @@ class _PreviewDialog:
         ]
         category_values = [
             (
-                _translator.text(f"preview.category_value.{category}"),
+                self._translator.text(f"preview.category_value.{category}"),
                 category,
             )
             for category in sorted({change.category for _, change in self._entries})
         ]
         risk_values = [
             (
-                _translator.text(f"preview.risk_value.{risk.lower()}"),
+                self._translator.text(f"preview.risk_value.{risk.lower()}"),
                 risk,
             )
             for risk in ("LOW", "REVIEW", "HIGH")
             if any(change.risk == risk for _, change in self._entries)
         ]
-        self._populate_filter(self.file_filter, _translator.text("preview.filter_file"),
-                              file_values)
-        self._populate_filter(self.category_filter, _translator.text("preview.filter_category"),
-                              category_values)
-        self._populate_filter(self.risk_filter, _translator.text("preview.filter_risk"),
-                              risk_values)
+        self._populate_filter(self.file_filter, self._translator.text("preview.filter_file"),
+                              file_values, self._translator)
+        self._populate_filter(self.category_filter, self._translator.text("preview.filter_category"),
+                              category_values, self._translator)
+        self._populate_filter(self.risk_filter, self._translator.text("preview.filter_risk"),
+                              risk_values, self._translator)
         for widget in (self.file_filter, self.category_filter, self.risk_filter):
             filter_row.addWidget(widget)
             widget.currentIndexChanged.connect(self._refresh)
@@ -952,7 +889,7 @@ class _PreviewDialog:
 
         self.table_view = qt.QTableView()
         self.table_model = _create_preview_table_model(
-            qt, self._entries, self._href_by_id, self._group_stats)(self.table_view)
+            qt, self._entries, self._href_by_id, self._group_stats, self._translator)(self.table_view)
         self.table_view.setModel(self.table_model)
         item_view = qt.QAbstractItemView
         self.table_view.setSelectionBehavior(_enum_value(item_view, "SelectRows"))
@@ -972,7 +909,7 @@ class _PreviewDialog:
         layout.addWidget(self.table_view)
 
         self.show_source_context = qt.QCheckBox(
-            _translator.text("preview.show_source_context"))
+            self._translator.text("preview.show_source_context"))
         self.show_source_context.toggled.connect(self._refresh_current)
         layout.addWidget(self.show_source_context)
 
@@ -982,24 +919,24 @@ class _PreviewDialog:
         layout.addWidget(self.detail)
 
         buttons = qt.QHBoxLayout()
-        self.accept_this_button = qt.QPushButton(_translator.text("preview.accept_this"))
-        self.reject_this_button = qt.QPushButton(_translator.text("preview.skip_this"))
-        self.accept_file_button = qt.QPushButton(_translator.text("preview.accept_file"))
-        self.reject_file_button = qt.QPushButton(_translator.text("preview.skip_file"))
-        self.accept_all_button = qt.QPushButton(_translator.text("preview.accept_all"))
-        self.reject_all_button = qt.QPushButton(_translator.text("preview.skip_all"))
-        self.accept_filter_button = qt.QPushButton(_translator.text("preview.accept_filter"))
-        self.reject_filter_button = qt.QPushButton(_translator.text("preview.skip_filter"))
-        self.export_button = qt.QPushButton(_translator.text("preview.export"))
-        self.export_full_diff = qt.QCheckBox(_translator.text("preview.export_full_diff"))
+        self.accept_this_button = qt.QPushButton(self._translator.text("preview.accept_this"))
+        self.reject_this_button = qt.QPushButton(self._translator.text("preview.skip_this"))
+        self.accept_file_button = qt.QPushButton(self._translator.text("preview.accept_file"))
+        self.reject_file_button = qt.QPushButton(self._translator.text("preview.skip_file"))
+        self.accept_all_button = qt.QPushButton(self._translator.text("preview.accept_all"))
+        self.reject_all_button = qt.QPushButton(self._translator.text("preview.skip_all"))
+        self.accept_filter_button = qt.QPushButton(self._translator.text("preview.accept_filter"))
+        self.reject_filter_button = qt.QPushButton(self._translator.text("preview.skip_filter"))
+        self.export_button = qt.QPushButton(self._translator.text("preview.export"))
+        self.export_full_diff = qt.QCheckBox(self._translator.text("preview.export_full_diff"))
         self.export_full_diff.setChecked(False)
-        self.apply_button = qt.QPushButton(_translator.text("preview.apply"))
+        self.apply_button = qt.QPushButton(self._translator.text("preview.apply"))
         self.apply_button.setDefault(True)
         set_auto_default = getattr(self.apply_button, "setAutoDefault", None)
         if callable(set_auto_default):
             set_auto_default(True)
-        self.back_settings_button = qt.QPushButton(_translator.text("preview.back_settings"))
-        self.cancel_button = qt.QPushButton(_translator.text("common.cancel"))
+        self.back_settings_button = qt.QPushButton(self._translator.text("preview.back_settings"))
+        self.cancel_button = qt.QPushButton(self._translator.text("common.cancel"))
         for button in (self.accept_this_button, self.reject_this_button,
                        self.accept_file_button, self.reject_file_button,
                        self.accept_filter_button, self.reject_filter_button):
@@ -1054,20 +991,11 @@ class _PreviewDialog:
             shortcut.activated.connect(callback)
             self._shortcuts.append(shortcut)
 
-    @staticmethod
-    def _export_service():
-        try:
-            from ui.run_options import get_run_services
-        except (ImportError, AttributeError):
-            return None
-        try:
-            services = get_run_services()
-        except (AttributeError, TypeError):
-            return None
-        return getattr(services, "export_preview", None) if services is not None else None
-
     def _export_preview(self) -> None:
-        export = self._export_service()
+        export = (
+            getattr(self._services, "export_preview", None)
+            if self._services is not None else None
+        )
         if export is None:
             return
         checkbox = getattr(self, "export_full_diff", None)
@@ -1075,8 +1003,10 @@ class _PreviewDialog:
         export(self._planned, self._previews, include_full_diff, self._qt, self.dialog)
 
     @staticmethod
-    def _populate_filter(combo: Any, label: str, values: Sequence[Tuple[str, str]]) -> None:
-        combo.addItem(f"{label}: {_translator.text('preview.filter_all')}", None)
+    def _populate_filter(
+        combo: Any, label: str, values: Sequence[Tuple[str, str]], translator: Translator,
+    ) -> None:
+        combo.addItem(f"{label}: {translator.text('preview.filter_all')}", None)
         for display, value in values:
             combo.addItem(str(display), str(value))
 
@@ -1147,7 +1077,7 @@ class _PreviewDialog:
                 if code:
                     counts[code] += 1
         return tuple(
-            diagnostic_summary(_translator, code, count)
+            diagnostic_summary(self._translator, code, count)
             for code, count in sorted(counts.items())
         )
 
@@ -1188,7 +1118,7 @@ class _PreviewDialog:
         if visible_entries:
             self._show_current(row)
         else:
-            self.detail.setPlainText(_translator.text("preview.no_changes"))
+            self.detail.setPlainText(self._translator.text("preview.no_changes"))
             self._update_group_controls(None)
         self._update_summary()
 
@@ -1205,10 +1135,10 @@ class _PreviewDialog:
         for preview in self._previews:
             for key, value in preview.summary().items():
                 totals[key] += value
-        summary = _translator.text("preview.summary", files=len(self._previews), **totals)
+        summary = self._translator.text("preview.summary", files=len(self._previews), **totals)
         diagnostics = self._diagnostics_for_file()
         if diagnostics:
-            summary += "\n" + _translator.text("preview.diagnostics", details="; ".join(diagnostics))
+            summary += "\n" + self._translator.text("preview.diagnostics", details="; ".join(diagnostics))
         group_feedback = getattr(self, "_last_group_feedback", "")
         if group_feedback:
             summary += "\n" + group_feedback
@@ -1242,12 +1172,12 @@ class _PreviewDialog:
             and decision.value.startswith("accept")
         }
         apply_key = "preview.apply_one" if len(accepted_files) == 1 else "preview.apply_many"
-        self.apply_button.setText(_translator.text(apply_key, files=len(accepted_files)))
+        self.apply_button.setText(self._translator.text(apply_key, files=len(accepted_files)))
         complete = totals["undecided"] == 0
         self.apply_button.setEnabled(complete)
         set_tooltip = getattr(self.apply_button, "setToolTip", None)
         if callable(set_tooltip):
-            set_tooltip("" if complete else _translator.text("preview.incomplete"))
+            set_tooltip("" if complete else self._translator.text("preview.incomplete"))
 
     def _show_current(self, row: int) -> None:
         visible_entries = getattr(self, "_visible_entries_cache", None)
@@ -1260,7 +1190,7 @@ class _PreviewDialog:
         preview, change = visible_entries[row]
         diagnostics = self._diagnostics_for_file(change.file_id)
         diagnostic_text = (
-            "\n" + _translator.text("preview.diagnostic_detail", details="; ".join(diagnostics))
+            "\n" + self._translator.text("preview.diagnostic_detail", details="; ".join(diagnostics))
             if diagnostics
             else ""
         )
@@ -1276,16 +1206,16 @@ class _PreviewDialog:
         group_text = ""
         if change.group_id:
             count, files = getattr(self, "_group_stats", {}).get(change.group_id, (1, 1))
-            group_text = "\n" + _translator.text(
+            group_text = "\n" + self._translator.text(
                 "preview.group_explanation", count=count, files=files)
         self.detail.setPlainText(
-            f"{_translator.text('preview.rule')}: {change.rule_source}\n"
-            f"{_translator.text('preview.category')}: "
-            f"{_translator.text(f'preview.category_value.{change.category}')}    "
-            f"{_translator.text('preview.risk')}: "
-            f"{_translator.text(f'preview.risk_value.{change.risk.lower()}')}\n"
-            f"{_translator.text('preview.before')}: {source_line}\n"
-            f"{_translator.text('preview.after')}: {target_line}"
+            f"{self._translator.text('preview.rule')}: {change.rule_source}\n"
+            f"{self._translator.text('preview.category')}: "
+            f"{self._translator.text(f'preview.category_value.{change.category}')}    "
+            f"{self._translator.text('preview.risk')}: "
+            f"{self._translator.text(f'preview.risk_value.{change.risk.lower()}')}\n"
+            f"{self._translator.text('preview.before')}: {source_line}\n"
+            f"{self._translator.text('preview.after')}: {target_line}"
             f"{group_text}"
             f"{diagnostic_text}"
         )
@@ -1318,7 +1248,7 @@ class _PreviewDialog:
             count = self._decide_group(change.group_id, accepted)
             feedback_key = (
                 "preview.group_accepted" if accepted else "preview.group_skipped")
-            self._last_group_feedback = _translator.text(
+            self._last_group_feedback = self._translator.text(
                 feedback_key, count=count)
             self._refresh()
         else:
@@ -1373,7 +1303,7 @@ class _PreviewDialog:
         if guidance is None or accept is None or reject is None:
             return
         visible = bool(self._groups_for_file(file_id))
-        guidance.setText(_translator.text("preview.group_prompt"))
+        guidance.setText(self._translator.text("preview.group_prompt"))
         guidance.setVisible(visible)
         accept.setVisible(visible)
         reject.setVisible(visible)
@@ -1387,7 +1317,7 @@ class _PreviewDialog:
         if count:
             feedback_key = (
                 "preview.group_accepted" if accepted else "preview.group_skipped")
-            self._last_group_feedback = _translator.text(feedback_key, count=count)
+            self._last_group_feedback = self._translator.text(feedback_key, count=count)
         self._refresh()
 
     def _decide_filtered(self, accepted: bool) -> None:
@@ -1400,7 +1330,7 @@ class _PreviewDialog:
         if group_count:
             feedback_key = (
                 "preview.group_accepted" if accepted else "preview.group_skipped")
-            self._last_group_feedback = _translator.text(
+            self._last_group_feedback = self._translator.text(
                 feedback_key, count=group_count)
         self._refresh()
 
@@ -1478,22 +1408,20 @@ class _PreviewDialog:
         if not callable(message_box):
             return False
         box = message_box(self.dialog)
-        box.setWindowTitle(_translator.text("preview.discard_title"))
-        box.setText(_translator.text("preview.discard_message", count=decided))
+        box.setWindowTitle(self._translator.text("preview.discard_title"))
+        box.setText(self._translator.text("preview.discard_message", count=decided))
         discard = box.addButton(
-            _translator.text("preview.discard_yes"), message_box.AcceptRole)
+            self._translator.text("preview.discard_yes"), message_box.AcceptRole)
         back = box.addButton(
-            _translator.text("preview.discard_no"), message_box.RejectRole)
+            self._translator.text("preview.discard_no"), message_box.RejectRole)
         box.setDefaultButton(back)
-        exec_method = getattr(box, "exec", None) or box.exec_
-        exec_method()
+        exec_dialog(box)
         return box.clickedButton() is discard
 
     def _checkpoint_confirm(self) -> bool:
         if not any(preview.summary()["accepted"] for preview in self._previews):
             return True
-        from ui.run_options import get_run_services
-        services = get_run_services()
+        services = self._services
         if services is not None and not services.checkpoint_notice_enabled():
             return True
         message_box = getattr(self._qt, "QMessageBox", None)
@@ -1501,17 +1429,17 @@ class _PreviewDialog:
             return True
         self.checkpoint_notice_shown = True
         box = message_box(self.dialog)
-        box.setWindowTitle(_translator.text("preview.checkpoint_title"))
-        box.setText(_translator.text("preview.checkpoint_confirm"))
+        box.setWindowTitle(self._translator.text("preview.checkpoint_title"))
+        box.setText(self._translator.text("preview.checkpoint_confirm"))
         box.setIcon(message_box.Warning)
         accept = box.addButton(
-            _translator.text("preview.checkpoint_confirm_yes"), message_box.AcceptRole)
+            self._translator.text("preview.checkpoint_confirm_yes"), message_box.AcceptRole)
         cancel = box.addButton(
-            _translator.text("preview.checkpoint_confirm_back"), message_box.RejectRole)
+            self._translator.text("preview.checkpoint_confirm_back"), message_box.RejectRole)
         box.setDefaultButton(cancel)
-        hide = self._qt.QCheckBox(_translator.text("preview.checkpoint_hide"))
+        hide = self._qt.QCheckBox(self._translator.text("preview.checkpoint_hide"))
         box.setCheckBox(hide)
-        box.exec()
+        exec_dialog(box)
         accepted = box.clickedButton() is accept
         if accepted and hide.isChecked() and services is not None:
             services.hide_checkpoint_notice()
@@ -1841,7 +1769,7 @@ class _ScopeDialog:
         layout = qt_widgets.QVBoxLayout(self.dialog)
         self.recovery_notice_label = None
         if recovery_notices:
-            notice_lines = [_recovery_notice_text(kind, value) for kind, value in recovery_notices]
+            notice_lines = [_recovery_notice_text(kind, value, translator) for kind, value in recovery_notices]
             self.recovery_notice_label = qt_widgets.QLabel("\n".join(notice_lines))
             self.recovery_notice_label.setWordWrap(True)
             layout.addWidget(self.recovery_notice_label)

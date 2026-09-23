@@ -182,12 +182,6 @@ def build_conversion_plan(
     )
 
 
-def plan_not_implemented() -> None:
-    """Retain the old placeholder name without hiding the implemented API."""
-
-    raise NotImplementedError("Use build_conversion_plan(...) to construct a ConversionPlan")
-
-
 def _absolute_change(
     file_id: str,
     target: TextTarget,
@@ -259,4 +253,4 @@ def _sha256_text(value: str) -> str:
     return sha256(value.encode("utf-8")).hexdigest()
 
 
-__all__ = ["ConversionPlan", "build_conversion_plan", "plan_not_implemented"]
+__all__ = ["ConversionPlan", "build_conversion_plan"]

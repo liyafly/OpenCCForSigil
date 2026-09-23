@@ -48,7 +48,7 @@ class ScopedBookWithoutSelectionIter:
         self.writes.append((file_id, data))
 
 
-def _accept_all_preview(planned):
+def _accept_all_preview(planned, **_kwargs):
     previews = tuple(PreviewSession(item.plan) for item in planned)
     for preview in previews:
         preview.accept_all()
@@ -84,7 +84,7 @@ def _patch_scoped_ui(monkeypatch, events=None):
     monkeypatch.setattr("ui.preview_window.choose_scope", choose_scope)
     monkeypatch.setattr("ui.preview_window.choose_conversion_config", choose_config)
     monkeypatch.setattr("ui.preview_window.show_preview", _accept_all_preview)
-    monkeypatch.setattr("ui.preview_window.create_progress_reporter", lambda _total: _NoProgress())
+    monkeypatch.setattr("ui.preview_window.create_progress_reporter", lambda _total, **_kwargs: _NoProgress())
 
 
 def test_controller_runs_preview_stage_verify_commit(monkeypatch, tmp_path):
@@ -103,7 +103,7 @@ def test_controller_runs_preview_stage_verify_commit(monkeypatch, tmp_path):
         lambda available_configs, default_config, **_kwargs: "t2s",
     )
 
-    def accept_all(planned):
+    def accept_all(planned, **_kwargs):
         previews = tuple(PreviewSession(item.plan) for item in planned)
         for preview in previews:
             preview.accept_all()
@@ -111,7 +111,7 @@ def test_controller_runs_preview_stage_verify_commit(monkeypatch, tmp_path):
 
     monkeypatch.setattr("ui.preview_window.show_preview", accept_all)
     monkeypatch.setattr(
-        "ui.preview_window.create_progress_reporter", lambda _total: _NoProgress()
+        "ui.preview_window.create_progress_reporter", lambda _total, **_kwargs: _NoProgress()
     )
     assert Controller(book, data_dir=tmp_path / "plugin-data").run() == 0
 
@@ -154,7 +154,7 @@ def test_post_preview_progress_covers_noncancellable_writeback(monkeypatch, tmp_
         def close(self):
             self.close_calls += 1
 
-    def create_progress(_total):
+    def create_progress(_total, **_kwargs):
         reporter = Progress()
         reporters.append(reporter)
         return reporter
@@ -257,7 +257,7 @@ def test_controller_reports_unwritten_no_change_files_separately(monkeypatch, tm
     )
     monkeypatch.setattr("ui.preview_window.show_preview", _accept_all_preview)
     monkeypatch.setattr(
-        "ui.preview_window.create_progress_reporter", lambda _total: _NoProgress()
+        "ui.preview_window.create_progress_reporter", lambda _total, **_kwargs: _NoProgress()
     )
     monkeypatch.setattr(
         "ui.preview_window.show_result",
@@ -308,13 +308,13 @@ def test_malformed_xhtml_is_skipped_while_other_files_convert(monkeypatch, tmp_p
         lambda available_configs, default_config, **_kwargs: "t2s",
     )
 
-    def preview(planned):
+    def preview(planned, **_kwargs):
         planned_seen.extend(planned)
         return _accept_all_preview(planned)
 
     monkeypatch.setattr("ui.preview_window.show_preview", preview)
     monkeypatch.setattr(
-        "ui.preview_window.create_progress_reporter", lambda _total: _NoProgress())
+        "ui.preview_window.create_progress_reporter", lambda _total, **_kwargs: _NoProgress())
     monkeypatch.setattr(
         "ui.preview_window.show_result", lambda **values: result_calls.append(values))
 
@@ -369,7 +369,7 @@ def test_returning_from_preview_reselects_scope_and_discards_old_plan(
             language=initial_language,
         )
 
-    def show_preview(planned):
+    def show_preview(planned, **_kwargs):
         preview_plans.append(tuple(item.source.file_id for item in planned))
         if len(preview_plans) == 1:
             return PreviewOutcome(accepted=False, previews=(), back_to_settings=True)
@@ -382,7 +382,7 @@ def test_returning_from_preview_reselects_scope_and_discards_old_plan(
     )
     monkeypatch.setattr("ui.preview_window.show_preview", show_preview)
     monkeypatch.setattr(
-        "ui.preview_window.create_progress_reporter", lambda _total: _NoProgress())
+        "ui.preview_window.create_progress_reporter", lambda _total, **_kwargs: _NoProgress())
 
     assert Controller(book, data_dir=tmp_path / "plugin-data").run() == 0
 
@@ -405,10 +405,10 @@ def test_cancelling_preview_shows_cancelled_result_without_writing(monkeypatch, 
         lambda *_args, **_kwargs: "t2s",
     )
     monkeypatch.setattr(
-        "ui.preview_window.create_progress_reporter", lambda _total: _NoProgress())
+        "ui.preview_window.create_progress_reporter", lambda _total, **_kwargs: _NoProgress())
     monkeypatch.setattr(
         "ui.preview_window.show_preview",
-        lambda planned: PreviewOutcome(accepted=False, previews=()),
+        lambda planned, **_kwargs: PreviewOutcome(accepted=False, previews=()),
     )
     monkeypatch.setattr(
         "ui.preview_window.show_result", lambda **values: result_calls.append(values))
@@ -449,7 +449,7 @@ def test_noop_result_skips_preview_and_offers_scope_return(monkeypatch, tmp_path
         lambda _planned: (_ for _ in ()).throw(AssertionError("preview must be skipped")),
     )
     monkeypatch.setattr(
-        "ui.preview_window.create_progress_reporter", lambda _total: _NoProgress())
+        "ui.preview_window.create_progress_reporter", lambda _total, **_kwargs: _NoProgress())
     monkeypatch.setattr(
         "ui.preview_window.show_result", lambda **values: results.append(values) or "close")
 
@@ -501,11 +501,11 @@ def test_noop_return_to_scope_restarts_with_new_selection(monkeypatch, tmp_path)
         "ui.preview_window.show_result", show_result)
     monkeypatch.setattr(
         "ui.preview_window.show_preview",
-        lambda planned: previews.append(tuple(item.source.file_id for item in planned))
+        lambda planned, **_kwargs: previews.append(tuple(item.source.file_id for item in planned))
         or _accept_all_preview(planned),
     )
     monkeypatch.setattr(
-        "ui.preview_window.create_progress_reporter", lambda _total: _NoProgress())
+        "ui.preview_window.create_progress_reporter", lambda _total, **_kwargs: _NoProgress())
 
     assert Controller(book, data_dir=tmp_path / "plugin-data").run() == 0
 

@@ -57,13 +57,13 @@ def _patch_ui(monkeypatch, *, preview_callback=None, results=None, errors=None):
     monkeypatch.setattr("ui.preview_window.choose_scope", choose_scope)
     monkeypatch.setattr("ui.preview_window.choose_conversion_config", lambda *_a, **_kw: "s2t")
 
-    def show_preview(planned):
+    def show_preview(planned, **_kwargs):
         if preview_callback:
             preview_callback(planned)
         return _accept_all(planned)
 
     monkeypatch.setattr("ui.preview_window.show_preview", show_preview)
-    monkeypatch.setattr("ui.preview_window.create_progress_reporter", lambda *_a: NoProgress())
+    monkeypatch.setattr("ui.preview_window.create_progress_reporter", lambda *_a, **_kwargs: NoProgress())
     monkeypatch.setattr("ui.preview_window.show_result", lambda **values: results.append(values)
                         if results is not None else None)
     monkeypatch.setattr("ui.preview_window.show_error", lambda **values: errors.append(values)

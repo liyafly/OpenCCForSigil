@@ -23,8 +23,9 @@ def test_unsaved_default_profile_restores_existing_rulesets_from_run_options(tmp
     rules.save(RuleSet("mine", (Rule(id="custom", source="测试", target="专名",
                                       direction="s2t"),)))
     settings = RunSettings(
-        Storage(tmp_path), SimpleNamespace(), SimpleNamespace(),
+        Storage(tmp_path), SimpleNamespace(),
         {"run_options": {"ruleset_ids": ["default", "mine", "deleted"]}},
+        language="en", session_id="test-session",
     )
 
     assert settings.active.ruleset_ids == ("default", "mine")
@@ -42,8 +43,9 @@ def test_saved_profile_ruleset_ids_win_over_old_run_options(tmp_path):
     profile = Profile(id="saved", name="Saved", ruleset_ids=("mine",))
     store.save(profile)
     settings = RunSettings(
-        Storage(tmp_path), SimpleNamespace(), SimpleNamespace(),
+        Storage(tmp_path), SimpleNamespace(),
         {"profile_id": "saved", "run_options": {"ruleset_ids": ["old"]}},
+        language="en", session_id="test-session",
     )
 
     assert settings.active.ruleset_ids == ("mine",)
@@ -84,9 +86,11 @@ def _saved_profile_settings(tmp_path):
     adapter = SimpleNamespace(book_fingerprint=lambda: "book-hash")
     backend = SimpleNamespace(available_configs=lambda: {"s2t"})
     settings = RunSettings(
-        Storage(tmp_path), adapter, backend,
+        Storage(tmp_path), adapter,
         {"profile_id": "saved"},
+        language="en", session_id="test-session",
     )
+    settings.bind_run(settings.active, backend)
     return settings, profile_store
 
 
@@ -173,12 +177,12 @@ def test_new_ruleset_is_applied_on_the_next_controller_run(monkeypatch, tmp_path
                                      initial_language))
     monkeypatch.setattr("ui.preview_window.choose_conversion_config",
                         lambda *_args, **_kwargs: next(configurations))
-    monkeypatch.setattr("ui.preview_window.show_preview", lambda planned: (
+    monkeypatch.setattr("ui.preview_window.show_preview", lambda planned, **_kwargs: (
         hashes.append(planned[0].plan.rules_snapshot.rules_hash),
         sources.append(tuple(change.rule_source for change in planned[0].plan.changes)),
         _accept_all(planned),
     )[-1])
-    monkeypatch.setattr("ui.preview_window.create_progress_reporter", lambda *_args: NoProgress())
+    monkeypatch.setattr("ui.preview_window.create_progress_reporter", lambda *_args, **_kwargs: NoProgress())
     monkeypatch.setattr("ui.preview_window.show_result", lambda **_kwargs: None)
 
     first_book = Book()
