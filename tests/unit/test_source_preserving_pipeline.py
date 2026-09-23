@@ -87,6 +87,19 @@ def test_plan_stage_and_verify_change_only_planned_spans():
     assert not verify_staged_file(tampered).passed
 
 
+def test_planned_change_includes_bounded_plain_text_context():
+    source = "<p>" + "甲" * 25 + "软件" + "乙" * 25 + "</p>"
+    plan = _plan_with_rules(
+        source,
+        Rule(id="software", type="exact", source="软件", target="軟體", direction="s2t"),
+    )
+    change = next(item for item in plan.changes if item.source == "软件")
+
+    assert change.text_context_before == "…" + "甲" * 20
+    assert change.text_context_after == "乙" * 20 + "…"
+    assert "<" not in change.text_context_before + change.text_context_after
+
+
 def test_long_text_fallback_preserves_unmodified_greater_than():
     source = "<p>" + "汉" * 1500 + " a > b " + "汉" * 1500 + "</p>"
     plan = _plan(source)

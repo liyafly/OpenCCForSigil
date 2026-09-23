@@ -701,6 +701,12 @@ def _load_qt_widgets() -> Any:
         from PySide6 import QtCore, QtWidgets
 
         QtWidgets.QtCore = QtCore
+        from PySide6 import QtGui
+
+        QtWidgets.QtGui = QtGui
+        QtWidgets.QShortcut = getattr(QtGui, "QShortcut", None) or getattr(
+            QtWidgets, "QShortcut", None)
+        QtWidgets.QKeySequence = QtGui.QKeySequence
         QtWidgets.Qt = QtCore.Qt
         QtWidgets.QTimer = QtCore.QTimer
         return QtWidgets
@@ -709,6 +715,12 @@ def _load_qt_widgets() -> Any:
             from PyQt5 import QtCore, QtWidgets
 
             QtWidgets.QtCore = QtCore
+            from PyQt5 import QtGui
+
+            QtWidgets.QtGui = QtGui
+            QtWidgets.QShortcut = getattr(QtWidgets, "QShortcut", None) or getattr(
+                QtGui, "QShortcut", None)
+            QtWidgets.QKeySequence = QtGui.QKeySequence
             QtWidgets.Qt = QtCore.Qt
             QtWidgets.QTimer = QtCore.QTimer
             return QtWidgets
@@ -722,12 +734,155 @@ def _enum_value(namespace: Any, name: str) -> Any:
     value = getattr(namespace, name, None)
     if value is not None:
         return value
-    for enum_name in ("WindowType", "Key"):
+    for enum_name in (
+        "WindowType",
+        "Key",
+        "ItemDataRole",
+        "Orientation",
+        "SelectionBehavior",
+        "SelectionMode",
+        "ResizeMode",
+        "ShortcutContext",
+    ):
         enum = getattr(namespace, enum_name, None)
         value = getattr(enum, name, None) if enum is not None else None
         if value is not None:
             return value
     return None
+
+
+_PREVIEW_COLUMNS = (
+    "status",
+    "file",
+    "source",
+    "target",
+    "category",
+    "risk",
+)
+
+
+def _single_line(value: object) -> str:
+    return str(value).replace("\r\n", "\n").replace("\r", "\n").replace("\n", "↵").replace("\t", "⇥")
+
+
+def format_change_row(change, href_by_id, translator) -> Tuple[str, ...]:
+    """Return plain, localized display values for one preview table row."""
+
+    before = _single_line(getattr(change, "text_context_before", ""))
+    after = _single_line(getattr(change, "text_context_after", ""))
+    source = f"{before}【{_single_line(change.source)}】{after}"
+    target = f"{before}【{_single_line(change.target)}】{after}"
+    category = translator.text(f"preview.category_value.{change.category}")
+    risk = translator.text(f"preview.risk_value.{change.risk.lower()}")
+    href = (
+        translator.text("preview.file.metadata")
+        if change.document_kind == "metadata"
+        else href_by_id.get(change.file_id, change.file_id)
+    )
+    return (
+        str(href),
+        source,
+        target,
+        category,
+        risk,
+    )
+
+
+class _PreviewTableData:
+    """Qt-independent row formatting and filtering boundary for preview UI."""
+
+    def __init__(self, entries, href_by_id, translator, group_stats=None):
+        self.entries = tuple(entries)
+        self.href_by_id = href_by_id
+        self.translator = translator
+        self.group_stats = group_stats or {}
+
+    def row_count(self) -> int:
+        return len(self.entries)
+
+    def row_values(self, row: int) -> Tuple[str, ...]:
+        preview, change = self.entries[row]
+        decision = preview.decision(change.change_id)
+        if decision is None:
+            status = self.translator.text("preview.status.pending")
+        elif decision.value.startswith("accept"):
+            status = self.translator.text("preview.status.accepted")
+        else:
+            status = self.translator.text("preview.status.skipped")
+        values = list(format_change_row(change, self.href_by_id, self.translator))
+        if change.group_id and change.group_id in self.group_stats:
+            count, files = self.group_stats[change.group_id]
+            values[3] += " — " + self.translator.text(
+                "preview.group_row_marker", count=count, files=files)
+        return (status, *values)
+
+
+def _create_preview_table_model(qt_widgets, entries, href_by_id, group_stats=None):
+    qt_core = getattr(qt_widgets, "QtCore", None)
+    if qt_core is None:
+        raise UIUnavailableError("Qt table model support is unavailable")
+    qabstract_model = qt_core.QAbstractTableModel
+    qt = getattr(qt_widgets, "Qt", None)
+    gui = getattr(qt_widgets, "QtGui", None)
+    headers = tuple(_translator.text(f"preview.column.{name}") for name in _PREVIEW_COLUMNS)
+
+    class PreviewTableModel(qabstract_model):
+        def __init__(self, parent=None):
+            super().__init__(parent)
+            self.rows = _PreviewTableData(entries, href_by_id, _translator, group_stats)
+
+        def rowCount(self, parent=None):
+            if parent is not None and parent.isValid():
+                return 0
+            return self.rows.row_count()
+
+        def columnCount(self, parent=None):
+            if parent is not None and parent.isValid():
+                return 0
+            return len(_PREVIEW_COLUMNS)
+
+        def data(self, index, role=None):
+            if not index.isValid():
+                return None
+            values = self.rows.row_values(index.row())
+            display_role = _enum_value(qt, "DisplayRole")
+            if role == display_role:
+                return values[index.column()]
+            if role == _enum_value(qt, "ForegroundRole") and gui is not None:
+                colors = {
+                    _translator.text("preview.status.accepted"): "#267a35",
+                    _translator.text("preview.status.skipped"): "#777777",
+                    _translator.text("preview.status.pending"): "#a15c00",
+                }
+                color = colors.get(values[0]) if index.column() == 0 else None
+                return gui.QColor(color) if color else None
+            if role == _enum_value(qt, "FontRole") and gui is not None and index.column() == 5:
+                entry = self.rows.entries[index.row()]
+                if entry[1].risk in {"HIGH", "REVIEW"}:
+                    font = gui.QFont()
+                    font.setBold(True)
+                    return font
+            return None
+
+        def headerData(self, section, orientation, role=None):
+            if role != _enum_value(qt, "DisplayRole"):
+                return None
+            horizontal = _enum_value(qt, "Horizontal")
+            return headers[section] if orientation == horizontal and 0 <= section < len(headers) else None
+
+        def set_entries(self, next_entries):
+            self.beginResetModel()
+            self.rows = _PreviewTableData(
+                next_entries, href_by_id, _translator, group_stats)
+            self.endResetModel()
+
+        def refresh(self):
+            if self.rowCount() and self.columnCount():
+                top_left = self.index(0, 0)
+                bottom_right = self.index(self.rowCount() - 1, self.columnCount() - 1)
+                self.dataChanged.emit(top_left, bottom_right)
+
+    return PreviewTableModel
 
 
 class _PreviewDialog:
@@ -743,6 +898,27 @@ class _PreviewDialog:
             for preview in previews
             for change in preview.changes
         )
+        self._href_by_id = {
+            item.source.file_id: item.source.href for item in self._planned
+        }
+        self._kind_by_id = {
+            item.source.file_id: item.source.document_kind for item in self._planned
+        }
+        self._file_order = {
+            item.source.file_id: index for index, item in enumerate(self._planned)
+        }
+        group_entries = {}
+        for _preview, change in self._entries:
+            if change.group_id:
+                count, files = group_entries.get(change.group_id, (0, set()))
+                files.add(change.file_id)
+                group_entries[change.group_id] = (count + 1, files)
+        self._group_stats = {
+            group_id: (count, len(files))
+            for group_id, (count, files) in group_entries.items()
+        }
+        self._last_group_feedback = ""
+        self._visible_entries_cache = self._entries
         self.applied = False
         self.back_to_settings = False
         self.checkpoint_notice_shown = False
@@ -760,25 +936,109 @@ class _PreviewDialog:
 
         self.summary = qt.QLabel()
         layout.addWidget(self.summary)
+        group_row = qt.QHBoxLayout()
+        self.group_guidance = qt.QLabel()
+        self.accept_group_button = qt.QPushButton(
+            _translator.text("preview.accept_language_group"))
+        self.reject_group_button = qt.QPushButton(
+            _translator.text("preview.skip_language_group"))
+        self.accept_group_button.clicked.connect(
+            lambda: self._decide_current_file_groups(True))
+        self.reject_group_button.clicked.connect(
+            lambda: self._decide_current_file_groups(False))
+        self.accept_group_button.setVisible(False)
+        self.reject_group_button.setVisible(False)
+        self.group_guidance.setVisible(False)
+        group_row.addWidget(self.group_guidance)
+        group_row.addWidget(self.accept_group_button)
+        group_row.addWidget(self.reject_group_button)
+        layout.addLayout(group_row)
 
         filter_row = qt.QHBoxLayout()
         self.file_filter = qt.QComboBox()
         self.category_filter = qt.QComboBox()
         self.risk_filter = qt.QComboBox()
-        self._populate_filter(self.file_filter, _ui_text("preview.filter_file"),
-                              sorted({change.file_id for _, change in self._entries}))
-        self._populate_filter(self.category_filter, _ui_text("preview.filter_category"),
-                              sorted({change.category for _, change in self._entries}))
-        self._populate_filter(self.risk_filter, _ui_text("preview.filter_risk"),
-                              sorted({change.risk for _, change in self._entries}))
+        file_counts = {}
+        for preview, change in self._entries:
+            total, pending = file_counts.get(change.file_id, (0, 0))
+            file_counts[change.file_id] = (
+                total + 1,
+                pending + (preview.decision(change.change_id) is None),
+            )
+        ordered_ids = sorted(
+            file_counts,
+            key=lambda file_id: (
+                self._file_order.get(file_id, len(self._file_order)),
+                self._href_by_id.get(file_id, file_id),
+            ),
+        )
+        file_values = [
+            (
+                _translator.text(
+                    "preview.filter_file_option",
+                    href=(
+                        _translator.text("preview.file.metadata")
+                        if self._kind_by_id.get(file_id) == "metadata"
+                        else self._href_by_id.get(file_id, file_id)
+                    ),
+                    changes=file_counts[file_id][0],
+                    undecided=file_counts[file_id][1],
+                ),
+                file_id,
+            )
+            for file_id in ordered_ids
+        ]
+        category_values = [
+            (
+                _translator.text(f"preview.category_value.{category}"),
+                category,
+            )
+            for category in sorted({change.category for _, change in self._entries})
+        ]
+        risk_values = [
+            (
+                _translator.text(f"preview.risk_value.{risk.lower()}"),
+                risk,
+            )
+            for risk in ("LOW", "REVIEW", "HIGH")
+            if any(change.risk == risk for _, change in self._entries)
+        ]
+        self._populate_filter(self.file_filter, _translator.text("preview.filter_file"),
+                              file_values)
+        self._populate_filter(self.category_filter, _translator.text("preview.filter_category"),
+                              category_values)
+        self._populate_filter(self.risk_filter, _translator.text("preview.filter_risk"),
+                              risk_values)
         for widget in (self.file_filter, self.category_filter, self.risk_filter):
             filter_row.addWidget(widget)
             widget.currentIndexChanged.connect(self._refresh)
         layout.addLayout(filter_row)
 
-        self.list_widget = qt.QListWidget()
-        self.list_widget.currentRowChanged.connect(self._show_current)
-        layout.addWidget(self.list_widget)
+        self.table_view = qt.QTableView()
+        self.table_model = _create_preview_table_model(
+            qt, self._entries, self._href_by_id, self._group_stats)(self.table_view)
+        self.table_view.setModel(self.table_model)
+        item_view = qt.QAbstractItemView
+        self.table_view.setSelectionBehavior(_enum_value(item_view, "SelectRows"))
+        self.table_view.setSelectionMode(_enum_value(item_view, "SingleSelection"))
+        self.table_view.selectionModel().currentRowChanged.connect(
+            lambda current, _previous: self._show_current(current.row()))
+        header = self.table_view.horizontalHeader()
+        resize_to_contents = _enum_value(qt.QHeaderView, "ResizeToContents")
+        stretch = _enum_value(qt.QHeaderView, "Stretch")
+        if resize_to_contents is not None and stretch is not None:
+            for column in (0, 1, 4, 5):
+                header.setSectionResizeMode(column, resize_to_contents)
+            for column in (2, 3):
+                header.setSectionResizeMode(column, stretch)
+        header.setStretchLastSection(True)
+        self.table_view.setAlternatingRowColors(True)
+        layout.addWidget(self.table_view)
+
+        self.show_source_context = qt.QCheckBox(
+            _translator.text("preview.show_source_context"))
+        self.show_source_context.toggled.connect(self._refresh_current)
+        layout.addWidget(self.show_source_context)
 
         self.detail = qt.QPlainTextEdit()
         self.detail.setReadOnly(True)
@@ -798,6 +1058,10 @@ class _PreviewDialog:
         self.export_full_diff = qt.QCheckBox(_ui_text("preview.export_full_diff"))
         self.export_full_diff.setChecked(False)
         self.apply_button = qt.QPushButton(_translator.text("preview.apply"))
+        self.apply_button.setDefault(True)
+        set_auto_default = getattr(self.apply_button, "setAutoDefault", None)
+        if callable(set_auto_default):
+            set_auto_default(True)
         self.back_settings_button = qt.QPushButton(_ui_text("preview.back_settings"))
         self.cancel_button = qt.QPushButton(_translator.text("common.cancel"))
         for button in (self.accept_this_button, self.reject_this_button,
@@ -829,6 +1093,30 @@ class _PreviewDialog:
         self.back_settings_button.clicked.connect(self._back_to_settings)
         self.cancel_button.clicked.connect(self.dialog.reject)
         self.export_button.setEnabled(self._export_service() is not None)
+        self._bind_shortcuts()
+
+    def _bind_shortcuts(self) -> None:
+        shortcut_type = getattr(self._qt, "QShortcut", None)
+        key_sequence = getattr(self._qt, "QKeySequence", None)
+        if shortcut_type is None:
+            gui = getattr(self._qt, "QtGui", None)
+            shortcut_type = getattr(gui, "QShortcut", None)
+            key_sequence = key_sequence or getattr(gui, "QKeySequence", None)
+        if shortcut_type is None or key_sequence is None:
+            return
+        context = _enum_value(getattr(self._qt, "Qt", None), "WidgetWithChildrenShortcut")
+        self._shortcuts = []
+        for sequence, callback in (
+            ("A", self._accept_this),
+            ("S", self._reject_this),
+            ("N", self._next_undecided),
+            ("Shift+N", self._previous_undecided),
+        ):
+            shortcut = shortcut_type(key_sequence(sequence), self.dialog)
+            if context is not None:
+                shortcut.setContext(context)
+            shortcut.activated.connect(callback)
+            self._shortcuts.append(shortcut)
 
     @staticmethod
     def _export_service():
@@ -851,10 +1139,10 @@ class _PreviewDialog:
         export(self._planned, self._previews, include_full_diff, self._qt, self.dialog)
 
     @staticmethod
-    def _populate_filter(combo: Any, label: str, values: Sequence[str]) -> None:
-        combo.addItem(f"{label}: {_ui_text('preview.filter_all')}", None)
-        for value in values:
-            combo.addItem(str(value), str(value))
+    def _populate_filter(combo: Any, label: str, values: Sequence[Tuple[str, str]]) -> None:
+        combo.addItem(f"{label}: {_translator.text('preview.filter_all')}", None)
+        for display, value in values:
+            combo.addItem(str(display), str(value))
 
     def _current_filter(self) -> PreviewFilter:
         def data(name: str) -> str | None:
@@ -873,6 +1161,37 @@ class _PreviewDialog:
     def _visible_entries(self) -> Tuple[Tuple[PreviewSession, TokenChange], ...]:
         current = self._current_filter()
         return tuple((preview, change) for preview, change in self._entries if current.matches(change))
+
+    def _current_row(self) -> int:
+        table = getattr(self, "table_view", None)
+        if table is not None:
+            index = table.currentIndex()
+            return index.row() if index.isValid() else -1
+        legacy_list = getattr(self, "list_widget", None)
+        return legacy_list.currentRow() if legacy_list is not None else -1
+
+    def _selected_change_id(self) -> str | None:
+        row = self._current_row()
+        entries = getattr(self, "_visible_entries_cache", None)
+        if entries is None:
+            entries = self._visible_entries()
+        if 0 <= row < len(entries):
+            return entries[row][1].change_id
+        return None
+
+    def _set_current_row(self, row: int) -> None:
+        table = getattr(self, "table_view", None)
+        if table is not None:
+            if row < 0:
+                table.clearSelection()
+                table.setCurrentIndex(self.table_model.index(-1, 0))
+                return
+            table.setCurrentIndex(self.table_model.index(row, 0))
+            table.selectRow(row)
+            return
+        legacy_list = getattr(self, "list_widget", None)
+        if legacy_list is not None:
+            legacy_list.setCurrentRow(row)
 
     @staticmethod
     def _truncate(value: object, limit: int = 96) -> str:
@@ -894,33 +1213,44 @@ class _PreviewDialog:
         return tuple(dict.fromkeys(diagnostics))
 
     def _refresh(self) -> None:
+        selected_change_id = self._selected_change_id()
         visible_entries = self._visible_entries()
-        current_row = self.list_widget.currentRow()
-        self.list_widget.blockSignals(True)
-        set_updates_enabled = getattr(self.list_widget, "setUpdatesEnabled", None)
-        if callable(set_updates_enabled):
-            set_updates_enabled(False)
-        try:
-            if self.list_widget.count() != len(visible_entries):
-                self.list_widget.clear()
-                for preview, change in visible_entries:
-                    self.list_widget.addItem(self._entry_text(preview, change))
-            else:
-                for index, (preview, change) in enumerate(visible_entries):
-                    item = self.list_widget.item(index)
-                    if item is not None:
-                        item.setText(self._entry_text(preview, change))
-        finally:
+        self._visible_entries_cache = visible_entries
+        if getattr(self, "table_model", None) is not None:
+            self.table_model.set_entries(visible_entries)
+            row = next(
+                (index for index, (_preview, change) in enumerate(visible_entries)
+                 if change.change_id == selected_change_id),
+                0 if visible_entries else -1,
+            )
+            self._set_current_row(row)
+        elif getattr(self, "list_widget", None) is not None:
+            current_row = self.list_widget.currentRow()
+            self.list_widget.blockSignals(True)
+            set_updates_enabled = getattr(self.list_widget, "setUpdatesEnabled", None)
             if callable(set_updates_enabled):
-                set_updates_enabled(True)
-            self.list_widget.blockSignals(False)
-
-        if visible_entries:
+                set_updates_enabled(False)
+            try:
+                if self.list_widget.count() != len(visible_entries):
+                    self.list_widget.clear()
+                    for preview, change in visible_entries:
+                        self.list_widget.addItem(self._entry_text(preview, change))
+                else:
+                    for index, (preview, change) in enumerate(visible_entries):
+                        item = self.list_widget.item(index)
+                        if item is not None:
+                            item.setText(self._entry_text(preview, change))
+            finally:
+                if callable(set_updates_enabled):
+                    set_updates_enabled(True)
+                self.list_widget.blockSignals(False)
             row = current_row if 0 <= current_row < len(visible_entries) else 0
-            self.list_widget.setCurrentRow(row)
+            self._set_current_row(row)
+        if visible_entries:
             self._show_current(row)
         else:
             self.detail.setPlainText(_translator.text("preview.no_changes"))
+            self._update_group_controls(None)
         self._update_summary()
 
     @staticmethod
@@ -929,7 +1259,7 @@ class _PreviewDialog:
         prefix = "?" if decision is None else "✓" if decision.value.startswith("accept") else "×"
         source = _PreviewDialog._truncate(change.source)
         target = _PreviewDialog._truncate(change.target)
-        return f"{prefix} {change.file_id}: {source!r} → {target!r}"
+        return f"{prefix} {change.file_id}: {_single_line(source)} → {_single_line(target)}"
 
     def _update_summary(self) -> None:
         totals = {"total": 0, "accepted": 0, "rejected": 0, "undecided": 0}
@@ -940,6 +1270,9 @@ class _PreviewDialog:
         diagnostics = self._diagnostics_for_file()
         if diagnostics:
             summary += "\n" + _ui_text("preview.diagnostics", details="; ".join(diagnostics))
+        group_feedback = getattr(self, "_last_group_feedback", "")
+        if group_feedback:
+            summary += "\n" + group_feedback
         self.summary.setText(summary)
         has_current = bool(self._visible_entries())
         for name in (
@@ -962,12 +1295,28 @@ class _PreviewDialog:
             button = getattr(self, name, None)
             if button is not None:
                 button.setEnabled(has_entries)
-        self.apply_button.setEnabled(totals["undecided"] == 0)
+        accepted_files = {
+            change.file_id
+            for preview in self._previews
+            for change in preview.changes
+            if (decision := preview.decision(change.change_id)) is not None
+            and decision.value.startswith("accept")
+        }
+        apply_key = "preview.apply_one" if len(accepted_files) == 1 else "preview.apply_many"
+        self.apply_button.setText(_translator.text(apply_key, files=len(accepted_files)))
+        complete = totals["undecided"] == 0
+        self.apply_button.setEnabled(complete)
+        set_tooltip = getattr(self.apply_button, "setToolTip", None)
+        if callable(set_tooltip):
+            set_tooltip("" if complete else _translator.text("preview.incomplete"))
 
     def _show_current(self, row: int) -> None:
-        visible_entries = self._visible_entries()
+        visible_entries = getattr(self, "_visible_entries_cache", None)
+        if visible_entries is None:
+            visible_entries = self._visible_entries()
         if row < 0 or row >= len(visible_entries):
             self.detail.clear()
+            self._update_group_controls(None)
             return
         preview, change = visible_entries[row]
         diagnostics = self._diagnostics_for_file(change.file_id)
@@ -976,19 +1325,38 @@ class _PreviewDialog:
             if diagnostics
             else ""
         )
+        show_source = getattr(self, "show_source_context", None)
+        if show_source is not None and show_source.isChecked():
+            context_before = _single_line(change.context_before)
+            context_after = _single_line(change.context_after)
+        else:
+            context_before = _single_line(change.text_context_before)
+            context_after = _single_line(change.text_context_after)
+        source_line = f"{context_before}【{_single_line(change.source)}】{context_after}"
+        target_line = f"{context_before}【{_single_line(change.target)}】{context_after}"
+        group_text = ""
+        if change.group_id:
+            count, files = getattr(self, "_group_stats", {}).get(change.group_id, (1, 1))
+            group_text = "\n" + _translator.text(
+                "preview.group_explanation", count=count, files=files)
         self.detail.setPlainText(
             f"{_translator.text('preview.rule')}: {change.rule_source}\n"
-            f"{_translator.text('preview.category')}: {change.category}    "
-            f"{_translator.text('preview.risk')}: {change.risk}\n"
-            f"{_translator.text('preview.before')}: "
-            f"{change.context_before}{change.source}{change.context_after}\n"
-            f"{_translator.text('preview.change')}: {change.source!r} → {change.target!r}"
+            f"{_translator.text('preview.category')}: "
+            f"{_translator.text(f'preview.category_value.{change.category}')}    "
+            f"{_translator.text('preview.risk')}: "
+            f"{_translator.text(f'preview.risk_value.{change.risk.lower()}')}\n"
+            f"{_translator.text('preview.before')}: {source_line}\n"
+            f"{_translator.text('preview.after')}: {target_line}"
+            f"{group_text}"
             f"{diagnostic_text}"
         )
+        self._update_group_controls(change.file_id)
 
     def _current_entry(self):
-        row = self.list_widget.currentRow()
-        visible_entries = self._visible_entries()
+        row = self._current_row()
+        visible_entries = getattr(self, "_visible_entries_cache", None)
+        if visible_entries is None:
+            visible_entries = self._visible_entries()
         if row < 0 or row >= len(visible_entries):
             return None
         return visible_entries[row]
@@ -1008,16 +1376,80 @@ class _PreviewDialog:
     def _decide_entry(self, entry, accepted):
         preview, change = entry
         if change.group_id:
-            self._decide_group(change.group_id, accepted)
+            count = self._decide_group(change.group_id, accepted)
+            feedback_key = (
+                "preview.group_accepted" if accepted else "preview.group_skipped")
+            self._last_group_feedback = _translator.text(
+                feedback_key, count=count)
             self._refresh()
         else:
             (preview.accept_this if accepted else preview.reject_this)(change.change_id)
             self._refresh_current()
+        self._select_next_undecided(change.change_id)
+
+    def _select_next_undecided(self, current_change_id=None, *, direction: int = 1) -> None:
+        entries = getattr(self, "_visible_entries_cache", None)
+        if entries is None:
+            entries = self._visible_entries()
+        if not entries:
+            return
+        current_row = self._current_row()
+        if current_row < 0:
+            current_row = -1 if direction > 0 else 0
+        for offset in range(1, len(entries) + 1):
+            row = (current_row + direction * offset) % len(entries)
+            preview, change = entries[row]
+            if current_change_id and change.change_id == current_change_id:
+                continue
+            if preview.decision(change.change_id) is None:
+                self._set_current_row(row)
+                self._show_current(row)
+                return
+
+    def _next_undecided(self) -> None:
+        self._select_next_undecided(direction=1)
+
+    def _previous_undecided(self) -> None:
+        self._select_next_undecided(direction=-1)
 
     def _decide_group(self, group_id, accepted):
+        count = 0
         for preview, change in self._entries:
             if change.group_id == group_id:
                 (preview.accept_this if accepted else preview.reject_this)(change.change_id)
+                count += 1
+        return count
+
+    def _groups_for_file(self, file_id):
+        return {
+            change.group_id
+            for _preview, change in self._entries
+            if change.file_id == file_id and change.group_id
+        }
+
+    def _update_group_controls(self, file_id):
+        guidance = getattr(self, "group_guidance", None)
+        accept = getattr(self, "accept_group_button", None)
+        reject = getattr(self, "reject_group_button", None)
+        if guidance is None or accept is None or reject is None:
+            return
+        visible = bool(self._groups_for_file(file_id))
+        guidance.setText(_translator.text("preview.group_prompt"))
+        guidance.setVisible(visible)
+        accept.setVisible(visible)
+        reject.setVisible(visible)
+
+    def _decide_current_file_groups(self, accepted):
+        entry = self._current_entry()
+        if entry is None:
+            return
+        groups = self._groups_for_file(entry[1].file_id)
+        count = sum(self._decide_group(group_id, accepted) for group_id in groups)
+        if count:
+            feedback_key = (
+                "preview.group_accepted" if accepted else "preview.group_skipped")
+            self._last_group_feedback = _translator.text(feedback_key, count=count)
+        self._refresh()
 
     def _decide_filtered(self, accepted: bool) -> None:
         visible_entries = self._visible_entries()
@@ -1025,20 +1457,29 @@ class _PreviewDialog:
         for preview, change in visible_entries:
             if not change.group_id:
                 (preview.accept_this if accepted else preview.reject_this)(change.change_id)
-        for group_id in groups:
-            self._decide_group(group_id, accepted)
+        group_count = sum(self._decide_group(group_id, accepted) for group_id in groups)
+        if group_count:
+            feedback_key = (
+                "preview.group_accepted" if accepted else "preview.group_skipped")
+            self._last_group_feedback = _translator.text(
+                feedback_key, count=group_count)
         self._refresh()
 
     def _refresh_current(self) -> None:
-        row = self.list_widget.currentRow()
-        visible_entries = self._visible_entries()
+        row = self._current_row()
+        visible_entries = getattr(self, "_visible_entries_cache", None)
+        if visible_entries is None:
+            visible_entries = self._visible_entries()
         if row < 0 or row >= len(visible_entries):
             self._update_summary()
             return
-        item = self.list_widget.item(row)
-        if item is not None:
-            preview, change = visible_entries[row]
-            item.setText(self._entry_text(preview, change))
+        if getattr(self, "table_model", None) is not None:
+            self.table_model.refresh()
+        else:
+            item = self.list_widget.item(row)
+            if item is not None:
+                preview, change = visible_entries[row]
+                item.setText(self._entry_text(preview, change))
         self._show_current(row)
         self._update_summary()
 
@@ -1046,20 +1487,20 @@ class _PreviewDialog:
         entry = self._current_entry()
         if entry is None:
             return
-        entry[0].accept_all(overwrite=True)
-        for change in entry[0].changes:
-            if change.group_id:
-                self._decide_group(change.group_id, True)
+        preview = entry[0]
+        for change in preview.changes:
+            if not change.group_id:
+                preview.accept_this(change.change_id)
         self._refresh()
 
     def _reject_file(self) -> None:
         entry = self._current_entry()
         if entry is None:
             return
-        entry[0].reject_all(overwrite=True)
-        for change in entry[0].changes:
-            if change.group_id:
-                self._decide_group(change.group_id, False)
+        preview = entry[0]
+        for change in preview.changes:
+            if not change.group_id:
+                preview.reject_this(change.change_id)
         self._refresh()
 
     def _accept_all(self) -> None:

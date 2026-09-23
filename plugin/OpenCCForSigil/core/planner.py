@@ -209,6 +209,16 @@ def _absolute_change(
     change_id = sha256(change_key.encode("utf-8")).hexdigest()[:24]
     before_start = max(0, start - 32)
     after_end = min(len(source), end + 32)
+    text_start = local_change.span.start
+    text_end = local_change.span.end
+    text_before_start = max(0, text_start - 20)
+    text_after_end = min(len(target.source_text), text_end + 20)
+    text_context_before = target.source_text[text_before_start:text_start]
+    text_context_after = target.source_text[text_end:text_after_end]
+    if text_before_start:
+        text_context_before = "…" + text_context_before
+    if text_after_end < len(target.source_text):
+        text_context_after += "…"
     return TokenChange(
         source=local_change.source,
         target=target_text,
@@ -224,6 +234,8 @@ def _absolute_change(
         attribution_confidence=local_change.attribution_confidence,
         context_before=source[before_start:start],
         context_after=source[end:after_end],
+        text_context_before=text_context_before,
+        text_context_after=text_context_after,
         document_kind=target.document_kind,
         group_id=local_change.group_id,
     )
