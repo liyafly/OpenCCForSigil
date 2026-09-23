@@ -280,6 +280,8 @@
   "preview.checkpoint_no": "取消",
   "preview.checkpoint_hide": "以后不再提示",
   "preview.diagnostics": "计划诊断：{details}",
+  "preview.invalid_source_location": "第 {line} 行第 {column} 列",
+  "preview.skipped_sources": "已跳过的不合法 XHTML 文件：\n{files}",
   "preview.diagnostic_detail": "诊断：{details}",
   "preview.export": "导出报告",
   "preview.export_full_diff": "包含完整差异",

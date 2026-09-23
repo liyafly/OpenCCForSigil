@@ -1112,6 +1112,28 @@ class _PreviewDialog:
             for code, count in sorted(counts.items())
         )
 
+    def _skipped_source_details(self) -> Tuple[str, ...]:
+        rows = []
+        for planned in getattr(self, "_planned", ()):
+            source = getattr(planned, "source", None)
+            plan = getattr(planned, "plan", None)
+            if plan is None:
+                continue
+            href = getattr(source, "href", getattr(plan, "file_id", ""))
+            for diagnostic in getattr(plan, "diagnostics", ()):
+                line = getattr(diagnostic, "line", None)
+                column = getattr(diagnostic, "column", None)
+                if (getattr(diagnostic, "code", "") != "SOURCE_INVALID_XHTML"
+                        or line is None or column is None):
+                    continue
+                location = self._translator.text(
+                    "preview.invalid_source_location",
+                    line=line,
+                    column=column,
+                )
+                rows.append(f"{href}: {location}")
+        return tuple(rows)
+
     def _refresh(self) -> None:
         selected_change_id = self._selected_change_id()
         visible_entries = self._visible_entries()
@@ -1170,6 +1192,10 @@ class _PreviewDialog:
         diagnostics = self._diagnostics_for_file()
         if diagnostics:
             summary += "\n" + self._translator.text("preview.diagnostics", details="; ".join(diagnostics))
+        skipped_sources = self._skipped_source_details()
+        if skipped_sources:
+            summary += "\n" + self._translator.text(
+                "preview.skipped_sources", files="\n".join(skipped_sources))
         group_feedback = getattr(self, "_last_group_feedback", "")
         if group_feedback:
             summary += "\n" + group_feedback

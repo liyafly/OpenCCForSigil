@@ -103,6 +103,8 @@ class Diagnostic:
     code: str
     message: str
     span: Optional[SourceSpan] = None
+    line: Optional[int] = None
+    column: Optional[int] = None
 
 
 @dataclass(frozen=True)

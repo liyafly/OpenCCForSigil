@@ -449,6 +449,30 @@ def test_plan_diagnostics_are_visible_in_summary_and_detail():
     assert "mixed script input" not in dialog.detail.text
 
 
+def test_summary_lists_skipped_source_href_with_original_line_and_column():
+    dialog = object.__new__(_PreviewDialog)
+    dialog._translator = Translator("zh-Hans")
+    dialog._previews = ()
+    dialog._entries = ()
+    dialog._planned = (
+        SimpleNamespace(
+            source=SimpleNamespace(file_id="bad", href="Text/bad.xhtml"),
+            plan=ConversionPlan(
+                source_sha256="", file_id="bad",
+                diagnostics=(Diagnostic(
+                    "SOURCE_INVALID_XHTML", "invalid", line=5, column=10),),
+            ),
+        ),
+    )
+    dialog.summary = _FakeLabel()
+    dialog.apply_button = _FakeButton()
+
+    dialog._update_summary()
+
+    assert "Text/bad.xhtml" in dialog.summary.text
+    assert "第 5 行第 10 列" in dialog.summary.text
+
+
 def test_preview_exit_confirmation_protects_decisions_and_allows_empty_exit():
     dialog, preview, _items = _preview_dialog(change_count=1, current_row=0)
     confirm_calls = []

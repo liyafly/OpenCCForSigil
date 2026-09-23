@@ -510,7 +510,11 @@ class ConversionWorkflow:
                     document_kind=kind,
                     converter=converter,
                 )
-                diagnostic = Diagnostic("SOURCE_INVALID_XHTML", str(exc))
+                diagnostic = Diagnostic(
+                    "SOURCE_INVALID_XHTML", str(exc),
+                    line=getattr(exc, "line", None),
+                    column=getattr(exc, "column", None),
+                )
                 return PlannedDocument(
                     source_document, tokenized,
                     replace(plan, diagnostics=(diagnostic,)),

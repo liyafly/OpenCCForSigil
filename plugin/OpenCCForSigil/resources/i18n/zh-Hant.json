@@ -280,6 +280,8 @@
   "preview.checkpoint_no": "取消",
   "preview.checkpoint_hide": "以後不再提示",
   "preview.diagnostics": "計畫診斷：{details}",
+  "preview.invalid_source_location": "第 {line} 行第 {column} 列",
+  "preview.skipped_sources": "已略過的不合法 XHTML 檔案：\n{files}",
   "preview.diagnostic_detail": "診斷：{details}",
   "preview.export": "匯出報告",
   "preview.export_full_diff": "包含完整差異",

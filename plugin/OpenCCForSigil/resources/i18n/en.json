@@ -280,6 +280,8 @@
   "preview.checkpoint_no": "Cancel",
   "preview.checkpoint_hide": "Do not show again",
   "preview.diagnostics": "Plan diagnostics: {details}",
+  "preview.invalid_source_location": "line {line}, column {column}",
+  "preview.skipped_sources": "Skipped malformed XHTML files:\n{files}",
   "preview.diagnostic_detail": "Diagnostics: {details}",
   "preview.export": "Export report",
   "preview.export_full_diff": "Include full diff",

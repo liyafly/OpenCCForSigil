@@ -428,6 +428,10 @@ def test_malformed_xhtml_is_skipped_while_other_files_convert(monkeypatch, tmp_p
     assert any(item.code == "SOURCE_INVALID_XHTML" for item in bad.plan.diagnostics)
     assert any(item.span is None and "line 1, column" in item.message
                for item in bad.plan.diagnostics)
+    invalid_diagnostic = next(
+        item for item in bad.plan.diagnostics if item.code == "SOURCE_INVALID_XHTML")
+    assert invalid_diagnostic.line == 1
+    assert invalid_diagnostic.column == 11
     assert good.source.file_id == "good"
     assert good.plan.changes
     assert [file_id for file_id, _data in book.writes] == ["good"]

@@ -256,6 +256,8 @@ _I18N_REQUIRED_KEYS = _I18N_REQUIRED_KEYS | frozenset(
         'preview.checkpoint_yes',
         'preview.diagnostic_detail',
         'preview.diagnostics',
+        'preview.invalid_source_location',
+        'preview.skipped_sources',
         'preview.export',
         'preview.export_full_diff',
         'preview.filter_all',
