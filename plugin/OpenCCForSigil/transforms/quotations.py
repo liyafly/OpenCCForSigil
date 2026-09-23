@@ -23,6 +23,9 @@ _MODE_ALIASES: Final[dict[str, str]] = {
 
 _OPENING_QUOTES: Final[frozenset[str]] = frozenset(("“", "「", "『"))
 _CLOSING_QUOTES: Final[frozenset[str]] = frozenset(("”", "」", "』"))
+DOUBLE_QUOTE_CHARACTERS: Final[frozenset[str]] = frozenset(
+    {'"', *_OPENING_QUOTES, *_CLOSING_QUOTES}
+)
 
 
 def transform_quotations(text: str, mode: str = "keep") -> str:
@@ -44,20 +47,23 @@ class QuotationPairer:
     preserved while its quote marks still advance the pairing state.
     """
 
-    __slots__ = ("mode", "in_quote", "ascii_unbalanced")
+    __slots__ = ("mode", "in_quote", "ascii_unbalanced", "last_changed_offsets")
 
     def __init__(self, mode: str = "keep") -> None:
         self.mode = _canonical_mode(mode)
         self.in_quote = False
         self.ascii_unbalanced = False
+        self.last_changed_offsets: tuple[int, ...] = ()
 
     def feed(self, text: str, *, mutate: bool = True) -> str:
+        self.last_changed_offsets = ()
         if self.mode == "keep" or not text:
             return text
 
         opening, closing = QUOTATION_PAIRS[self.mode]
         result: list[str] = []
-        for char in text:
+        changed_offsets = []
+        for offset, char in enumerate(text):
             replacement = char
             if char == '"':
                 self.ascii_unbalanced = not self.ascii_unbalanced
@@ -69,7 +75,10 @@ class QuotationPairer:
             elif char in _CLOSING_QUOTES:
                 replacement = closing
                 self.in_quote = False
+            if mutate and replacement != char:
+                changed_offsets.append(offset)
             result.append(replacement if mutate else char)
+        self.last_changed_offsets = tuple(changed_offsets)
         return "".join(result) if mutate else text
 
 
@@ -92,6 +101,7 @@ def _canonical_mode(mode: str) -> str:
 __all__ = [
     "QUOTATION_MODES",
     "QUOTATION_PAIRS",
+    "DOUBLE_QUOTE_CHARACTERS",
     "QuotationPairer",
     "convert_quotations",
     "transform_quotations",

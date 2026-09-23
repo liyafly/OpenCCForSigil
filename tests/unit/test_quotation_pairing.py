@@ -1,5 +1,6 @@
 from core.models import ConvertRequest, RuleSnapshot
 from core.preview import PreviewSession
+from core.converter import OfficialBackendConverter
 from core.staging import apply_changes
 from core.workflow import ConversionWorkflow
 from opencc_backend.backend import OpenCCBackend
@@ -23,13 +24,13 @@ class Book:
         self.writes.append((file_id, source))
 
 
-def _plan(source, *, rules=(), quotation_mode="corner"):
+def _plan(source, *, rules=(), quotation_mode="corner", detailed_classification=False):
     frozen = Rules.freeze(rules)
     request = ConvertRequest(
         "s2t",
         rules_snapshot=RuleSnapshot(rules_hash=frozen.sha256, rules=frozen.rules),
         quotation_mode=quotation_mode,
-        detailed_classification=False,
+        detailed_classification=detailed_classification,
         diagnose_mixed=False,
     )
     book = Book(source)
@@ -60,6 +61,64 @@ def test_pairing_continues_across_inline_text_targets():
     assert staged[0].converted == '<p>「他說<em>你好</em>」</p>'
     assert verification[0].passed
     assert apply_changes(source, planned[0].plan.changes) == staged[0].converted
+    quote_changes = [change for change in planned[0].plan.changes
+                     if change.source == '"']
+    assert len(quote_changes) == 2
+    assert all(change.category == "quotation" for change in quote_changes)
+    assert all(change.rule_source == "QuotationTransform" for change in quote_changes)
+
+
+def test_unbalanced_block_marks_every_quote_change_for_review():
+    _book, _workflow, planned = _plan('<p>"甲"乙"</p>')
+    quote_changes = [change for change in planned[0].plan.changes
+                     if change.category == "quotation"]
+
+    assert [change.target for change in quote_changes] == ["「", "」", "「"]
+    assert all(change.risk == "REVIEW" for change in quote_changes)
+    assert "QUOTE_UNBALANCED" in {item.code for item in planned[0].plan.diagnostics}
+
+
+def test_quote_attribution_is_stable_with_detailed_classification():
+    source = '<p>"他说<em>你好</em>"</p>'
+    _book, _workflow, planned = _plan(source, detailed_classification=True)
+    quote_changes = [change for change in planned[0].plan.changes
+                     if change.source == '"']
+
+    assert len(quote_changes) == 2
+    assert all(change.category == "quotation" for change in quote_changes)
+    assert all(change.rule_source == "QuotationTransform" for change in quote_changes)
+
+
+def test_mixed_opencc_and_quote_opcode_keeps_opencc_attribution():
+    class Backend:
+        config = "s2t"
+
+        @staticmethod
+        def convert(text):
+            return text.replace("甲", "乙")
+
+    request = ConvertRequest(
+        "s2t", quotation_mode="corner", detailed_classification=False,
+        diagnose_mixed=False,
+    )
+    result = OfficialBackendConverter(Backend()).convert('"甲', request)
+
+    assert result.target == "「乙"
+    assert len(result.changes) == 1
+    assert result.changes[0].rule_source == "OpenCC:s2t"
+    assert result.changes[0].attribution_method == (
+        "OpenCC conversion; includes QuotationTransform")
+
+
+def test_quote_entities_advance_pairing_without_changing_entity_text():
+    source = '<p>&#34;甲"</p>'
+    _book, workflow, planned = _plan(source)
+
+    staged, verification = _stage_all(workflow, planned)
+
+    assert staged[0].converted == '<p>&#34;甲」</p>'
+    assert verification[0].passed
+    assert "QUOTE_UNBALANCED" not in {item.code for item in planned[0].plan.diagnostics}
 
 
 def test_pairing_continues_across_protected_and_exact_rule_spans():

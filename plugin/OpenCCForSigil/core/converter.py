@@ -33,7 +33,7 @@ class OfficialBackendConverter:
         from core.classifier import classify_conversion
         from core.diagnostics import diagnose_mixed_script
         from core.transformation import apply_force_pivot
-        from transforms.quotations import transform_quotations
+        from transforms.quotations import DOUBLE_QUOTE_CHARACTERS, QuotationPairer
         from transforms.punctuation import normalize_punctuation
 
         compare = getattr(self.backend, "convert_for_config", None)
@@ -46,8 +46,12 @@ class OfficialBackendConverter:
             rule_source = pivot.rule_source
         else:
             official = self.backend.convert(text)
-        quoted = (quotation_pairer.feed(official) if quotation_pairer is not None
-                  else transform_quotations(official, request.quotation_mode))
+        pairer = quotation_pairer
+        if pairer is None and request.quotation_mode != "keep":
+            pairer = QuotationPairer(request.quotation_mode)
+        quoted = pairer.feed(official) if pairer is not None else official
+        quotation_offsets = frozenset(
+            getattr(pairer, "last_changed_offsets", ()))
         target = normalize_punctuation(quoted, request.punctuation_mode)
         diagnostics = []
         if request.diagnose_mixed and callable(compare) and text:
@@ -74,11 +78,22 @@ class OfficialBackendConverter:
             attribution = classification.get((i1, i2, target_part))
             source_name = rule_source
             category = attribution.category if attribution else _change_category(source_part, target_part)
-            if not request.pivot_chain and attribution is None:
-                if (request.quotation_mode != "keep" and
-                        transform_quotations(source_part, request.quotation_mode) == target_part):
-                    source_name, category = "QuotationTransform", "quotation"
-                elif (request.punctuation_mode != "keep" and
+            attribution_method = attribution.attribution_method if attribution else None
+            rewritten_quotes = any(j1 <= offset < j2 for offset in quotation_offsets)
+            quote_only_change = (
+                rewritten_quotes
+                and source_part
+                and all(char in DOUBLE_QUOTE_CHARACTERS for char in source_part)
+                and len(source_part) == len(target_part)
+                and all(offset in quotation_offsets for offset in range(j1, j2))
+            )
+            if quote_only_change:
+                source_name, category = "QuotationTransform", "quotation"
+            elif rewritten_quotes:
+                method = attribution_method or "OpenCC conversion"
+                attribution_method = f"{method}; includes QuotationTransform"
+            elif not request.pivot_chain and attribution is None:
+                if (request.punctuation_mode != "keep" and
                       normalize_punctuation(source_part, request.punctuation_mode) == target_part):
                     source_name, category = "PunctuationTransform", "punctuation"
             changes.append(TokenChange(
@@ -86,7 +101,7 @@ class OfficialBackendConverter:
                 rule_source=source_name, category=category,
                 risk=("HIGH" if request.pivot_chain else "REVIEW" if category == "regional" or
                       (attribution and attribution.attribution_confidence == "low") else "LOW"),
-                attribution_method=attribution.attribution_method if attribution else None,
+                attribution_method=attribution_method,
                 comparison_stage=attribution.comparison_stage if attribution else None,
                 attribution_confidence=attribution.attribution_confidence if attribution else None,
             ))

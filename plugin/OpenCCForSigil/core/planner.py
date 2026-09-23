@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 from hashlib import sha256
 from html import unescape
+import re
 from document.diagnostics import inline_boundary_diagnostics
 import json
 from bisect import bisect_right
@@ -16,13 +17,14 @@ from core.models import (ConversionPlan, ConvertRequest, Diagnostic, SourceSpan,
 from transforms.language_tags import is_han_language
 from document.tokenizer import TokenizedDocument
 from opencc_backend.backend import OpenCCBackend
-from transforms.quotations import QuotationPairer
+from transforms.quotations import DOUBLE_QUOTE_CHARACTERS, QuotationPairer
 
 
 _BLOCK_LEVEL_ELEMENTS = frozenset(
     "p div li h1 h2 h3 h4 h5 h6 blockquote td th dd dt figcaption section article "
     "aside header footer body".split()
 )
+_ENTITY_REFERENCE = re.compile(r"&[^;\s<>&]+;")
 
 
 def build_conversion_plan(
@@ -56,6 +58,7 @@ def build_conversion_plan(
     diagnostics = list(inline_boundary_diagnostics(document)) if document_kind in {"xhtml", "nav"} else []
     block_tags = tuple(tag for tag in document.tags if tag.name.lower() in _BLOCK_LEVEL_ELEMENTS)
     block_tag_ends = tuple(tag.end for tag in block_tags)
+    ignored_quote_ranges = _ignored_quotation_ranges(source, document.tags)
     attribute_spans = tuple(sorted(
         (attribute.value_start, attribute.value_end, tag_index, attribute_index, attribute.name)
         for tag_index, tag in enumerate(document.tags)
@@ -65,6 +68,7 @@ def build_conversion_plan(
     block_pairers: dict[int, QuotationPairer] = {}
     block_quote_change_ids: dict[int, list[str]] = {}
     block_spans: dict[int, SourceSpan] = {}
+    block_quote_cursors: dict[int, int] = {}
     attribute_pairers: dict[tuple[int, int], QuotationPairer] = {}
     for target in document.targets:
         if check_cancel is not None:
@@ -94,6 +98,14 @@ def build_conversion_plan(
             # NCX and metadata targets, along with unmatched attribute spans,
             # intentionally keep their quote-pairing state local to one target.
             pairer = QuotationPairer(request.quotation_mode)
+        if block_index is not None:
+            cursor = block_quote_cursors.get(
+                block_index,
+                block_tag_ends[block_index - 1] if block_index else 0,
+            )
+            _feed_quotation_entities(
+                pairer, source, cursor, target.source_start, ignored_quote_ranges)
+            block_quote_cursors[block_index] = target.source_end
         if target.attribute_name in {"lang", "xml:lang"} or target.tag_name == "dc:language":
             if not request.language_tag or not is_han_language(target.source_text):
                 continue
@@ -129,6 +141,11 @@ def build_conversion_plan(
             changes.append(replace(change, document_kind=document_kind))
             if block_index is not None and change.category == "quotation":
                 block_quote_change_ids.setdefault(block_index, []).append(change.change_id)
+
+    for index, cursor in block_quote_cursors.items():
+        block_end = block_tags[index].start if index < len(block_tags) else len(source)
+        _feed_quotation_entities(
+            block_pairers[index], source, cursor, block_end, ignored_quote_ranges)
 
     if request.quotation_mode != "keep":
         unbalanced_blocks = {
@@ -180,6 +197,39 @@ def build_conversion_plan(
         document_kind=document_kind,
         diagnostics=tuple(diagnostics),
     )
+
+
+def _ignored_quotation_ranges(source, tags):
+    ranges = [(tag.start, tag.end) for tag in tags]
+    ranges.extend((match.start(), match.end()) for match in re.finditer(
+        r"<!--.*?-->|<!\[CDATA\[.*?\]\]>", source, flags=re.DOTALL))
+    protected_names = {"script", "style", "code", "pre", "svg", "math"}
+    stack = []
+    for tag in tags:
+        if tag.name not in protected_names:
+            continue
+        if tag.closing:
+            match_index = next((index for index in range(len(stack) - 1, -1, -1)
+                                if stack[index][0] == tag.name), None)
+            if match_index is not None:
+                _name, content_start = stack.pop(match_index)
+                ranges.append((content_start, tag.start))
+        elif not tag.self_closing:
+            stack.append((tag.name, tag.end))
+    ranges.extend((start, len(source)) for _name, start in stack)
+    return tuple(ranges)
+
+
+def _feed_quotation_entities(pairer, source, start, end, ignored_ranges):
+    if start >= end:
+        return
+    for match in _ENTITY_REFERENCE.finditer(source, start, end):
+        if any(range_start <= match.start() < range_end
+               for range_start, range_end in ignored_ranges):
+            continue
+        decoded = unescape(match.group())
+        if len(decoded) == 1 and decoded in DOUBLE_QUOTE_CHARACTERS:
+            pairer.feed(decoded, mutate=False)
 
 
 def _absolute_change(
