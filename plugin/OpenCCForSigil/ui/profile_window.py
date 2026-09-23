@@ -8,47 +8,15 @@ from uuid import uuid4
 
 from app.profiles import Profile, ProfileStore
 from opencc_backend.configs import SUPPORTED_CONFIGS, V1_CONFIGS
+from ui.i18n import CatalogView, Translator, show_error_details
 
 
-_LABELS = {
-    "en": {
-        "title": "Profiles", "use": "Use", "rename": "Rename", "copy": "Copy",
-        "delete": "Delete", "from_current": "From current settings", "close": "Close",
-        "summary": "Profile summary", "conversion": "Direction", "rules": "Rule sets",
-        "options": "Options", "jieba": "Advanced Jieba", "unavailable": "unavailable on this host",
-        "ask_name": "Profile name", "duplicate_name": "A profile with this name already exists.",
-        "invalid_name": "Profile name cannot be empty.", "confirm_delete": "Delete profile {name}?",
-        "delete_modified": "Save the current settings as a new profile before deleting this modified profile.",
-        "copied": " copy", "skipped_files": "Corrupt profiles skipped: {files}",
-        "not_selected": "Select a profile first.",
-    },
-    "zh-Hans": {
-        "title": "配置方案", "use": "使用", "rename": "重命名", "copy": "复制",
-        "delete": "删除", "from_current": "从当前设置新建", "close": "关闭",
-        "summary": "方案摘要", "conversion": "转换方向", "rules": "规则集",
-        "options": "主要选项", "jieba": "高级 Jieba", "unavailable": "本机不可用",
-        "ask_name": "方案名称", "duplicate_name": "已有同名方案。",
-        "invalid_name": "方案名称不能为空。", "confirm_delete": "删除方案“{name}”？",
-        "delete_modified": "当前设置已有修改，请先从当前设置新建方案，再删除此方案。",
-        "copied": " 副本", "skipped_files": "已跳过损坏的方案文件：{files}",
-        "not_selected": "请先选择方案。",
-    },
-    "zh-Hant": {
-        "title": "設定檔", "use": "使用", "rename": "重新命名", "copy": "複製",
-        "delete": "刪除", "from_current": "從目前設定新建", "close": "關閉",
-        "summary": "設定檔摘要", "conversion": "轉換方向", "rules": "規則集",
-        "options": "主要選項", "jieba": "進階 Jieba", "unavailable": "此主機不可用",
-        "ask_name": "設定檔名稱", "duplicate_name": "已有同名設定檔。",
-        "invalid_name": "設定檔名稱不可空白。", "confirm_delete": "刪除設定檔「{name}」？",
-        "delete_modified": "目前設定已有修改，請先從目前設定新建設定檔，再刪除此設定檔。",
-        "copied": " 副本", "skipped_files": "已略過損毀的設定檔：{files}",
-        "not_selected": "請先選取設定檔。",
-    },
-}
 
 
-def _labels(translator: Any) -> dict[str, str]:
-    return _LABELS.get(getattr(translator, "language", "en"), _LABELS["en"])
+
+
+def _labels(translator: Any) -> CatalogView:
+    return CatalogView(translator or Translator("en"), "profile")
 
 
 def show_profile_window(
@@ -94,7 +62,8 @@ class ProfileManagerDialog:
         storage_errors: Iterable[str] = (),
     ) -> None:
         self._qt = qt_widgets
-        self._labels = _labels(translator)
+        self._translator = translator or Translator("en")
+        self._labels = _labels(self._translator)
         self._profiles = list(profiles)
         self._store = store
         self._on_delete = on_delete
@@ -259,7 +228,8 @@ class ProfileManagerDialog:
         if name is None:
             return
         updated = replace(profile, name=name)
-        self._store.save(updated)
+        if not self._save_profile(updated):
+            return
         self._replace_profile(profile, updated)
 
     def _copy(self) -> None:
@@ -270,7 +240,8 @@ class ProfileManagerDialog:
         if name is None:
             return
         copied = replace(profile, id=str(uuid4()), name=name)
-        self._store.save(copied)
+        if not self._save_profile(copied):
+            return
         self._profiles.append(copied)
         self._selected_id = copied.id
         self._refresh()
@@ -282,7 +253,8 @@ class ProfileManagerDialog:
         if name is None:
             return
         created = replace(self._current_profile, id=str(uuid4()), name=name)
-        self._store.save(created)
+        if not self._save_profile(created):
+            return
         self._profiles.append(created)
         self._selected_id = created.id
         self._refresh()
@@ -302,8 +274,12 @@ class ProfileManagerDialog:
             getattr(self._qt.QMessageBox, "StandardButton", object), "Yes", None))
         if answer != yes:
             return
-        path = self._store._path(profile.id)
-        path.unlink(missing_ok=True)
+        try:
+            path = self._store._path(profile.id)
+            path.unlink(missing_ok=True)
+        except OSError as exc:
+            self._show_error(exc)
+            return
         self._profiles.remove(profile)
         if callable(self._on_delete):
             self._on_delete(profile.id)
@@ -318,6 +294,20 @@ class ProfileManagerDialog:
 
     def _warn(self, message: str) -> None:
         self._qt.QMessageBox.warning(self.dialog, self._labels["title"], message)
+
+    def _save_profile(self, profile: Profile) -> bool:
+        try:
+            self._store.save(profile)
+        except (OSError, ValueError) as exc:
+            self._show_error(exc)
+            return False
+        return True
+
+    def _show_error(self, error: BaseException) -> None:
+        show_error_details(
+            self._qt, self.dialog, self._labels["title"],
+            self._translator.text("profile.operation_failed"), str(error),
+        )
 
 
 def _profile_signature(profile: Profile) -> tuple:

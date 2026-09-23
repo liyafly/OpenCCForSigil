@@ -1,5 +1,18 @@
-from ui.i18n import Translator, choose_language, load_catalogs, normalize_language
+from pathlib import Path
+from types import SimpleNamespace
+
+from ui.i18n import (
+    Translator,
+    choose_language,
+    diagnostic_summary,
+    load_catalogs,
+    normalize_language,
+    rule_validation_message,
+    settings_error_message,
+    show_error_details,
+)
 from ui import preview_window
+from opencc_backend.configs import V1_CONFIGS
 
 
 def test_supported_catalogs_have_same_keys_and_render_placeholders():
@@ -22,6 +35,89 @@ def test_locale_mapping_and_preference_precedence():
     assert choose_language("zh-Hant", "en", "en-US") == "zh-Hant"
     assert choose_language(None, "zh-TW", "en-US") == "zh-Hant"
     assert choose_language(None, None, "de-DE") == "en"
+
+
+def test_ui_strings_live_in_the_three_catalogs_and_cover_configs_and_diagnostics():
+    catalogs = load_catalogs()
+    ui_root = Path(preview_window.__file__).parent
+    source = "\n".join(path.read_text(encoding="utf-8") for path in ui_root.glob("*.py"))
+    for private_table in ("_LOCAL_TEXT", "_LABELS", "_LOCAL_CATALOGS", "CONVERSION_LABELS"):
+        assert private_table not in source
+    for catalog in catalogs.values():
+        assert all(f"config.{config}" in catalog for config in V1_CONFIGS)
+        assert all(key in catalog for key in (
+            "diagnostic.mixed_script",
+            "diagnostic.inline_boundary",
+            "diagnostic.quote_unbalanced",
+            "diagnostic.source_invalid_xhtml",
+        ))
+        assert all(key in catalog for key in (
+            "rules.validation.row_field",
+            "rules.validation.row",
+            "rules.validation.field",
+            "rules.validation.generic",
+            "options.region_required",
+            "profile.config_unavailable",
+            "options.force_pivot_mismatch",
+        ))
+
+
+def test_rule_validation_summary_localizes_row_and_field():
+    class Error(ValueError):
+        field = "source"
+        index = 1
+
+    for language in ("en", "zh-Hans", "zh-Hant"):
+        message = rule_validation_message(Translator(language), Error("source must be text"))
+        assert "2" in message
+        assert "source must be text" not in message
+
+
+def test_diagnostic_and_settings_errors_have_localized_summaries():
+    codes = ("MIXED_SCRIPT", "INLINE_BOUNDARY", "QUOTE_UNBALANCED", "SOURCE_INVALID_XHTML")
+    for language in ("en", "zh-Hans", "zh-Hant"):
+        translator = Translator(language)
+        for code in codes:
+            summary = diagnostic_summary(translator, code, count=12)
+            assert "12" in summary
+            assert code not in summary
+        assert settings_error_message(
+            translator, ValueError("generic Traditional Chinese requires an explicit Legacy region")
+        ) == translator.text("options.region_required")
+        assert settings_error_message(
+            translator, ValueError("force-pivot must end in the selected configuration")
+        ) == translator.text("options.force_pivot_mismatch")
+        assert settings_error_message(
+            translator, ValueError("profile configuration is unavailable on this host")
+        ) == translator.text("profile.config_unavailable")
+
+
+def test_error_dialog_keeps_original_exception_in_detailed_text():
+    class MessageBox:
+        instance = None
+
+        def __init__(self, _parent):
+            type(self).instance = self
+
+        def setWindowTitle(self, value):
+            self.title = value
+
+        def setText(self, value):
+            self.summary = value
+
+        def setDetailedText(self, value):
+            self.detail = value
+
+        def exec(self):
+            self.executed = True
+
+    show_error_details(
+        SimpleNamespace(QMessageBox=MessageBox), None, "title", "localized summary",
+        "ValueError: original English error",
+    )
+    assert MessageBox.instance.summary == "localized summary"
+    assert MessageBox.instance.detail == "ValueError: original English error"
+    assert MessageBox.instance.executed
 
 
 def test_dialogs_share_one_qapplication_instance():

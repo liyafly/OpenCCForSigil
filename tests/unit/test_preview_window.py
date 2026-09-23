@@ -4,6 +4,7 @@ from core.models import ConversionPlan, Diagnostic, SourceSpan, TokenChange
 from core.preview import PreviewSession
 from core.workflow import ConversionWorkflow
 from ui.preview_window import _PreviewDialog, _guarded_preview_dialog, _translator
+from ui.i18n import Translator
 
 
 class _FakeItem:
@@ -408,10 +409,11 @@ def test_plan_diagnostics_are_visible_in_summary_and_detail():
     dialog._update_summary()
     dialog._show_current(0)
 
-    assert "MIXED_SCRIPT" in dialog.summary.text
-    assert "INLINE_BOUNDARY" in dialog.summary.text
-    assert "MIXED_SCRIPT" in dialog.detail.text
-    assert "mixed script input" in dialog.detail.text
+    translator = Translator("en")
+    assert translator.text("diagnostic.mixed_script", count=1) in dialog.summary.text
+    assert translator.text("diagnostic.inline_boundary", count=1) in dialog.summary.text
+    assert translator.text("diagnostic.mixed_script", count=1) in dialog.detail.text
+    assert "mixed script input" not in dialog.detail.text
 
 
 def test_preview_exit_confirmation_protects_decisions_and_allows_empty_exit():

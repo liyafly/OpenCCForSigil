@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
-from typing import Any, Callable, Iterable, Mapping
+from typing import Any, Callable, Iterable
 
 from rules.conflicts import find_conflicts
 from rules.engine import convert_with_overlay
@@ -14,6 +14,7 @@ from rules.validators import RuleValidationError, validate_rules
 from opencc_backend.configs import V1_CONFIGS
 from rules.store import RuleSet
 from rules.importers import ImportResult, rule_dedup_key
+from ui.i18n import CatalogView, Translator, rule_validation_message, show_error_details
 
 
 @dataclass(frozen=True)
@@ -49,180 +50,14 @@ def review_import(existing: Iterable[Rule], imported: ImportResult) -> RuleImpor
     return RuleImportReview(tuple(additions), duplicates, imported.diagnostics, conflicts)
 
 
-_LABELS = {
-    "en": {
-        "title": "Rules",
-        "add": "Add",
-        "update": "Update selected",
-        "remove": "Remove",
-        "test": "Test",
-        "inspect": "Inspect dictionary",
-        "skipped_files": "Corrupt rule sets skipped: {files}",
-        "inspector_title": "Dictionary Inspector",
-        "close": "Close",
-        "input_label": "Input",
-        "config_label": "Config",
-        "final_label": "Final",
-        "attribution_label": "Attribution",
-        "original_label": "Original",
-        "pre_rules_label": "After user pre-rules",
-        "opencc_label": "After OpenCC",
-        "post_rules_label": "After post-rules",
-        "hits_label": "Hits",
-        "import": "Import",
-        "export": "Export",
-        "apply": "Save",
-        "cancel": "Cancel",
-        "input": "Test text",
-        "output": "Sandbox output",
-        "direction": "Direction",
-        "source": "Source",
-        "target": "Target",
-        "type": "Type",
-        "scope": "Scope",
-        "priority": "Priority",
-        "exact": "exact",
-        "protect": "protect",
-        "ruleset": "Rule set",
-        "new_ruleset": "New",
-        "rename_ruleset": "Rename",
-        "scope_global": "Global",
-        "scope_profile": "Current profile",
-        "scope_book": "Current book",
-        "editor_group": "Edit rules",
-        "transfer_group": "Import / export",
-        "test_group": "Test",
-        "import_format": "Format",
-        "skip_invalid": "Skip invalid rows and report them",
-        "import_add": "Add imported rules",
-        "import_cancel": "Cancel",
-        "import_summary": "New: {new}\nDuplicates: {duplicates}\nDiscarded candidates: {discarded}\nError rows: {errors}",
-        "import_line": "Line {line}: {message}",
-        "rule_hit": "{id}: {source} → {target} at {start}–{end}",
-        "no_hits": "No user rules matched.",
-        "duplicate_ruleset": "A rule set with this ID already exists.",
-        "invalid_ruleset": "Rule set IDs must be simple file names without slashes.",
-        "no_converter": "No official conversion callback supplied.",
-        "input_required": "Enter text for dictionary inspection.",
-    },
-    "zh-Hans": {
-        "title": "规则管理",
-        "add": "新增",
-        "update": "更新所选",
-        "remove": "删除",
-        "test": "测试",
-        "inspect": "词典检查",
-        "skipped_files": "已跳过损坏的规则集文件：{files}",
-        "inspector_title": "词典检查",
-        "close": "关闭",
-        "input_label": "输入",
-        "config_label": "配置",
-        "final_label": "最终结果",
-        "attribution_label": "归因",
-        "original_label": "原文",
-        "pre_rules_label": "用户预规则后",
-        "opencc_label": "OpenCC 后",
-        "post_rules_label": "后置规则后",
-        "hits_label": "命中",
-        "import": "导入",
-        "export": "导出",
-        "apply": "保存",
-        "cancel": "取消",
-        "input": "测试文本",
-        "output": "沙箱输出",
-        "direction": "方向",
-        "source": "源文本",
-        "target": "目标文本",
-        "type": "类型",
-        "scope": "范围",
-        "priority": "优先级",
-        "exact": "精确",
-        "protect": "保护",
-        "ruleset": "规则集",
-        "new_ruleset": "新建",
-        "rename_ruleset": "重命名",
-        "scope_global": "全局",
-        "scope_profile": "当前方案",
-        "scope_book": "当前书",
-        "editor_group": "编辑规则",
-        "transfer_group": "导入 / 导出",
-        "test_group": "测试",
-        "import_format": "格式",
-        "skip_invalid": "跳过错误行并报告",
-        "import_add": "加入导入规则",
-        "import_cancel": "取消",
-        "import_summary": "新增：{new}\n重复：{duplicates}\n丢弃候选：{discarded}\n错误行：{errors}",
-        "import_line": "第 {line} 行：{message}",
-        "rule_hit": "{id}：{source} → {target}，位置 {start}–{end}",
-        "no_hits": "未命中用户规则。",
-        "duplicate_ruleset": "已有此 ID 的规则集。",
-        "invalid_ruleset": "规则集 ID 必须是简单文件名，不能包含斜线。",
-        "no_converter": "没有提供官方转换回调。",
-        "input_required": "请输入要检查的文本。",
-    },
-    "zh-Hant": {
-        "title": "規則管理",
-        "add": "新增",
-        "update": "更新所選",
-        "remove": "刪除",
-        "test": "測試",
-        "inspect": "詞典檢查",
-        "skipped_files": "已略過損毀的規則集檔案：{files}",
-        "inspector_title": "詞典檢查",
-        "close": "關閉",
-        "input_label": "輸入",
-        "config_label": "設定",
-        "final_label": "最終結果",
-        "attribution_label": "歸因",
-        "original_label": "原文",
-        "pre_rules_label": "使用者預規則後",
-        "opencc_label": "OpenCC 後",
-        "post_rules_label": "後置規則後",
-        "hits_label": "命中",
-        "import": "匯入",
-        "export": "匯出",
-        "apply": "儲存",
-        "cancel": "取消",
-        "input": "測試文字",
-        "output": "沙箱輸出",
-        "direction": "方向",
-        "source": "來源文字",
-        "target": "目標文字",
-        "type": "類型",
-        "scope": "範圍",
-        "priority": "優先級",
-        "exact": "精確",
-        "protect": "保護",
-        "ruleset": "規則集",
-        "new_ruleset": "新增",
-        "rename_ruleset": "重新命名",
-        "scope_global": "全域",
-        "scope_profile": "目前設定檔",
-        "scope_book": "目前書籍",
-        "editor_group": "編輯規則",
-        "transfer_group": "匯入 / 匯出",
-        "test_group": "測試",
-        "import_format": "格式",
-        "skip_invalid": "略過錯誤列並回報",
-        "import_add": "加入匯入規則",
-        "import_cancel": "取消",
-        "import_summary": "新增：{new}\n重複：{duplicates}\n捨棄候選：{discarded}\n錯誤列：{errors}",
-        "import_line": "第 {line} 列：{message}",
-        "rule_hit": "{id}：{source} → {target}，位置 {start}–{end}",
-        "no_hits": "未命中使用者規則。",
-        "duplicate_ruleset": "已有此 ID 的規則集。",
-        "invalid_ruleset": "規則集 ID 必須是簡單檔名，不能包含斜線。",
-        "no_converter": "沒有提供官方轉換回呼。",
-        "input_required": "請輸入要檢查的文字。",
-    },
-}
 
 STANDARD_CONFIGS = V1_CONFIGS
 
+def _labels(translator: Any) -> CatalogView:
+    return CatalogView(translator or Translator("en"), "rules")
 
-def _labels(translator: Any) -> Mapping[str, str]:
-    language = getattr(translator, "language", "en") if translator is not None else "en"
-    return _LABELS.get(language, _LABELS["en"])
+
+
 
 
 @dataclass(frozen=True)
@@ -412,8 +247,8 @@ class RuleManagerDialog:
         ruleset_id: str | None = None,
     ) -> None:
         self._qt = qt_widgets
-        self._translator = translator
-        self._labels = _labels(translator)
+        self._translator = translator or Translator("en")
+        self._labels = _labels(self._translator)
         self._managed = rulesets is not None
         values = tuple(rulesets or (RuleSet(ruleset_id or "default", tuple(rules)),))
         if not values:
@@ -665,8 +500,9 @@ class RuleManagerDialog:
         conflicts = find_conflicts(self.rules)
         self.apply_button.setEnabled(not any(conflict.blocking for conflict in conflicts))
         self.conflict_list.clear()
+        translator = getattr(self, "_translator", Translator("en"))
         for conflict in conflicts:
-            item = self._qt.QListWidgetItem(conflict.message)
+            item = self._qt.QListWidgetItem(_conflict_summary(conflict, translator))
             item.setData(getattr(self._qt.Qt, "UserRole", 32),
                          tuple(rule.id for rule in conflict.rules))
             self.conflict_list.addItem(item)
@@ -708,7 +544,10 @@ class RuleManagerDialog:
         try:
             return validate_rules((Rule.from_dict(values),))[0]
         except RuleValidationError as exc:
-            self._qt.QMessageBox.warning(self.dialog, self._labels["title"], str(exc))
+            show_error_details(
+                self._qt, self.dialog, self._labels["title"],
+                rule_validation_message(self._translator, exc), str(exc),
+            )
             return None
 
     def _remove(self) -> None:
@@ -783,7 +622,9 @@ class RuleManagerDialog:
                 lines.append(self._labels["no_hits"])
             self.test_output.setPlainText("\n".join(lines))
         except Exception as exc:
-            self.test_output.setPlainText(str(exc))
+            self.test_output.setPlainText(
+                self._labels["operation_failed"] + "\n"
+                + self._translator.text("common.error_details") + ": " + str(exc))
 
     def _inspect(self) -> None:
         if self._official_convert is None:
@@ -809,7 +650,9 @@ class RuleManagerDialog:
                 translator=self._translator,
             )
         except Exception as exc:
-            self.test_output.setPlainText(str(exc))
+            self.test_output.setPlainText(
+                self._labels["operation_failed"] + "\n"
+                + self._translator.text("common.error_details") + ": " + str(exc))
 
     def _import(self) -> None:
         from rules.importers import import_rules
@@ -840,7 +683,7 @@ class RuleManagerDialog:
                 self.rules.extend(review.additions)
                 self._refresh()
         except Exception as exc:
-            self._warn(str(exc))
+            self._show_exception(exc)
 
     def _import_options(self, path):
         qt = self._qt
@@ -908,7 +751,8 @@ class RuleManagerDialog:
         )
         detail_lines = [self._labels["import_line"].format(
             line=item.line, message=item.message) for item in diagnostics]
-        detail_lines.extend(conflict.message for conflict in review.conflicts)
+        detail_lines.extend(
+            _conflict_summary(conflict, self._translator) for conflict in review.conflicts)
         detail = "\n".join(detail_lines)
         qt = self._qt
         dialog = qt.QDialog(self.dialog)
@@ -920,6 +764,7 @@ class RuleManagerDialog:
         details = qt.QPlainTextEdit()
         details.setReadOnly(True)
         details.setPlainText(detail)
+        layout.addWidget(qt.QLabel(self._translator.text("common.error_details")))
         layout.addWidget(details, 1)
         buttons = qt.QHBoxLayout()
         cancel = qt.QPushButton(self._labels["import_cancel"])
@@ -950,7 +795,16 @@ class RuleManagerDialog:
         try:
             export_rules(self.rules, path, format=suffix)
         except Exception as exc:
-            self._qt.QMessageBox.warning(self.dialog, self._labels["title"], str(exc))
+            self._show_exception(exc)
+
+    def _show_exception(self, error: BaseException) -> None:
+        summary = (
+            rule_validation_message(self._translator, error)
+            if isinstance(error, RuleValidationError)
+            else self._labels["operation_failed"]
+        )
+        show_error_details(
+            self._qt, self.dialog, self._labels["title"], summary, str(error))
 
     def _apply(self) -> None:
         self._stash_ruleset()
@@ -965,6 +819,15 @@ def _validate_ruleset_id(identifier: str) -> None:
     if (not identifier or identifier in {".", ".."}
             or any(char in identifier for char in ("/", "\\", ":", "\x00"))):
         raise ValueError("ruleset id must be a simple filename-safe identifier")
+
+
+def _conflict_summary(conflict, translator: Translator) -> str:
+    key = f"rules.conflict.{conflict.kind}"
+    text = translator.text(key, source=conflict.source)
+    if text == key:
+        return translator.text(
+            "rules.conflict.unknown", kind=conflict.kind, source=conflict.source)
+    return text
 
 
 def _load_qt_widgets() -> Any:

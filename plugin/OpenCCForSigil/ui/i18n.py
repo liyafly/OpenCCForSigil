@@ -5,11 +5,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import re
-from typing import Mapping
+from typing import Any, Mapping
 
 
 SUPPORTED_LANGUAGES = ("zh-Hans", "en", "zh-Hant")
-LANGUAGE_LABELS = {"zh-Hans": "简体中文", "en": "English", "zh-Hant": "繁體中文"}
 _RESOURCE_DIR = Path(__file__).resolve().parents[1] / "resources" / "i18n"
 
 
@@ -58,6 +57,86 @@ class Translator:
             return value
 
 
+class CatalogView:
+    """Expose one namespaced catalog through the legacy mapping-shaped UI API."""
+
+    def __init__(self, translator: Translator, namespace: str):
+        self._translator = translator
+        self._namespace = namespace
+
+    def __getitem__(self, key: str) -> str:
+        return self._translator.text(f"{self._namespace}.{key}")
+
+    def get(self, key: str, default: str | None = None) -> str | None:
+        value = self._translator.text(f"{self._namespace}.{key}")
+        return default if value == f"{self._namespace}.{key}" else value
+
+
+def rule_validation_message(translator: Translator, error: BaseException) -> str:
+    """Build a localized row/field summary while keeping parser text in Details."""
+
+    index = getattr(error, "index", None)
+    field = str(getattr(error, "field", "") or "")
+    field_label = translator.text(f"rules.field.{field}") if field else ""
+    if field and field_label == f"rules.field.{field}":
+        field_label = translator.text("rules.validation.unknown_field")
+    if index is not None and field:
+        return translator.text("rules.validation.row_field", row=int(index) + 1, field=field_label)
+    if index is not None:
+        return translator.text("rules.validation.row", row=int(index) + 1)
+    if field:
+        return translator.text("rules.validation.field", field=field_label)
+    return translator.text("rules.validation.generic")
+
+
+def settings_error_message(translator: Translator, error: BaseException) -> str:
+    """Map known settings validation failures to localized user-facing text."""
+
+    detail = str(error)
+    if "explicit Legacy region" in detail:
+        return translator.text("options.region_required")
+    if "force-pivot" in detail and "end" in detail:
+        return translator.text("options.force_pivot_mismatch")
+    if "configuration is unavailable on this host" in detail:
+        return translator.text("profile.config_unavailable")
+    return translator.text("options.invalid")
+
+
+def diagnostic_summary(translator: Translator, code: str, count: int = 1) -> str:
+    """Localize known planner diagnostics without exposing internal English text."""
+
+    key = {
+        "MIXED_SCRIPT": "diagnostic.mixed_script",
+        "INLINE_BOUNDARY": "diagnostic.inline_boundary",
+        "QUOTE_UNBALANCED": "diagnostic.quote_unbalanced",
+        "SOURCE_INVALID_XHTML": "diagnostic.source_invalid_xhtml",
+    }.get(code, "diagnostic.unknown")
+    return translator.text(key, count=count, code=code)
+
+
+def show_error_details(qt: Any, parent: Any, title: str, summary: str, detail: str) -> None:
+    """Show a translated summary and preserve the original exception in Details."""
+
+    message_box = qt.QMessageBox
+    try:
+        box = message_box(parent)
+    except TypeError:
+        box = message_box()
+    if not all(callable(getattr(box, name, None)) for name in ("setWindowTitle", "setText")):
+        message_box.warning(parent, title, summary)
+        return
+    box.setWindowTitle(title)
+    box.setText(summary)
+    set_details = getattr(box, "setDetailedText", None)
+    if callable(set_details):
+        set_details(detail)
+    execute = getattr(box, "exec", None) or getattr(box, "exec_", None)
+    if callable(execute):
+        execute()
+    else:
+        message_box.warning(parent, title, summary)
+
+
 def load_catalogs() -> dict[str, dict[str, str]]:
     catalogs: dict[str, dict[str, str]] = {}
     for language in SUPPORTED_LANGUAGES:
@@ -86,10 +165,14 @@ def _validate_catalogs(catalogs: Mapping[str, Mapping[str, str]]) -> None:
 
 
 __all__ = [
-    "LANGUAGE_LABELS",
+    "CatalogView",
     "SUPPORTED_LANGUAGES",
     "Translator",
     "choose_language",
     "load_catalogs",
     "normalize_language",
+    "diagnostic_summary",
+    "rule_validation_message",
+    "settings_error_message",
+    "show_error_details",
 ]

@@ -3,14 +3,17 @@ from types import SimpleNamespace
 from rules.models import Rule
 from rules.models import RuleSnapshot
 from rules.importers import import_rules
+from rules.conflicts import find_conflicts
 from opencc_backend.configs import comparison_configs
 from ui.rules_window import (
     RuleManagerDialog,
     _configure_rule_table,
+    _conflict_summary,
     _select_default_direction,
     inspect_dictionary,
     review_import,
 )
+from ui.i18n import Translator
 
 
 class Signal:
@@ -219,6 +222,17 @@ def test_rule_table_is_not_editable_and_conflict_can_select_a_rule():
     assert manager.conflict_list.items
     manager._select_conflict_item(manager.conflict_list.items[0])
     assert manager.table.currentRow() == 0
+
+
+def test_rule_conflict_summary_localizes_kind_and_preserves_source():
+    conflict = find_conflicts((
+        Rule(id="one", source="词", target="甲", direction="s2t"),
+        Rule(id="two", source="词", target="乙", direction="s2t"),
+    ))[0]
+    for language in ("en", "zh-Hans", "zh-Hant"):
+        summary = _conflict_summary(conflict, Translator(language))
+        assert "词" in summary
+        assert "SAME_SOURCE_DIFFERENT_TARGET" not in summary
 
 
 def test_nonstrict_txt_import_reports_candidates_and_invalid_rows_with_scope():

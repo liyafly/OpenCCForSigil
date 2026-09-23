@@ -8,71 +8,11 @@ from typing import Any, Callable, Mapping, Sequence
 
 from logging_ext.history import HistoryError, HistoryStore
 from logging_ext.retention import RetentionResult, cleanup, retention_policy
+from ui.i18n import Translator
 
 
-_LOCAL_CATALOGS = {
-    "en": {
-        "history.title": "Conversion History", "history.date": "Date",
-        "history.file": "Book / File", "history.profile": "Profile",
-        "history.direction": "Direction", "history.files": "Files",
-        "history.changes": "Changes", "history.status": "Status",
-        "history.open": "Inspect Report", "history.export": "Export Metadata",
-        "history.close": "Close", "history.none": "No completed conversion sessions.",
-        "history.corrupt": "History could not be read: {detail}",
-        "history.select": "Select a session first.",
-        "history.backup_rebuild": "Back up and rebuild empty history",
-        "history.rebuilt": "Corrupt history was backed up as {file}; a new empty history was created.",
-        "history.cleanup": "Clean up old records…",
-        "history.cleanup_prompt": "Remove {sessions} old sessions and {logs} log files?",
-        "history.cleanup_done": "Removed {sessions} sessions and {logs} log files.",
-        "history.empty_value": "—", "history.status.success": "Completed",
-        "history.status.completed": "Completed", "history.status.partial_failure": "Partial failure",
-        "history.status.failed": "Failed", "history.status.cancelled": "Cancelled",
-    },
-    "zh-Hans": {
-        "history.title": "转换历史", "history.date": "日期",
-        "history.file": "书名 / 文件", "history.profile": "配置",
-        "history.direction": "方向", "history.files": "文件数",
-        "history.changes": "变化数", "history.status": "状态",
-        "history.open": "查看报告", "history.export": "导出元数据",
-        "history.close": "关闭", "history.none": "没有已完成的转换会话。",
-        "history.corrupt": "无法读取历史：{detail}", "history.select": "请先选择会话。",
-        "history.backup_rebuild": "备份并重建空历史",
-        "history.rebuilt": "损坏的历史已备份为 {file}，并已创建空历史。",
-        "history.cleanup": "清理旧记录…",
-        "history.cleanup_prompt": "将删除 {sessions} 个旧会话和 {logs} 个日志文件，是否继续？",
-        "history.cleanup_done": "已删除 {sessions} 个会话和 {logs} 个日志文件。",
-        "history.empty_value": "—", "history.status.success": "已完成",
-        "history.status.completed": "已完成", "history.status.partial_failure": "部分失败",
-        "history.status.failed": "失败", "history.status.cancelled": "已取消",
-    },
-    "zh-Hant": {
-        "history.title": "轉換歷史", "history.date": "日期",
-        "history.file": "書名 / 檔案", "history.profile": "設定檔",
-        "history.direction": "方向", "history.files": "檔案數",
-        "history.changes": "變化數", "history.status": "狀態",
-        "history.open": "檢視報告", "history.export": "匯出中繼資料",
-        "history.close": "關閉", "history.none": "沒有已完成的轉換工作階段。",
-        "history.corrupt": "無法讀取歷史：{detail}", "history.select": "請先選取工作階段。",
-        "history.backup_rebuild": "備份並重建空白歷史",
-        "history.rebuilt": "損毀的歷史已備份為 {file}，並已建立空白歷史。",
-        "history.cleanup": "清理舊記錄…",
-        "history.cleanup_prompt": "將刪除 {sessions} 個舊工作階段和 {logs} 個日誌檔，是否繼續？",
-        "history.cleanup_done": "已刪除 {sessions} 個工作階段和 {logs} 個日誌檔。",
-        "history.empty_value": "—", "history.status.success": "已完成",
-        "history.status.completed": "已完成", "history.status.partial_failure": "部分失敗",
-        "history.status.failed": "失敗", "history.status.cancelled": "已取消",
-    },
-}
 
 
-class _LocalTranslator:
-    def __init__(self, language: str = "en") -> None:
-        self.language = language if language in _LOCAL_CATALOGS else "en"
-
-    def text(self, key: str, **values: object) -> str:
-        value = _LOCAL_CATALOGS[self.language].get(key, _LOCAL_CATALOGS["en"].get(key, key))
-        return value.format(**values)
 
 
 def _local_datetime(value: str) -> str:
@@ -88,7 +28,7 @@ def history_rows(
 ) -> list[tuple[str, str, str, str, str, str, str]]:
     """Return localized table rows with metadata only."""
 
-    tr = translator or _LocalTranslator()
+    tr = translator or Translator()
     ordered = sorted(records, key=lambda item: str(item.get("recorded_at", "")), reverse=True)
     rows = []
     empty = tr.text("history.empty_value")
@@ -159,14 +99,17 @@ def show_history(
     """Show recent sessions and invoke root callbacks for inspect/export."""
 
     qt_widgets = qt_widgets or _load_qt_widgets()
-    translator = translator or _LocalTranslator(language)
+    translator = translator or Translator(language)
     logs_root = Path(logs_root) if logs_root is not None else Path(history_root).parent / "logs"
     try:
         records = HistoryStore(Path(history_root)).load()
     except HistoryError as exc:
         box = qt_widgets.QMessageBox(parent)
         box.setWindowTitle(translator.text("history.title"))
-        box.setText(translator.text("history.corrupt", detail=str(exc)))
+        box.setText(translator.text("history.corrupt"))
+        set_details = getattr(box, "setDetailedText", None)
+        if callable(set_details):
+            set_details(str(exc))
         recover_button = box.addButton(
             translator.text("history.backup_rebuild"), box.ButtonRole.AcceptRole)
         box.addButton(translator.text("history.close"), box.ButtonRole.RejectRole)

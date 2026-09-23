@@ -2,6 +2,7 @@
 
 from core.transformation import FORCE_PIVOT_CHAINS
 from opencc_backend.configs import base_config
+from ui.i18n import settings_error_message, show_error_details
 
 
 _initial = {}
@@ -356,7 +357,10 @@ class RunOptionsPanel:
             else:
                 self._services.open_tool(name, self._tr, self._qt, self._parent)
         except (ValueError, OSError) as exc:
-            self._qt.QMessageBox.warning(self._parent, self._tr.text("options.title"), str(exc))
+            show_error_details(
+                self._qt, self._parent, self._tr.text("options.title"),
+                settings_error_message(self._tr, exc), str(exc),
+            )
 
 
 def _decode_pivot_chain(value):

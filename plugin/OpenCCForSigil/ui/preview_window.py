@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 from typing import Any, Sequence, Tuple
 
@@ -14,7 +15,13 @@ from opencc_backend.configs import (
     V1_CONFIGS,
 )
 from sigil.scope import Scope, ScopeSelectionError, TargetSelection, TextFile, resolve_target_selection
-from ui.i18n import LANGUAGE_LABELS, SUPPORTED_LANGUAGES, Translator
+from ui.i18n import (
+    SUPPORTED_LANGUAGES,
+    Translator,
+    diagnostic_summary,
+    settings_error_message,
+    show_error_details,
+)
 
 
 class UIUnavailableError(RuntimeError):
@@ -203,115 +210,8 @@ class ProgressReporter:
 _translator = Translator("en")
 _jieba_unavailable_reason: str | None = None
 
-_LOCAL_TEXT = {
-    "en": {
-        "scope.spine": "Spine",
-        "scope.spine_count": "Spine files: {total}",
-        "preview.accept_filter": "Accept filtered",
-        "preview.skip_filter": "Skip filtered",
-        "preview.filter_file": "File",
-        "preview.filter_category": "Category",
-        "preview.filter_risk": "Risk",
-        "preview.filter_all": "All",
-        "preview.back_settings": "Back to settings",
-        "preview.discard_title": "Discard preview decisions?",
-        "preview.discard_message": "Discard {count} decisions and exit this preview?",
-        "preview.discard_yes": "Discard and exit",
-        "preview.discard_no": "Return to preview",
-        "preview.checkpoint_title": "Checkpoint required",
-        "preview.checkpoint_confirm": (
-            "Plugin changes cannot be undone with Ctrl+Z. Confirm that you created a Checkpoint or backup before starting?"
-        ),
-        "preview.checkpoint_confirm_yes": "Backed up; continue applying",
-        "preview.checkpoint_confirm_back": "Return to preview",
-        "scope.checkpoint_notice": (
-            "Before starting, create a Sigil Checkpoint. The Sigil window is unavailable while the plugin runs."
-        ),
-        "scope.checkpoint_hide": "Do not show again",
-        "scope.checkpoint_close": "Close checkpoint reminder",
-        "preview.checkpoint_message": (
-            "Plugin changes cannot be undone with Ctrl+Z. Create a Sigil Checkpoint before applying.\n\n"
-            "Continue applying the selected changes?"
-        ),
-        "preview.checkpoint_yes": "I created a Checkpoint; continue",
-        "preview.checkpoint_no": "Cancel",
-        "preview.checkpoint_hide": "Do not show again",
-        "preview.diagnostics": "Plan diagnostics: {details}",
-        "preview.diagnostic_detail": "Diagnostics: {details}",
-        "preview.export": "Export report",
-        "preview.export_full_diff": "Include full diff",
-    },
-    "zh-Hans": {
-        "scope.spine": "Spine 正文",
-        "scope.spine_count": "Spine 文件数：{total}",
-        "preview.accept_filter": "接受筛选项",
-        "preview.skip_filter": "跳过筛选项",
-        "preview.filter_file": "文件",
-        "preview.filter_category": "类别",
-        "preview.filter_risk": "风险",
-        "preview.filter_all": "全部",
-        "preview.back_settings": "返回设置",
-        "preview.discard_title": "放弃预览决定？",
-        "preview.discard_message": "放弃本次预览中的 {count} 项决定并退出？",
-        "preview.discard_yes": "放弃并退出",
-        "preview.discard_no": "返回预览",
-        "preview.checkpoint_title": "需要建立 Checkpoint",
-        "preview.checkpoint_confirm": "插件修改无法用 Ctrl+Z 撤销。请确认已在启动插件前建立 Checkpoint 或备份。",
-        "preview.checkpoint_confirm_yes": "已备份，继续应用",
-        "preview.checkpoint_confirm_back": "返回预览",
-        "scope.checkpoint_notice": "开始前建议先在 Sigil 中建立 Checkpoint；插件运行期间无法操作 Sigil 主窗口。",
-        "scope.checkpoint_hide": "以后不再提示",
-        "scope.checkpoint_close": "关闭 Checkpoint 提示",
-        "preview.checkpoint_message": "插件修改无法用 Ctrl+Z 撤销。应用前请先在 Sigil 中建立 Checkpoint。\n\n继续应用已选择的变化吗？",
-        "preview.checkpoint_yes": "我已建立 Checkpoint，继续",
-        "preview.checkpoint_no": "取消",
-        "preview.checkpoint_hide": "以后不再提示",
-        "preview.diagnostics": "计划诊断：{details}",
-        "preview.diagnostic_detail": "诊断：{details}",
-        "preview.export": "导出报告",
-        "preview.export_full_diff": "包含完整差异",
-    },
-    "zh-Hant": {
-        "scope.spine": "Spine 正文",
-        "scope.spine_count": "Spine 檔案數：{total}",
-        "preview.accept_filter": "接受篩選項目",
-        "preview.skip_filter": "略過篩選項目",
-        "preview.filter_file": "檔案",
-        "preview.filter_category": "類別",
-        "preview.filter_risk": "風險",
-        "preview.filter_all": "全部",
-        "preview.back_settings": "返回設定",
-        "preview.discard_title": "放棄預覽決定？",
-        "preview.discard_message": "放棄本次預覽中的 {count} 項決定並退出？",
-        "preview.discard_yes": "放棄並退出",
-        "preview.discard_no": "返回預覽",
-        "preview.checkpoint_title": "需要建立 Checkpoint",
-        "preview.checkpoint_confirm": "外掛程式修改無法用 Ctrl+Z 復原。請確認已在啟動外掛程式前建立 Checkpoint 或備份。",
-        "preview.checkpoint_confirm_yes": "已備份，繼續套用",
-        "preview.checkpoint_confirm_back": "返回預覽",
-        "scope.checkpoint_notice": "開始前建議先在 Sigil 中建立 Checkpoint；外掛程式執行期間無法操作 Sigil 主視窗。",
-        "scope.checkpoint_hide": "以後不再提示",
-        "scope.checkpoint_close": "關閉 Checkpoint 提示",
-        "preview.checkpoint_message": "外掛程式修改無法用 Ctrl+Z 復原。套用前請先在 Sigil 中建立 Checkpoint。\n\n要繼續套用已選取的變化嗎？",
-        "preview.checkpoint_yes": "我已建立 Checkpoint，繼續",
-        "preview.checkpoint_no": "取消",
-        "preview.checkpoint_hide": "以後不再提示",
-        "preview.diagnostics": "計畫診斷：{details}",
-        "preview.diagnostic_detail": "診斷：{details}",
-        "preview.export": "匯出報告",
-        "preview.export_full_diff": "包含完整差異",
-    },
-}
 
 
-def _ui_text(key: str, **values: object) -> str:
-    """Use shipped catalogs first and local fallback text for new preview keys."""
-
-    value = _translator.text(key, **values)
-    if value != key:
-        return value
-    language = _translator.language if _translator.language in _LOCAL_TEXT else "en"
-    return _LOCAL_TEXT[language].get(key, _LOCAL_TEXT["en"].get(key, key)).format(**values)
 
 
 def set_jieba_status(reason: str | None) -> None:
@@ -325,25 +225,7 @@ def set_ui_language(language: str) -> None:
     _translator.set_language(language)
 
 
-CONVERSION_LABELS = {
-    "s2t": "简体 → 通用繁体 (s2t)",
-    "s2tw": "简体 → 台湾繁体字形 (s2tw)",
-    "s2twp": "简体 → 台湾繁体 + 台湾词汇 (s2twp)",
-    "s2hk": "简体 → 香港繁体字形 (s2hk)",
-    "s2hkp": "简体 → 香港繁体 + 香港词汇 (s2hkp)",
-    "t2s": "通用繁体 → 简体 (t2s)",
-    "tw2s": "台湾繁体 → 简体字形 (tw2s)",
-    "tw2sp": "台湾繁体 → 简体 + 词汇 (tw2sp)",
-    "hk2s": "香港繁体 → 简体字形 (hk2s)",
-    "hk2sp": "香港繁体 → 简体 + 词汇 (hk2sp)",
-    "t2tw": "通用繁体 → 台湾繁体 (t2tw)",
-    "t2hk": "通用繁体 → 香港繁体 (t2hk)",
-    "tw2t": "台湾繁体 → 通用繁体 (tw2t)",
-    "hk2t": "香港繁体 → 通用繁体 (hk2t)",
-    "t2jp": "繁体 → 日文新字体 (t2jp)",
-    "jp2t": "日文新字体 → 通用繁体 (jp2t)",
-}
-CONFIG_SELECTION_ORDER = tuple(config for config in V1_CONFIGS if config in CONVERSION_LABELS)
+CONFIG_SELECTION_ORDER = V1_CONFIGS
 
 
 def choose_conversion_config(
@@ -575,10 +457,7 @@ def show_result(
         for item in diagnostics:
             if isinstance(item, (tuple, list)) and len(item) >= 2:
                 file_name, code = item[:2]
-                detail = item[2] if len(item) > 2 else ""
-                row = f"{file_name}: {code}"
-                if detail:
-                    row += f" — {detail}"
+                row = f"{file_name}: {diagnostic_summary(_translator, str(code))}"
                 rows.append(row)
             else:
                 rows.append(str(item))
@@ -1109,17 +988,17 @@ class _PreviewDialog:
         self.reject_file_button = qt.QPushButton(_translator.text("preview.skip_file"))
         self.accept_all_button = qt.QPushButton(_translator.text("preview.accept_all"))
         self.reject_all_button = qt.QPushButton(_translator.text("preview.skip_all"))
-        self.accept_filter_button = qt.QPushButton(_ui_text("preview.accept_filter"))
-        self.reject_filter_button = qt.QPushButton(_ui_text("preview.skip_filter"))
-        self.export_button = qt.QPushButton(_ui_text("preview.export"))
-        self.export_full_diff = qt.QCheckBox(_ui_text("preview.export_full_diff"))
+        self.accept_filter_button = qt.QPushButton(_translator.text("preview.accept_filter"))
+        self.reject_filter_button = qt.QPushButton(_translator.text("preview.skip_filter"))
+        self.export_button = qt.QPushButton(_translator.text("preview.export"))
+        self.export_full_diff = qt.QCheckBox(_translator.text("preview.export_full_diff"))
         self.export_full_diff.setChecked(False)
         self.apply_button = qt.QPushButton(_translator.text("preview.apply"))
         self.apply_button.setDefault(True)
         set_auto_default = getattr(self.apply_button, "setAutoDefault", None)
         if callable(set_auto_default):
             set_auto_default(True)
-        self.back_settings_button = qt.QPushButton(_ui_text("preview.back_settings"))
+        self.back_settings_button = qt.QPushButton(_translator.text("preview.back_settings"))
         self.cancel_button = qt.QPushButton(_translator.text("common.cancel"))
         for button in (self.accept_this_button, self.reject_this_button,
                        self.accept_file_button, self.reject_file_button,
@@ -1258,16 +1137,19 @@ class _PreviewDialog:
         return text[: max(1, limit - 1)] + "…"
 
     def _diagnostics_for_file(self, file_id: str | None = None) -> Tuple[str, ...]:
-        diagnostics = []
+        counts = Counter()
         for planned in getattr(self, "_planned", ()):
             plan = getattr(planned, "plan", None)
             if plan is None or (file_id and getattr(plan, "file_id", "") != file_id):
                 continue
             for diagnostic in getattr(plan, "diagnostics", ()):
                 code = str(getattr(diagnostic, "code", ""))
-                message = str(getattr(diagnostic, "message", ""))
-                diagnostics.append(f"{code}: {message}" if message else code)
-        return tuple(dict.fromkeys(diagnostics))
+                if code:
+                    counts[code] += 1
+        return tuple(
+            diagnostic_summary(_translator, code, count)
+            for code, count in sorted(counts.items())
+        )
 
     def _refresh(self) -> None:
         selected_change_id = self._selected_change_id()
@@ -1326,7 +1208,7 @@ class _PreviewDialog:
         summary = _translator.text("preview.summary", files=len(self._previews), **totals)
         diagnostics = self._diagnostics_for_file()
         if diagnostics:
-            summary += "\n" + _ui_text("preview.diagnostics", details="; ".join(diagnostics))
+            summary += "\n" + _translator.text("preview.diagnostics", details="; ".join(diagnostics))
         group_feedback = getattr(self, "_last_group_feedback", "")
         if group_feedback:
             summary += "\n" + group_feedback
@@ -1378,7 +1260,7 @@ class _PreviewDialog:
         preview, change = visible_entries[row]
         diagnostics = self._diagnostics_for_file(change.file_id)
         diagnostic_text = (
-            "\n" + _ui_text("preview.diagnostic_detail", details="; ".join(diagnostics))
+            "\n" + _translator.text("preview.diagnostic_detail", details="; ".join(diagnostics))
             if diagnostics
             else ""
         )
@@ -1619,15 +1501,15 @@ class _PreviewDialog:
             return True
         self.checkpoint_notice_shown = True
         box = message_box(self.dialog)
-        box.setWindowTitle(_ui_text("preview.checkpoint_title"))
-        box.setText(_ui_text("preview.checkpoint_confirm"))
+        box.setWindowTitle(_translator.text("preview.checkpoint_title"))
+        box.setText(_translator.text("preview.checkpoint_confirm"))
         box.setIcon(message_box.Warning)
         accept = box.addButton(
-            _ui_text("preview.checkpoint_confirm_yes"), message_box.AcceptRole)
+            _translator.text("preview.checkpoint_confirm_yes"), message_box.AcceptRole)
         cancel = box.addButton(
-            _ui_text("preview.checkpoint_confirm_back"), message_box.RejectRole)
+            _translator.text("preview.checkpoint_confirm_back"), message_box.RejectRole)
         box.setDefaultButton(cancel)
-        hide = self._qt.QCheckBox(_ui_text("preview.checkpoint_hide"))
+        hide = self._qt.QCheckBox(_translator.text("preview.checkpoint_hide"))
         box.setCheckBox(hide)
         box.exec()
         accepted = box.clickedButton() is accept
@@ -1715,8 +1597,6 @@ class _ConversionConfigDialog:
                     insert_separator(self.combo.count())
             for config in group_values:
                 label = self._translator.text(f"config.{config}")
-                if label == f"config.{config}":
-                    label = CONVERSION_LABELS[config]
                 self.combo.addItem(label, config)
             groups_added += 1
         layout.addWidget(self.combo)
@@ -1905,7 +1785,10 @@ class _ConversionConfigDialog:
             target_language(config, options["language_metadata"], options["language_preset"],
                             options["language_region"])
         except ValueError as exc:
-            self._qt.QMessageBox.warning(self.dialog, self._translator.text("config.title"), str(exc))
+            show_error_details(
+                self._qt, self.dialog, self._translator.text("config.title"),
+                settings_error_message(self._translator, exc), str(exc),
+            )
             return
         self._stop_probe_timer()
         self.selected_config = ConfigurationChoice(config, options)
@@ -1970,7 +1853,7 @@ class _ScopeDialog:
         language_row.addWidget(self.language_label)
         self.language_combo = qt_widgets.QComboBox()
         for code in SUPPORTED_LANGUAGES:
-            self.language_combo.addItem(LANGUAGE_LABELS[code], code)
+            self.language_combo.addItem(self._translator.text(f"language.name.{code}"), code)
         self.language_combo.setCurrentIndex(max(0, self.language_combo.findData(language)))
         self.language_combo.currentIndexChanged.connect(self._language_changed)
         language_row.addWidget(self.language_combo)
