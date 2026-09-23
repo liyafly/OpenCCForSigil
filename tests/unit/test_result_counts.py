@@ -98,3 +98,78 @@ def test_result_done_states_unwritten_files_include_unchanged_subset(
     assert len(_MessageBox.messages) == 1
     assert expected in _MessageBox.messages[0]
     preview_window.set_ui_language("en")
+
+
+def test_noop_result_offers_scope_return_and_lists_invalid_sources(monkeypatch):
+    class Button:
+        def __init__(self, label, role):
+            self.label = label
+            self.role = role
+
+    class MessageBox:
+        RejectRole = "reject"
+        AcceptRole = "accept"
+        response = "back"
+        instances = []
+
+        @classmethod
+        def information(cls, *_args):
+            raise AssertionError("interactive result box should be used")
+
+        @classmethod
+        def warning(cls, *_args):
+            raise AssertionError("interactive result box should be used")
+
+        def __init__(self):
+            self.buttons = []
+            self.text = ""
+            self.default_button = None
+            self.instances.append(self)
+
+        def setWindowTitle(self, _title):
+            pass
+
+        def setText(self, text):
+            self.text = text
+
+        def addButton(self, label, role):
+            button = Button(label, role)
+            self.buttons.append(button)
+            return button
+
+        def setDefaultButton(self, button):
+            self.default_button = button
+
+        def exec(self):
+            pass
+
+        def clickedButton(self):
+            return self.buttons[0] if self.response == "back" else self.buttons[1]
+
+    fake_qt = type("FakeQt", (), {"QMessageBox": MessageBox})
+    monkeypatch.setattr(preview_window, "_load_qt_widgets", lambda: fake_qt)
+    monkeypatch.setattr(preview_window, "_ensure_application", lambda _qt: None)
+    preview_window.set_ui_language("zh-Hans")
+
+    values = dict(
+        status="success",
+        files_scanned=1,
+        files_changed=0,
+        accepted_changes=0,
+        skipped_changes=0,
+        return_to_scope=True,
+        diagnostics=(("Text/bad.xhtml", "SOURCE_INVALID_XHTML", "line 1, column 2"),),
+    )
+    assert preview_window.show_result(**values) == "back_to_scope"
+    back_box = MessageBox.instances[-1]
+    assert "没有需要转换的内容" in back_box.text
+    assert "以下源文件 XHTML 不合法，已跳过：" in back_box.text
+    assert "Text/bad.xhtml: SOURCE_INVALID_XHTML — line 1, column 2" in back_box.text
+    assert [button.label for button in back_box.buttons] == ["返回文件选择", "关闭"]
+    assert back_box.default_button is back_box.buttons[1]
+
+    MessageBox.response = "close"
+    assert preview_window.show_result(**values) == "close"
+    close_box = MessageBox.instances[-1]
+    assert close_box.default_button is close_box.buttons[1]
+    preview_window.set_ui_language("en")

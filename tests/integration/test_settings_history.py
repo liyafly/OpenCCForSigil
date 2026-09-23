@@ -50,6 +50,9 @@ def test_back_to_settings_discards_old_plan_and_rebuilds(monkeypatch, tmp_path):
     configs = iter(("t2s", "s2t"))
     monkeypatch.setattr("ui.preview_window.choose_conversion_config", lambda *_a, **_kw: next(configs))
     calls = []
+    results = []
+    monkeypatch.setattr("ui.preview_window.show_result",
+                        lambda **values: results.append(values) or "close")
 
     def preview(planned):
         calls.append(planned)
@@ -59,9 +62,11 @@ def test_back_to_settings_discards_old_plan_and_rebuilds(monkeypatch, tmp_path):
 
     monkeypatch.setattr("ui.preview_window.show_preview", preview)
     assert Controller(book, data_dir=tmp_path).run() == 0
-    assert len(calls) == 2
+    assert len(calls) == 1
     assert calls[0][0].plan.changes
-    assert not calls[1][0].plan.changes
+    assert len(results) == 1
+    assert results[0]["accepted_changes"] == 0
+    assert results[0]["return_to_scope"] is True
     assert book.writes == []
 
 

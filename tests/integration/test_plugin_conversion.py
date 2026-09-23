@@ -270,6 +270,8 @@ def test_malformed_xhtml_is_skipped_while_other_files_convert(monkeypatch, tmp_p
     assert [file_id for file_id, _data in book.writes] == ["good"]
     assert result_calls[-1]["files_scanned"] == 2
     assert result_calls[-1]["files_changed"] == 1
+    assert result_calls[-1]["diagnostics"][0][:2] == (
+        "Text/bad.xhtml", "SOURCE_INVALID_XHTML")
 
 
 def test_returning_from_preview_reselects_scope_and_discards_old_plan(
@@ -355,3 +357,99 @@ def test_cancelling_preview_shows_cancelled_result_without_writing(monkeypatch, 
     assert book.writes == []
     assert len(result_calls) == 1
     assert result_calls[0]["status"] == "cancelled"
+
+
+def test_noop_result_skips_preview_and_offers_scope_return(monkeypatch, tmp_path):
+    class NoopBook:
+        def __init__(self):
+            self.files = {"chapter": "<p>汉字</p>"}
+            self.writes = []
+
+        def text_iter(self):
+            yield "chapter", "Text/chapter.xhtml"
+
+        def readfile(self, file_id):
+            return self.files[file_id]
+
+        def writefile(self, file_id, data):
+            self.writes.append((file_id, data))
+
+    book = NoopBook()
+    results = []
+    monkeypatch.setattr(
+        "ui.preview_window.choose_scope",
+        lambda _adapter, initial_language, **_kwargs: ScopeOutcome(
+            True, TargetSelection(Scope.SINGLE, ("chapter",)), initial_language),
+    )
+    monkeypatch.setattr(
+        "ui.preview_window.choose_conversion_config", lambda *_args, **_kwargs: "t2s")
+    monkeypatch.setattr(
+        "ui.preview_window.show_preview",
+        lambda _planned: (_ for _ in ()).throw(AssertionError("preview must be skipped")),
+    )
+    monkeypatch.setattr(
+        "ui.preview_window.create_progress_reporter", lambda _total: _NoProgress())
+    monkeypatch.setattr(
+        "ui.preview_window.show_result", lambda **values: results.append(values) or "close")
+
+    assert Controller(book, data_dir=tmp_path / "plugin-data").run() == 0
+
+    assert book.writes == []
+    assert len(results) == 1
+    assert results[0]["status"] == "success"
+    assert results[0]["accepted_changes"] == 0
+    assert results[0]["return_to_scope"] is True
+
+
+def test_noop_return_to_scope_restarts_with_new_selection(monkeypatch, tmp_path):
+    class NoopThenConvertBook:
+        def __init__(self):
+            self.files = {"a": "<p>汉字</p>", "c": "<p>汉字</p>"}
+            self.writes = []
+
+        def text_iter(self):
+            for file_id in self.files:
+                yield file_id, f"Text/{file_id}.xhtml"
+
+        def readfile(self, file_id):
+            return self.files[file_id]
+
+        def writefile(self, file_id, data):
+            self.writes.append((file_id, data))
+
+    book = NoopThenConvertBook()
+    scopes = []
+    results = []
+    previews = []
+    configs = iter(("t2s", "s2t"))
+
+    def choose_scope(_adapter, initial_language, **kwargs):
+        scopes.append(kwargs.get("initial_selection"))
+        file_id = "a" if len(scopes) == 1 else "c"
+        return ScopeOutcome(
+            True, TargetSelection(Scope.SINGLE, (file_id,)), initial_language)
+
+    def show_result(**values):
+        results.append(values)
+        return "back_to_scope" if len(results) == 1 else "close"
+
+    monkeypatch.setattr("ui.preview_window.choose_scope", choose_scope)
+    monkeypatch.setattr(
+        "ui.preview_window.choose_conversion_config", lambda *_args, **_kwargs: next(configs))
+    monkeypatch.setattr(
+        "ui.preview_window.show_result", show_result)
+    monkeypatch.setattr(
+        "ui.preview_window.show_preview",
+        lambda planned: previews.append(tuple(item.source.file_id for item in planned))
+        or _accept_all_preview(planned),
+    )
+    monkeypatch.setattr(
+        "ui.preview_window.create_progress_reporter", lambda _total: _NoProgress())
+
+    assert Controller(book, data_dir=tmp_path / "plugin-data").run() == 0
+
+    assert len(scopes) == 2
+    assert scopes[0] is None
+    assert scopes[1].file_ids == ("a",)
+    assert previews == [("c",)]
+    assert [file_id for file_id, _data in book.writes] == ["c"]

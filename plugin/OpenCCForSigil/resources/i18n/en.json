@@ -100,6 +100,8 @@
   "progress.phase.staging": "Preparing changes",
   "progress.phase.verifying": "Verifying changes",
   "result.noop": "Analyzed {files}; no content needs conversion.",
+  "result.back_to_scope": "Back to file selection",
+  "result.invalid_sources": "Skipped source files with invalid XHTML:",
   "result.skipped": "Analyzed {files}; skipped {skipped}; {not_written}, including {unchanged}.",
   "result.done": "Analyzed {files}; wrote {written}. Applied {accepted}, skipped {skipped}; {not_written}, including {unchanged}.",
   "result.partial": "Write-back stopped at {failed_file}. Wrote {written} out of {files} and applied {accepted}; {not_written}, including {unchanged}. Check Sigil's current state.",

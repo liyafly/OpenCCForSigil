@@ -327,6 +327,50 @@ class Controller:
                 )
                 self.session.transition(SessionState.PLANNED)
 
+                invalid_source_diagnostics = tuple(
+                    (item.source.href, diagnostic.code, diagnostic.message)
+                    for item in planned
+                    for diagnostic in item.plan.diagnostics
+                    if diagnostic.code == "SOURCE_INVALID_XHTML"
+                )
+                if planned_change_count == 0:
+                    self.session.transition(SessionState.PREVIEWING)
+                    self.session.metadata["checkpoint_notice_shown"] = checkpoint_notice_shown
+                    result_action = _show_result_safely(
+                        show_result,
+                        status="success",
+                        files_scanned=len(planned),
+                        files_changed=0,
+                        accepted_changes=0,
+                        skipped_changes=0,
+                        files_not_written=len(planned),
+                        files_without_changes=files_without_changes,
+                        return_to_scope=True,
+                        diagnostics=invalid_source_diagnostics,
+                    )
+                    if result_action == "back_to_scope":
+                        if not reselect_scope(targets):
+                            return 1
+                        self.session.transition(SessionState.SCANNING)
+                        continue
+                    finalized = workflow.finalize(workflow.preview())
+                    self.session.transition(SessionState.APPLYING_TO_STAGE)
+                    staged = workflow.stage(finalized)
+                    self.session.transition(SessionState.VERIFYING)
+                    workflow.verify(staged)
+                    self.session.transition(SessionState.COMMITTING)
+                    workflow.commit(staged)
+                    self.session.complete()
+                    self.logger.summary(self._summary(
+                        status="success",
+                        files_scanned=len(planned),
+                        changes=0,
+                        files_changed=0,
+                        files_without_changes=files_without_changes,
+                    ))
+                    self._record_history(planned, staged, backend)
+                    return 0
+
                 self.session.transition(SessionState.PREVIEWING)
                 preview = show_preview(planned)
                 if getattr(preview, "back_to_settings", False):
@@ -426,6 +470,7 @@ class Controller:
                 skipped_changes=skipped_change_count,
                 files_not_written=max(0, len(planned) - len(staged)),
                 files_without_changes=files_without_changes,
+                diagnostics=invalid_source_diagnostics,
             )
             return 0
         except WorkflowCommitError as exc:
@@ -586,15 +631,15 @@ class Controller:
         return summary
 
 
-def _show_result_safely(show_result: Any, **values: object) -> None:
+def _show_result_safely(show_result: Any, **values: object) -> Any:
     """Keep headless/test hosts usable when Qt cannot show a result dialog."""
 
     try:
-        show_result(**values)
+        return show_result(**values)
     except Exception:
         # Result presentation is best effort after the write boundary has
         # completed; the structured session summary remains authoritative.
-        return
+        return None
 
 
 def _book_supports_conversion(book: Any) -> bool:

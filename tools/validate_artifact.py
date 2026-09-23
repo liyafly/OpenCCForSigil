@@ -123,6 +123,8 @@ _I18N_REQUIRED_KEYS = frozenset(
         "progress.phase.staging",
         "progress.phase.verifying",
         "result.noop",
+        "result.back_to_scope",
+        "result.invalid_sources",
         "result.skipped",
         "result.done",
         "result.partial",

@@ -100,6 +100,8 @@
   "progress.phase.staging": "准备修改",
   "progress.phase.verifying": "校验修改",
   "result.noop": "已分析 {files}，没有需要转换的内容。",
+  "result.back_to_scope": "返回文件选择",
+  "result.invalid_sources": "以下源文件 XHTML 不合法，已跳过：",
   "result.skipped": "已分析 {files}，跳过 {skipped}；{not_written}，其中 {unchanged}。",
   "result.done": "已分析 {files}，实际写回 {written}；应用 {accepted}，跳过 {skipped}；{not_written}，其中 {unchanged}。",
   "result.partial": "写回在 {failed_file} 处停止。已写入 {written} / {files}，应用 {accepted}；{not_written}，其中 {unchanged}。请检查 Sigil 当前内容。",

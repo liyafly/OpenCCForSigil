@@ -455,7 +455,9 @@ def show_result(
     files_not_written: int | None = None,
     files_without_changes: int = 0,
     failed_file: str | None = None,
-) -> None:
+    return_to_scope: bool = False,
+    diagnostics=(),
+) -> str | None:
     """Show a concise localized terminal result after the write boundary."""
 
     qt_widgets = _load_qt_widgets()
@@ -498,7 +500,34 @@ def show_result(
             **result_values,
         )
         method = getattr(qt_widgets.QMessageBox, "information")
+    diagnostics = tuple(diagnostics)
+    if diagnostics:
+        rows = []
+        for item in diagnostics:
+            if isinstance(item, (tuple, list)) and len(item) >= 2:
+                file_name, code = item[:2]
+                detail = item[2] if len(item) > 2 else ""
+                row = f"{file_name}: {code}"
+                if detail:
+                    row += f" — {detail}"
+                rows.append(row)
+            else:
+                rows.append(str(item))
+        message += "\n\n" + _translator.text("result.invalid_sources") + "\n" + "\n".join(rows)
+    if return_to_scope:
+        box = qt_widgets.QMessageBox()
+        box.setWindowTitle(_translator.text("app.title"))
+        box.setText(message)
+        back = box.addButton(
+            _translator.text("result.back_to_scope"), qt_widgets.QMessageBox.RejectRole)
+        close = box.addButton(
+            _translator.text("common.close"), qt_widgets.QMessageBox.AcceptRole)
+        box.setDefaultButton(close)
+        exec_method = getattr(box, "exec", None) or box.exec_
+        exec_method()
+        return "back_to_scope" if box.clickedButton() is back else "close"
     method(None, _translator.text("app.title"), message)
+    return None
 
 
 def show_error(
