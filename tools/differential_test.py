@@ -63,7 +63,11 @@ def run_cli(cli: Path, config: str, source: str, config_root: Path | None = None
         if not config_path.is_file():
             raise RuntimeError(f"official CLI config is missing: {config_path}")
         config_argument = str(config_path)
-    environment = _cli_environment(config_root.parents[3] if config_root is not None else cli.parent.parent.parent)
+    try:
+        cli_payload_root = cli.parents[3]
+    except IndexError as exc:
+        raise RuntimeError(f"official CLI is not in an OpenCC payload: {cli}") from exc
+    environment = _cli_environment(cli_payload_root)
     result = subprocess.run(
         [str(cli), "--include-tofu-risk-dictionaries", "-c", config_argument],
         input=source.encode("utf-8"),

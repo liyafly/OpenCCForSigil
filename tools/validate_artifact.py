@@ -18,6 +18,7 @@ try:
         runtime_identity,
     )
     from native_compatibility import NativeCompatibilityError, validate_binary_bytes
+    from runtime_subset import RuntimeSubsetError, validate_derivation
 except ModuleNotFoundError:  # Imported as tools.validate_artifact by tests.
     from tools.runtime_matrix import (
         SUPPORTED_RUNTIME_IDENTITIES,
@@ -25,9 +26,13 @@ except ModuleNotFoundError:  # Imported as tools.validate_artifact by tests.
         runtime_identity,
     )
     from tools.native_compatibility import NativeCompatibilityError, validate_binary_bytes
+    from tools.runtime_subset import RuntimeSubsetError, validate_derivation
 
 
 ROOT = Path(__file__).resolve().parents[1]
+MAX_PLATFORM_ARTIFACT_SIZE_BYTES = 7_000_000
+MAX_FIRST_STAGE_FAT_ARTIFACT_SIZE_BYTES = 30_000_000
+MAX_THIRD_STAGE_FAT_ARTIFACT_SIZE_BYTES = 12_000_000
 
 _PROFILE_REQUIRED_FIELDS = {
     "schema_version",
@@ -580,6 +585,22 @@ def validate(artifact: Path, *, require_runtimes: bool = False) -> None:
         _validate_runtime_resources(archive)
 
         manifest = json.loads(archive.read("OpenCCForSigil/vendor/opencc/manifest.json"))
+        package = manifest.get("package")
+        flavor = "fat"
+        if package is not None:
+            if not isinstance(package, dict) or package.get("flavor") not in {"fat", "platform"}:
+                raise SystemExit("plugin artifact package.flavor must be 'fat' or 'platform'")
+            flavor = str(package["flavor"])
+        size_limit = (
+            MAX_PLATFORM_ARTIFACT_SIZE_BYTES
+            if flavor == "platform"
+            else MAX_FIRST_STAGE_FAT_ARTIFACT_SIZE_BYTES
+        )
+        if artifact.stat().st_size > size_limit:
+            raise SystemExit(
+                f"plugin artifact exceeds the {flavor} size budget: "
+                f"{artifact.stat().st_size} > {size_limit} bytes"
+            )
         payloads = manifest.get("payloads", [])
         if not payloads:
             raise SystemExit("plugin artifact contains no official OpenCC payload")
@@ -631,6 +652,20 @@ def validate(artifact: Path, *, require_runtimes: bool = False) -> None:
                 raise SystemExit(f"OpenCC license is absent from payload: {prefix}")
             if not any(name.endswith(".dist-info/licenses/AUTHORS") for name in payload_names):
                 raise SystemExit(f"OpenCC authors notice is absent from payload: {prefix}")
+            native_plugins = payload.get("native_plugins")
+            plugin = native_plugins.get("opencc-jieba") if isinstance(native_plugins, dict) else None
+            if not isinstance(plugin, dict):
+                raise SystemExit(f"official native opencc-jieba record is absent: {prefix}")
+            kept_paths = [name[len(prefix) :] for name in payload_names]
+            try:
+                validate_derivation(
+                    payload,
+                    kept_paths=kept_paths,
+                    plugin_dir=str(plugin.get("plugin_dir", "")),
+                    library_path=str(plugin.get("library_path", "")),
+                )
+            except RuntimeSubsetError as exc:
+                raise SystemExit(f"runtime subset validation failed for {prefix}: {exc}") from exc
             actual_tree_hash = _zip_tree_hash(archive, prefix)
             expected_tree_hash = str(payload.get("payload_sha256", ""))
             if actual_tree_hash.lower() != expected_tree_hash.lower():
@@ -643,6 +678,12 @@ def validate(artifact: Path, *, require_runtimes: bool = False) -> None:
             if not isinstance(config_data, dict) or not isinstance(config_data.get("files"), dict):
                 raise SystemExit(f"payload config_data is malformed: {prefix}")
             expected_data = config_data["files"]
+            expected_data_hash = config_data.get("manifest_sha256")
+            canonical_data = json.dumps(
+                expected_data, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+            ).encode("utf-8")
+            if hashlib.sha256(canonical_data).hexdigest() != expected_data_hash:
+                raise SystemExit(f"payload data manifest hash mismatch: {prefix}")
             data_prefix = prefix + "opencc/clib/share/opencc/"
             actual_data = {
                 name[len(prefix) :]: name
@@ -657,10 +698,33 @@ def validate(artifact: Path, *, require_runtimes: bool = False) -> None:
                 actual_hash = _sha256_bytes(archive.read(name))
                 if actual_hash.lower() != str(expected_hash).lower():
                     raise SystemExit(f"payload data hash mismatch: {name}")
-            native_plugins = payload.get("native_plugins")
-            plugin = native_plugins.get("opencc-jieba") if isinstance(native_plugins, dict) else None
-            if not isinstance(plugin, dict):
-                raise SystemExit(f"official native opencc-jieba record is absent: {prefix}")
+            resources = plugin.get("resource_hashes")
+            if not isinstance(resources, dict) or not resources:
+                raise SystemExit(f"native opencc-jieba resource hashes are absent: {prefix}")
+            expected_resources = {
+                data_path
+                for data_path in expected_data
+                if data_path.startswith("opencc/clib/share/opencc/jieba_dict/")
+            }
+            expected_resources.update(
+                "opencc/clib/share/opencc/" + str(config) + ".json"
+                for config in plugin.get("config_names", [])
+            )
+            if set(resources) != expected_resources:
+                raise SystemExit(f"native opencc-jieba resource list differs from subset: {prefix}")
+            for relative, expected_hash in resources.items():
+                name = prefix + str(relative)
+                if name not in names or expected_data.get(str(relative)) != expected_hash:
+                    raise SystemExit(f"native opencc-jieba resource is absent or differs: {name}")
+                if _sha256_bytes(archive.read(name)).lower() != str(expected_hash).lower():
+                    raise SystemExit(f"native opencc-jieba resource hash mismatch: {name}")
+            canonical_resources = json.dumps(
+                resources, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+            ).encode("utf-8")
+            if hashlib.sha256(canonical_resources).hexdigest() != plugin.get(
+                "resource_manifest_sha256"
+            ):
+                raise SystemExit(f"native opencc-jieba resource manifest hash mismatch: {prefix}")
             library_path = prefix + str(plugin.get("library_path", ""))
             if not library_path.startswith(prefix) or library_path not in names:
                 raise SystemExit(f"native opencc-jieba library is absent: {library_path}")

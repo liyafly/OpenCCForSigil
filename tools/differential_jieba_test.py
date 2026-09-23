@@ -98,12 +98,32 @@ def run_cli(cli: Path, config: str, source: str, config_root: Path) -> str:
     config_path = config_root / f"{config}.json"
     if not config_path.is_file():
         raise RuntimeError(f"official Jieba config is missing: {config_path}")
+    try:
+        cli_payload_root = cli.parents[3]
+    except IndexError as exc:
+        raise RuntimeError(f"official CLI is not in an OpenCC payload: {cli}") from exc
+    environment = _cli_environment(cli_payload_root)
+    data_root = cli_payload_root / "opencc" / "clib" / "share" / "opencc"
+    plugin_candidates = sorted(
+        path.parent
+        for path in cli_payload_root.rglob("*")
+        if path.is_file()
+        and "opencc-jieba" in path.name.lower()
+        and path.suffix.lower() in {".dll", ".dylib", ".so"}
+    )
+    if len(plugin_candidates) != 1:
+        raise RuntimeError(
+            "expected one official Jieba plugin beside the CLI, found: "
+            + ", ".join(str(path) for path in plugin_candidates)
+        )
+    environment["OPENCC_DATA_DIR"] = str(data_root)
+    environment["OPENCC_SEGMENTATION_PLUGIN_PATH"] = str(plugin_candidates[0])
     result = subprocess.run(
         [str(cli), "--include-tofu-risk-dictionaries", "-c", str(config_path)],
         input=source.encode("utf-8"),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        env=_cli_environment(config_root.parents[3]),
+        env=environment,
         check=False,
     )
     if result.returncode:

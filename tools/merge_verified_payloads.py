@@ -18,12 +18,14 @@ try:
         format_runtime_identity,
         runtime_identity,
     )
+    from runtime_subset import RuntimeSubsetError, validate_derivation
 except ModuleNotFoundError:  # Imported as tools.merge_verified_payloads by tests.
     from tools.runtime_matrix import (
         SUPPORTED_RUNTIME_IDENTITIES,
         format_runtime_identity,
         runtime_identity,
     )
+    from tools.runtime_subset import RuntimeSubsetError, validate_derivation
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -107,8 +109,9 @@ def _copy_payload(source: Path, destination: Path) -> None:
                     shutil.rmtree(destination)
                 backup.rename(destination)
                 raise
-            shutil.rmtree(backup)
+        shutil.rmtree(backup)
         return
+    destination.parent.mkdir(parents=True, exist_ok=True)
     staging = Path(tempfile.mkdtemp(prefix=f".{destination.name}-", dir=destination.parent))
     try:
         staging.rmdir()
@@ -124,6 +127,7 @@ def merge(
     vendor_root: Path = VENDOR_ROOT,
     *,
     require_runtimes: bool = False,
+    allow_full_source_payload: bool = False,
 ) -> int:
     manifest_path = vendor_root / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -155,6 +159,9 @@ def merge(
         payload_source = export_path.parent / "payload"
         if not payload_source.is_dir():
             raise SystemExit(f"payload directory is missing beside record: {export_path}")
+        symlinks = [path for path in payload_source.rglob("*") if path.is_symlink()]
+        if symlinks:
+            raise SystemExit(f"symbolic links are not allowed in payload artifacts: {symlinks[0]}")
         actual_hash = _sha256_tree(payload_source)
         if actual_hash != record.get("payload_sha256"):
             raise SystemExit(
@@ -169,6 +176,30 @@ def merge(
         config_data = exported.get("config_data")
         if config_data != record.get("config_data"):
             raise SystemExit(f"config/data provenance mismatch in payload artifact: {export_path}")
+        native_plugins = record.get("native_plugins")
+        jieba = (
+            native_plugins.get("opencc-jieba")
+            if isinstance(native_plugins, Mapping)
+            else None
+        )
+        if not isinstance(jieba, Mapping):
+            raise SystemExit(f"native Jieba record is missing from payload artifact: {export_path}")
+        if "derivation" in record or "record_describes" in record:
+            try:
+                validate_derivation(
+                    record,
+                    kept_paths=(
+                        path.relative_to(payload_source).as_posix()
+                        for path in payload_source.rglob("*")
+                        if path.is_file()
+                    ),
+                    plugin_dir=str(jieba.get("plugin_dir", "")),
+                    library_path=str(jieba.get("library_path", "")),
+                )
+            except RuntimeSubsetError as exc:
+                raise SystemExit(f"payload subset validation failed for {export_path}: {exc}") from exc
+        elif not allow_full_source_payload:
+            raise SystemExit(f"payload artifact is not a runtime subset: {export_path}")
 
         payload_id = _payload_id(record)
         expected_path = f"payloads/{payload_id}"
@@ -233,8 +264,18 @@ def main() -> int:
         action="store_true",
         help="require every supported Fat Plugin runtime identity",
     )
+    parser.add_argument(
+        "--allow-full-source-payload",
+        action="store_true",
+        help="accept complete payloads only for restoring a target-tested CI cache",
+    )
     args = parser.parse_args()
-    return merge(args.artifact_root, args.vendor_root.resolve(), require_runtimes=args.require_runtimes)
+    return merge(
+        args.artifact_root,
+        args.vendor_root.resolve(),
+        require_runtimes=args.require_runtimes,
+        allow_full_source_payload=args.allow_full_source_payload,
+    )
 
 
 if __name__ == "__main__":

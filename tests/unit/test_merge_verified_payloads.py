@@ -1,13 +1,9 @@
-import json
-
 import pytest
+import json
+from pathlib import Path
+import shutil
 
-from tools.merge_verified_payloads import _sha256_tree, merge
-
-
-OPENCC_VERSION = "1.4.2"
-UPSTREAM_TAG = "ver.1.4.2"
-UPSTREAM_COMMIT = "025f371dc76b598d77384fbdab90c937471844d8"
+from tools.merge_verified_payloads import ROOT, _validate_jieba_resource_consistency, merge
 
 
 def _record(*, os_name, architecture, payload_path, idf_hash, config_data):
@@ -31,15 +27,7 @@ def _record(*, os_name, architecture, payload_path, idf_hash, config_data):
     }
 
 
-def test_merge_rejects_cross_payload_jieba_resource_hash_mismatch(tmp_path):
-    vendor = tmp_path / "vendor"
-    payloads = vendor / "payloads"
-    payloads.mkdir(parents=True)
-    artifact_root = tmp_path / "artifacts"
-    export = artifact_root / "linux"
-    payload = export / "payload"
-    payload.mkdir(parents=True)
-    (payload / "placeholder").write_bytes(b"verified target payload")
+def test_merge_rejects_cross_payload_jieba_resource_hash_mismatch():
     config_data = {"source": "fixture", "manifest_sha256": "fixture", "files": {}}
     linux_record = _record(
         os_name="linux",
@@ -48,16 +36,6 @@ def test_merge_rejects_cross_payload_jieba_resource_hash_mismatch(tmp_path):
         idf_hash="b" * 64,
         config_data=config_data,
     )
-    linux_record["payload_sha256"] = _sha256_tree(payload)
-    (export / "record.json").write_text(json.dumps({
-        "schema_version": 1,
-        "opencc_version": OPENCC_VERSION,
-        "opencc_upstream_tag": UPSTREAM_TAG,
-        "opencc_upstream_commit": UPSTREAM_COMMIT,
-        "config_data": config_data,
-        "record": linux_record,
-    }), encoding="utf-8")
-
     existing = _record(
         os_name="macos",
         architecture="arm64",
@@ -65,13 +43,39 @@ def test_merge_rejects_cross_payload_jieba_resource_hash_mismatch(tmp_path):
         idf_hash="a" * 64,
         config_data=config_data,
     )
-    manifest = {
-        "opencc_version": OPENCC_VERSION,
-        "opencc_upstream_tag": UPSTREAM_TAG,
-        "opencc_upstream_commit": UPSTREAM_COMMIT,
-        "payloads": [existing],
-    }
-    (vendor / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
 
     with pytest.raises(SystemExit, match="Jieba resource hash mismatch.*idf.utf8"):
-        merge(artifact_root, vendor)
+        _validate_jieba_resource_consistency([existing, linux_record])
+
+
+def test_merge_accepts_a_complete_tree_only_for_explicit_cache_restore(tmp_path: Path):
+    source_vendor = ROOT / "plugin" / "OpenCCForSigil" / "vendor" / "opencc"
+    source_manifest = json.loads((source_vendor / "manifest.json").read_text(encoding="utf-8"))
+    record = source_manifest["payloads"][0]
+    source_payload = source_vendor / record["payload_path"]
+    cache_root = tmp_path / "cache"
+    cache_entry = cache_root / "macos-arm64"
+    cache_entry.mkdir(parents=True)
+    shutil.copytree(source_payload, cache_entry / "payload")
+    (cache_entry / "record.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "record": record,
+                "config_data": record["config_data"],
+                "opencc_version": source_manifest["opencc_version"],
+                "opencc_upstream_tag": source_manifest["opencc_upstream_tag"],
+                "opencc_upstream_commit": source_manifest["opencc_upstream_commit"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    target_vendor = tmp_path / "vendor" / "opencc"
+    target_vendor.mkdir(parents=True)
+    shutil.copy2(source_vendor / "manifest.json", target_vendor / "manifest.json")
+
+    with pytest.raises(SystemExit, match="payload artifact is not a runtime subset"):
+        merge(cache_root, target_vendor)
+    merge(cache_root, target_vendor, allow_full_source_payload=True)
+
+    assert (target_vendor / record["payload_path"] / "opencc" / "clib" / "bin" / "opencc").is_file()

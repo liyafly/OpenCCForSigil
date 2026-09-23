@@ -47,12 +47,12 @@ jobs:
         if: github.event_name != 'pull_request'
         uses: actions/cache@v6
         with:
-          path: native_build/artifacts/verified-payload
-          key: opencc-payload-${{ matrix.id }}-${{ hashFiles('.github/workflows/ci.yml', 'native_build/payload-lock.json', 'tools/vendor_opencc.py', 'tools/build_opencc_jieba.py', 'tools/native_compatibility.py', 'tools/check_upstream_provenance.py', 'tools/export_verified_payload.py', 'tools/merge_verified_payloads.py', 'plugin/OpenCCForSigil/vendor/opencc/manifest.json') }}
+          path: native_build/artifacts/full-payload
+          key: opencc-payload-${{ matrix.id }}-${{ hashFiles('.github/workflows/ci.yml', 'native_build/payload-lock.json', 'tools/vendor_opencc.py', 'tools/build_opencc_jieba.py', 'tools/native_compatibility.py', 'tools/check_upstream_provenance.py', 'tools/export_verified_payload.py', 'tools/runtime_subset.py', 'tools/verify_runtime_subset.py', 'tools/merge_verified_payloads.py', 'plugin/OpenCCForSigil/vendor/opencc/manifest.json') }}
 
-      - name: Merge cached target-tested payload
+      - name: Merge cached complete target-tested payload
         if: steps.payload-cache.outputs.cache-hit == 'true'
-        run: mise exec -- uv run python tools/merge_verified_payloads.py --artifact-root native_build/artifacts/verified-payload
+        run: mise exec -- uv run python tools/merge_verified_payloads.py --artifact-root native_build/artifacts/full-payload --allow-full-source-payload
 
       - name: Disable Git line-ending conversion for the upstream checkout
         if: steps.payload-cache.outputs.cache-hit != 'true'
@@ -122,7 +122,12 @@ jobs:
         run: mise exec -- uv run python tools/differential_jieba_test.py --corpus tests/fixtures/opencc_jieba_smoke.jsonl
 
       - name: Export the target-tested payload
-        run: mise exec -- uv run python tools/export_verified_payload.py --output native_build/artifacts/verified-payload
+        run: mise exec -- uv run python tools/export_verified_payload.py --output native_build/artifacts/verified-payload --full-output native_build/artifacts/full-payload
+
+      - name: Verify the exported runtime subset in a clean process
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: mise exec -- uv run python tools/verify_runtime_subset.py --export-root native_build/artifacts/verified-payload
 
       - name: Upload target-tested payload
         uses: actions/upload-artifact@v7
@@ -159,12 +164,6 @@ jobs:
 
       - name: Lint the assembled source once
         run: mise exec -- ruff check plugin tests tools
-
-      - name: Run the Linux target differential corpus
-        run: mise exec -- uv run python tools/differential_test.py --corpus tests/fixtures/opencc_smoke.jsonl
-
-      - name: Run the Linux native Jieba differential corpus
-        run: mise exec -- uv run python tools/differential_jieba_test.py --corpus tests/fixtures/opencc_jieba_smoke.jsonl
 
       - name: Run repository tests
         run: mise exec -- uv run pytest

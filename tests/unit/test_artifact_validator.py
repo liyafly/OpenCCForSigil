@@ -11,6 +11,8 @@ import pytest
 from tools.build_plugin import build
 from tools.validate_artifact import (
     _I18N_REQUIRED_KEYS,
+    MAX_FIRST_STAGE_FAT_ARTIFACT_SIZE_BYTES,
+    MAX_PLATFORM_ARTIFACT_SIZE_BYTES,
     _zip_tree_hash,
     validate as validate_artifact,
 )
@@ -34,7 +36,9 @@ def _rewrite_archive(source: Path, target: Path, replacements: dict[str, bytes])
             if name in seen:
                 continue
             info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
-            info.compress_type = zipfile.ZIP_DEFLATED
+            info.compress_type = (
+                zipfile.ZIP_STORED if name.endswith("oversized.bin") else zipfile.ZIP_DEFLATED
+            )
             target_archive.writestr(info, value)
 
 
@@ -182,6 +186,52 @@ def test_validator_allows_pyc_substrings_that_are_not_bytecode(artifact: Path, t
     _rewrite_archive(artifact, target, {member: b"documentation"})
 
     validate_artifact(target)
+
+
+@pytest.mark.parametrize(
+    "member",
+    [
+        "OpenCCForSigil/vendor/opencc/payloads/macos-arm64-cp314/opencc/clib/bin/opencc",
+        "OpenCCForSigil/vendor/opencc/payloads/macos-arm64-cp314/opencc/clib/lib/libopencc.a",
+        "OpenCCForSigil/vendor/opencc/payloads/macos-arm64-cp314/opencc/clib/include/opencc/opencc.h",
+        "OpenCCForSigil/vendor/opencc/payloads/macos-arm64-cp314/opencc/clib/share/opencc/jieba_dict/jieba.dict.utf8",
+    ],
+)
+def test_validator_rejects_excluded_wheel_files(
+    artifact: Path, tmp_path: Path, member: str
+):
+    target = tmp_path / "excluded-wheel-file.zip"
+    _rewrite_archive(artifact, target, {member: b"excluded"})
+
+    with pytest.raises(SystemExit, match="excluded OpenCC files are present"):
+        validate_artifact(target)
+
+
+@pytest.mark.parametrize(
+    ("flavor", "limit"),
+    [
+        ("platform", MAX_PLATFORM_ARTIFACT_SIZE_BYTES),
+        ("fat", MAX_FIRST_STAGE_FAT_ARTIFACT_SIZE_BYTES),
+    ],
+)
+def test_validator_rejects_artifacts_over_size_budget(
+    artifact: Path, tmp_path: Path, flavor: str, limit: int
+):
+    manifest_name = "OpenCCForSigil/vendor/opencc/manifest.json"
+    manifest = _read_member(artifact, manifest_name)
+    manifest["package"] = {"flavor": flavor}
+    target = tmp_path / f"oversized-{flavor}.zip"
+    _rewrite_archive(
+        artifact,
+        target,
+        {
+            manifest_name: json.dumps(manifest, ensure_ascii=False).encode("utf-8"),
+            "OpenCCForSigil/oversized.bin": bytes(limit + 1),
+        },
+    )
+
+    with pytest.raises(SystemExit, match=f"exceeds the {flavor} size budget"):
+        validate_artifact(target)
 
 
 class _ChunkedReader(io.BytesIO):

@@ -42,9 +42,12 @@ windows-2022  → windows-x86_64-cp314
 Each matrix job runs `tools/vendor_opencc.py`, manifest/payload verification,
 `tools/build_opencc_jieba.py`, native plugin verification, Python Binding smoke
 tests, and the independent official CLI plus native Jieba differential corpora
-on its own native runner. It then exports only the target-tested payload
-with `tools/export_verified_payload.py` and uploads that directory as a
-workflow artifact.
+on its own native runner against the complete wheel tree. Only after those
+checks pass does `tools/export_verified_payload.py` derive the runtime subset
+and upload it as a workflow artifact. The subset uses the reviewed
+`runtime-subset-v1` allowlist, preserves every retained byte and the original
+wheel `RECORD`, and records source wheel/tree hashes plus hashes and sizes for
+all removed files. Unknown wheel files block export pending review.
 
 Native compatibility is an additional release gate, not implied by an ABI
 wheel tag or a successful modern runner. `tools/native_compatibility.py`
@@ -57,11 +60,12 @@ on cached payloads. macOS builds pass `CMAKE_OSX_DEPLOYMENT_TARGET=13.0` and
 Linux builds explicitly select GCC 11 on Ubuntu 22.04. These static checks
 do not replace actual Sigil testing on the supported host systems.
 
-Successful push and manual runs also cache the exported, target-tested payload
+Successful push and manual runs cache the complete, target-tested wheel tree
 under a key derived from the wheel lock, manifest, and native build recipes.
-The cache is an acceleration layer: a hit is merged and hash-verified before it
-is used, while a miss performs the complete native build. Pull requests do not
-restore this cache, so untrusted workflow input cannot supply a native binary.
+The cache is an acceleration layer: a hit is hash-verified and then reruns the
+full-tree tests and CLI differences before the runtime subset is re-exported.
+Pull requests do not restore this cache, so untrusted workflow input cannot
+supply a native binary.
 
 The dependent `build-fat-plugin` job downloads all artifacts, merges them with
 `tools/merge_verified_payloads.py --require-runtimes`, verifies every payload and provenance hash,
@@ -89,6 +93,12 @@ The engineering specification, testing guidance, and release notes are
 source-controlled documentation. They are linked from [`docs/README.md`](README.md)
 and are deliberately not generated into a documentation ZIP or uploaded by this
 workflow. This preserves the full maintainer record in the repository.
+
+The first-stage artifact size budgets are 7,000,000 bytes for a platform ZIP
+and 30,000,000 bytes for the Fat ZIP. The future shared-data Fat target of
+12,000,000 bytes is not enforced until that separately reviewed design is
+implemented. Changing an enforced budget requires human review of the measured
+contents and expected release impact.
 
 Tags without a prerelease suffix (for example, `v0.1.0`) publish a regular
 GitHub release and mark it latest. Tags with a suffix (for example,

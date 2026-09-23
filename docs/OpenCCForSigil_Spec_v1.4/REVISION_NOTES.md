@@ -149,3 +149,21 @@ experimental，版本升级必须重新构建、校验 ABI/hash 并完成 100% d
   为生产基准，3.14.7 仅开发/CI，patch 只记录 provenance；
 - EPUB structural safety > conversion coverage，且不恢复任意 segmentation
   dropdown。
+
+## 8. Official wheel runtime subset
+
+The shipped payload is a byte-preserving subset derived from a complete,
+target-tested official OpenCC wheel payload. The subset retains the Python
+Binding, native libraries and their declared runtime dependencies, OpenCC
+configs and binary dictionaries, the required official Jieba plugin and
+resources, and wheel license/provenance metadata. It may omit development and
+CLI files (including headers, static libraries, CMake/pkgconfig data and
+command-line executables) plus `jieba.dict.utf8` and `user.dict.utf8`, which
+are superseded by the verified `jieba_merged.ocd2` runtime dictionary.
+
+Every derived payload records recipe `runtime-subset-v1`, the source wheel and
+complete source-tree SHA-256 values, and the path, SHA-256, and size of each
+removed file. The wheel `RECORD` remains byte-identical and is explicitly
+marked as describing the source wheel. Validators check the allowlist, subset
+tree hash, retained config/resource hashes, and removal receipt. The subset
+does not change conversion algorithms, official configs, or dictionary bytes.

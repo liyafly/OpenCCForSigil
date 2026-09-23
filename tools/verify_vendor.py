@@ -16,6 +16,7 @@ try:
         runtime_identity,
     )
     from native_compatibility import NativeCompatibilityError, validate_binary_path
+    from runtime_subset import RuntimeSubsetError, validate_derivation
 except ModuleNotFoundError:  # Imported as tools.verify_vendor by the test suite.
     from tools.runtime_matrix import (
         SUPPORTED_RUNTIME_IDENTITIES,
@@ -23,6 +24,7 @@ except ModuleNotFoundError:  # Imported as tools.verify_vendor by the test suite
         runtime_identity,
     )
     from tools.native_compatibility import NativeCompatibilityError, validate_binary_path
+    from tools.runtime_subset import RuntimeSubsetError, validate_derivation
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -290,6 +292,27 @@ def _validate_payload(
         raise SystemExit(
             f"payload SHA-256 mismatch for {payload_path}: expected {record['payload_sha256']}, got {actual_payload_hash}"
         )
+    if "derivation" in record or "record_describes" in record:
+        symlinks = [path for path in root.rglob("*") if path.is_symlink()]
+        if symlinks:
+            raise SystemExit(f"symbolic links are not allowed in derived payloads: {symlinks[0]}")
+        native_plugins = record.get("native_plugins")
+        jieba = native_plugins.get(JIEBA_PLUGIN_NAME) if isinstance(native_plugins, dict) else None
+        if not isinstance(jieba, dict):
+            raise SystemExit("derived payload native Jieba record is missing")
+        try:
+            validate_derivation(
+                record,
+                kept_paths=(
+                    path.relative_to(root).as_posix()
+                    for path in root.rglob("*")
+                    if path.is_file()
+                ),
+                plugin_dir=str(jieba.get("plugin_dir", "")),
+                library_path=str(jieba.get("library_path", "")),
+            )
+        except RuntimeSubsetError as exc:
+            raise SystemExit(f"runtime subset derivation is invalid for {payload_path}: {exc}") from exc
     actual_data_files = _data_manifest(root)
     if actual_data_files != expected_data_files:
         raise SystemExit(f"payload data/config files differ from the manifest: {payload_path}")
