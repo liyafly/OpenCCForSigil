@@ -210,3 +210,63 @@ def test_controller_reports_unwritten_no_change_files_separately(monkeypatch, tm
     assert result_calls[-1]["files_changed"] == 1
     assert result_calls[-1]["files_not_written"] == 1
     assert result_calls[-1]["files_without_changes"] == 1
+
+
+def test_malformed_xhtml_is_skipped_while_other_files_convert(monkeypatch, tmp_path):
+    class Book:
+        def __init__(self):
+            self.files = {
+                "bad": "<p>汉字<br></p>",
+                "good": "<p>漢字</p>",
+            }
+            self.writes = []
+
+        def text_iter(self):
+            for file_id in self.files:
+                yield file_id, f"Text/{file_id}.xhtml"
+
+        def readfile(self, file_id):
+            return self.files[file_id]
+
+        def writefile(self, file_id, data):
+            self.writes.append((file_id, data))
+
+    book = Book()
+    planned_seen = []
+    result_calls = []
+    monkeypatch.setattr(
+        "ui.preview_window.choose_scope",
+        lambda adapter, initial_language: ScopeOutcome(
+            accepted=True,
+            selection=TargetSelection(Scope.ALL_XHTML, tuple(book.files)),
+            language=initial_language,
+        ),
+    )
+    monkeypatch.setattr(
+        "ui.preview_window.choose_conversion_config",
+        lambda available_configs, default_config, **_kwargs: "t2s",
+    )
+
+    def preview(planned):
+        planned_seen.extend(planned)
+        return _accept_all_preview(planned)
+
+    monkeypatch.setattr("ui.preview_window.show_preview", preview)
+    monkeypatch.setattr(
+        "ui.preview_window.create_progress_reporter", lambda _total: _NoProgress())
+    monkeypatch.setattr(
+        "ui.preview_window.show_result", lambda **values: result_calls.append(values))
+
+    assert Controller(book, data_dir=tmp_path / "plugin-data").run() == 0
+
+    bad, good = planned_seen
+    assert bad.source.file_id == "bad"
+    assert bad.plan.changes == ()
+    assert any(item.code == "SOURCE_INVALID_XHTML" for item in bad.plan.diagnostics)
+    assert any(item.span is None and "line 1, column" in item.message
+               for item in bad.plan.diagnostics)
+    assert good.source.file_id == "good"
+    assert good.plan.changes
+    assert [file_id for file_id, _data in book.writes] == ["good"]
+    assert result_calls[-1]["files_scanned"] == 2
+    assert result_calls[-1]["files_changed"] == 1

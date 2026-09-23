@@ -3,17 +3,18 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from queue import Empty, Queue
 from threading import Event
 from typing import Callable, Iterable, Optional, Tuple
 
-from core.models import ConversionPlan, ConvertRequest
+from core.models import ConversionPlan, ConvertRequest, Diagnostic
 from core.planner import build_conversion_plan
 from core.preview import PreviewSession
 from core.staging import StagedFile, StagingArea, source_sha256
 from core.verifier import verify_staged_file
 from document.tokenizer import TokenizedDocument, TokenizerOptions, tokenize_xhtml
+from document.validation import validate_xhtml_syntax
 from document.xml_processor import tokenize_xml
 from transforms.language_tags import with_language_targets
 from opencc_backend.backend import OpenCCBackend
@@ -451,6 +452,30 @@ class ConversionWorkflow:
     def _plan_document(self, source_document: SourceDocument, *, backend=None,
                        check_cancel=None) -> PlannedDocument:
         kind = source_document.document_kind
+        if kind in {"xhtml", "nav"}:
+            try:
+                validate_xhtml_syntax(source_document.source)
+            except ValueError as exc:
+                # Keep a zero-change plan in the preview/result set so the
+                # user can see which source was skipped.  Other files continue
+                # through analysis and may still be staged normally.
+                tokenized = TokenizedDocument(source_document.source, (), ())
+                plan = build_conversion_plan(
+                    file_id=source_document.file_id,
+                    source=source_document.source,
+                    document=tokenized,
+                    backend=backend if backend is not None else self.backend,
+                    check_cancel=check_cancel,
+                    request=self.request,
+                    session_id=self.session_id,
+                    profile_id=self.profile_id,
+                    document_kind=kind,
+                )
+                diagnostic = Diagnostic("SOURCE_INVALID_XHTML", str(exc))
+                return PlannedDocument(
+                    source_document, tokenized,
+                    replace(plan, diagnostics=(diagnostic,)),
+                )
         if kind in {"ncx", "metadata"}:
             tokenized = tokenize_xml(
                 source_document.source, document_kind=kind,
