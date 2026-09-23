@@ -14,7 +14,7 @@ from opencc_backend.backend import OpenCCBackend
 
 
 class Converter(Protocol):
-    def convert(self, text: str, request: ConvertRequest) -> ConvertResult:
+    def convert(self, text: str, request: ConvertRequest, *, quotation_pairer=None) -> ConvertResult:
         ...
 
 
@@ -24,11 +24,11 @@ class OfficialBackendConverter:
     def __init__(self, backend: OpenCCBackend) -> None:
         self.backend = backend
 
-    def convert(self, text: str, request: ConvertRequest) -> ConvertResult:
+    def convert(self, text: str, request: ConvertRequest, *, quotation_pairer=None) -> ConvertResult:
         if not isinstance(text, str):
             raise TypeError("conversion input must be text")
         if request.rules_snapshot.rules:
-            return self._convert_rules(text, request)
+            return self._convert_rules(text, request, quotation_pairer=quotation_pairer)
         from core.classifier import classify_conversion
         from core.diagnostics import diagnose_mixed_script
         from core.transformation import apply_force_pivot
@@ -45,7 +45,8 @@ class OfficialBackendConverter:
             rule_source = pivot.rule_source
         else:
             official = self.backend.convert(text)
-        quoted = transform_quotations(official, request.quotation_mode)
+        quoted = (quotation_pairer.feed(official) if quotation_pairer is not None
+                  else transform_quotations(official, request.quotation_mode))
         target = normalize_punctuation(quoted, request.punctuation_mode)
         diagnostics = []
         if request.diagnose_mixed and callable(compare) and text:
@@ -85,9 +86,10 @@ class OfficialBackendConverter:
             ))
         return ConvertResult(text, target, tuple(changes), tuple(diagnostics))
 
-    def _convert_rules(self, text, request):
+    def _convert_rules(self, text, request, *, quotation_pairer=None):
         from rules.engine import lock_spans
         from rules.models import RuleSnapshot
+        from transforms.quotations import QuotationPairer
 
         snapshot = RuleSnapshot.freeze(request.rules_snapshot.rules)
         if snapshot.rules_hash != request.rules_snapshot.rules_hash:
@@ -95,6 +97,7 @@ class OfficialBackendConverter:
         spans = lock_spans(text, snapshot, config=request.config,
                            profile_id=request.profile_id,
                            book_fingerprint=request.book_fingerprint)
+        pairer = quotation_pairer or QuotationPairer(request.quotation_mode)
         # Reuse the complete unlocked pipeline while avoiding a second rule pass.
         unlocked = replace(request, rules_snapshot=type(request.rules_snapshot)())
         output, changes, diagnostics = [], [], []
@@ -102,13 +105,14 @@ class OfficialBackendConverter:
         for span in (*spans, None):
             end = span.start if span is not None else len(text)
             if end > cursor:
-                result = self.convert(text[cursor:end], unlocked)
+                result = self.convert(text[cursor:end], unlocked, quotation_pairer=pairer)
                 output.append(result.target)
                 changes.extend(replace(change, span=SourceSpan(
                     cursor + change.span.start, cursor + change.span.end))
                     for change in result.changes)
                 diagnostics.extend(result.diagnostics)
             if span is not None:
+                pairer.feed(span.source, mutate=False)
                 output.append(span.target)
                 if span.source != span.target:
                     changes.append(TokenChange(

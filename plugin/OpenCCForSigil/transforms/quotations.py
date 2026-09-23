@@ -34,26 +34,43 @@ def transform_quotations(text: str, mode: str = "keep") -> str:
     are left alone because they also serve as ordinary text punctuation.
     """
 
-    mode = _canonical_mode(mode)
-    if mode == "keep" or not text:
-        return text
+    return QuotationPairer(mode).feed(text)
 
-    opening, closing = QUOTATION_PAIRS[mode]
-    in_quote = False
-    result: list[str] = []
-    for char in text:
-        if char == '"':
-            result.append(closing if in_quote else opening)
-            in_quote = not in_quote
-        elif char in _OPENING_QUOTES:
-            result.append(opening)
-            in_quote = True
-        elif char in _CLOSING_QUOTES:
-            result.append(closing)
-            in_quote = False
-        else:
-            result.append(char)
-    return "".join(result)
+
+class QuotationPairer:
+    """Pair quotation marks while retaining state across source text spans.
+
+    ``feed(..., mutate=False)`` is used for protected rule spans: the text is
+    preserved while its quote marks still advance the pairing state.
+    """
+
+    __slots__ = ("mode", "in_quote", "ascii_unbalanced")
+
+    def __init__(self, mode: str = "keep") -> None:
+        self.mode = _canonical_mode(mode)
+        self.in_quote = False
+        self.ascii_unbalanced = False
+
+    def feed(self, text: str, *, mutate: bool = True) -> str:
+        if self.mode == "keep" or not text:
+            return text
+
+        opening, closing = QUOTATION_PAIRS[self.mode]
+        result: list[str] = []
+        for char in text:
+            replacement = char
+            if char == '"':
+                self.ascii_unbalanced = not self.ascii_unbalanced
+                replacement = closing if self.in_quote else opening
+                self.in_quote = not self.in_quote
+            elif char in _OPENING_QUOTES:
+                replacement = opening
+                self.in_quote = True
+            elif char in _CLOSING_QUOTES:
+                replacement = closing
+                self.in_quote = False
+            result.append(replacement if mutate else char)
+        return "".join(result) if mutate else text
 
 
 def convert_quotations(text: str, mode: str = "keep") -> str:
@@ -75,6 +92,7 @@ def _canonical_mode(mode: str) -> str:
 __all__ = [
     "QUOTATION_MODES",
     "QUOTATION_PAIRS",
+    "QuotationPairer",
     "convert_quotations",
     "transform_quotations",
 ]

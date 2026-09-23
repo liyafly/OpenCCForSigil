@@ -2,7 +2,8 @@ from dataclasses import replace
 
 import pytest
 
-from core.models import ConversionPlan, SourceSpan, TokenChange
+from core.models import (ConversionPlan, RuleSnapshot as CoreRuleSnapshot, SourceSpan,
+                         TextTarget, TokenChange)
 from core.preview import PreviewError, PreviewFilter, PreviewSession
 from core.staging import StagingArea, StagingError
 from core.verifier import verify_staged_file
@@ -13,6 +14,8 @@ from document.tokenizer import tokenize_xhtml
 from opencc_backend.backend import OpenCCBackend
 from sigil.adapter import SigilBookAdapter
 from sigil.scope import Scope, TargetSelection
+from rules.models import Rule, RuleSnapshot as Rules
+from core.planner import _escape_replacement
 
 
 def _plan(source: str) -> ConversionPlan:
@@ -23,6 +26,24 @@ def _plan(source: str) -> ConversionPlan:
         document=document,
         backend=OpenCCBackend("s2t"),
         request=ConvertRequest("s2t"),
+        session_id="session-1",
+        profile_id="conservative",
+    )
+
+
+def _plan_with_rules(source: str, *rules: Rule) -> ConversionPlan:
+    frozen = Rules.freeze(rules)
+    return build_conversion_plan(
+        file_id="chapter.xhtml",
+        source=source,
+        document=tokenize_xhtml(source),
+        backend=OpenCCBackend("s2t"),
+        request=ConvertRequest(
+            "s2t",
+            rules_snapshot=CoreRuleSnapshot(rules_hash=frozen.sha256, rules=frozen.rules),
+            detailed_classification=False,
+            diagnose_mixed=False,
+        ),
         session_id="session-1",
         profile_id="conservative",
     )
@@ -64,6 +85,75 @@ def test_plan_stage_and_verify_change_only_planned_spans():
 
     tampered = replace(staged, converted=staged.converted.replace('id="stable"', 'id="changed"'))
     assert not verify_staged_file(tampered).passed
+
+
+def test_long_text_fallback_preserves_unmodified_greater_than():
+    source = "<p>" + "汉" * 1500 + " a > b " + "汉" * 1500 + "</p>"
+    plan = _plan(source)
+    staged = StagingArea().stage("chapter.xhtml", source, plan)
+
+    assert " a > b " in staged.converted
+    assert "a &gt; b" not in staged.converted
+    assert verify_staged_file(staged).passed
+
+
+def test_exact_rule_targets_escape_text_without_overescaping_markup_characters():
+    rule = Rule(id="literal", source="称呼", target="A&B<C", direction="s2t")
+    source = '<p title="称呼">称呼</p>'
+    plan = _plan_with_rules(source, rule)
+    staged = StagingArea().stage("chapter.xhtml", source, plan)
+
+    assert staged.converted == '<p title="A&amp;B&lt;C">A&amp;B&lt;C</p>'
+    assert verify_staged_file(staged).passed
+
+
+def test_attribute_replacements_escape_only_the_delimiter_quote():
+    rule = Rule(id="quotes", source="称呼", target='A \'B\' "C"', direction="s2t")
+    double_quoted = '<p title="称呼">称呼</p>'
+    plan = _plan_with_rules(double_quoted, rule)
+    staged = StagingArea().stage("chapter.xhtml", double_quoted, plan)
+    assert staged.converted == '<p title="A \'B\' &quot;C&quot;">A \'B\' "C"</p>'
+    assert verify_staged_file(staged).passed
+
+    single_quoted = "<p title='称呼'>称呼</p>"
+    plan = _plan_with_rules(single_quoted, rule)
+    staged = StagingArea().stage("chapter.xhtml", single_quoted, plan)
+    assert staged.converted == "<p title='A &#x27;B&#x27; \"C\"'>A 'B' \"C\"</p>"
+    assert verify_staged_file(staged).passed
+
+
+def test_unquoted_attribute_replacement_escapes_both_quote_characters():
+    target = TextTarget(
+        node_id="xhtml:attr:1", source_text="old", source_start=0, source_end=3,
+        attribute_name="title", attribute_quote=None,
+    )
+    assert _escape_replacement('A "B" \'C\'', target) == "A &quot;B&quot; &#x27;C&#x27;"
+
+
+def test_replacement_escapes_cdata_terminator_in_text():
+    rule = Rule(id="terminator", source="称呼", target="]]>", direction="s2t")
+    source = "<p>称呼</p>"
+    plan = _plan_with_rules(source, rule)
+    staged = StagingArea().stage("chapter.xhtml", source, plan)
+    assert staged.converted == "<p>]]&gt;</p>"
+    assert verify_staged_file(staged).passed
+
+
+def test_long_text_keeps_ascii_quotes_and_greater_than_byte_for_byte():
+    import random
+
+    rng = random.Random(230923)
+    punctuation = " > ' \" "
+    body = "汉" + "".join(rng.choice(punctuation) for _ in range(1800)) + "字"
+    source = f"<p>{body}</p>"
+    plan = _plan(source)
+    staged = StagingArea().stage("chapter.xhtml", source, plan)
+
+    punctuation_source = "".join(char for char in body if char in ">'\"")
+    converted_body = staged.converted[3:-4]
+    punctuation_result = "".join(char for char in converted_body if char in ">'\"")
+    assert punctuation_result == punctuation_source
+    assert verify_staged_file(staged).passed
 
 
 def test_preview_requires_explicit_decision_and_supports_accept_this_and_all():

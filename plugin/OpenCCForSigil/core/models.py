@@ -32,6 +32,7 @@ class TextTarget:
     context: str = ""
     tag_name: Optional[str] = None
     attribute_name: Optional[str] = None
+    attribute_quote: Optional[str] = None
     document_kind: str = "xhtml"
     convert: bool = True
     skip_reason: Optional[str] = None

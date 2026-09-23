@@ -4,16 +4,25 @@ from __future__ import annotations
 
 from dataclasses import replace
 from hashlib import sha256
-from html import escape, unescape
+from html import unescape
 from document.diagnostics import inline_boundary_diagnostics
 import json
+from bisect import bisect_right
 from typing import Optional
 
 from core.converter import OfficialBackendConverter
-from core.models import ConversionPlan, ConvertRequest, SourceSpan, TextTarget, TokenChange, ConvertResult
+from core.models import (ConversionPlan, ConvertRequest, Diagnostic, SourceSpan, TextTarget,
+                         TokenChange, ConvertResult)
 from transforms.language_tags import is_han_language
 from document.tokenizer import TokenizedDocument
 from opencc_backend.backend import OpenCCBackend
+from transforms.quotations import QuotationPairer
+
+
+_BLOCK_LEVEL_ELEMENTS = frozenset(
+    "p div li h1 h2 h3 h4 h5 h6 blockquote td th dd dt figcaption section article "
+    "aside header footer body".split()
+)
 
 
 def build_conversion_plan(
@@ -45,11 +54,46 @@ def build_conversion_plan(
     converter = OfficialBackendConverter(backend)
     changes = []
     diagnostics = list(inline_boundary_diagnostics(document)) if document_kind in {"xhtml", "nav"} else []
+    block_tags = tuple(tag for tag in document.tags if tag.name.lower() in _BLOCK_LEVEL_ELEMENTS)
+    block_tag_ends = tuple(tag.end for tag in block_tags)
+    attribute_spans = tuple(sorted(
+        (attribute.value_start, attribute.value_end, tag_index, attribute_index, attribute.name)
+        for tag_index, tag in enumerate(document.tags)
+        for attribute_index, attribute in enumerate(tag.attributes)
+    ))
+    attribute_starts = tuple(item[0] for item in attribute_spans)
+    block_pairers: dict[int, QuotationPairer] = {}
+    block_quote_change_ids: dict[int, list[str]] = {}
+    block_spans: dict[int, SourceSpan] = {}
+    attribute_pairers: dict[tuple[int, int], QuotationPairer] = {}
     for target in document.targets:
         if check_cancel is not None:
             check_cancel()
         if not target.convert:
             continue
+        pairer = None
+        block_index = None
+        if document_kind in {"xhtml", "nav"} and target.attribute_name is None:
+            block_index = bisect_right(block_tag_ends, target.source_start)
+            pairer = block_pairers.setdefault(
+                block_index, QuotationPairer(request.quotation_mode))
+            prior = block_spans.get(block_index)
+            block_spans[block_index] = SourceSpan(
+                min(prior.start, target.source_start) if prior else target.source_start,
+                max(prior.end, target.source_end) if prior else target.source_end,
+            )
+        elif target.attribute_name is not None:
+            position = bisect_right(attribute_starts, target.source_start) - 1
+            if position >= 0:
+                start, end, tag_index, attribute_index, name = attribute_spans[position]
+                if (name == target.attribute_name and start <= target.source_start
+                        and target.source_end <= end):
+                    pairer = attribute_pairers.setdefault(
+                        (tag_index, attribute_index), QuotationPairer(request.quotation_mode))
+        if pairer is None:
+            # NCX and metadata targets, along with unmatched attribute spans,
+            # intentionally keep their quote-pairing state local to one target.
+            pairer = QuotationPairer(request.quotation_mode)
         if target.attribute_name in {"lang", "xml:lang"} or target.tag_name == "dc:language":
             if not request.language_tag or not is_han_language(target.source_text):
                 continue
@@ -66,7 +110,7 @@ def build_conversion_plan(
             result = ConvertResult(target.source_text, request.language_tag, (language_change,))
         elif target.node_id.startswith("numeric_ref:"):
             decoded = unescape(target.source_text)
-            converted = converter.convert(decoded, request)
+            converted = converter.convert(decoded, request, quotation_pairer=pairer)
             attribution = (converted.changes[0] if converted.changes else TokenChange(
                 source=decoded, target=decoded, span=SourceSpan(0, len(decoded)),
                 rule_source="NumericReferenceDecode"))
@@ -76,13 +120,36 @@ def build_conversion_plan(
                 converted.diagnostics)
 
         else:
-            result = converter.convert(target.source_text, request)
+            result = converter.convert(target.source_text, request, quotation_pairer=pairer)
         diagnostics.extend(result.diagnostics)
         for local_change in result.changes:
             change = _absolute_change(file_id, target, local_change, source)
             if document_kind == "metadata":
                 change = replace(change, risk="HIGH")
             changes.append(replace(change, document_kind=document_kind))
+            if block_index is not None and change.category == "quotation":
+                block_quote_change_ids.setdefault(block_index, []).append(change.change_id)
+
+    if request.quotation_mode != "keep":
+        unbalanced_blocks = {
+            index for index, pairer in block_pairers.items() if pairer.ascii_unbalanced
+        }
+        if unbalanced_blocks:
+            unbalanced_change_ids = {
+                change_id for index in unbalanced_blocks
+                for change_id in block_quote_change_ids.get(index, ())
+            }
+            changes = [replace(change, risk="REVIEW")
+                       if change.change_id in unbalanced_change_ids else change
+                       for change in changes]
+            diagnostics.extend(
+                Diagnostic(
+                    "QUOTE_UNBALANCED",
+                    "Block contains an unbalanced ASCII quotation mark",
+                    block_spans.get(index),
+                )
+                for index in sorted(unbalanced_blocks)
+            )
 
     boundaries = [item.span for item in diagnostics if item.code == "INLINE_BOUNDARY" and item.span]
     before_boundaries = {span.start for span in boundaries}
@@ -135,7 +202,7 @@ def _absolute_change(
         if "]]>" in target_text:
             raise ValueError("replacement cannot terminate a CDATA section")
     else:
-        target_text = escape(target_text, quote=target.attribute_name is not None)
+        target_text = _escape_replacement(target_text, target)
     change_key = "\0".join(
         (file_id, target.node_id, str(start), str(end), target_text)
     )
@@ -160,6 +227,20 @@ def _absolute_change(
         document_kind=target.document_kind,
         group_id=local_change.group_id,
     )
+
+
+def _escape_replacement(text: str, target: TextTarget) -> str:
+    """Escape only characters that are significant in this source context."""
+
+    escaped = text.replace("&", "&amp;").replace("<", "&lt;")
+    if target.attribute_name is not None:
+        if target.attribute_quote == '"':
+            return escaped.replace('"', "&quot;")
+        if target.attribute_quote == "'":
+            return escaped.replace("'", "&#x27;")
+        # A malformed/unquoted attribute has no delimiter to rely on.
+        return escaped.replace('"', "&quot;").replace("'", "&#x27;")
+    return escaped.replace("]]>", "]]&gt;")
 
 
 def _sha256_text(value: str) -> str:

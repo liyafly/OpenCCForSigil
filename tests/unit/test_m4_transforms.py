@@ -12,6 +12,7 @@ def test_quotation_modes_keep_default_and_are_idempotent():
     source = '他说：“甲” and "乙"。'
 
     assert transform_quotations(source) == source
+    assert transform_quotations(source, "keep") is source
     for mode, expected in (
         ("curly", '他说：“甲” and “乙”。'),
         ("corner", '他说：「甲」 and 「乙」。'),

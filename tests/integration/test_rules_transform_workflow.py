@@ -80,7 +80,7 @@ def test_replacement_text_is_xml_escaped_and_snapshot_guard_precedes_all_writes(
 
     flow = ConversionWorkflow(SigilBookAdapter(book), Backend(), request, snapshot_guard=changed)
     _, staged = stage_all(flow)
-    assert staged[0].converted == '<p title="A &amp; &lt;B&gt; &quot;C&quot;">A &amp; &lt;B&gt; "C"</p>'
+    assert staged[0].converted == '<p title="A &amp; &lt;B> &quot;C&quot;">A &amp; &lt;B> "C"</p>'
     with pytest.raises(ValueError, match="snapshot changed"):
         flow.commit(staged)
     assert book.writes == []

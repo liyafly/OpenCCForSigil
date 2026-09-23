@@ -212,6 +212,7 @@ def tokenize_xhtml(source: str, options: Optional[TokenizerOptions] = None) -> T
                                     policy,
                                     tag_name=tag.name,
                                     attribute_name=attribute.name,
+                                    attribute_quote=attribute.quote,
                                     numeric_reference=numeric_reference,
                                 )
                             )
@@ -237,6 +238,7 @@ def _make_target(
     *,
     tag_name: Optional[str],
     attribute_name: Optional[str] = None,
+    attribute_quote: Optional[str] = None,
     numeric_reference: bool = False,
 ) -> TextTarget:
     radius = options.context_radius
@@ -253,6 +255,7 @@ def _make_target(
         context=source[context_start:context_end],
         tag_name=tag_name,
         attribute_name=attribute_name,
+        attribute_quote=attribute_quote,
         document_kind=options.document_kind,
     )
 
