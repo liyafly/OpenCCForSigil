@@ -42,6 +42,7 @@ def _source_tree(root: Path, *, unknown: bool = False) -> dict[str, bytes]:
         "opencc-1.4.2.dist-info/RECORD": b"original wheel receipt\n",
         "opencc-1.4.2.dist-info/top_level.txt": b"opencc\n",
         "opencc-1.4.2.dist-info/entry_points.txt": b"[console_scripts]\n",
+        "opencc-1.4.2.dist-info/DELVEWHEEL": b"wheel repair metadata\n",
         "opencc-1.4.2.dist-info/licenses/LICENSE": b"license",
         "opencc-1.4.2.dist-info/licenses/AUTHORS": b"authors",
         "opencc/clib/bin/opencc": b"cli binary",
@@ -106,6 +107,7 @@ def test_runtime_subset_preserves_allowed_bytes_and_removes_only_reviewed_paths(
     assert not (destination / "opencc/clib/lib64/libopencc.a").exists()
     assert not (destination / "opencc/clib/include/opencc/opencc.h").exists()
     assert not (destination / "opencc/clib/share/opencc/jieba_dict/jieba.dict.utf8").exists()
+    assert not (destination / "opencc-1.4.2.dist-info/DELVEWHEEL").exists()
     assert derived["record_describes"] == "source_wheel"
     assert derived["payload_sha256"] == sha256_tree(destination)
     assert receipt["source_tree_sha256"] == sha256_tree(source)
@@ -117,6 +119,7 @@ def test_runtime_subset_preserves_allowed_bytes_and_removes_only_reviewed_paths(
         "opencc/clib/lib64/pkgconfig/opencc.pc",
         "opencc/clib/share/opencc/jieba_dict/jieba.dict.utf8",
         "opencc/clib/share/opencc/jieba_dict/user.dict.utf8",
+        "opencc-1.4.2.dist-info/DELVEWHEEL",
     }
     for item in receipt["removed"]:
         source_file = source / item["path"]

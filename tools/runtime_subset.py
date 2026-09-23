@@ -29,6 +29,7 @@ _KEEP_JIEBA_FILES = {
     "stop_words.utf8",
 }
 _REMOVED_JIEBA_FILES = {"jieba.dict.utf8", "user.dict.utf8"}
+_EXCLUDE_EXACT = {"opencc-1.4.2.dist-info/DELVEWHEEL"}
 _HEX = frozenset("0123456789abcdefABCDEF")
 
 
@@ -79,6 +80,8 @@ def classify_path(relative: str, *, plugin_dir: str, library_path: str) -> str:
         return "unknown"
     if relative in _KEEP_EXACT:
         return "keep"
+    if relative in _EXCLUDE_EXACT:
+        return "exclude"
     if relative.startswith("opencc.libs/"):
         return "keep"
     if (
