@@ -24,6 +24,11 @@ from sigil.scope import Scope, TargetSelection
 class WorkflowError(RuntimeError):
     """Raised when a workflow phase cannot safely continue."""
 
+    def __init__(self, message, *, code="WORKFLOW_FAILED", affected_files=()):
+        self.code = code
+        self.affected_files = tuple(affected_files)
+        super().__init__(message)
+
 
 class WorkflowCancelled(WorkflowError):
     """Raised at a safe file boundary when the user cancels analysis."""
@@ -295,7 +300,10 @@ class ConversionWorkflow:
                 if change.group_id:
                     grouped.setdefault(change.group_id, set()).add(change.change_id)
         if any(ids & accepted and not ids <= accepted for ids in grouped.values()):
-            raise WorkflowError("grouped language changes must be accepted or skipped together")
+            raise WorkflowError(
+                "grouped language changes must be accepted or skipped together",
+                code="GROUP_PARTIAL",
+            )
         return finalized
 
     def stage(
@@ -397,7 +405,18 @@ class ConversionWorkflow:
             )
         self._verification = tuple(results)
         if not all(result.passed for result in self._verification):
-            raise WorkflowError("structural verification failed; commit is blocked")
+            failures = []
+            for result in self._verification:
+                if result.passed:
+                    continue
+                planned = planned_by_id.get(result.file_id)
+                href = planned.source.href if planned is not None else result.file_id
+                failures.append((href, tuple(item.code for item in result.diagnostics)))
+            raise WorkflowError(
+                "structural verification failed; commit is blocked",
+                code="VERIFY_FAILED",
+                affected_files=failures,
+            )
         self._verified_files = files
         return self._verification
 
@@ -413,10 +432,15 @@ class ConversionWorkflow:
             current = self.adapter.read(staged_file.file_id)
             if source_sha256(current) != staged_file.plan.source_sha256:
                 raise WorkflowError(
-                    f"source changed after preview; rescan required: {staged_file.file_id}"
+                    f"source changed after preview; rescan required: {staged_file.file_id}",
+                    code="SOURCE_CHANGED",
+                    affected_files=((staged_file.file_id, ("SOURCE_SHA256_MISMATCH",)),),
                 )
         if self.snapshot_guard is not None:
-            self.snapshot_guard()
+            try:
+                self.snapshot_guard()
+            except ValueError as exc:
+                raise WorkflowError(str(exc), code="SETTINGS_CHANGED") from exc
         try:
             return self.adapter.commit(
                 (staged_file.file_id, staged_file.converted) for staged_file in files

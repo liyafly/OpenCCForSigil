@@ -7,6 +7,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from app.errors import UserCancelled
 from app.session import Session, SessionState
 from app.settings import RunSettings, profile_options, settings_hash, tokenizer_policy
 from app.version import PLUGIN_VERSION
@@ -55,6 +56,7 @@ class Controller:
         files_without_changes = 0
         accepted_change_count = 0
         skipped_change_count = 0
+        files_written = 0
         try:
             profile = _load_conservative_profile()
             preferences = self.storage.load_preferences(
@@ -313,6 +315,7 @@ class Controller:
             )
             self.session.transition(SessionState.COMMITTING)
             workflow.commit(staged)
+            files_written = len(staged)
             self.session.complete()
             self.logger.event(
                 "commit_completed",
@@ -383,7 +386,9 @@ class Controller:
                 failed_file=exc.failed_file_id,
             )
             raise
-        except Exception:
+        except UserCancelled:
+            raise
+        except Exception as exc:
             if self.session.state not in {
                 SessionState.COMPLETED,
                 SessionState.CANCELLED,
@@ -393,6 +398,19 @@ class Controller:
             self.logger.exception("controller_failed")
             self.logger.summary(
                 self._summary(status="failed", files_scanned=0, changes=0, files_changed=0)
+            )
+            href_by_id = {item.source.file_id: item.source.href for item in planned}
+            affected_files = tuple(
+                (href_by_id.get(str(href), str(href)), tuple(codes))
+                for href, codes in getattr(exc, "affected_files", ())
+            )
+            _show_error_safely(
+                self.logger,
+                kind=_error_kind(exc),
+                detail=type(exc).__name__,
+                files_written=files_written,
+                log_path=str(self.logger.log_path),
+                affected_files=affected_files,
             )
             raise
         finally:
@@ -499,6 +517,27 @@ def _book_supports_conversion(book: Any) -> bool:
     return callable(getattr(book, "text_iter", None)) and callable(
         getattr(book, "readfile", None)
     )
+
+
+def _error_kind(error: BaseException) -> str:
+    code = getattr(error, "code", None)
+    if isinstance(code, str) and code:
+        return code
+    if "profiles or rules changed after preview" in str(error):
+        return "SETTINGS_CHANGED"
+    return "UNEXPECTED_ERROR"
+
+
+def _show_error_safely(logger: SessionLogger, **values: object) -> None:
+    """Show a user-facing error without replacing the original exception."""
+
+    try:
+        from ui.preview_window import show_error
+
+        show_error(**values)
+    except Exception as error:
+        logger.event("error_dialog_unavailable", level="ERROR",
+                     error_type=type(error).__name__)
 
 
 def _preferred_config(preferences: Dict[str, object], fallback: str) -> str:

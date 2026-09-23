@@ -442,6 +442,71 @@ def show_result(
     method(None, _translator.text("app.title"), message)
 
 
+def show_error(
+    *,
+    kind: str,
+    detail: str,
+    files_written: int,
+    log_path: str,
+    affected_files=(),
+) -> None:
+    """Show a privacy-safe failure summary and copyable diagnostic context."""
+
+    qt_widgets = _load_qt_widgets()
+    _ensure_application(qt_widgets)
+    dialog = qt_widgets.QDialog()
+    dialog.setWindowTitle(_translator.text("error.title"))
+    layout = qt_widgets.QVBoxLayout(dialog)
+    message_key = {
+        "VERIFY_FAILED": "error.verify_failed",
+        "SOURCE_CHANGED": "error.source_changed",
+        "SETTINGS_CHANGED": "error.settings_changed",
+        "GROUP_PARTIAL": "error.group_partial",
+    }.get(kind, "error.unexpected")
+    message = qt_widgets.QLabel(_translator.text(message_key))
+    message.setWordWrap(True)
+    layout.addWidget(message)
+    write_key = "error.no_files_written" if not files_written else "error.some_files_written"
+    write_status = qt_widgets.QLabel(
+        _translator.text(write_key, count=max(int(files_written), 0)))
+    write_status.setWordWrap(True)
+    layout.addWidget(write_status)
+    next_step = qt_widgets.QLabel(_translator.text("error.next_step"))
+    next_step.setWordWrap(True)
+    layout.addWidget(next_step)
+
+    lines = [
+        _translator.text("error.code_line", code=kind),
+        _translator.text("error.type_line", detail=detail),
+    ]
+    for href, codes in affected_files:
+        lines.append(_translator.text("error.file_line", file=href))
+        if codes:
+            lines.append(_translator.text("error.diagnostics_line", codes=", ".join(codes)))
+    lines.append(_translator.text("error.log_line", path=log_path))
+    diagnostic = "\n".join(lines)
+
+    details_button = qt_widgets.QPushButton(_translator.text("error.details"))
+    details = qt_widgets.QPlainTextEdit()
+    details.setReadOnly(True)
+    details.setPlainText(diagnostic)
+    details.setVisible(False)
+    details_button.clicked.connect(lambda: details.setVisible(not details.isVisible()))
+    layout.addWidget(details_button)
+    layout.addWidget(details)
+
+    buttons = qt_widgets.QHBoxLayout()
+    copy_button = qt_widgets.QPushButton(_translator.text("error.copy_diagnostics"))
+    close_button = qt_widgets.QPushButton(_translator.text("common.close"))
+    copy_button.clicked.connect(lambda: qt_widgets.QApplication.clipboard().setText(diagnostic))
+    close_button.clicked.connect(dialog.accept)
+    buttons.addWidget(copy_button)
+    buttons.addWidget(close_button)
+    layout.addLayout(buttons)
+    exec_method = getattr(dialog, "exec", None) or dialog.exec_
+    exec_method()
+
+
 def _result_count_values(
     *,
     files_scanned: int,
