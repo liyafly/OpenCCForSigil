@@ -138,10 +138,24 @@ class RunSettings:
         draft = self.current_profile(config, options)
         existing, errors = self.profiles.load_all()
         values = (draft,) + tuple(item for item in existing if item.id != draft.id)
-        selected = show_profile_window(values, translator=translator, store=self.profiles,
-                                       selected_id=draft.id,
-                                       available_configs=self.backend.available_configs(),
-                                       storage_errors=tuple(name for name, _error in errors))
+        rulesets, _rule_errors = self.rules.list()
+
+        def profile_deleted(identifier):
+            preferences = self.storage.load_preferences()
+            if preferences.get("profile_id") == identifier:
+                preferences.pop("profile_id", None)
+                self.storage.save_preferences(preferences)
+
+        selected = show_profile_window(
+            values, translator=translator, store=self.profiles,
+            selected_id=draft.id,
+            available_configs=self.backend.available_configs(),
+            available_rulesets=("default", *(ruleset.id for ruleset in rulesets)),
+            current_profile=draft,
+            active_profile=self.active,
+            on_delete=profile_deleted,
+            storage_errors=tuple(name for name, _error in errors),
+        )
         if selected is not None:
             self.active = selected
         return selected
