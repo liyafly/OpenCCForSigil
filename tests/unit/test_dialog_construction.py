@@ -101,14 +101,24 @@ def test_conversion_profile_rule_and_history_dialogs_construct(monkeypatch, tmp_
     assert outcome.action == "cancel"
 
     profile_dialog = ProfileManagerDialog(
-        fake_qt.make(), (), translator=Translator("en"), available_configs=("s2t",)
+        fake_qt.make(),
+        (),
+        translator=Translator("en"),
+        available_configs=("s2t",),
+        jieba_pending=True,
     )
     assert profile_dialog.dialog is not None
+    assert profile_dialog.jieba_notice.text() == "Checking the optional native Jieba plugin…"
 
     rule_dialog = RuleManagerDialog(
-        fake_qt.make(), (), translator=Translator("en"), rulesets=(RuleSet("default"),)
+        fake_qt.make(),
+        (),
+        translator=Translator("en"),
+        rulesets=(RuleSet("default"),),
+        jieba_pending=True,
     )
     assert rule_dialog.dialog is not None
+    assert rule_dialog.jieba_notice.text() == "Checking the optional native Jieba plugin…"
 
     history = show_history(
         tmp_path / "history",

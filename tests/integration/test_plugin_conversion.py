@@ -3,7 +3,8 @@ import json
 from app.controller import Controller
 from core.preview import PreviewSession
 from sigil.scope import Scope, TargetSelection
-from ui.preview_window import PreviewOutcome, ScopeOutcome
+from ui.preview_window import ConfigOutcome, PreviewOutcome, ScopeOutcome
+from ui.run_options import ConfigurationChoice
 
 
 class ConversionBook:
@@ -465,7 +466,7 @@ def test_noop_result_skips_preview_and_offers_scope_return(monkeypatch, tmp_path
 def test_noop_return_to_scope_restarts_with_new_selection(monkeypatch, tmp_path):
     class NoopThenConvertBook:
         def __init__(self):
-            self.files = {"a": "<p>汉字</p>", "c": "<p>汉字</p>"}
+            self.files = {"a": "<p>漢字</p>", "c": "<p>汉字</p>"}
             self.writes = []
 
         def text_iter(self):
@@ -482,7 +483,7 @@ def test_noop_return_to_scope_restarts_with_new_selection(monkeypatch, tmp_path)
     scopes = []
     results = []
     previews = []
-    configs = iter(("t2s", "s2t"))
+    config_defaults = []
 
     def choose_scope(_adapter, initial_language, **kwargs):
         scopes.append(kwargs.get("initial_selection"))
@@ -495,8 +496,11 @@ def test_noop_return_to_scope_restarts_with_new_selection(monkeypatch, tmp_path)
         return "back_to_scope" if len(results) == 1 else "close"
 
     monkeypatch.setattr("ui.preview_window.choose_scope", choose_scope)
-    monkeypatch.setattr(
-        "ui.preview_window.choose_conversion_config", lambda *_args, **_kwargs: next(configs))
+    def choose_config(_available, *, default_config, **_kwargs):
+        config_defaults.append(default_config)
+        return "s2tw"
+
+    monkeypatch.setattr("ui.preview_window.choose_conversion_config", choose_config)
     monkeypatch.setattr(
         "ui.preview_window.show_result", show_result)
     monkeypatch.setattr(
@@ -510,7 +514,41 @@ def test_noop_return_to_scope_restarts_with_new_selection(monkeypatch, tmp_path)
     assert Controller(book, data_dir=tmp_path / "plugin-data").run() == 0
 
     assert len(scopes) == 2
+    assert len(config_defaults) == 2
+    assert config_defaults[1] == "s2tw"
     assert scopes[0] is None
     assert scopes[1].file_ids == ("a",)
     assert previews == [("c",)]
     assert [file_id for file_id, _data in book.writes] == ["c"]
+
+
+def test_settings_back_to_scope_preserves_selected_direction(monkeypatch, tmp_path):
+    book = ConversionBook()
+    defaults = []
+    scope_calls = []
+
+    def choose_scope(_adapter, initial_language, **_kwargs):
+        scope_calls.append(True)
+        return ScopeOutcome(
+            True, TargetSelection(Scope.SINGLE, ("chapter",)), initial_language
+        )
+
+    def choose_config(_available, *, default_config, **_kwargs):
+        defaults.append(default_config)
+        if len(defaults) == 1:
+            return ConfigOutcome(
+                "back_to_scope",
+                ConfigurationChoice("s2tw", {"quotation_mode": "corner"}),
+            )
+        return None
+
+    monkeypatch.setattr("ui.preview_window.choose_scope", choose_scope)
+    monkeypatch.setattr("ui.preview_window.choose_conversion_config", choose_config)
+
+    assert Controller(book, data_dir=tmp_path).run() == 1
+
+    assert len(scope_calls) == 2
+    assert defaults[1] == "s2tw"
+    preferences = json.loads((tmp_path / "preferences.json").read_text(encoding="utf-8"))
+    assert preferences["last_conversion_config"] == "s2tw"
+    assert book.writes == []

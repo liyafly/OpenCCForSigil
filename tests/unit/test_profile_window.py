@@ -52,6 +52,7 @@ def _manager(profiles, store, *, active=None, current=None, selected_id=None,
         "copied": " copy", "skipped_files": "skipped: {files}", "not_selected": "select",
     }
     manager._available_config_ids = set()
+    manager._jieba_pending = False
     manager._available_rulesets = ("default", "mine")
     manager._selected_id = selected_id
     manager._current_profile = current or (profiles[0] if profiles else None)

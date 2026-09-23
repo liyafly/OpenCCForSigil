@@ -160,10 +160,13 @@ class RunSettings:
                 preferences.pop("profile_id", None)
                 self.storage.save_preferences(preferences)
 
+        available_configs, jieba_pending = self._available_config_options()
+
         selected = show_profile_window(
             values, translator=translator, store=self.profiles,
             selected_id=draft.id,
-            available_configs=self.backend.available_configs(),
+            available_configs=available_configs,
+            jieba_pending=jieba_pending,
             available_rulesets=("default", *(ruleset.id for ruleset in rulesets)),
             current_profile=draft,
             active_profile=self.active,
@@ -195,10 +198,12 @@ class RunSettings:
                           identifiers[0] if identifiers else "default")
         for identifier in identifiers:
             values.setdefault(identifier, RuleSet(identifier))
+        available_configs, jieba_pending = self._available_config_options()
         result = show_rules_window(
             values[initial_id].rules, translator=translator, official_convert=self.backend,
             config=config, profile_id=self.active.id, book_fingerprint=self.book_fingerprint,
-            available_configs=self.backend.available_configs(),
+            available_configs=available_configs,
+            jieba_pending=jieba_pending,
             comparison_configs=comparison_configs(config),
             storage_errors=tuple(name for name, _error in errors),
             rulesets=tuple(values.values()), ruleset_id=initial_id,
@@ -247,6 +252,13 @@ class RunSettings:
                         translator.text("settings.ruleset_session_only", ruleset=selected_id),
                     )
             self.active = updated
+
+    def _available_config_options(self):
+        if self.backend is None:
+            return (), False
+        nonblocking = getattr(self.backend, "available_configs_nonblocking", None)
+        available = nonblocking() if callable(nonblocking) else self.backend.available_configs()
+        return tuple(available), bool(getattr(self.backend, "jieba_probe_pending", False))
 
     def _replace_ruleset_references(self, renames):
         replacements = dict(renames)

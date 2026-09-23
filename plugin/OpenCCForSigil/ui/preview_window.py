@@ -1631,12 +1631,12 @@ class _ConversionConfigDialog:
     def _apply_jieba_state(self) -> None:
         base_config = str(self.combo.currentData())
         plugin_config = self._jieba_configs.get(base_config)
-        if self._probe_state == "pending" or plugin_config is None:
+        if self._probe_state in {"not_started", "pending"} or plugin_config is None:
             self.jieba_checkbox.setChecked(False)
             self.jieba_checkbox.setEnabled(False)
         else:
             self.jieba_checkbox.setEnabled(True)
-        if self._probe_state == "pending":
+        if self._probe_state in {"not_started", "pending"}:
             status = self._translator.text("config.jieba_checking")
         elif self._probe_state == "available":
             status = self._translator.text("config.jieba_available")
@@ -1656,7 +1656,7 @@ class _ConversionConfigDialog:
         self.jieba_status.setToolTip(tooltip)
         self.jieba_status.setText(status)
         self.jieba_details_button.setEnabled(bool(self._probe_error))
-        if self._preferred_jieba and self._probe_state == "pending":
+        if self._preferred_jieba and self._probe_state in {"not_started", "pending"}:
             self.continue_button.setEnabled(False)
         elif (self._preferred_jieba and self._probe_state == "unavailable"
               and not self._direction_reselected):

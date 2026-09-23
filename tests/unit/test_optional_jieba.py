@@ -4,7 +4,7 @@ from threading import Event
 
 import pytest
 
-from opencc_backend.backend import OpenCCBackend
+from opencc_backend.backend import JiebaProbe, OpenCCBackend
 from opencc_backend.configs import JIEBA_CONFIGS, SUPPORTED_CONFIGS, V1_CONFIGS
 from opencc_backend.errors import BackendConversionError
 
@@ -29,11 +29,9 @@ def backend_with_loader(tmp_path, *, fail_optional=True):
     backend._import_origin = "opencc/__init__.py"
     backend._available_configs = SUPPORTED_CONFIGS
     backend._jieba_plugin = SimpleNamespace(config_names=JIEBA_CONFIGS)
-    backend._jieba_checked = False
-    backend._jieba_error = None
-    backend._jieba_future = None
-    backend._jieba_executor = None
-    backend._jieba_elapsed_ms = None
+    backend._jieba_probe = JiebaProbe(
+        backend._module, SUPPORTED_CONFIGS, backend._jieba_plugin, identity=()
+    )
     backend._converter = constructor("s2t")
     return backend, calls
 
@@ -97,13 +95,34 @@ def test_background_probe_keeps_standard_configs_available_without_waiting(tmp_p
 
     assert backend.jieba_probe_state()[0] == "pending"
     assert backend.available_configs_nonblocking() == V1_CONFIGS
-    assert backend._jieba_future is not None
-    backend._jieba_future.result(timeout=2)
+    assert completed.wait(2)
     state, error, elapsed_ms = backend.jieba_probe_state()
     assert state == "available"
     assert error is None
     assert elapsed_ms >= 250
-    assert completed.wait(1)
     assert result[0][0] is True
     assert result[0][2] >= 250
     backend.close()
+
+
+def test_close_does_not_wait_for_pending_daemon_probe(tmp_path):
+    backend, _calls = backend_with_loader(tmp_path, fail_optional=False)
+    started = Event()
+    completed = Event()
+
+    def slow_constructor(config):
+        if config in JIEBA_CONFIGS:
+            started.set()
+            time.sleep(2)
+            completed.set()
+        return SimpleNamespace(convert=lambda text: text)
+
+    backend._module.OpenCC = slow_constructor
+    backend.start_jieba_probe()
+    assert started.wait(1)
+
+    begin = time.perf_counter()
+    backend.close()
+
+    assert time.perf_counter() - begin < 0.5
+    assert not completed.is_set()

@@ -91,6 +91,16 @@ def test_pending_probe_disables_preferred_jieba_and_success_restores_it():
     assert dialog._get_config() == "s2t_jieba"
 
 
+def test_not_started_probe_disables_preferred_jieba_until_a_result_exists():
+    dialog = _dialog(Probe("not_started"))
+
+    dialog._poll_jieba_probe()
+
+    assert not dialog.jieba_checkbox.enabled
+    assert not dialog.continue_button.enabled
+    assert dialog.jieba_status.text == "config.jieba_checking"
+
+
 def test_failed_preferred_probe_requires_direction_reselection_and_shows_reason():
     probe = Probe("unavailable", "native library requires a newer operating system")
     dialog = _dialog(probe)

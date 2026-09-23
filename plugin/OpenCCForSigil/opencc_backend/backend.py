@@ -1,7 +1,8 @@
 """Production adapter for the vendored official `opencc` package."""
 
 from dataclasses import dataclass
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import Future
+from threading import Thread
 from time import perf_counter
 from typing import Dict, Optional, Tuple
 
@@ -26,10 +27,123 @@ class SelfTestResult:
     error: Optional[str] = None
 
 
+class JiebaProbe:
+    """Session-scoped optional capability check for one verified payload."""
+
+    def __init__(self, module, available_configs, native_plugin, identity) -> None:
+        self._module = module
+        self._available_configs = tuple(available_configs)
+        self._standard_configs = tuple(
+            config for config in self._available_configs if not is_jieba_config(config)
+        )
+        self._native_plugin = native_plugin
+        self._identity = tuple(identity)
+        self._future: Future | None = None
+        self._checked = False
+        self._error: Optional[str] = None
+        self._elapsed_ms: Optional[float] = None
+
+    @property
+    def identity(self) -> tuple:
+        return self._identity
+
+    @property
+    def pending(self) -> bool:
+        state = self.state()[0]
+        return state in {"not_started", "pending"} and self._native_plugin is not None
+
+    def start(self, on_complete=None) -> None:
+        """Run once on a daemon thread so an abandoned plugin cannot hold exit."""
+
+        if self._checked or self._future is not None:
+            return
+        future: Future = Future()
+        self._future = future
+
+        def run() -> None:
+            try:
+                result = self._probe_payload()
+            except BaseException as exc:
+                result = (False, str(exc), 0.0)
+            future.set_result(result)
+            if callable(on_complete):
+                try:
+                    on_complete(result)
+                except Exception:
+                    pass
+
+        Thread(target=run, name="OpenCC-jieba-probe", daemon=True).start()
+
+    def state(self) -> tuple[str, Optional[str], Optional[float]]:
+        future = self._future
+        if future is not None:
+            if not future.done():
+                return "pending", None, None
+            self._consume_future(future)
+        if not self._checked:
+            return "not_started", None, None
+        state = "unavailable" if self._error else "available"
+        return state, self._error, self._elapsed_ms
+
+    def jieba_probe_state(self) -> tuple[str, Optional[str], Optional[float]]:
+        """Expose the same probe interface as OpenCCBackend for UI consumers."""
+
+        return self.state()
+
+    def available_configs_nonblocking(self) -> Tuple[str, ...]:
+        if self.state()[0] == "available":
+            return self._available_configs
+        return self._standard_configs
+
+    def probe(self) -> bool:
+        """Return the result, waiting only for callers that explicitly require it."""
+
+        if not self._checked:
+            if self._future is not None:
+                self._consume_future(self._future)
+            else:
+                self._apply_result(self._probe_payload())
+        return self._error is None
+
+    def _consume_future(self, future: Future) -> None:
+        try:
+            result = future.result()
+        except Exception as exc:
+            result = (False, str(exc), 0.0)
+        self._apply_result(result)
+
+    def _apply_result(self, result) -> None:
+        ok, error, elapsed_ms = result
+        self._checked = True
+        self._error = None if ok else str(error or "native Jieba is unavailable")
+        self._elapsed_ms = elapsed_ms
+
+    def _probe_payload(self) -> tuple[bool, Optional[str], float]:
+        started = perf_counter()
+        try:
+            if self._native_plugin is None:
+                raise RuntimeError("official native Jieba is not included in this payload")
+            if not set(JIEBA_CONFIGS) <= set(self._available_configs):
+                raise RuntimeError("official native Jieba configurations are incomplete")
+            for config in JIEBA_CONFIGS:
+                value = self._module.OpenCC(config).convert("汉字")
+                if not isinstance(value, str):
+                    raise TypeError(f"{config} returned a non-text result")
+            return True, None, (perf_counter() - started) * 1000
+        except Exception as exc:
+            return False, str(exc), (perf_counter() - started) * 1000
+
+
 class OpenCCBackend:
     """Official Python Binding adapter with optional native Jieba configs."""
 
-    def __init__(self, config: str, selector: Optional[RuntimeSelector] = None) -> None:
+    def __init__(
+        self,
+        config: str,
+        selector: Optional[RuntimeSelector] = None,
+        *,
+        jieba_probe: JiebaProbe | None = None,
+    ) -> None:
         self._comparisons = {}
         self._config = validate_config(config)
         self._selector = selector or RuntimeSelector()
@@ -56,10 +170,12 @@ class OpenCCBackend:
             and config_name in module_configs
         )
         self._available_configs = standard_configs + jieba_configs
-        self._jieba_checked = False
-        self._jieba_error: Optional[str] = None
-        self._jieba_future: Future | None = None
-        self._jieba_executor: ThreadPoolExecutor | None = None
+        identity = _jieba_payload_identity(payload, self._jieba_plugin)
+        if jieba_probe is not None and jieba_probe.identity != identity:
+            raise DependencyError("Jieba probe belongs to a different verified payload")
+        self._jieba_probe = jieba_probe or JiebaProbe(
+            self._module, self._available_configs, self._jieba_plugin, identity
+        )
         self._ensure_config_is_exposed()
         try:
             # This is the public upstream API. The default tofu policy is intentional.
@@ -70,88 +186,51 @@ class OpenCCBackend:
             ) from exc
 
     def available_configs(self) -> Tuple[str, ...]:
-        if self.probe_jieba():
+        if self._jieba_probe.probe():
             return self._available_configs
         return tuple(config for config in self._available_configs if not is_jieba_config(config))
 
     def available_configs_nonblocking(self) -> Tuple[str, ...]:
         """Return verified capabilities without waiting for a background probe."""
 
-        if self.jieba_probe_state()[0] == "available":
-            return self._available_configs
-        return tuple(config for config in self._available_configs if not is_jieba_config(config))
+        return self._jieba_probe.available_configs_nonblocking()
 
-    def start_jieba_probe(self, on_complete=None) -> None:
+    @property
+    def jieba_probe(self) -> JiebaProbe:
+        """Return the stable capability object shared across config backends."""
+
+        return self._jieba_probe
+
+    @property
+    def jieba_probe_pending(self) -> bool:
+        return self._jieba_probe.pending
+
+    def start_jieba_probe(self, on_complete=None) -> JiebaProbe:
         """Start optional native probing without delaying the first settings UI."""
 
-        if self._jieba_checked or self._jieba_future is not None:
-            return
-        self._jieba_executor = ThreadPoolExecutor(
-            max_workers=1, thread_name_prefix="OpenCC-jieba-probe")
-        self._jieba_future = self._jieba_executor.submit(self._probe_jieba_payload)
-        if callable(on_complete):
-            self._jieba_future.add_done_callback(
-                lambda future: on_complete(future.result()))
+        self._jieba_probe.start(on_complete=on_complete)
+        return self._jieba_probe
 
     def jieba_probe_state(self) -> tuple[str, Optional[str], Optional[float]]:
         """Return pending/available/unavailable and consume completed results on caller thread."""
 
-        future = self._jieba_future
-        if future is not None:
-            if not future.done():
-                return "pending", None, None
-            self._apply_jieba_probe_result(future.result())
-        if not self._jieba_checked:
-            return "not_started", None, None
-        state = "unavailable" if self._jieba_error else "available"
-        elapsed = getattr(self, "_jieba_elapsed_ms", None)
-        return state, self._jieba_error, elapsed
+        return self._jieba_probe.state()
 
     def jieba_available(self) -> bool:
         """Return whether the selected payload exposes verified native Jieba."""
 
-        return self.probe_jieba()
+        return self._jieba_probe.probe()
 
     @property
     def jieba_error(self) -> Optional[str]:
         """Optional capability failure; integrity failures still abort import."""
 
-        return self._jieba_error
+        return self._jieba_probe.state()[1]
 
     def probe_jieba(self) -> bool:
-        """Probe the verified optional plugin once without changing the config.
+        """Probe the verified optional plugin once without changing the config."""
 
-        This only isolates native loading/construction failures. The selector
-        has already verified every shipped byte; hash/provenance failures are
-        never downgraded to an optional-capability warning.
-        """
-
-        if not self._jieba_checked:
-            future = self._jieba_future
-            result = future.result() if future is not None else self._probe_jieba_payload()
-            self._apply_jieba_probe_result(result)
-        return self._jieba_error is None
-
-    def _probe_jieba_payload(self) -> tuple[bool, Optional[str], float]:
-        started = perf_counter()
-        try:
-            if self._jieba_plugin is None:
-                raise RuntimeError("official native Jieba is not included in this payload")
-            if not set(JIEBA_CONFIGS) <= set(self._available_configs):
-                raise RuntimeError("official native Jieba configurations are incomplete")
-            for config in JIEBA_CONFIGS:
-                value = self._module.OpenCC(config).convert("汉字")
-                if not isinstance(value, str):
-                    raise TypeError(f"{config} returned a non-text result")
-            return True, None, (perf_counter() - started) * 1000
-        except Exception as exc:
-            return False, str(exc), (perf_counter() - started) * 1000
-
-    def _apply_jieba_probe_result(self, result) -> None:
-        ok, error, elapsed_ms = result
-        self._jieba_checked = True
-        self._jieba_error = None if ok else error
-        self._jieba_elapsed_ms = elapsed_ms
+        return self._jieba_probe.probe()
 
     @property
     def config(self) -> str:
@@ -262,9 +341,6 @@ class OpenCCBackend:
         # is the only lifecycle operation OpenCCForSigil performs.
         self._converter = None
         self._comparisons.clear()
-        if self._jieba_executor is not None:
-            self._jieba_executor.shutdown(wait=False, cancel_futures=False)
-            self._jieba_executor = None
 
     def _ensure_config_is_exposed(self) -> None:
         if self.config not in self._available_configs:
@@ -283,6 +359,16 @@ class OpenCCBackend:
 def _config_stems(module: object) -> set:
     configs = getattr(module, "CONFIGS", ())
     return {str(value)[:-5] if str(value).endswith(".json") else str(value) for value in configs}
+
+
+def _jieba_payload_identity(payload: object, native_plugin: object) -> tuple:
+    runtime = getattr(payload, "runtime", None)
+    return (
+        getattr(runtime, "payload_id", None),
+        getattr(payload, "payload_sha256", None),
+        getattr(native_plugin, "library_sha256", None),
+        getattr(native_plugin, "resource_manifest_sha256", None),
+    )
 
 
 def _config_data_hash(config_data: object) -> Optional[str]:

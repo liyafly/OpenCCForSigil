@@ -32,6 +32,7 @@ def show_profile_window(
     active_profile: Profile | None = None,
     on_delete=None,
     storage_errors: Iterable[str] = (),
+    jieba_pending: bool = False,
 ) -> Profile | None:
     qt = load_qt()
     ensure_application(qt)
@@ -39,7 +40,7 @@ def show_profile_window(
         qt, tuple(profiles), translator=translator, store=store, selected_id=selected_id,
         available_configs=available_configs, available_rulesets=available_rulesets,
         current_profile=current_profile, active_profile=active_profile, on_delete=on_delete,
-        storage_errors=storage_errors,
+        storage_errors=storage_errors, jieba_pending=jieba_pending,
     )
     exec_dialog(manager.dialog)
     return manager.selected if manager.accepted else None
@@ -60,6 +61,7 @@ class ProfileManagerDialog:
         active_profile: Profile | None = None,
         on_delete=None,
         storage_errors: Iterable[str] = (),
+        jieba_pending: bool = False,
     ) -> None:
         self._qt = qt_widgets
         self._translator = translator or Translator("en")
@@ -68,6 +70,7 @@ class ProfileManagerDialog:
         self._store = store
         self._on_delete = on_delete
         self._storage_errors = tuple(storage_errors)
+        self._jieba_pending = bool(jieba_pending)
         self._current_profile = current_profile or (self._profiles[0] if self._profiles else None)
         self._active_profile = active_profile
         available = tuple(SUPPORTED_CONFIGS if available_configs is None else available_configs)
@@ -88,6 +91,11 @@ class ProfileManagerDialog:
     def _build(self) -> None:
         qt = self._qt
         root = qt.QVBoxLayout(self.dialog)
+        self.jieba_notice = None
+        if self._jieba_pending:
+            self.jieba_notice = qt.QLabel(self._translator.text("config.jieba_checking"))
+            self.jieba_notice.setWordWrap(True)
+            root.addWidget(self.jieba_notice)
         if self._storage_errors:
             notice = qt.QLabel(self._labels["skipped_files"].format(
                 files=", ".join(self._storage_errors)))
@@ -159,9 +167,13 @@ class ProfileManagerDialog:
             self.delete_button.setEnabled(False)
             return
         conversion = profile.conversion
-        status = (f" ({self._labels['unavailable']})"
-                  if conversion.endswith("_jieba") and conversion not in self._available_config_ids
-                  else "")
+        unavailable = conversion.endswith("_jieba") and conversion not in self._available_config_ids
+        status_label = (
+            self._translator.text("config.jieba_checking")
+            if unavailable and self._jieba_pending
+            else self._labels["unavailable"] if unavailable else ""
+        )
+        status = f" ({status_label})" if status_label else ""
         options = ", ".join(
             f"{key}: {'on' if getattr(profile, field) else 'off'}"
             for key, field in (("NAV", "convert_nav"), ("NCX", "convert_ncx"),

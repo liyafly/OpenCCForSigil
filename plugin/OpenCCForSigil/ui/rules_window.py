@@ -199,6 +199,7 @@ def show_rules_window(
     storage_errors: Iterable[str] = (),
     rulesets: Iterable[RuleSet] | None = None,
     ruleset_id: str | None = None,
+    jieba_pending: bool = False,
 ) -> tuple[Rule, ...] | RuleWindowResult | None:
     """Open the manager and return committed rules, or ``None`` on cancel."""
 
@@ -217,6 +218,7 @@ def show_rules_window(
         storage_errors=storage_errors,
         rulesets=rulesets,
         ruleset_id=ruleset_id,
+        jieba_pending=jieba_pending,
     )
     exec_dialog(dialog.dialog)
     if not dialog.accepted:
@@ -242,6 +244,7 @@ class RuleManagerDialog:
         storage_errors: Iterable[str] = (),
         rulesets: Iterable[RuleSet] | None = None,
         ruleset_id: str | None = None,
+        jieba_pending: bool = False,
     ) -> None:
         self._qt = qt_widgets
         self._translator = translator or Translator("en")
@@ -263,6 +266,7 @@ class RuleManagerDialog:
         self._available_configs = base_config_options(available_configs)
         self._comparison_configs = tuple(comparison_configs)
         self._storage_errors = tuple(storage_errors)
+        self._jieba_pending = bool(jieba_pending)
         self.accepted = False
         self.dialog = qt_widgets.QDialog()
         self.dialog.setWindowTitle(self._labels["title"])
@@ -274,6 +278,11 @@ class RuleManagerDialog:
     def _build(self) -> None:
         qt = self._qt
         layout = qt.QVBoxLayout(self.dialog)
+        self.jieba_notice = None
+        if self._jieba_pending:
+            self.jieba_notice = qt.QLabel(self._translator.text("config.jieba_checking"))
+            self.jieba_notice.setWordWrap(True)
+            layout.addWidget(self.jieba_notice)
         if self._storage_errors:
             notice = qt.QLabel(self._labels["skipped_files"].format(
                 files=", ".join(self._storage_errors)))

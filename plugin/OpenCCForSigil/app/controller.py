@@ -76,14 +76,14 @@ class Controller:
             # advertised and verified the native plugin capability.
             backend = OpenCCBackend("s2t")
             self._run_backend_self_test(backend)
-            backend.start_jieba_probe(
+            jieba_probe = backend.start_jieba_probe(
                 on_complete=lambda result: self.logger.event(
                     "optional_jieba_probe",
                     elapsed_ms=round(result[2], 1),
                     result="available" if result[0] else "unavailable",
                     reason=result[1],
                 )
-            )
+            ) or backend
 
             if not _book_supports_conversion(self.bk):
                 return self._complete_noop(
@@ -166,8 +166,10 @@ class Controller:
 
             def reselect_scope(previous_selection):
                 nonlocal language, preferences, ui_preferences, scope_preferences, targets
+                nonlocal default_config
                 nonlocal checkpoint_notice_shown
                 preferences = self.storage.load_preferences()
+                default_config = _preferred_config(preferences, default_config)
                 saved_ui = preferences.get("ui")
                 ui_preferences = dict(saved_ui) if isinstance(saved_ui, dict) else {}
                 scope_outcome = choose_scope(
@@ -197,8 +199,12 @@ class Controller:
 
             # The language choice is now settled before the direction dialog
             # is constructed, including on a first launch with no preference.
-            available_configs = backend.available_configs_nonblocking()
             while True:
+                list_configs = getattr(jieba_probe, "available_configs_nonblocking", None)
+                available_configs = (
+                    list_configs() if callable(list_configs)
+                    else backend.available_configs_nonblocking()
+                )
                 initial_options = profile_options(settings.active)
                 previous_options = preferences.get("run_options")
                 if isinstance(previous_options, dict):
@@ -216,7 +222,7 @@ class Controller:
                 selected_config = choose_conversion_config(
                     available_configs,
                     default_config=default_config,
-                    jieba_probe=backend,
+                    jieba_probe=jieba_probe,
                     initial_options=initial_options,
                     metadata_available=adapter.metadata_supported(),
                     nav_available=bool(
@@ -273,7 +279,7 @@ class Controller:
                 )
                 if selected_config != backend.config:
                     backend.close()
-                    backend = OpenCCBackend(selected_config)
+                    backend = OpenCCBackend(selected_config, jieba_probe=jieba_probe)
                     self._run_backend_self_test(backend)
 
                 settings.language = language

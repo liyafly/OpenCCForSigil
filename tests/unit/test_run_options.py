@@ -273,3 +273,20 @@ def test_export_preview_requires_a_bound_run_context(tmp_path):
 
     with pytest.raises(RuntimeError, match="not bound to an active profile and backend"):
         settings.export_preview((), (), False, None, None)
+
+
+def test_settings_windows_use_nonblocking_configuration_availability():
+    settings = object.__new__(RunSettings)
+    calls = []
+
+    def blocking_configs():
+        raise AssertionError("UI must not wait for the Jieba probe")
+
+    settings.backend = SimpleNamespace(
+        available_configs=blocking_configs,
+        available_configs_nonblocking=lambda: calls.append("nonblocking") or ("s2t",),
+        jieba_probe_pending=True,
+    )
+
+    assert settings._available_config_options() == (("s2t",), True)
+    assert calls == ["nonblocking"]
