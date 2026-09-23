@@ -189,6 +189,32 @@ def test_long_text_keeps_ascii_quotes_and_greater_than_byte_for_byte():
     assert verify_staged_file(staged).passed
 
 
+def test_random_attribute_replacements_escape_both_quote_delimiters():
+    import random
+
+    rng = random.Random(20260923)
+    alphabet = "ABCXYZ&<>'\" ]"
+    for delimiter, escaped_delimiter in (("\"", "&quot;"), ("'", "&#x27;")):
+        for index in range(24):
+            target = "v" + "".join(rng.choice(alphabet) for _ in range(40)) + "z"
+            rule = Rule(
+                id=f"attribute-{delimiter}-{index}", source="称呼", target=target,
+                direction="s2t",
+            )
+            source = f"<p title={delimiter}称呼{delimiter}>称呼</p>"
+            plan = _plan_with_rules(source, rule)
+            staged = StagingArea().stage("chapter.xhtml", source, plan)
+
+            expected = target.replace("&", "&amp;").replace("<", "&lt;")
+            expected = expected.replace(delimiter, escaped_delimiter)
+            expected_text = target.replace("&", "&amp;").replace("<", "&lt;")
+            expected_text = expected_text.replace("]]>", "]]&gt;")
+            assert staged.converted == (
+                f"<p title={delimiter}{expected}{delimiter}>{expected_text}</p>"
+            )
+            assert verify_staged_file(staged).passed
+
+
 def test_preview_requires_explicit_decision_and_supports_accept_this_and_all():
     source = "<p>汉字与鼠标</p>"
     plan = _plan(source)

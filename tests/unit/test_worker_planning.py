@@ -1,4 +1,5 @@
 from threading import Event, get_ident
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -116,6 +117,7 @@ def test_cancel_during_worker_discards_plan_without_writes():
 
 
 def test_worker_progress_coalesces_large_update_bursts():
+    burst_queued = Event()
     flow = ConversionWorkflow(None, None, ConvertRequest("s2t"))
     flow._sources = tuple(
         SourceDocument(str(index), f"Text/{index}.xhtml", "") for index in range(500)
@@ -128,11 +130,19 @@ def test_worker_progress_coalesces_large_update_bursts():
             pass
 
         def close(self):
-            pass
+            # Keep the future alive after its whole update burst is queued so
+            # the main-thread consumer has to drain/coalesce the queue.
+            burst_queued.set()
+            time.sleep(0.3)
 
     updates = []
-    result = flow.plan_in_worker(Backend, progress=lambda *values: updates.append(values))
+
+    def progress(*values):
+        updates.append(values)
+
+    result = flow.plan_in_worker(Backend, progress=progress)
 
     assert len(result) == 500
     assert updates[-1][1:3] == (500, 500)
-    assert len(updates) < 100
+    assert burst_queued.is_set()
+    assert 1 < len(updates) < 100

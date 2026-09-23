@@ -7,10 +7,10 @@ from app.profiles import Profile, ProfileStore
 from core.preview import PreviewSession
 from rules.models import Rule
 from rules.store import RuleSet, RuleStore
-from ui.rules_window import RuleWindowResult
+from tests.support.fake_qt import make_with_table
+from ui.rules_window import RuleManagerDialog, RuleWindowResult
 from sigil.scope import Scope, TargetSelection
-from ui.preview_window import PreviewOutcome, ScopeOutcome
-from ui.run_options import ConfigurationChoice
+from ui.preview_window import PreviewOutcome, ScopeOutcome, _ConversionConfigDialog
 
 
 class Storage:
@@ -253,20 +253,51 @@ def _accept_all(planned):
 
 def test_new_ruleset_is_applied_on_the_next_controller_run(monkeypatch, tmp_path):
     data_dir = tmp_path / "plugin-data"
-    RuleStore(data_dir).save(RuleSet(
-        "mine", (Rule(id="custom", source="测试", target="专名", direction="s2t"),)))
-    configurations = iter((
-        ConfigurationChoice("s2t", {"ruleset_ids": ["default", "mine"]}),
-        ConfigurationChoice("s2t", {}),
-    ))
+    qt = make_with_table()
+    qt.QInputDialog = SimpleNamespace(getText=lambda *_args, **_kwargs: ("mine", True))
+    rule_dialogs = []
+    original_rule_init = RuleManagerDialog.__init__
+
+    def capture_rule_dialog(self, *args, **kwargs):
+        original_rule_init(self, *args, **kwargs)
+        rule_dialogs.append(self)
+
+    monkeypatch.setattr("ui.rules_window.load_qt", lambda: qt)
+    monkeypatch.setattr("ui.rules_window.RuleManagerDialog.__init__", capture_rule_dialog)
+
+    def execute_rule_dialog(_widget):
+        manager = rule_dialogs[-1]
+        manager.new_ruleset_button.click()
+        manager.source_edit.setText("测试")
+        manager.target_edit.setText("专名")
+        manager.add_button.click()
+        manager.apply_button.click()
+
+    monkeypatch.setattr("ui.rules_window.exec_dialog", execute_rule_dialog)
+    config_dialogs = []
+    original_config_init = _ConversionConfigDialog.__init__
+
+    def capture_config_dialog(self, *args, **kwargs):
+        original_config_init(self, *args, **kwargs)
+        config_dialogs.append(self)
+
+    monkeypatch.setattr(
+        "ui.preview_window._ConversionConfigDialog.__init__", capture_config_dialog)
+    monkeypatch.setattr("ui.preview_window._load_ui_qt", lambda _translator: qt)
+
+    def execute_config_dialog(widget):
+        dialog = next(item for item in config_dialogs if item.dialog is widget)
+        if len(config_dialogs) == 1:
+            dialog.options_panel._tool("rules")
+        dialog._accept()
+
+    monkeypatch.setattr("ui.preview_window.exec_dialog", execute_config_dialog)
     hashes = []
     sources = []
 
     monkeypatch.setattr("ui.preview_window.choose_scope", lambda _adapter, initial_language, **_kw:
                         ScopeOutcome(True, TargetSelection(Scope.SINGLE, ("a",)),
                                      initial_language))
-    monkeypatch.setattr("ui.preview_window.choose_conversion_config",
-                        lambda *_args, **_kwargs: next(configurations))
     monkeypatch.setattr("ui.preview_window.show_preview", lambda planned, **_kwargs: (
         hashes.append(planned[0].plan.rules_snapshot.rules_hash),
         sources.append(tuple(change.rule_source for change in planned[0].plan.changes)),
@@ -280,9 +311,54 @@ def test_new_ruleset_is_applied_on_the_next_controller_run(monkeypatch, tmp_path
     assert Controller(first_book, data_dir=data_dir).run() == 0
     preferences = json.loads((data_dir / "preferences.json").read_text(encoding="utf-8"))
     assert "mine" in preferences["run_options"]["ruleset_ids"]
+    assert RuleStore(data_dir).load("mine").rules[0].source == "测试"
 
     assert Controller(second_book, data_dir=data_dir).run() == 0
     assert first_book.writes[0][1] == "<p>专名</p>"
     assert second_book.writes[0][1] == "<p>专名</p>"
     assert hashes[0] == hashes[1]
     assert all(any(value.startswith("UserRule:") for value in run) for run in sources)
+
+
+def test_deleted_ruleset_is_reported_once_by_controller_and_not_planned(
+    monkeypatch, tmp_path
+):
+    data_dir = tmp_path / "plugin-data"
+    controller = Controller(Book(), data_dir=data_dir)
+    controller.storage.update_preferences(
+        {"run_options": {"ruleset_ids": ["default", "deleted"]}})
+    notices = []
+    plans = []
+
+    def choose_scope(_adapter, initial_language, *, notice=(), **_kwargs):
+        notices.append(tuple(notice))
+        return ScopeOutcome(
+            True, TargetSelection(Scope.SINGLE, ("a",)), initial_language
+        )
+
+    monkeypatch.setattr("ui.preview_window.choose_scope", choose_scope)
+    monkeypatch.setattr(
+        "ui.preview_window.choose_conversion_config",
+        lambda *_args, **_kwargs: "s2t",
+    )
+    monkeypatch.setattr(
+        "ui.preview_window.show_preview",
+        lambda planned, **_kwargs: plans.append(planned) or _accept_all(planned),
+    )
+    monkeypatch.setattr(
+        "ui.preview_window.create_progress_reporter", lambda *_args, **_kwargs: NoProgress())
+    monkeypatch.setattr("ui.preview_window.show_result", lambda **_kwargs: None)
+
+    assert controller.run() == 0
+
+    missing_notices = [
+        notice for call in notices for notice in call
+        if notice[0] == "rulesets_missing"
+    ]
+    assert missing_notices == [("rulesets_missing", "deleted")]
+    assert len(notices) == 1
+    assert plans
+    assert not any(
+        change.rule_source.startswith("UserRule:")
+        for item in plans[0] for change in item.plan.changes
+    )

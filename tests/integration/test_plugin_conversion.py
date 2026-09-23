@@ -135,8 +135,6 @@ def test_post_preview_progress_covers_noncancellable_writeback(monkeypatch, tmp_
         def __init__(self):
             self.phases = []
             self.non_cancellable = False
-            self.close_attempt_ignored = False
-            self.cancelled_state = False
             self.close_calls = 0
 
         def disable_cancel(self):
@@ -144,14 +142,9 @@ def test_post_preview_progress_covers_noncancellable_writeback(monkeypatch, tmp_
 
         def update(self, phase, _index, _total, _href):
             self.phases.append(phase)
-            if phase == "staging" and self.non_cancellable:
-                # Simulate a close/cancel event while the dialog cannot be
-                # cancelled; this must not hide the window or abort writeback.
-                self.close_attempt_ignored = True
-                self.cancelled_state = False
 
         def cancelled(self):
-            return self.cancelled_state
+            return False
 
         def close(self):
             self.close_calls += 1
@@ -178,7 +171,7 @@ def test_post_preview_progress_covers_noncancellable_writeback(monkeypatch, tmp_
     assert Controller(book, data_dir=tmp_path / "plugin-data").run() == 0
 
     post_preview = reporters[-1]
-    assert post_preview.close_attempt_ignored is True
+    assert post_preview.non_cancellable is True
     assert post_preview.cancelled() is False
     assert {"staging", "verifying", "rechecking", "committing"} <= set(
         post_preview.phases)

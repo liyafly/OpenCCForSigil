@@ -9,6 +9,7 @@ from core.preview import PreviewSession
 from rules.store import RuleSet
 from sigil.scope import Scope, TextFile
 from tests.support import fake_qt
+from ui import preview_window, rules_window
 from ui.history_window import show_history
 from ui.i18n import Translator
 from ui.preview_window import (
@@ -127,6 +128,29 @@ def test_conversion_profile_rule_and_history_dialogs_construct(monkeypatch, tmp_
     )
     assert history is not None
     assert history.history_table.rowCount() == 0
+
+
+def test_error_report_and_dictionary_detail_dialogs_construct(monkeypatch):
+    qt = fake_qt.make_with_table()
+    monkeypatch.setattr(preview_window, "_load_ui_qt", lambda _translator: qt)
+    monkeypatch.setattr(preview_window, "exec_dialog", lambda _dialog: None)
+    preview_window.show_error(
+        kind="VERIFY_FAILED",
+        detail="verification failed",
+        files_written=0,
+        log_path="/tmp/session.jsonl",
+    )
+    preview_window._show_report_text(qt, "report details", Translator("en"))
+
+    inspection = rules_window.DictionaryInspection(
+        input="sample", config="s2t", comparisons=(), final="result")
+    monkeypatch.setattr(rules_window, "load_qt", lambda: qt)
+    monkeypatch.setattr(rules_window, "exec_dialog", lambda _dialog: None)
+    monkeypatch.setattr(rules_window, "inspect_dictionary", lambda *_args, **_kwargs: inspection)
+    assert rules_window.show_dictionary_inspector(
+        "sample", config="s2t", official_convert=lambda _config, text: text,
+        translator=Translator("en"),
+    ) is inspection
 
 
 def _class_methods(node: ast.ClassDef, classes: dict[str, ast.ClassDef]) -> set[str]:

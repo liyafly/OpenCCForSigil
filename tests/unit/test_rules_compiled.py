@@ -37,12 +37,16 @@ def _legacy_lock_spans(text, snapshot, *, config, profile_id=None, book_fingerpr
 
 def _random_rules(rng, count):
     rules = []
+    source_heads = "词目汉字天地AB"
     for index in range(count):
-        source = f"词{index}"
+        # Vary the first character so the index is exercised beyond one trie
+        # bucket. Numeric suffixes also create overlapping prefixes (e.g. A1/A10).
+        source = f"{rng.choice(source_heads)}x{index}"
         rule_type = rng.choice(("exact", "protect"))
         scope = rng.choice(("global", "profile", "book"))
         rules.append(Rule(
             id=f"r{index}",
+            enabled=rng.choice((True, True, False)),
             type=rule_type,
             direction=rng.choice(("*", "s2t", "t2s")),
             source=source,
@@ -59,8 +63,10 @@ def test_compiled_lock_spans_matches_legacy_ordering_for_300_random_snapshots():
     rng = random.Random(20260923)
     alphabet = "词目汉字"
     for _ in range(300):
-        snapshot = RuleSnapshot.freeze(_random_rules(rng, rng.randrange(201)))
-        parts = [f"词{rng.randrange(200)}" if rng.random() < 0.45
+        rules = _random_rules(rng, rng.randrange(201))
+        snapshot = RuleSnapshot.freeze(rules)
+        usable_sources = tuple(rule.source for rule in rules if rule.enabled)
+        parts = [rng.choice(usable_sources) if usable_sources and rng.random() < 0.45
                  else rng.choice(alphabet) for _ in range(rng.randrange(1, 25))]
         text = "".join(parts)
         config = rng.choice(("s2t", "t2s"))
@@ -70,18 +76,18 @@ def test_compiled_lock_spans_matches_legacy_ordering_for_300_random_snapshots():
                               book_fingerprint="book")
 
 
-def test_rule_snapshot_is_validated_independently_of_target_count(monkeypatch):
-    import rules.validators as validators
+def test_rule_snapshot_is_validated_once_for_a_multi_file_plan(monkeypatch):
+    import rules.compiled as compiled
 
     count = 0
-    original = validators.validate_rules
+    original = compiled.validate_rules
 
     def counted(rules):
         nonlocal count
         count += 1
         return original(rules)
 
-    monkeypatch.setattr(validators, "validate_rules", counted)
+    monkeypatch.setattr(compiled, "validate_rules", counted)
     snapshot = RuleSnapshot.freeze((Rule(id="rule", source="专名", target="專名",
                                          direction="s2t"),))
 
@@ -103,7 +109,39 @@ def test_rule_snapshot_is_validated_independently_of_target_count(monkeypatch):
     build_conversion_plan(file_id="a", source=source, document=tokenize_xhtml(source),
                           backend=Backend(), request=request)
 
-    assert count <= 3
+    assert count == 1
+
+
+def test_compiled_overlay_covers_prefixes_buckets_disabled_rules_and_conflicts():
+    from rules.compiled import CompiledOverlay, lock_spans_compiled
+    from rules.conflicts import find_conflicts
+
+    rules = (
+        Rule(id="prefix-short", source="词", target="短", direction="s2t"),
+        Rule(id="prefix-long", source="词语", target="长", direction="s2t"),
+        Rule(id="other-bucket", source="目", target="目标", direction="s2t"),
+        Rule(id="disabled-long", enabled=False, source="词语深", target="错误",
+             direction="s2t"),
+        Rule(id="duplicate-a", source="A", target="alpha", direction="s2t"),
+        Rule(id="duplicate-b", source="A", target="alpha", direction="s2t"),
+        Rule(id="disabled-conflict", enabled=False, source="A", target="wrong",
+             direction="s2t"),
+    )
+    snapshot = RuleSnapshot.freeze(rules)
+    conflicts = find_conflicts(rules)
+    assert [(item.kind, item.source, item.blocking) for item in conflicts] == [
+        ("DUPLICATE", "A", False),
+    ]
+
+    overlay = CompiledOverlay.build(snapshot, config="s2t")
+    text = "词语深目A"
+    assert len(overlay.index) == 3
+    assert lock_spans_compiled(text, overlay) == _legacy_lock_spans(
+        text, snapshot, config="s2t")
+    spans = lock_spans_compiled(text, overlay)
+    assert [(span.source, span.target) for span in spans] == [
+        ("词语", "长"), ("目", "目标"), ("A", "alpha"),
+    ]
 
 
 def test_compiled_overlay_rejects_mismatched_requested_hash():

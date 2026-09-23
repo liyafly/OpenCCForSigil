@@ -236,6 +236,18 @@ class Button(Check):
         self.clicked.emit(False)
 
 
+class SpinBox(Base):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._value = 0
+
+    def setValue(self, value):
+        self._value = int(value)
+
+    def value(self):
+        return self._value
+
+
 class Combo(Base):
     def __init__(self, *a):
         super().__init__(*a)
@@ -458,7 +470,6 @@ def make():
         "QProgressDialog",
         "QListView",
         "QTreeWidget",
-        "QSpinBox",
         "QDialogButtonBox",
         "QAction",
         "QShortcut",
@@ -473,6 +484,7 @@ def make():
     qt.QRadioButton = type("QRadioButton", (Radio,), {})
     qt.QPushButton = type("QPushButton", (Button,), {})
     qt.QComboBox = type("QComboBox", (Combo,), {})
+    qt.QSpinBox = SpinBox
     qt.QListWidget = type("QListWidget", (ListWidget,), {})
     qt.QTableWidget = type("QTableWidget", (TableWidget,), {})
     qt.QListWidgetItem = ListItem
