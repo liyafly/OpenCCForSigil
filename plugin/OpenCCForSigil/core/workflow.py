@@ -9,6 +9,7 @@ from threading import Event
 from typing import Callable, Iterable, Optional, Tuple
 
 from core.models import ConversionPlan, ConvertRequest, Diagnostic
+from core.converter import OfficialBackendConverter
 from core.planner import build_conversion_plan
 from core.preview import PreviewSession
 from core.staging import StagedFile, StagingArea, source_sha256
@@ -175,6 +176,7 @@ class ConversionWorkflow:
         if not self._sources:
             self.scan(progress=progress, cancelled=cancelled)
         planned = []
+        converter = OfficialBackendConverter(self.backend)
         total = len(self._sources)
         if not self._sources:
             _report_progress(
@@ -196,7 +198,7 @@ class ConversionWorkflow:
                 href=source_document.href,
                 cancel_message="analysis cancelled",
             )
-            planned.append(self._plan_document(source_document))
+            planned.append(self._plan_document(source_document, converter=converter))
             _report_progress(
                 progress,
                 cancelled,
@@ -230,12 +232,14 @@ class ConversionWorkflow:
         def work():
             backend = backend_factory(self.request.config)
             try:
+                converter = OfficialBackendConverter(backend)
                 results = []
                 for index, source in enumerate(sources):
                     check_cancel()
                     updates.put(("planning", index, len(sources), source.href))
                     results.append(self._plan_document(
-                        source, backend=backend, check_cancel=check_cancel))
+                        source, backend=backend, converter=converter,
+                        check_cancel=check_cancel))
                     check_cancel()
                     updates.put(("planning", index + 1, len(sources), source.href))
                 return tuple(results)
@@ -484,7 +488,7 @@ class ConversionWorkflow:
             raise WorkflowCommitError(exc) from exc
 
     def _plan_document(self, source_document: SourceDocument, *, backend=None,
-                       check_cancel=None) -> PlannedDocument:
+                       converter=None, check_cancel=None) -> PlannedDocument:
         kind = source_document.document_kind
         if kind in {"xhtml", "nav"}:
             try:
@@ -504,6 +508,7 @@ class ConversionWorkflow:
                     session_id=self.session_id,
                     profile_id=self.profile_id,
                     document_kind=kind,
+                    converter=converter,
                 )
                 diagnostic = Diagnostic("SOURCE_INVALID_XHTML", str(exc))
                 return PlannedDocument(
@@ -530,6 +535,7 @@ class ConversionWorkflow:
             session_id=self.session_id,
             profile_id=self.profile_id,
             document_kind=kind,
+            converter=converter,
         )
         return PlannedDocument(source_document, tokenized, plan)
 

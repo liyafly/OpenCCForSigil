@@ -58,8 +58,12 @@ class OfficialBackendConverter:
             diagnosis = diagnose_mixed_script(
                 text,
                 compare,
-                known_output_config=request.config if request.config in {"s2t", "t2s"} else None,
-                known_output=official if request.config in {"s2t", "t2s"} else None,
+                known_output_config=(request.config
+                                     if request.config in {"s2t", "t2s"}
+                                     and not request.pivot_chain else None),
+                known_output=(official
+                              if request.config in {"s2t", "t2s"}
+                              and not request.pivot_chain else None),
             )
             if diagnosis.status == "mixed":
                 diagnostics.append(Diagnostic("MIXED_SCRIPT", diagnosis.warning))
@@ -114,8 +118,10 @@ class OfficialBackendConverter:
         rules_hash = request.rules_snapshot.rules_hash
         cache_key = (rules_hash, request.config, request.profile_id,
                      request.book_fingerprint)
-        overlay = self._compiled_overlays.get(cache_key)
-        if overlay is None:
+        cached = self._compiled_overlays.get(cache_key)
+        if cached is not None and cached[0] is request.rules_snapshot.rules:
+            overlay = cached[1]
+        else:
             overlay = CompiledOverlay.build(
                 request.rules_snapshot,
                 expected_hash=rules_hash,
@@ -123,7 +129,7 @@ class OfficialBackendConverter:
                 profile_id=request.profile_id,
                 book_fingerprint=request.book_fingerprint,
             )
-            self._compiled_overlays[cache_key] = overlay
+            self._compiled_overlays[cache_key] = (request.rules_snapshot.rules, overlay)
         spans = lock_spans_compiled(text, overlay)
         pairer = quotation_pairer or QuotationPairer(request.quotation_mode)
         # Reuse the complete unlocked pipeline while avoiding a second rule pass.

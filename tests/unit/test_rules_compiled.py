@@ -113,3 +113,87 @@ def test_compiled_overlay_rejects_mismatched_requested_hash():
                                          direction="s2t"),))
     with pytest.raises(ValueError, match="^rule snapshot hash mismatch$"):
         CompiledOverlay.build(snapshot, expected_hash="0" * 64, config="s2t")
+
+
+def test_converter_revalidates_a_different_rules_tuple_for_a_cached_hash():
+    from core.converter import OfficialBackendConverter
+
+    class Backend:
+        config = "s2t"
+
+        def convert(self, text):
+            return text
+
+        def convert_for_config(self, _config, text):
+            return text
+
+    first = RuleSnapshot.freeze((Rule(id="one", source="来源", target="來源",
+                                      direction="s2t"),))
+    second = RuleSnapshot.freeze((Rule(id="two", source="来源", target="源頭",
+                                       direction="s2t"),))
+    converter = OfficialBackendConverter(Backend())
+    converter.convert("来源", ConvertRequest(
+        "s2t", rules_snapshot=RequestRuleSnapshot(
+            rules_hash=first.rules_hash, rules=first.rules)))
+
+    request_with_forged_cache_hit = ConvertRequest(
+        "s2t", rules_snapshot=RequestRuleSnapshot(
+            rules_hash=first.rules_hash, rules=second.rules))
+    with pytest.raises(ValueError, match="^rule snapshot hash mismatch$"):
+        converter.convert("来源", request_with_forged_cache_hit)
+
+
+@pytest.mark.parametrize("use_worker", [False, True])
+def test_rule_overlay_is_built_once_per_workflow_plan_across_files(monkeypatch, use_worker):
+    from types import SimpleNamespace
+
+    from core.workflow import ConversionWorkflow
+    from rules.compiled import CompiledOverlay
+    from sigil.adapter import SigilBookAdapter
+
+    class Backend:
+        config = "s2t"
+
+        def convert(self, text):
+            return text
+
+        def convert_for_config(self, _config, text):
+            return text
+
+        def provenance(self):
+            return SimpleNamespace(as_dict=lambda: {"backend": "identity"})
+
+        def close(self):
+            pass
+
+    class Book:
+        def text_iter(self):
+            yield "one", "one.xhtml"
+            yield "two", "two.xhtml"
+
+        def readfile(self, file_id):
+            return f"<p>{file_id} 专名</p>"
+
+    snapshot = RuleSnapshot.freeze((Rule(id="name", source="专名", target="專名",
+                                         direction="s2t"),))
+    request = ConvertRequest(
+        "s2t", rules_snapshot=RequestRuleSnapshot(
+            rules_hash=snapshot.rules_hash, rules=snapshot.rules),
+        diagnose_mixed=False, detailed_classification=False,
+    )
+    calls = 0
+    original_build = CompiledOverlay.build.__func__
+
+    def counted_build(cls, *args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return original_build(cls, *args, **kwargs)
+
+    monkeypatch.setattr(CompiledOverlay, "build", classmethod(counted_build))
+    workflow = ConversionWorkflow(SigilBookAdapter(Book()), Backend(), request)
+    if use_worker:
+        workflow.plan_in_worker(lambda _config: Backend())
+    else:
+        workflow.plan()
+
+    assert calls == 1

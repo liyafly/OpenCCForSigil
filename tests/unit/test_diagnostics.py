@@ -63,3 +63,33 @@ def test_ascii_conversion_does_not_run_mixed_script_diagnosis():
     OfficialBackendConverter(backend).convert("plain text 123", ConvertRequest("s2t"))
 
     assert backend.comparison_calls == []
+
+
+def test_force_pivot_does_not_reuse_chained_output_as_a_direct_config_output():
+    class Backend:
+        config = "s2t"
+
+        def convert(self, text):
+            return self.convert_for_config("s2t", text)
+
+        def convert_for_config(self, config, text):
+            if config == "t2s":
+                return text.replace("裡面", "里面")
+            if config == "s2t":
+                return text.replace("里面", "裏面")
+            raise AssertionError(config)
+
+    backend = Backend()
+    source = "裡面"
+    direct = OfficialBackendConverter(backend).convert(
+        source, ConvertRequest("s2t", detailed_classification=False))
+    pivoted = OfficialBackendConverter(backend).convert(
+        source,
+        ConvertRequest("s2t", pivot_chain=("t2s", "s2t"),
+                       detailed_classification=False),
+    )
+
+    assert [item.code for item in pivoted.diagnostics] == [
+        item.code for item in direct.diagnostics
+    ]
+    assert "MIXED_SCRIPT" not in [item.code for item in pivoted.diagnostics]

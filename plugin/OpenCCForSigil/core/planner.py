@@ -39,6 +39,7 @@ def build_conversion_plan(
     rules_snapshot_hash: Optional[str] = None,
     document_kind: str = "xhtml",
     check_cancel=None,
+    converter: Optional[OfficialBackendConverter] = None,
 ) -> ConversionPlan:
     """Analyze writable targets and freeze their official OpenCC patches.
 
@@ -53,7 +54,7 @@ def build_conversion_plan(
             f"backend config {backend.config!r} does not match request {request.config!r}"
         )
 
-    converter = OfficialBackendConverter(backend)
+    converter = converter or OfficialBackendConverter(backend)
     changes = []
     diagnostics = list(inline_boundary_diagnostics(document)) if document_kind in {"xhtml", "nav"} else []
     block_tags = tuple(tag for tag in document.tags if tag.name.lower() in _BLOCK_LEVEL_ELEMENTS)
@@ -65,6 +66,8 @@ def build_conversion_plan(
         for attribute_index, attribute in enumerate(tag.attributes)
     ))
     attribute_starts = tuple(item[0] for item in attribute_spans)
+    cdata_ranges = _cdata_content_ranges(source)
+    cdata_starts = tuple(start for start, _end in cdata_ranges)
     block_pairers: dict[int, QuotationPairer] = {}
     block_quote_change_ids: dict[int, list[str]] = {}
     block_spans: dict[int, SourceSpan] = {}
@@ -135,7 +138,10 @@ def build_conversion_plan(
             result = converter.convert(target.source_text, request, quotation_pairer=pairer)
         diagnostics.extend(result.diagnostics)
         for local_change in result.changes:
-            change = _absolute_change(file_id, target, local_change, source)
+            change = _absolute_change(
+                file_id, target, local_change, source,
+                cdata_ranges=cdata_ranges, cdata_starts=cdata_starts,
+            )
             if document_kind == "metadata":
                 change = replace(change, risk="HIGH")
             changes.append(replace(change, document_kind=document_kind))
@@ -232,27 +238,73 @@ def _feed_quotation_entities(pairer, source, start, end, ignored_ranges):
             pairer.feed(decoded, mutate=False)
 
 
+def _cdata_content_ranges(source: str) -> tuple[tuple[int, int], ...]:
+    """Find CDATA content spans once so each patch can query them by bisect."""
+
+    ranges = []
+    cursor = 0
+    while cursor < len(source):
+        comment_start = source.find("<!--", cursor)
+        cdata_start = source.find("<![CDATA[", cursor)
+        if comment_start >= 0 and (cdata_start < 0 or comment_start < cdata_start):
+            comment_end = source.find("-->", comment_start + 4)
+            if comment_end < 0:
+                break
+            cursor = comment_end + 3
+            continue
+        if cdata_start < 0:
+            break
+        content_start = cdata_start + len("<![CDATA[")
+        content_end = source.find("]]>", content_start)
+        if content_end < 0:
+            ranges.append((content_start, len(source)))
+            break
+        ranges.append((content_start, content_end))
+        cursor = content_end + len("]]>")
+    return tuple(ranges)
+
+
 def _absolute_change(
     file_id: str,
     target: TextTarget,
     local_change: TokenChange,
     source: str,
+    *,
+    cdata_ranges: Optional[tuple[tuple[int, int], ...]] = None,
+    cdata_starts: Optional[tuple[int, ...]] = None,
 ) -> TokenChange:
     start = target.source_start + local_change.span.start
     end = target.source_start + local_change.span.end
+    patch_end = end
+    change_source = local_change.source
     target_text = local_change.target
-    in_cdata = (source.rfind("<![CDATA[", 0, start) > source.rfind("]]>", 0, start))
+    if cdata_ranges is None:
+        cdata_ranges = _cdata_content_ranges(source)
+        cdata_starts = tuple(range_start for range_start, _range_end in cdata_ranges)
+    elif cdata_starts is None:
+        cdata_starts = tuple(range_start for range_start, _range_end in cdata_ranges)
+    cdata_index = bisect_right(cdata_starts, start) - 1
+    in_cdata = cdata_index >= 0 and start < cdata_ranges[cdata_index][1]
     if in_cdata:
         if "]]>" in target_text:
             raise ValueError("replacement cannot terminate a CDATA section")
     else:
         target_text = _escape_replacement(target_text, target)
+        if target.attribute_name is None:
+            if start >= 2 and source[start - 2:start] == "]]" and target_text.startswith(">"):
+                target_text = "&gt;" + target_text[1:]
+            if target_text.endswith("]]") and source[end:end + 1] == ">":
+                # Include the unchanged delimiter in this patch and serialize it
+                # as an entity so reconstruction never contains the forbidden sequence.
+                target_text += "&gt;"
+                patch_end += 1
+                change_source += ">"
     change_key = "\0".join(
-        (file_id, target.node_id, str(start), str(end), target_text)
+        (file_id, target.node_id, str(start), str(patch_end), target_text)
     )
     change_id = sha256(change_key.encode("utf-8")).hexdigest()[:24]
     before_start = max(0, start - 32)
-    after_end = min(len(source), end + 32)
+    after_end = min(len(source), patch_end + 32)
     text_start = local_change.span.start
     text_end = local_change.span.end
     text_before_start = max(0, text_start - 20)
@@ -264,9 +316,9 @@ def _absolute_change(
     if text_after_end < len(target.source_text):
         text_context_after += "…"
     return TokenChange(
-        source=local_change.source,
+        source=change_source,
         target=target_text,
-        span=SourceSpan(start, end),
+        span=SourceSpan(start, patch_end),
         rule_source=local_change.rule_source,
         change_id=change_id,
         file_id=file_id,
@@ -277,7 +329,7 @@ def _absolute_change(
         comparison_stage=local_change.comparison_stage,
         attribution_confidence=local_change.attribution_confidence,
         context_before=source[before_start:start],
-        context_after=source[end:after_end],
+        context_after=source[patch_end:after_end],
         text_context_before=text_context_before,
         text_context_after=text_context_after,
         document_kind=target.document_kind,

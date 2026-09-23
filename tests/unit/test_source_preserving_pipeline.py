@@ -152,6 +152,26 @@ def test_replacement_escapes_cdata_terminator_in_text():
     assert verify_staged_file(staged).passed
 
 
+def test_replacement_escapes_greater_than_when_it_completes_adjacent_cdata_terminator():
+    rule = Rule(id="leading-terminator", source="称呼", target=">", direction="s2t")
+    source = "<p>]]称呼</p>"
+    plan = _plan_with_rules(source, rule)
+    staged = StagingArea().stage("chapter.xhtml", source, plan)
+
+    assert staged.converted == "<p>]]&gt;</p>"
+    assert verify_staged_file(staged).passed
+
+
+def test_replacement_escapes_adjacent_greater_than_only_when_it_completes_terminator():
+    rule = Rule(id="trailing-terminator", source="称呼", target="]]", direction="s2t")
+    source = "<p>称呼> a > b</p>"
+    plan = _plan_with_rules(source, rule)
+    staged = StagingArea().stage("chapter.xhtml", source, plan)
+
+    assert staged.converted == "<p>]]&gt; a > b</p>"
+    assert verify_staged_file(staged).passed
+
+
 def test_long_text_keeps_ascii_quotes_and_greater_than_byte_for_byte():
     import random
 
@@ -335,9 +355,9 @@ def test_workflow_emits_progress_after_each_operation(monkeypatch):
     )
     original_plan_document = workflow._plan_document
 
-    def plan_document(source_document):
+    def plan_document(source_document, **kwargs):
         events.append(("plan", source_document.file_id))
-        return original_plan_document(source_document)
+        return original_plan_document(source_document, **kwargs)
 
     monkeypatch.setattr(workflow, "_plan_document", plan_document)
 
