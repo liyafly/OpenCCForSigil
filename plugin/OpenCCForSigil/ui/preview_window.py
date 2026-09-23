@@ -531,6 +531,7 @@ def show_result(
     failed_file: str | None = None,
     return_to_scope: bool = False,
     diagnostics=(),
+    report_text: str | None = None,
 ) -> str | None:
     """Show a concise localized terminal result after the write boundary."""
 
@@ -541,39 +542,33 @@ def show_result(
         if files_not_written is None
         else max(int(files_not_written), 0)
     )
-    result_values = _result_count_values(
-        files_scanned=files_scanned,
-        files_changed=files_changed,
-        accepted_changes=accepted_changes,
-        skipped_changes=skipped_changes,
-        files_not_written=not_written,
-        files_without_changes=files_without_changes,
+    rows = (
+        _translator.text("result.row.scanned", count=max(int(files_scanned), 0)),
+        _translator.text(
+            "result.row.written", files=max(int(files_changed), 0),
+            accepted=max(int(accepted_changes), 0), skipped=max(int(skipped_changes), 0)),
+        _translator.text(
+            "result.row.unwritten", files=not_written,
+            unchanged=max(int(files_without_changes), 0)),
     )
     if status == "partial_failure":
-        message = _translator.text(
-            "result.partial",
-            **result_values,
-            failed_file=failed_file or "?",
-        )
+        status_line = _translator.text("result.status.partial", file=failed_file or "?")
         method = getattr(qt_widgets.QMessageBox, "warning")
     elif status == "cancelled":
-        message = _translator.text("result.cancelled")
+        status_line = _translator.text("result.status.cancelled")
         method = getattr(qt_widgets.QMessageBox, "information")
     elif accepted_changes == 0 and skipped_changes:
-        message = _translator.text(
-            "result.skipped",
-            **result_values,
-        )
+        status_line = _translator.text("result.status.skipped")
         method = getattr(qt_widgets.QMessageBox, "information")
     elif accepted_changes == 0:
-        message = _translator.text("result.noop", **result_values)
+        status_line = _translator.text("result.status.noop")
         method = getattr(qt_widgets.QMessageBox, "information")
     else:
-        message = _translator.text(
-            "result.done",
-            **result_values,
-        )
+        status_line = _translator.text("result.status.success")
         method = getattr(qt_widgets.QMessageBox, "information")
+    message = status_line + "\n\n" + "\n".join(rows)
+    if status == "success" and accepted_changes > 0:
+        message += "\n\n" + _translator.text("result.save_reminder")
     diagnostics = tuple(diagnostics)
     if diagnostics:
         rows = []
@@ -588,20 +583,45 @@ def show_result(
             else:
                 rows.append(str(item))
         message += "\n\n" + _translator.text("result.invalid_sources") + "\n" + "\n".join(rows)
-    if return_to_scope:
+    if return_to_scope or report_text:
         box = qt_widgets.QMessageBox()
         box.setWindowTitle(_translator.text("app.title"))
         box.setText(message)
-        back = box.addButton(
-            _translator.text("result.back_to_scope"), qt_widgets.QMessageBox.RejectRole)
-        close = box.addButton(
-            _translator.text("common.close"), qt_widgets.QMessageBox.AcceptRole)
+        back = None
+        if return_to_scope:
+            back = box.addButton(
+                _translator.text("result.back_to_scope"), qt_widgets.QMessageBox.RejectRole)
+        view_report = None
+        if report_text:
+            view_report = box.addButton(
+                _translator.text("result.view_report"), qt_widgets.QMessageBox.ActionRole)
+        close = box.addButton(_translator.text("common.close"), qt_widgets.QMessageBox.AcceptRole)
         box.setDefaultButton(close)
         exec_method = getattr(box, "exec", None) or box.exec_
         exec_method()
-        return "back_to_scope" if box.clickedButton() is back else "close"
+        clicked = box.clickedButton()
+        if view_report is not None and clicked is view_report:
+            _show_report_text(qt_widgets, report_text)
+            return "close"
+        return "back_to_scope" if back is not None and clicked is back else "close"
     method(None, _translator.text("app.title"), message)
     return None
+
+
+def _show_report_text(qt_widgets, report_text: str) -> None:
+    dialog = qt_widgets.QDialog()
+    dialog.setWindowTitle(_translator.text("result.view_report"))
+    dialog.resize(760, 560)
+    layout = qt_widgets.QVBoxLayout(dialog)
+    view = qt_widgets.QPlainTextEdit()
+    view.setReadOnly(True)
+    view.setPlainText(report_text)
+    layout.addWidget(view)
+    close = qt_widgets.QPushButton(_translator.text("common.close"))
+    close.clicked.connect(dialog.accept)
+    layout.addWidget(close)
+    exec_method = getattr(dialog, "exec", None) or dialog.exec_
+    exec_method()
 
 
 def show_error(

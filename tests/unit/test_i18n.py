@@ -135,7 +135,10 @@ def test_result_dialog_explains_files_without_a_write(monkeypatch):
         files_without_changes=1,
     )
 
-    assert messages == [
-        "已分析 38 个文件，实际写回 37 个文件；应用 37 项变更，跳过 0 项变更；1 个文件未写回，其中 1 个文件没有建议变更。"
-    ]
+    assert len(messages) == 1
+    lines = messages[0].splitlines()
+    assert lines[2] == "已分析：38 个文件"
+    assert lines[3] == "已写回：37 个文件（应用 37 项修改，跳过 0 项）"
+    assert lines[4] == "未写回：1 个文件（其中没有建议变更：1 个）"
+    assert lines[6] == "修改已交给 Sigil，请在 Sigil 中检查并保存 EPUB。"
     preview_window.set_ui_language("en")

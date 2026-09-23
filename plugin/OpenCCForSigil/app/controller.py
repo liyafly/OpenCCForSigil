@@ -471,7 +471,7 @@ class Controller:
                     skipped_changes=skipped_change_count,
                 )
             )
-            self._record_history(planned, staged, backend)
+            report_text = self._record_history(planned, staged, backend)
             _show_result_safely(
                 show_result,
                 status="success",
@@ -482,6 +482,7 @@ class Controller:
                 files_not_written=max(0, len(planned) - len(staged)),
                 files_without_changes=files_without_changes,
                 diagnostics=invalid_source_diagnostics,
+                report_text=report_text,
             )
             return 0
         except WorkflowCommitError as exc:
@@ -585,6 +586,7 @@ class Controller:
     def _record_history(self, planned, staged, backend):
         from core.staging import source_sha256
         from logging_ext.history import HistoryStore
+        from logging_ext.report import render_markdown
         by_id = {item.source.file_id: item for item in planned}
         manifest = {
             "schema_version": 1, "session_id": self.session.session_id,
@@ -599,6 +601,7 @@ class Controller:
                 "warnings": [diagnostic.code for diagnostic in item.plan.diagnostics],
             } for item in staged],
         }
+        report_text = None
         try:
             summary = json.loads(self.logger.summary_path.read_text(encoding="utf-8"))
             book_path = ""
@@ -611,14 +614,17 @@ class Controller:
                 except Exception:
                     book_path = ""
             summary["book_label"] = book_path
+            provenance = backend.provenance().as_dict()
+            report_text = render_markdown(summary, manifest, provenance)
             HistoryStore(self.storage.paths.history).record_session(
-                summary, manifest, backend.provenance().as_dict())
+                summary, manifest, provenance)
             self.logger.event("commit_manifest", **manifest)
         except (OSError, ValueError) as exc:
             # A failed audit export after the write boundary must not pretend
             # that the verified conversion itself failed or was rolled back.
             self.logger.event("history_failed", level="ERROR", error=str(exc))
             print(f"Conversion completed, but history could not be saved: {exc}")
+        return report_text
 
     def _summary(
         self,

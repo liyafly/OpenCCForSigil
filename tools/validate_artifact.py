@@ -227,6 +227,16 @@ _I18N_REQUIRED_KEYS = frozenset(
         "history.status.partial_failure",
         "history.status.failed",
         "history.status.cancelled",
+        "result.row.scanned",
+        "result.row.written",
+        "result.row.unwritten",
+        "result.status.success",
+        "result.status.partial",
+        "result.status.cancelled",
+        "result.status.skipped",
+        "result.status.noop",
+        "result.save_reminder",
+        "result.view_report",
     }
 )
 

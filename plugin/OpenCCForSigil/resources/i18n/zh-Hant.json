@@ -249,5 +249,15 @@
   "history.status.completed": "已完成",
   "history.status.partial_failure": "部分失敗",
   "history.status.failed": "失敗",
-  "history.status.cancelled": "已取消"
+  "history.status.cancelled": "已取消",
+  "result.row.scanned": "已分析：{count} 個檔案",
+  "result.row.written": "已寫回：{files} 個檔案（應用 {accepted} 項修改，略過 {skipped} 項）",
+  "result.row.unwritten": "未寫回：{files} 個檔案（其中沒有建議變更：{unchanged} 個）",
+  "result.status.success": "轉換完成。",
+  "result.status.partial": "寫回部分檔案後失敗：{file}。",
+  "result.status.cancelled": "轉換已取消。",
+  "result.status.skipped": "已略過所有建議變更。",
+  "result.status.noop": "本次沒有需要轉換的內容。",
+  "result.save_reminder": "修改已交給 Sigil，請在 Sigil 中檢查並儲存 EPUB。",
+  "result.view_report": "檢視報告"
 }

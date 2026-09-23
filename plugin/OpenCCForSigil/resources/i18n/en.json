@@ -249,5 +249,15 @@
   "history.status.completed": "Completed",
   "history.status.partial_failure": "Partial failure",
   "history.status.failed": "Failed",
-  "history.status.cancelled": "Cancelled"
+  "history.status.cancelled": "Cancelled",
+  "result.row.scanned": "Analyzed files: {count}",
+  "result.row.written": "Written files: {files} (applied changes: {accepted}, skipped changes: {skipped})",
+  "result.row.unwritten": "Files not written: {files} (no proposed changes: {unchanged})",
+  "result.status.success": "Conversion completed.",
+  "result.status.partial": "Some changes were written before failure at {file}.",
+  "result.status.cancelled": "Conversion was cancelled.",
+  "result.status.skipped": "All proposed changes were skipped.",
+  "result.status.noop": "No conversion changes were needed.",
+  "result.save_reminder": "Changes are in Sigil. Review and save the EPUB in Sigil.",
+  "result.view_report": "View report"
 }
