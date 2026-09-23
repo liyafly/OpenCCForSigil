@@ -41,6 +41,12 @@ saving, and reopening an EPUB in each real Sigil host. Linux aarch64 is
 supported through its native payload. Windows ARM and Python minor versions
 other than 3.14 are not declared supported payloads.
 
+On Windows 11 on Arm, the possible route is x64 Sigil under Windows x64
+emulation with the `windows-x86_64` package, and only when the plugin's Python
+runtime reports x86_64/CPython 3.14. That route has not been tested on a Windows
+Arm device. Windows 10 on Arm does not provide x64 emulation. See the
+[Windows on Arm status](docs/release.md#windows-on-arm-status).
+
 Standard preflight is independent of optional Jieba loading. An optional load
 failure disables Jieba with its reason; corruption/provenance failures block
 execution. Runtime never downloads dependencies, invokes pip, imports a system

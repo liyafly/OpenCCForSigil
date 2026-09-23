@@ -142,6 +142,31 @@ which recomputes every payload tree and data hash from the archive itself.
 
 To use it, push the branch or select **Actions → CI and Fat Plugin build → Run
 workflow**. Download the artifact named
-`OpenCCForSigil-fat-plugin-<commit>` from the successful run. No local
+`OpenCCForSigil-packages-<commit>` from the successful run. It contains all
+seven release assets after package validation. No local
 Windows/Linux installation is required; GitHub-hosted runner availability and
 repository Actions-minute limits still apply.
+
+## Windows on Arm status
+
+Reviewed on 2026-09-24. The official [Sigil download page](https://sigil-ebook.com/sigil/download/)
+currently offers a Windows x64 installer. Microsoft documents x64 emulation on
+Windows 11 on Arm; Windows 10 on Arm emulates x86 apps but not x64 apps. PyPI's
+[OpenCC release files](https://pypi.org/project/OpenCC/) currently top out at
+1.4.2, whose CPython 3.14 Windows wheel is `win_amd64`. A check of the
+[PyPI JSON release index](https://pypi.org/pypi/OpenCC/json) across all listed
+versions found no `win_arm64` wheel.
+
+There is no native Windows ARM64 payload. On Windows 11 on Arm, the x64 route
+is only a candidate when both the running Sigil process and its plugin Python
+are x86_64 and CPython 3.14; physical-device acceptance remains **Not verified**.
+Before making a support claim, record the Sigil version and the plugin runtime's
+`platform.machine()` and `sys.version`, then install the x64 package and verify
+conversion, save, and reopen on that device. Windows 10 on Arm cannot use this
+x64 route.
+
+If a native ARM64 Sigil becomes available, request an official `win_arm64`
+OpenCC wheel from the upstream project and add that verified wheel following
+the existing native payload workflow. Building a production wheel from the
+sdist remains outside the current provenance invariant and requires a separate
+specification decision.

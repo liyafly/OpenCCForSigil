@@ -35,7 +35,7 @@ BYVoid/OpenCC official Python Binding (`opencc.OpenCC`); the v1.2 direct
 | Define or review user rule behavior | [`rule-format.md`](rule-format.md) |
 | Understand privacy-safe storage and logs | [`privacy.md`](privacy.md) |
 | Run local and release validation | [`testing.md`](testing.md) |
-| Build and publish the Fat Plugin | [`release.md`](release.md) |
+| Build and publish plugin packages | [`release.md`](release.md) |
 | Record an implementation/specification deviation | [`deviations.md`](deviations.md) |
 | Read the project license and third-party license boundary | [`licensing.md`](licensing.md) |
 | Review the progress, packaging, and license changes | [`review-2026-09-08.md`](review-2026-09-08.md) |
@@ -47,13 +47,13 @@ BYVoid/OpenCC official Python Binding (`opencc.OpenCC`); the v1.2 direct
 ## Release artifacts
 
 For future workflow runs, CI uploads one Actions artifact named
-`OpenCCForSigil-fat-plugin-${{ github.sha }}` containing
-`OpenCCForSigil_${{ github.sha }}.zip`. A tagged release verifies that exact
-commit-named ZIP, renames it to `OpenCCForSigil_<version>.zip`, and uploads that
-file as the release's one product asset. GitHub may also expose automatically
-generated source archives for the tag; those are source snapshots rather than
-installable plugin assets. The product ZIP has the single top-level
-`OpenCCForSigil/` directory required by Sigil.
+`OpenCCForSigil-packages-${{ github.sha }}` containing the Fat Plugin, five
+platform ZIPs, and `SHA256SUMS.txt`. A tagged release verifies all six package
+versions and the checksum manifest, then publishes all seven assets after the
+five native package-smoke jobs pass. Older releases may contain fewer assets.
+GitHub may also expose automatically generated source archives for the tag;
+those are source snapshots rather than installable plugin assets. Each product
+ZIP has the single top-level `OpenCCForSigil/` directory required by Sigil.
 
 Normative specifications, testing guidance, and release notes remain in this
 repository under `docs/`. They are not copied into `dist/` or generated as a

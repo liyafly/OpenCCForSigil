@@ -22,6 +22,10 @@ converting a fixture EPUB, saving it, and reopening it. Include the Sigil
 version, OS version, and process architecture. Static checks and native CI
 smoke tests do not count as host acceptance.
 
+Windows on Arm is not native support. The x64 package is only a candidate for
+Windows 11 on Arm with x64 Sigil and x64 plugin Python; mark it **Not verified**
+until tested on a physical device. Windows 10 on Arm cannot run x64 Sigil.
+
 ## Changes
 
 - <Release changes>
