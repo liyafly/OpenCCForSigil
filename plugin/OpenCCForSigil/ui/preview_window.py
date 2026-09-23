@@ -272,6 +272,7 @@ def choose_conversion_config(
     available_configs: Sequence[str],
     *,
     default_config: str = "s2t",
+    jieba_probe=None,
 ) -> str | None:
     """Ask for an explicit conversion direction before building a plan.
 
@@ -293,7 +294,8 @@ def choose_conversion_config(
         if plugin in available
     }
     dialog = _ConversionConfigDialog(
-        qt_widgets, configs, default_config, jieba_configs, translator=_translator
+        qt_widgets, configs, default_config, jieba_configs, translator=_translator,
+        jieba_probe=jieba_probe,
     )
     exec_method = getattr(dialog.dialog, "exec", None) or dialog.dialog.exec_
     exec_method()
@@ -488,12 +490,14 @@ def _load_qt_widgets() -> Any:
         from PySide6 import QtCore, QtWidgets
 
         QtWidgets.Qt = QtCore.Qt
+        QtWidgets.QTimer = QtCore.QTimer
         return QtWidgets
     except ImportError:
         try:
             from PyQt5 import QtCore, QtWidgets
 
             QtWidgets.Qt = QtCore.Qt
+            QtWidgets.QTimer = QtCore.QTimer
             return QtWidgets
         except ImportError as exc:
             raise UIUnavailableError(_translator.text("error.ui_unavailable")) from exc
@@ -896,10 +900,18 @@ class _ConversionConfigDialog:
         jieba_configs: dict[str, str],
         *,
         translator: Translator,
+        jieba_probe=None,
     ) -> None:
         self._qt = qt_widgets
         self._jieba_configs = jieba_configs
         self._translator = translator
+        self._jieba_probe = jieba_probe
+        self._probe_error = None
+        self._probe_state = "not_started"
+        self._default_base = BASE_CONFIG_BY_JIEBA.get(default_config, default_config)
+        self._preferred_jieba = default_config in BASE_CONFIG_BY_JIEBA
+        self._direction_reselected = not self._preferred_jieba
+        self._updating_jieba = False
         self.accepted = False
         self.selected_config = None
         self.dialog = qt_widgets.QDialog()
@@ -929,6 +941,10 @@ class _ConversionConfigDialog:
         self.jieba_checkbox = qt_widgets.QCheckBox(self._translator.text("config.jieba"))
         self.jieba_checkbox.setToolTip(self._translator.text("config.jieba_tooltip"))
         layout.addWidget(self.jieba_checkbox)
+        self.jieba_details_button = qt_widgets.QPushButton(
+            self._translator.text("config.jieba_details"))
+        self.jieba_details_button.setEnabled(False)
+        layout.addWidget(self.jieba_details_button)
 
         from ui.run_options import RunOptionsPanel
         self.options_panel = RunOptionsPanel(qt_widgets, translator, layout)
@@ -941,14 +957,27 @@ class _ConversionConfigDialog:
         buttons.addWidget(self.continue_button)
         layout.addLayout(buttons)
         self.cancel_button.clicked.connect(self.dialog.reject)
+        self.cancel_button.clicked.connect(self._stop_probe_timer)
         self.continue_button.clicked.connect(self._accept)
-        self.combo.currentIndexChanged.connect(self._update_jieba_state)
+        self.combo.currentIndexChanged.connect(self._direction_changed)
         self.jieba_checkbox.stateChanged.connect(self._update_jieba_state)
-        default_base = BASE_CONFIG_BY_JIEBA.get(default_config, default_config)
-        selected_index = self.combo.findData(default_base)
+        self.jieba_details_button.clicked.connect(self._show_jieba_details)
+        selected_index = self.combo.findData(self._default_base)
         if selected_index >= 0:
             self.combo.setCurrentIndex(selected_index)
-        self.jieba_checkbox.setChecked(default_config in self._jieba_configs.values())
+        self.jieba_checkbox.setChecked(
+            default_config in self._jieba_configs.values())
+        if self._jieba_probe is not None:
+            self._poll_jieba_probe()
+            if self._probe_state == "pending":
+                timer_type = getattr(qt_widgets, "QTimer", None)
+                if timer_type is not None:
+                    self._probe_timer = timer_type(self.dialog)
+                    self._probe_timer.setInterval(50)
+                    self._probe_timer.timeout.connect(self._poll_jieba_probe)
+                    self._probe_timer.start()
+        else:
+            self._probe_state = "available" if self._jieba_configs else "unavailable"
         self._update_jieba_state()
 
     def _get_config(self):
@@ -965,24 +994,84 @@ class _ConversionConfigDialog:
         self._update_jieba_state()
 
     def _update_jieba_state(self) -> None:
+        if self._updating_jieba:
+            return
+        self._updating_jieba = True
+        try:
+            self._apply_jieba_state()
+        finally:
+            self._updating_jieba = False
+
+    def _apply_jieba_state(self) -> None:
         base_config = str(self.combo.currentData())
         plugin_config = self._jieba_configs.get(base_config)
-        if plugin_config is None:
+        if self._probe_state == "pending" or plugin_config is None:
             self.jieba_checkbox.setChecked(False)
             self.jieba_checkbox.setEnabled(False)
         else:
             self.jieba_checkbox.setEnabled(True)
-        if self._jieba_configs:
-            self.jieba_status.setText(
-                self._translator.text("config.jieba_available")
-            )
+        if self._probe_state == "pending":
+            status = self._translator.text("config.jieba_checking")
+        elif self._probe_state == "available":
+            status = self._translator.text("config.jieba_available")
         else:
-            self.jieba_status.setText(
-                self._translator.text("config.jieba_unavailable")
-                + ("\n" + _jieba_unavailable_reason if _jieba_unavailable_reason else "")
-            )
+            status = self._translator.text("config.jieba_unavailable")
+            if self._preferred_jieba and not self._direction_reselected:
+                status += "\n" + self._translator.text("config.jieba_reselect")
+        if self._probe_state == "available" and self._preferred_jieba \
+                and not self._direction_reselected and base_config == self._default_base:
+            self.jieba_checkbox.setChecked(True)
+        if self._probe_error:
+            tooltip = self._translator.text(
+                "config.jieba_unavailable_tooltip", reason=self._probe_error)
+        else:
+            tooltip = self._translator.text("config.jieba_tooltip")
+        self.jieba_checkbox.setToolTip(tooltip)
+        self.jieba_status.setToolTip(tooltip)
+        self.jieba_status.setText(status)
+        self.jieba_details_button.setEnabled(bool(self._probe_error))
+        if self._preferred_jieba and self._probe_state == "pending":
+            self.continue_button.setEnabled(False)
+        elif (self._preferred_jieba and self._probe_state == "unavailable"
+              and not self._direction_reselected):
+            self.continue_button.setEnabled(False)
+        else:
+            self.continue_button.setEnabled(True)
         if hasattr(self, "options_panel"):
             self.options_panel.update_enablement(self._get_config())
+
+    def _direction_changed(self, *_args):
+        if str(self.combo.currentData()) != self._default_base:
+            self._direction_reselected = True
+        self._update_jieba_state()
+
+    def _poll_jieba_probe(self):
+        state, reason, _elapsed_ms = self._jieba_probe.jieba_probe_state()
+        self._probe_state = state
+        self._probe_error = reason
+        if state == "available":
+            available = set(self._jieba_probe.available_configs_nonblocking())
+            self._jieba_configs = {
+                base: config for base, config in JIEBA_CONFIG_BY_BASE.items()
+                if config in available
+            }
+        elif state == "unavailable":
+            self._jieba_configs = {}
+        self._update_jieba_state()
+
+    def _show_jieba_details(self):
+        if not self._probe_error:
+            return
+        self._qt.QMessageBox.information(
+            self.dialog,
+            self._translator.text("config.jieba_details_title"),
+            self._probe_error,
+        )
+
+    def _stop_probe_timer(self):
+        timer = getattr(self, "_probe_timer", None)
+        if timer is not None:
+            timer.stop()
 
     def _accept(self) -> None:
         from transforms.language_tags import target_language
@@ -1002,6 +1091,7 @@ class _ConversionConfigDialog:
         except ValueError as exc:
             self._qt.QMessageBox.warning(self.dialog, self._translator.text("config.title"), str(exc))
             return
+        self._stop_probe_timer()
         self.selected_config = ConfigurationChoice(config, options)
         self.accepted = True
         self.dialog.accept()

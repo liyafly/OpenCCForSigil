@@ -3,6 +3,7 @@
 from datetime import datetime, timezone
 import json
 from pathlib import Path
+from threading import Lock
 import traceback
 from typing import Any, Dict, Mapping, Optional
 from uuid import uuid4
@@ -28,6 +29,7 @@ class SessionLogger:
         month_root = logs_root / datetime.now(timezone.utc).strftime("%Y-%m")
         self.log_path = month_root / f"{self.session_id}.jsonl"
         self.summary_path = month_root / f"{self.session_id}.summary.json"
+        self._event_lock = Lock()
 
     def event(self, name: str, level: str = "INFO", **fields: Any) -> Dict[str, Any]:
         """Record and return a structured event."""
@@ -39,7 +41,8 @@ class SessionLogger:
             "event": name,
         }
         event.update(fields)
-        append_jsonl(self.log_path, event)
+        with self._event_lock:
+            append_jsonl(self.log_path, event)
         return event
 
     def exception(self, name: str, error: Optional[BaseException] = None) -> None:

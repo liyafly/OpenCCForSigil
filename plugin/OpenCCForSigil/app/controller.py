@@ -70,6 +70,14 @@ class Controller:
             # advertised and verified the native plugin capability.
             backend = OpenCCBackend("s2t")
             self._run_backend_self_test(backend)
+            backend.start_jieba_probe(
+                on_complete=lambda result: self.logger.event(
+                    "optional_jieba_probe",
+                    elapsed_ms=round(result[2], 1),
+                    result="available" if result[0] else "unavailable",
+                    reason=result[1],
+                )
+            )
 
             if not _book_supports_conversion(self.bk):
                 return self._complete_noop(
@@ -119,7 +127,7 @@ class Controller:
 
             # The language choice is now settled before the direction dialog
             # is constructed, including on a first launch with no preference.
-            available_configs = backend.available_configs()
+            available_configs = backend.available_configs_nonblocking()
             from ui.run_options import configure_run_options
             settings = RunSettings(self.storage, adapter, backend, preferences)
             while True:
@@ -132,10 +140,13 @@ class Controller:
                     initial_options.update(previous_options)
                 configure_run_options(initial_options, metadata_available=adapter.metadata_supported(),
                                       services=settings)
-                set_jieba_status(backend.jieba_error)
-                if backend.jieba_error:
-                    self.logger.event("optional_jieba_unavailable", reason=backend.jieba_error)
-                selected_config = choose_conversion_config(available_configs, default_config=default_config)
+                _probe_state, probe_error, _elapsed_ms = backend.jieba_probe_state()
+                set_jieba_status(probe_error)
+                selected_config = choose_conversion_config(
+                    available_configs,
+                    default_config=default_config,
+                    jieba_probe=backend,
+                )
                 if selected_config is None:
                     self.storage.save_preferences(scope_preferences)
                     self.session.cancel()

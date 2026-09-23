@@ -76,7 +76,7 @@ def _patch_scoped_ui(monkeypatch, events=None):
             language=initial_language,
         )
 
-    def choose_config(available_configs, default_config):
+    def choose_config(available_configs, default_config, **_kwargs):
         if events is not None:
             events.append("direction")
         return "t2s"
@@ -100,7 +100,7 @@ def test_controller_runs_preview_stage_verify_commit(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(
         "ui.preview_window.choose_conversion_config",
-        lambda available_configs, default_config: "t2s",
+        lambda available_configs, default_config, **_kwargs: "t2s",
     )
 
     def accept_all(planned):
@@ -192,7 +192,7 @@ def test_controller_reports_unwritten_no_change_files_separately(monkeypatch, tm
     )
     monkeypatch.setattr(
         "ui.preview_window.choose_conversion_config",
-        lambda available_configs, default_config: "t2s",
+        lambda available_configs, default_config, **_kwargs: "t2s",
     )
     monkeypatch.setattr("ui.preview_window.show_preview", _accept_all_preview)
     monkeypatch.setattr(

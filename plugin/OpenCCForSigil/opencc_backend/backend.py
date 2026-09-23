@@ -1,6 +1,8 @@
 """Production adapter for the vendored official `opencc` package."""
 
 from dataclasses import dataclass
+from concurrent.futures import Future, ThreadPoolExecutor
+from time import perf_counter
 from typing import Dict, Optional, Tuple
 
 from app.errors import DependencyError
@@ -56,6 +58,8 @@ class OpenCCBackend:
         self._available_configs = standard_configs + jieba_configs
         self._jieba_checked = False
         self._jieba_error: Optional[str] = None
+        self._jieba_future: Future | None = None
+        self._jieba_executor: ThreadPoolExecutor | None = None
         self._ensure_config_is_exposed()
         try:
             # This is the public upstream API. The default tofu policy is intentional.
@@ -69,6 +73,39 @@ class OpenCCBackend:
         if self.probe_jieba():
             return self._available_configs
         return tuple(config for config in self._available_configs if not is_jieba_config(config))
+
+    def available_configs_nonblocking(self) -> Tuple[str, ...]:
+        """Return verified capabilities without waiting for a background probe."""
+
+        if self.jieba_probe_state()[0] == "available":
+            return self._available_configs
+        return tuple(config for config in self._available_configs if not is_jieba_config(config))
+
+    def start_jieba_probe(self, on_complete=None) -> None:
+        """Start optional native probing without delaying the first settings UI."""
+
+        if self._jieba_checked or self._jieba_future is not None:
+            return
+        self._jieba_executor = ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="OpenCC-jieba-probe")
+        self._jieba_future = self._jieba_executor.submit(self._probe_jieba_payload)
+        if callable(on_complete):
+            self._jieba_future.add_done_callback(
+                lambda future: on_complete(future.result()))
+
+    def jieba_probe_state(self) -> tuple[str, Optional[str], Optional[float]]:
+        """Return pending/available/unavailable and consume completed results on caller thread."""
+
+        future = self._jieba_future
+        if future is not None:
+            if not future.done():
+                return "pending", None, None
+            self._apply_jieba_probe_result(future.result())
+        if not self._jieba_checked:
+            return "not_started", None, None
+        state = "unavailable" if self._jieba_error else "available"
+        elapsed = getattr(self, "_jieba_elapsed_ms", None)
+        return state, self._jieba_error, elapsed
 
     def jieba_available(self) -> bool:
         """Return whether the selected payload exposes verified native Jieba."""
@@ -90,19 +127,31 @@ class OpenCCBackend:
         """
 
         if not self._jieba_checked:
-            self._jieba_checked = True
-            try:
-                if self._jieba_plugin is None:
-                    raise RuntimeError("official native Jieba is not included in this payload")
-                if not set(JIEBA_CONFIGS) <= set(self._available_configs):
-                    raise RuntimeError("official native Jieba configurations are incomplete")
-                for config in JIEBA_CONFIGS:
-                    value = self._module.OpenCC(config).convert("汉字")
-                    if not isinstance(value, str):
-                        raise TypeError(f"{config} returned a non-text result")
-            except Exception as exc:
-                self._jieba_error = str(exc)
+            future = self._jieba_future
+            result = future.result() if future is not None else self._probe_jieba_payload()
+            self._apply_jieba_probe_result(result)
         return self._jieba_error is None
+
+    def _probe_jieba_payload(self) -> tuple[bool, Optional[str], float]:
+        started = perf_counter()
+        try:
+            if self._jieba_plugin is None:
+                raise RuntimeError("official native Jieba is not included in this payload")
+            if not set(JIEBA_CONFIGS) <= set(self._available_configs):
+                raise RuntimeError("official native Jieba configurations are incomplete")
+            for config in JIEBA_CONFIGS:
+                value = self._module.OpenCC(config).convert("汉字")
+                if not isinstance(value, str):
+                    raise TypeError(f"{config} returned a non-text result")
+            return True, None, (perf_counter() - started) * 1000
+        except Exception as exc:
+            return False, str(exc), (perf_counter() - started) * 1000
+
+    def _apply_jieba_probe_result(self, result) -> None:
+        ok, error, elapsed_ms = result
+        self._jieba_checked = True
+        self._jieba_error = None if ok else error
+        self._jieba_elapsed_ms = elapsed_ms
 
     @property
     def config(self) -> str:
@@ -213,6 +262,9 @@ class OpenCCBackend:
         # is the only lifecycle operation OpenCCForSigil performs.
         self._converter = None
         self._comparisons.clear()
+        if self._jieba_executor is not None:
+            self._jieba_executor.shutdown(wait=False, cancel_futures=False)
+            self._jieba_executor = None
 
     def _ensure_config_is_exposed(self) -> None:
         if self.config not in self._available_configs:
