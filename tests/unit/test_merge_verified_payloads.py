@@ -4,6 +4,7 @@ from pathlib import Path
 import shutil
 
 from tools.merge_verified_payloads import ROOT, _validate_jieba_resource_consistency, merge
+from tools.runtime_subset import sha256_tree
 
 
 def _record(*, os_name, architecture, payload_path, idf_hash, config_data):
@@ -56,13 +57,21 @@ def test_merge_accepts_a_complete_tree_only_for_explicit_cache_restore(tmp_path:
     cache_root = tmp_path / "cache"
     cache_entry = cache_root / "macos-arm64"
     cache_entry.mkdir(parents=True)
-    shutil.copytree(source_payload, cache_entry / "payload")
+    complete_payload = cache_entry / "payload"
+    shutil.copytree(source_payload, complete_payload)
+    cli = complete_payload / "opencc" / "clib" / "bin" / "opencc"
+    cli.parent.mkdir(parents=True, exist_ok=True)
+    cli.write_bytes(b"official OpenCC CLI")
+    complete_record = dict(record)
+    complete_record.pop("record_describes", None)
+    complete_record.pop("derivation", None)
+    complete_record["payload_sha256"] = sha256_tree(complete_payload)
     (cache_entry / "record.json").write_text(
         json.dumps(
             {
                 "schema_version": 1,
-                "record": record,
-                "config_data": record["config_data"],
+                "record": complete_record,
+                "config_data": complete_record["config_data"],
                 "opencc_version": source_manifest["opencc_version"],
                 "opencc_upstream_tag": source_manifest["opencc_upstream_tag"],
                 "opencc_upstream_commit": source_manifest["opencc_upstream_commit"],
