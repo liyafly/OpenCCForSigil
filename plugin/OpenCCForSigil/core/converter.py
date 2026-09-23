@@ -23,6 +23,7 @@ class OfficialBackendConverter:
 
     def __init__(self, backend: OpenCCBackend) -> None:
         self.backend = backend
+        self._compiled_overlays = {}
 
     def convert(self, text: str, request: ConvertRequest, *, quotation_pairer=None) -> ConvertResult:
         if not isinstance(text, str):
@@ -87,16 +88,23 @@ class OfficialBackendConverter:
         return ConvertResult(text, target, tuple(changes), tuple(diagnostics))
 
     def _convert_rules(self, text, request, *, quotation_pairer=None):
-        from rules.engine import lock_spans
-        from rules.models import RuleSnapshot
+        from rules.compiled import CompiledOverlay, lock_spans_compiled
         from transforms.quotations import QuotationPairer
 
-        snapshot = RuleSnapshot.freeze(request.rules_snapshot.rules)
-        if snapshot.rules_hash != request.rules_snapshot.rules_hash:
-            raise ValueError("rule snapshot hash mismatch")
-        spans = lock_spans(text, snapshot, config=request.config,
-                           profile_id=request.profile_id,
-                           book_fingerprint=request.book_fingerprint)
+        rules_hash = request.rules_snapshot.rules_hash
+        cache_key = (rules_hash, request.config, request.profile_id,
+                     request.book_fingerprint)
+        overlay = self._compiled_overlays.get(cache_key)
+        if overlay is None:
+            overlay = CompiledOverlay.build(
+                request.rules_snapshot,
+                expected_hash=rules_hash,
+                config=request.config,
+                profile_id=request.profile_id,
+                book_fingerprint=request.book_fingerprint,
+            )
+            self._compiled_overlays[cache_key] = overlay
+        spans = lock_spans_compiled(text, overlay)
         pairer = quotation_pairer or QuotationPairer(request.quotation_mode)
         # Reuse the complete unlocked pipeline while avoiding a second rule pass.
         unlocked = replace(request, rules_snapshot=type(request.rules_snapshot)())

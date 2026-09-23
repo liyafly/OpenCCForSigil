@@ -11,10 +11,7 @@ from dataclasses import dataclass
 from typing import Callable
 
 from core.diff import bounded_opcodes
-from .conflicts import BlockingRuleConflict, validate_no_blocking_conflicts
 from .models import Rule, RuleSnapshot
-from .precedence import applies_to, ordered_rules
-from .validators import validate_snapshot
 
 
 @dataclass(frozen=True)
@@ -94,31 +91,16 @@ def lock_spans(
     match inside or rewrite a user target.
     """
 
-    validate_snapshot(snapshot)
-    conflicts = validate_no_blocking_conflicts(snapshot.rules)
-    if any(conflict.blocking for conflict in conflicts):
-        raise BlockingRuleConflict(tuple(conflict for conflict in conflicts if conflict.blocking))
-    candidates = ordered_rules(
-        rule
-        for rule in snapshot.rules
-        if applies_to(rule, config=config, profile_id=profile_id, book_fingerprint=book_fingerprint)
+    from .compiled import CompiledOverlay, lock_spans_compiled
+
+    overlay = CompiledOverlay.build(
+        snapshot,
+        expected_hash=snapshot.rules_hash,
+        config=config,
+        profile_id=profile_id,
+        book_fingerprint=book_fingerprint,
     )
-    spans: list[LockedSpan] = []
-    cursor = 0
-    while cursor < len(text):
-        match: Rule | None = None
-        for rule in candidates:
-            if text.startswith(rule.source, cursor):
-                match = rule
-                break
-        if match is None:
-            cursor += 1
-            continue
-        end = cursor + len(match.source)
-        target = match.source if match.type == "protect" else match.target
-        spans.append(LockedSpan(cursor, end, match.source, target, match))
-        cursor = end
-    return tuple(spans)
+    return lock_spans_compiled(text, overlay)
 
 
 def convert_with_overlay(
