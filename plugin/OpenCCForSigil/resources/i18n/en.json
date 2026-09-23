@@ -99,6 +99,8 @@
   "progress.phase.planning": "Planning",
   "progress.phase.staging": "Preparing changes",
   "progress.phase.verifying": "Verifying changes",
+  "progress.phase.rechecking": "Checking source files",
+  "progress.phase.committing": "Writing changes",
   "result.noop": "Analyzed {files}; no content needs conversion.",
   "result.back_to_scope": "Back to file selection",
   "result.invalid_sources": "Skipped source files with invalid XHTML:",

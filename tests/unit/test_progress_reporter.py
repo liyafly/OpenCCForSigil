@@ -1,3 +1,6 @@
+import pytest
+
+from core.workflow import WorkflowCancelled, _report_progress
 from ui import preview_window
 
 
@@ -30,6 +33,8 @@ class _FakeProgressDialog:
         self.show_calls = 0
         self.modality = None
         self.close_calls = 0
+        self.window_flags = []
+        self.event_filters = []
 
     def setWindowTitle(self, _title) -> None:
         return None
@@ -58,6 +63,12 @@ class _FakeProgressDialog:
     def setCancelButton(self, button) -> None:
         self.cancel_buttons.append(button)
 
+    def setWindowFlag(self, flag, enabled) -> None:
+        self.window_flags.append((flag, enabled))
+
+    def installEventFilter(self, event_filter) -> None:
+        self.event_filters.append(event_filter)
+
     def show(self) -> None:
         self.show_calls += 1
 
@@ -72,6 +83,29 @@ class _FakeQt:
     class Qt:
         ApplicationModal = "application-modal"
         WindowModal = "window-modal"
+        WindowCloseButtonHint = "close-button"
+        Key_Escape = "escape"
+
+    class QtCore:
+        class QObject:
+            def __init__(self, _parent=None):
+                pass
+
+        class QEvent:
+            Close = "close"
+            KeyPress = "key-press"
+
+
+class _FakeEvent:
+    def __init__(self, kind, key=None):
+        self._kind = kind
+        self._key = key
+
+    def type(self):
+        return self._kind
+
+    def key(self):
+        return self._key
 
 
 def test_progress_reporter_resets_each_phase_and_clamps_repeated_updates():
@@ -120,4 +154,44 @@ def test_cancelling_keeps_window_visible_and_preserves_cancelling_label():
 
     assert reporter.dialog.labels[-1] == "Cancelling… stopping after the current file"
     assert reporter.dialog.cancel_buttons[-1] is None
+    assert reporter.dialog.show_calls >= 2
+
+
+def test_non_cancellable_progress_ignores_cancel_close_and_escape():
+    reporter = preview_window.ProgressReporter(_FakeQt, 2)
+
+    reporter.disable_cancel()
+    reporter.dialog.canceled.emit()
+
+    assert reporter.cancelled() is False
+    assert reporter.dialog.cancel_buttons[-1] is None
+    assert reporter.dialog.window_flags == [("close-button", False)]
+    assert reporter.dialog.show_calls >= 2
+    event_filter = reporter.dialog.event_filters[0]
+    assert event_filter.eventFilter(reporter.dialog, _FakeEvent("close")) is True
+    assert event_filter.eventFilter(
+        reporter.dialog, _FakeEvent("key-press", "escape")) is True
+    assert event_filter.eventFilter(
+        reporter.dialog, _FakeEvent("key-press", "other")) is False
+    reporter.close()
+    assert event_filter.eventFilter(reporter.dialog, _FakeEvent("close")) is False
+
+
+def test_analysis_cancel_restores_the_window_with_cancelling_message():
+    preview_window.set_ui_language("en")
+    reporter = preview_window.ProgressReporter(_FakeQt, 2)
+    reporter.dialog.canceled.emit()
+
+    with pytest.raises(WorkflowCancelled):
+        _report_progress(
+            reporter.update,
+            reporter.cancelled,
+            phase="planning",
+            index=1,
+            total=2,
+            href="Text/a.xhtml",
+            cancel_message="analysis cancelled",
+        )
+
+    assert reporter.dialog.labels[-1] == "Cancelling… stopping after the current file"
     assert reporter.dialog.show_calls >= 2

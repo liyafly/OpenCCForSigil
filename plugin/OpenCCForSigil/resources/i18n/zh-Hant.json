@@ -99,6 +99,8 @@
   "progress.phase.planning": "建立計畫",
   "progress.phase.staging": "準備修改",
   "progress.phase.verifying": "校驗修改",
+  "progress.phase.rechecking": "複核來源檔案",
+  "progress.phase.committing": "寫回修改",
   "result.noop": "已分析 {files}，沒有需要轉換的內容。",
   "result.back_to_scope": "返回檔案選擇",
   "result.invalid_sources": "以下來源檔案 XHTML 不合法，已略過：",

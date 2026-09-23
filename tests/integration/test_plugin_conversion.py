@@ -124,6 +124,67 @@ def test_controller_runs_preview_stage_verify_commit(monkeypatch, tmp_path):
     ).read_text(encoding="utf-8")
 
 
+def test_post_preview_progress_covers_noncancellable_writeback(monkeypatch, tmp_path):
+    book = ConversionBook()
+    reporters = []
+    results = []
+
+    class Progress:
+        def __init__(self):
+            self.phases = []
+            self.non_cancellable = False
+            self.close_attempt_ignored = False
+            self.cancelled_state = False
+            self.close_calls = 0
+
+        def disable_cancel(self):
+            self.non_cancellable = True
+
+        def update(self, phase, _index, _total, _href):
+            self.phases.append(phase)
+            if phase == "staging" and self.non_cancellable:
+                # Simulate a close/cancel event while the dialog cannot be
+                # cancelled; this must not hide the window or abort writeback.
+                self.close_attempt_ignored = True
+                self.cancelled_state = False
+
+        def cancelled(self):
+            return self.cancelled_state
+
+        def close(self):
+            self.close_calls += 1
+
+    def create_progress(_total):
+        reporter = Progress()
+        reporters.append(reporter)
+        return reporter
+
+    monkeypatch.setattr(
+        "ui.preview_window.choose_scope",
+        lambda _adapter, initial_language, **_kwargs: ScopeOutcome(
+            True, TargetSelection(Scope.SINGLE, ("chapter",)), initial_language),
+    )
+    monkeypatch.setattr(
+        "ui.preview_window.choose_conversion_config",
+        lambda *_args, **_kwargs: "t2s",
+    )
+    monkeypatch.setattr("ui.preview_window.show_preview", _accept_all_preview)
+    monkeypatch.setattr("ui.preview_window.create_progress_reporter", create_progress)
+    monkeypatch.setattr(
+        "ui.preview_window.show_result", lambda **values: results.append(values))
+
+    assert Controller(book, data_dir=tmp_path / "plugin-data").run() == 0
+
+    post_preview = reporters[-1]
+    assert post_preview.close_attempt_ignored is True
+    assert post_preview.cancelled() is False
+    assert {"staging", "verifying", "rechecking", "committing"} <= set(
+        post_preview.phases)
+    assert post_preview.close_calls == 1
+    assert len(book.writes) == 1
+    assert results[-1]["status"] == "success"
+
+
 def test_controller_always_chooses_scope_and_never_reads_or_writes_other_files(
     monkeypatch, tmp_path
 ):

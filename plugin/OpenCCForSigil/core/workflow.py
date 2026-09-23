@@ -75,6 +75,7 @@ def _report_progress(
     if progress is not None:
         progress(phase, index, total, href)
     if cancelled is not None and cancelled():
+        _set_progress_cancelling(progress)
         raise WorkflowCancelled(cancel_message)
 
 
@@ -421,7 +422,12 @@ class ConversionWorkflow:
         self._verified_files = files
         return self._verification
 
-    def commit(self, staged: Optional[Iterable[StagedFile]] = None) -> CommitResult:
+    def commit(
+        self,
+        staged: Optional[Iterable[StagedFile]] = None,
+        *,
+        progress: Optional[Callable[[str, int, int, str], None]] = None,
+    ) -> CommitResult:
         files = tuple(staged) if staged is not None else tuple(self.staging.values())
         if not files:
             return CommitResult()
@@ -429,7 +435,11 @@ class ConversionWorkflow:
             raise WorkflowError("verify must pass before commit")
         if files != self._verified_files:
             raise WorkflowError("staged files changed after verification; reverify required")
-        for staged_file in files:
+        href_by_id = {item.source.file_id: item.source.href for item in self._planned}
+        for index, staged_file in enumerate(files, start=1):
+            href = href_by_id.get(staged_file.file_id, staged_file.file_id)
+            if progress is not None:
+                progress("rechecking", index - 1, len(files), href)
             current = self.adapter.read(staged_file.file_id)
             if source_sha256(current) != staged_file.plan.source_sha256:
                 raise WorkflowError(
@@ -437,15 +447,25 @@ class ConversionWorkflow:
                     code="SOURCE_CHANGED",
                     affected_files=((staged_file.file_id, ("SOURCE_SHA256_MISMATCH",)),),
                 )
+            if progress is not None:
+                progress("rechecking", index, len(files), href)
         if self.snapshot_guard is not None:
             try:
                 self.snapshot_guard()
             except ValueError as exc:
                 raise WorkflowError(str(exc), code="SETTINGS_CHANGED") from exc
+
+        def write_items():
+            for index, staged_file in enumerate(files):
+                href = href_by_id.get(staged_file.file_id, staged_file.file_id)
+                if progress is not None:
+                    progress("committing", index, len(files), href)
+                yield staged_file.file_id, staged_file.converted
+                if progress is not None:
+                    progress("committing", index + 1, len(files), href)
+
         try:
-            return self.adapter.commit(
-                (staged_file.file_id, staged_file.converted) for staged_file in files
-            )
+            return self.adapter.commit(write_items())
         except CommitError as exc:
             raise WorkflowCommitError(exc) from exc
 

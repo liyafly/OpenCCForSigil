@@ -434,15 +434,15 @@ class Controller:
                     staged,
                     progress=post_preview_progress.update,
                 )
+                self.logger.event(
+                    "verification_completed",
+                    files_verified=len(verification),
+                    passed=all(result.passed for result in verification),
+                )
+                self.session.transition(SessionState.COMMITTING)
+                workflow.commit(staged, progress=post_preview_progress.update)
             finally:
                 post_preview_progress.close()
-            self.logger.event(
-                "verification_completed",
-                files_verified=len(verification),
-                passed=all(result.passed for result in verification),
-            )
-            self.session.transition(SessionState.COMMITTING)
-            workflow.commit(staged)
             files_written = len(staged)
             self.session.complete()
             self.logger.event(

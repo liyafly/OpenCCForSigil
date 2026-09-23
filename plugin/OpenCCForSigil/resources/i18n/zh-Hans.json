@@ -99,6 +99,8 @@
   "progress.phase.planning": "生成计划",
   "progress.phase.staging": "准备修改",
   "progress.phase.verifying": "校验修改",
+  "progress.phase.rechecking": "复核源文件",
+  "progress.phase.committing": "写回修改",
   "result.noop": "已分析 {files}，没有需要转换的内容。",
   "result.back_to_scope": "返回文件选择",
   "result.invalid_sources": "以下源文件 XHTML 不合法，已跳过：",
