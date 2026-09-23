@@ -931,10 +931,6 @@ class _PreviewDialog:
         self.export_full_diff = qt.QCheckBox(self._translator.text("preview.export_full_diff"))
         self.export_full_diff.setChecked(False)
         self.apply_button = qt.QPushButton(self._translator.text("preview.apply"))
-        self.apply_button.setDefault(True)
-        set_auto_default = getattr(self.apply_button, "setAutoDefault", None)
-        if callable(set_auto_default):
-            set_auto_default(True)
         self.back_settings_button = qt.QPushButton(self._translator.text("preview.back_settings"))
         self.cancel_button = qt.QPushButton(self._translator.text("common.cancel"))
         for button in (self.accept_this_button, self.reject_this_button,
@@ -952,6 +948,7 @@ class _PreviewDialog:
         for button in (self.back_settings_button, self.cancel_button, self.apply_button):
             actions.addWidget(button)
         layout.addLayout(actions)
+        self._disable_default_buttons()
 
         self.accept_this_button.clicked.connect(self._accept_this)
         self.reject_this_button.clicked.connect(self._reject_this)
@@ -969,6 +966,35 @@ class _PreviewDialog:
             getattr(self._services, "export_preview", None) is not None
         )
         self._bind_shortcuts()
+
+    def _disable_default_buttons(self) -> None:
+        button_type = getattr(self._qt, "QPushButton", None)
+        find_children = getattr(self.dialog, "findChildren", None)
+        buttons = ()
+        if callable(button_type) and callable(find_children):
+            try:
+                buttons = find_children(button_type) or ()
+            except TypeError:
+                buttons = ()
+        if not buttons:
+            buttons = tuple(
+                getattr(self, name, None)
+                for name in (
+                    "accept_this_button", "reject_this_button", "accept_file_button",
+                    "reject_file_button", "accept_all_button", "reject_all_button",
+                    "accept_filter_button", "reject_filter_button", "export_button",
+                    "apply_button", "back_settings_button", "cancel_button",
+                )
+            )
+        for button in buttons:
+            if button is None:
+                continue
+            set_auto_default = getattr(button, "setAutoDefault", None)
+            if callable(set_auto_default):
+                set_auto_default(False)
+            set_default = getattr(button, "setDefault", None)
+            if callable(set_default):
+                set_default(False)
 
     def _bind_shortcuts(self) -> None:
         shortcut_type = getattr(self._qt, "QShortcut", None)
@@ -1710,6 +1736,7 @@ class _ConversionConfigDialog:
             else base_config
         )
         options = self.options_panel.values()
+        preference_options = self.options_panel.preference_values()
         try:
             self.options_panel.validate(config)
             target_language(config, options["language_metadata"], options["language_preset"],
@@ -1721,7 +1748,8 @@ class _ConversionConfigDialog:
             )
             return
         self._stop_probe_timer()
-        self.selected_config = ConfigurationChoice(config, options)
+        self.selected_config = ConfigurationChoice(
+            config, options, preference_options=preference_options)
         self.accepted = True
         self.action = "continue"
         self.dialog.accept()

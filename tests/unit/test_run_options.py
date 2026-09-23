@@ -4,6 +4,8 @@ import pytest
 
 from app.settings import RunSettings
 from app.profiles import Profile
+from tests.support.fake_qt import make as make_fake_qt
+from ui.i18n import Translator
 from ui.run_options import (
     RunOptionsPanel,
     _decode_pivot_chain,
@@ -61,6 +63,7 @@ class StatefulCombo:
         self.index = -1
         self.value = value
         self.enabled = True
+        self.signals_blocked = False
 
     def currentData(self):
         if 0 <= self.index < len(self.items):
@@ -84,6 +87,11 @@ class StatefulCombo:
 
     def setEnabled(self, value):
         self.enabled = value
+
+    def blockSignals(self, value):
+        old = self.signals_blocked
+        self.signals_blocked = value
+        return old
 
 
 class StatefulCheck:
@@ -138,6 +146,85 @@ def test_profile_chain_list_loads_and_direction_filters_chains():
     assert panel.values()["pivot_chain"] == ("t2s", "s2hk")
 
 
+def _live_options_panel(initial=None, *, nav_available=True):
+    qt = make_fake_qt()
+    return RunOptionsPanel(
+        qt, Translator("en"), qt.QVBoxLayout(), initial=initial,
+        metadata_available=True, nav_available=nav_available,
+    )
+
+
+def test_realistic_combo_signals_do_not_replace_saved_pivot_chain():
+    panel = _live_options_panel({
+        "force_pivot": True,
+        "pivot_chain": ["s2twp", "t2s"],
+    })
+
+    panel.update_enablement("t2s")
+
+    assert panel.values()["pivot_chain"] == ("s2twp", "t2s")
+
+
+def test_profile_load_applies_direction_before_saved_disabled_options():
+    profile = Profile(
+        id="pivot-profile", name="Pivot", conversion="s2t", force_pivot=True,
+        pivot_chain=("t2s", "s2t"),
+    )
+    panel = _live_options_panel({"conversion": "tw2t"})
+    panel._services = SimpleNamespace(
+        pick_profile=lambda *_args: profile,
+        active=SimpleNamespace(id="active", ruleset_ids=()),
+    )
+    panel._get_config = lambda: "tw2t"
+    config = {"value": "tw2t"}
+
+    def set_config(value):
+        config["value"] = value
+        panel.update_enablement(value)
+
+    panel._set_config = set_config
+    panel._parent = None
+    panel._update_profile_label = lambda _config: None
+    panel.update_enablement("tw2t")
+    assert not panel.checks["force_pivot"].isEnabled()
+
+    panel._tool("profiles")
+
+    assert config["value"] == "s2t"
+    assert panel.checks["force_pivot"].isChecked()
+    assert panel.values()["force_pivot"]
+    assert panel.values()["pivot_chain"] == ("t2s", "s2t")
+
+
+def test_nav_preference_survives_a_scope_without_navigation_document():
+    panel = _live_options_panel({"include_nav": True}, nav_available=False)
+    panel.update_enablement("s2t")
+
+    assert not panel.checks["include_nav"].isEnabled()
+    assert panel.checks["include_nav"].isChecked()
+    assert panel.values()["include_nav"] is False
+    assert panel.preference_values()["include_nav"] is True
+
+    panel._nav_available = True
+    panel.update_enablement("s2t")
+
+    assert panel.checks["include_nav"].isEnabled()
+    assert panel.checks["include_nav"].isChecked()
+    assert panel.values()["include_nav"] is True
+
+
+def test_jieba_configs_disable_force_pivot_with_a_specific_tooltip():
+    panel = _live_options_panel({"force_pivot": True})
+
+    panel.update_enablement("s2twp_jieba")
+
+    assert not panel.checks["force_pivot"].isEnabled()
+    assert not panel.values()["force_pivot"]
+    assert not panel._enablement["pivot_chain"]
+    assert panel.checks["force_pivot"].toolTip() == (
+        "Force pivot is not supported for Jieba configurations.")
+
+
 def test_nav_is_disabled_when_selected_scope_has_no_navigation_document():
     panel = object.__new__(RunOptionsPanel)
     panel._initial = {"conversion": "s2t", "force_pivot": False}
@@ -163,7 +250,9 @@ def test_nav_is_disabled_when_selected_scope_has_no_navigation_document():
     panel._update_enablement("s2t")
 
     assert not panel.checks["include_nav"].enabled
-    assert not panel.checks["include_nav"].value
+    assert panel.checks["include_nav"].value
+    assert panel.values()["include_nav"] is False
+    assert panel.preference_values()["include_nav"] is True
     assert panel.checks["include_nav"].tooltip == "options.nav_unavailable"
 
 
@@ -195,6 +284,7 @@ def test_values_only_returns_controls_and_profile_references():
     panel._initial = {"scope": "all_xhtml", "attributes": ["title"], "segmentation": "mmseg"}
     panel._enablement = {"pivot_chain": True, "force_pivot": True}
     panel._metadata_available = True
+    panel._nav_available = True
 
     values = panel.values()
 

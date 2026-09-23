@@ -236,7 +236,10 @@ class Controller:
                 if action == "back_to_scope":
                     current_choice = getattr(selected_config, "configuration", None)
                     if current_choice is not None:
-                        choice_options = dict(getattr(current_choice, "options", {}))
+                        choice_options = dict(getattr(
+                            current_choice, "preference_options",
+                            getattr(current_choice, "options", {}),
+                        ))
                         preferences = {
                             **preferences,
                             "last_conversion_config": str(current_choice),
@@ -256,6 +259,8 @@ class Controller:
                 if action == "continue":
                     selected_config = selected_config.configuration
                 options = dict(getattr(selected_config, "options", {}))
+                preference_options = dict(getattr(
+                    selected_config, "preference_options", options))
                 selected_config = str(selected_config)
                 language_tag = target_language(
                     selected_config, options.get("language_metadata", "keep"),
@@ -273,7 +278,7 @@ class Controller:
                         "profile_id": (active_profile.id if
                             (settings.profiles.directory / f"{active_profile.id}.json").exists() else None),
                         "last_conversion_config": selected_config,
-                        "run_options": options,
+                        "run_options": preference_options,
                         "ui": {**ui_preferences, "language": language},
                     }
                 )

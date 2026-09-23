@@ -225,9 +225,11 @@ class RunSettings:
                     self.rules.save(item)
             if renamed:
                 self._replace_ruleset_references(renamed)
+                result_ids = {item.id for item in result_sets}
                 for old_id, _new_id in renamed:
-                    old_path = self.rules.directory / f"{old_id}.json"
-                    old_path.unlink(missing_ok=True)
+                    if old_id not in result_ids:
+                        old_path = self.rules.directory / f"{old_id}.json"
+                        old_path.unlink(missing_ok=True)
             self.rules._validate_id(selected_id)
             updated_rule_ids = tuple(dict.fromkeys(
                 [dict(renamed).get(item, item) for item in self.active.ruleset_ids]

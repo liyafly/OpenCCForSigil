@@ -9,7 +9,7 @@ def option_enablement(config: str, values: dict) -> dict[str, bool]:
     """Return option-control availability for one direction and current values."""
 
     direction = base_config(config)
-    compatible_chains = tuple(chain for chain in FORCE_PIVOT_CHAINS if chain[-1] == direction)
+    compatible_chains = tuple(chain for chain in FORCE_PIVOT_CHAINS if chain[-1] == config)
     language_mode = values.get("language_metadata", "keep")
     language_preset = values.get("language_preset", "legacy")
     return {
@@ -142,11 +142,9 @@ class RunOptionsPanel:
         control.setChecked(bool(self._initial.get(name, default)))
         self.checks[name] = control
         if name == "include_nav" and not self._nav_available:
-            control.setChecked(False)
             control.setEnabled(False)
             control.setToolTip(self._tr.text("options.nav_unavailable"))
         if name == "include_metadata" and not self._metadata_available:
-            control.setChecked(False)
             control.setEnabled(False)
         if hasattr(layout, "addRow"):
             layout.addRow(control)
@@ -206,8 +204,22 @@ class RunOptionsPanel:
         )
         if not self._metadata_available:
             values["include_metadata"] = False
+        if not self._nav_available:
+            values["include_nav"] = False
         if not self._enablement.get("force_pivot", True):
             values["force_pivot"] = False
+        return values
+
+    def preference_values(self):
+        """Return the user's selections, including temporarily disabled options."""
+        values = self.values()
+        for name in ("include_nav", "include_metadata", "force_pivot"):
+            control = self.checks.get(name)
+            if control is not None:
+                values[name] = control.isChecked()
+        preferred_chain = getattr(self, "_preferred_pivot_chain", "")
+        if preferred_chain:
+            values["pivot_chain"] = _decode_pivot_chain(preferred_chain)
         return values
 
     def bind(self, config_getter, config_setter, parent):
@@ -240,12 +252,15 @@ class RunOptionsPanel:
         current_chain = self.combos["pivot_chain"].currentData()
         if current_chain:
             self._preferred_pivot_chain = _pivot_chain_key(current_chain)
-        direction = base_config(str(config))
-        compatible = tuple(sorted(chain for chain in FORCE_PIVOT_CHAINS if chain[-1] == direction))
+        compatible = tuple(sorted(chain for chain in FORCE_PIVOT_CHAINS if chain[-1] == str(config)))
         combo = self.combos["pivot_chain"]
-        combo.clear()
-        for chain in compatible:
-            combo.addItem(" → ".join(chain), ">".join(chain))
+        previously_blocked = combo.blockSignals(True)
+        try:
+            combo.clear()
+            for chain in compatible:
+                combo.addItem(" → ".join(chain), ">".join(chain))
+        finally:
+            combo.blockSignals(previously_blocked)
         selected = combo.findData(self._preferred_pivot_chain)
         if selected < 0 and compatible:
             selected = 0
@@ -256,23 +271,20 @@ class RunOptionsPanel:
         values["metadata_available"] = self._metadata_available
         values["nav_available"] = self._nav_available
         self._enablement = option_enablement(str(config), values)
-        if not self._enablement["include_nav"]:
-            self.checks["include_nav"].setChecked(False)
         self.checks["include_nav"].setEnabled(self._enablement["include_nav"])
         self.checks["include_nav"].setToolTip(
             "" if self._enablement["include_nav"]
             else self._tr.text("options.nav_unavailable"))
-        if not self._enablement["force_pivot"]:
-            self.checks["force_pivot"].setChecked(False)
         self.checks["force_pivot"].setEnabled(self._enablement["force_pivot"])
         combo.setEnabled(self._enablement["pivot_chain"])
         self.combos["language_preset"].setEnabled(self._enablement["language_preset"])
         self.combos["language_region"].setEnabled(self._enablement["language_region"])
         self.checks["include_metadata"].setEnabled(self._enablement["include_metadata"])
-        if not self._enablement["include_metadata"]:
-            self.checks["include_metadata"].setChecked(False)
-        force_tip = (self._tr.text("options.force_pivot_unavailable", config=direction)
-                     if not compatible else "")
+        if not compatible and str(config).endswith("_jieba"):
+            force_tip = self._tr.text("options.force_pivot_jieba_unavailable")
+        else:
+            force_tip = (self._tr.text("options.force_pivot_unavailable", config=str(config))
+                         if not compatible else "")
         self.checks["force_pivot"].setToolTip(force_tip)
         if self._services is not None:
             self._update_profile_label(str(config))
@@ -321,16 +333,22 @@ class RunOptionsPanel:
                 profile = self._services.pick_profile(config, self.values(), self._tr)
                 if profile is not None:
                     values = profile_options(profile)
-                    self._initial = values
-                    for key, control in self.checks.items():
-                        control.setChecked(bool(values.get(key, False)) if control.isEnabled() else False)
                     self._set_config(profile.conversion)
-                    for key, combo in self.combos.items():
-                        value = (_pivot_chain_key(values.get(key, ())) if key == "pivot_chain"
-                                 else values.get(key, "keep"))
-                        index = combo.findData(value)
-                        if index >= 0:
-                            combo.setCurrentIndex(index)
+                    self._updating = True
+                    try:
+                        self._initial = values
+                        for key, control in self.checks.items():
+                            control.setChecked(bool(values.get(key, False)))
+                        for key, combo in self.combos.items():
+                            value = (_pivot_chain_key(values.get(key, ())) if key == "pivot_chain"
+                                     else values.get(key, "keep"))
+                            index = combo.findData(value)
+                            if index >= 0:
+                                combo.setCurrentIndex(index)
+                            elif key == "pivot_chain" and value:
+                                self._preferred_pivot_chain = value
+                    finally:
+                        self._updating = False
                     self.update_enablement(profile.conversion)
             elif name == "save_profile":
                 self._services.save_profile(config, self.values(), self._tr, self._qt, self._parent)
@@ -376,9 +394,11 @@ __all__ = ["ConfigurationChoice", "RunOptionsPanel", "option_enablement"]
 class ConfigurationChoice(str):
     """Keep the historical config string API while carrying frozen options."""
 
-    def __new__(cls, config, options):
+    def __new__(cls, config, options, *, preference_options=None):
         from types import MappingProxyType
 
         instance = super().__new__(cls, config)
         instance.options = MappingProxyType(dict(options))
+        instance.preference_options = MappingProxyType(
+            dict(options if preference_options is None else preference_options))
         return instance

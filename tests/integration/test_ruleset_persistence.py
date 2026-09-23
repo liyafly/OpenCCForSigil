@@ -127,6 +127,43 @@ def test_saved_profile_rejection_keeps_change_session_only(monkeypatch, tmp_path
     assert RuleDialogQt.QMessageBox.information_messages
 
 
+def test_renamed_ruleset_id_can_be_reused_without_deleting_the_new_set(
+    monkeypatch, tmp_path
+):
+    profile_store = ProfileStore(tmp_path / "profiles")
+    profile = Profile(id="saved", name="Saved", ruleset_ids=("default", "A"))
+    profile_store.save(profile)
+    rules = RuleStore(tmp_path / "rules")
+    rules.save(RuleSet(
+        "A", (Rule(id="old", source="旧", target="舊", direction="s2t"),), "Old A"))
+    settings = RunSettings(
+        Storage(tmp_path), SimpleNamespace(book_fingerprint=lambda: "book-hash"),
+        {"profile_id": "saved"}, language="en", session_id="test-session",
+    )
+    settings.bind_run(profile, SimpleNamespace(available_configs=lambda: {"s2t"}))
+    result = RuleWindowResult(
+        "A",
+        (
+            RuleSet("B", (Rule(id="old", source="旧", target="舊", direction="s2t"),),
+                    "Renamed B"),
+            RuleSet("A", (Rule(id="new", source="新", target="新", direction="s2t"),),
+                    "New A"),
+        ),
+        renamed=(("A", "B"),),
+    )
+    RuleDialogQt.QMessageBox.response = RuleDialogQt.QMessageBox.Yes
+    monkeypatch.setattr("ui.rules_window.show_rules_window",
+                        lambda *_args, **_kwargs: result)
+
+    settings.edit_rules("s2t", Translator(), RuleDialogQt, object())
+
+    assert (tmp_path / "rules" / "A.json").is_file()
+    assert rules.load("A").name == "New A"
+    assert rules.load("B").name == "Renamed B"
+    assert settings.active.ruleset_ids == ("default", "B", "A")
+    assert profile_store.load("saved").ruleset_ids == ("default", "B", "A")
+
+
 class Book:
     def __init__(self):
         self.files = {"a": "<p>测试</p>"}

@@ -61,6 +61,8 @@ class _FakeButton:
         self.enabled = None
         self.text = ""
         self.tooltip = ""
+        self.default = True
+        self.auto_default = True
 
     def setEnabled(self, enabled: bool) -> None:
         self.enabled = enabled
@@ -70,6 +72,12 @@ class _FakeButton:
 
     def setToolTip(self, text: str) -> None:
         self.tooltip = text
+
+    def setDefault(self, value: bool) -> None:
+        self.default = value
+
+    def setAutoDefault(self, value: bool) -> None:
+        self.auto_default = value
 
 
 class _FakeDetail:
@@ -141,12 +149,34 @@ def _preview_dialog(change_count: int = 3, current_row: int = 1):
         "reject_file_button",
         "accept_all_button",
         "reject_all_button",
+        "accept_filter_button",
+        "reject_filter_button",
+        "export_button",
         "apply_button",
+        "back_settings_button",
+        "cancel_button",
     ):
         setattr(dialog, name, _FakeButton())
     dialog.dialog = _FakeDialog()
     dialog._qt = object()
     return dialog, preview, items
+
+
+def test_preview_dialog_buttons_are_never_default_or_auto_default():
+    dialog, _preview, _items = _preview_dialog()
+    dialog._qt = SimpleNamespace(QPushButton=_FakeButton)
+
+    dialog._disable_default_buttons()
+
+    buttons = (
+        dialog.accept_this_button, dialog.reject_this_button,
+        dialog.accept_file_button, dialog.reject_file_button,
+        dialog.accept_all_button, dialog.reject_all_button,
+        dialog.accept_filter_button, dialog.reject_filter_button,
+        dialog.export_button, dialog.apply_button,
+        dialog.back_settings_button, dialog.cancel_button,
+    )
+    assert all(not button.default and not button.auto_default for button in buttons)
 
 
 def test_preview_dialog_single_decisions_update_only_selected_row_and_summary():

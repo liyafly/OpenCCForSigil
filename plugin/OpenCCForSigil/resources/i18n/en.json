@@ -220,6 +220,7 @@
   "options.detailed_classification": "Compare official configs to classify changes (slower)",
   "options.decode_numeric_cjk_refs": "Convert numeric Han references",
   "options.force_pivot_unavailable": "No supported force-pivot chain ends in {config}.",
+  "options.force_pivot_jieba_unavailable": "Force pivot is not supported for Jieba configurations.",
   "options.missing_rulesets": "Missing rule sets were skipped: {ids}",
   "options.current_profile": "Current profile: {name}{status}",
   "options.profile_modified": " (modified)",

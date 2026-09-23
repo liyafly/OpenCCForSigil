@@ -220,6 +220,7 @@
   "options.detailed_classification": "对比官方配置以标注变更类型（较慢）",
   "options.decode_numeric_cjk_refs": "转换数字汉字引用",
   "options.force_pivot_unavailable": "没有以 {config} 结束的可用强制中转链。",
+  "options.force_pivot_jieba_unavailable": "Jieba 配置不支持强制中转。",
   "options.missing_rulesets": "以下规则集不存在，已跳过：{ids}",
   "options.current_profile": "当前方案：{name}{status}",
   "options.profile_modified": "（已修改）",
