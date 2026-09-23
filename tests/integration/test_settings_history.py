@@ -5,6 +5,7 @@ import pytest
 
 from app.controller import Controller
 from core.preview import PreviewSession
+from core.workflow import WorkflowError
 from rules.models import Rule
 from rules.store import RuleSet, RuleStore
 from sigil.scope import Scope, TargetSelection
@@ -89,7 +90,8 @@ def test_editing_rule_storage_after_preview_blocks_every_book_write(monkeypatch,
         return accept(planned)
 
     monkeypatch.setattr("ui.preview_window.show_preview", preview)
-    with pytest.raises(ValueError, match="changed after preview"):
+    with pytest.raises(WorkflowError, match="changed after preview") as error:
         Controller(book, data_dir=tmp_path).run()
+    assert error.value.code == "SETTINGS_CHANGED"
     assert book.writes == []
     assert not (tmp_path / "history/index.json").exists()

@@ -121,14 +121,26 @@ class Controller:
             missing_rulesets = settings.take_missing_rulesets_notice()
             if missing_rulesets:
                 recovery_notices.append(("rulesets_missing", ", ".join(missing_rulesets)))
+            checkpoint_notice_enabled = settings.checkpoint_notice_enabled()
             # Text-capable hosts always get an explicit scope chooser.  A host
             # without selected_iter simply opens it with no initial checks; it
             # must never silently widen the run to ALL_XHTML.
             if recovery_notices:
                 scope_outcome = choose_scope(
-                    adapter, initial_language=language, notice=tuple(recovery_notices))
+                    adapter,
+                    initial_language=language,
+                    notice=tuple(recovery_notices),
+                    checkpoint_notice_enabled=checkpoint_notice_enabled,
+                    hide_checkpoint_notice=settings.hide_checkpoint_notice,
+                )
             else:
-                scope_outcome = choose_scope(adapter, initial_language=language)
+                scope_outcome = choose_scope(
+                    adapter,
+                    initial_language=language,
+                    checkpoint_notice_enabled=checkpoint_notice_enabled,
+                    hide_checkpoint_notice=settings.hide_checkpoint_notice,
+                )
+            checkpoint_notice_shown = bool(scope_outcome.checkpoint_notice_shown)
             language = scope_outcome.language
             set_ui_language(language)
             scope_preferences = {
@@ -146,6 +158,7 @@ class Controller:
 
             def reselect_scope(previous_selection):
                 nonlocal language, preferences, ui_preferences, scope_preferences, targets
+                nonlocal checkpoint_notice_shown
                 preferences = self.storage.load_preferences()
                 saved_ui = preferences.get("ui")
                 ui_preferences = dict(saved_ui) if isinstance(saved_ui, dict) else {}
@@ -153,7 +166,10 @@ class Controller:
                     adapter,
                     initial_language=language,
                     initial_selection=previous_selection,
+                    checkpoint_notice_enabled=False,
                 )
+                checkpoint_notice_shown = (
+                    checkpoint_notice_shown or scope_outcome.checkpoint_notice_shown)
                 language = scope_outcome.language
                 set_ui_language(language)
                 scope_preferences = {
@@ -336,7 +352,7 @@ class Controller:
                 break
 
             self.session.metadata["checkpoint_notice_shown"] = bool(
-                getattr(preview, "checkpoint_notice_shown", False))
+                checkpoint_notice_shown or getattr(preview, "checkpoint_notice_shown", False))
             finalized = workflow.finalize(preview.previews)
             accepted_change_count = sum(len(plan.changes) for _, plan in finalized)
             skipped_change_count = planned_change_count - accepted_change_count

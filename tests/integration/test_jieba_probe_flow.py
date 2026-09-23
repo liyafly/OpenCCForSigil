@@ -49,7 +49,7 @@ def test_controller_starts_optional_probe_before_scope_and_opens_settings_pendin
         def close(self):
             pass
 
-    def choose_scope(adapter, initial_language):
+    def choose_scope(adapter, initial_language, **_kwargs):
         events.append("scope")
         return ScopeOutcome(True, TargetSelection(Scope.SINGLE, ("a",)), initial_language)
 

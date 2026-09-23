@@ -92,7 +92,7 @@ def test_controller_runs_preview_stage_verify_commit(monkeypatch, tmp_path):
 
     monkeypatch.setattr(
         "ui.preview_window.choose_scope",
-        lambda adapter, initial_language: ScopeOutcome(
+        lambda adapter, initial_language, **_kwargs: ScopeOutcome(
             accepted=True,
             selection=TargetSelection(Scope.SINGLE, ("chapter",)),
             language=initial_language,
@@ -182,7 +182,7 @@ def test_controller_reports_unwritten_no_change_files_separately(monkeypatch, tm
     result_calls = []
     monkeypatch.setattr(
         "ui.preview_window.choose_scope",
-        lambda adapter, initial_language: ScopeOutcome(
+        lambda adapter, initial_language, **_kwargs: ScopeOutcome(
             accepted=True,
             selection=TargetSelection(
                 Scope.ALL_XHTML, tuple(book.files)
@@ -236,7 +236,7 @@ def test_malformed_xhtml_is_skipped_while_other_files_convert(monkeypatch, tmp_p
     result_calls = []
     monkeypatch.setattr(
         "ui.preview_window.choose_scope",
-        lambda adapter, initial_language: ScopeOutcome(
+        lambda adapter, initial_language, **_kwargs: ScopeOutcome(
             accepted=True,
             selection=TargetSelection(Scope.ALL_XHTML, tuple(book.files)),
             language=initial_language,

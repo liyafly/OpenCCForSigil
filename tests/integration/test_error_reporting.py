@@ -50,7 +50,7 @@ def _accept_all(planned):
 def _patch_ui(monkeypatch, *, preview_callback=None, results=None, errors=None):
     # Resolve the actual current inventory in the chooser stub so each test
     # converts every file without depending on BookContainer-specific IDs.
-    def choose_scope(adapter, initial_language):
+    def choose_scope(adapter, initial_language, **_kwargs):
         ids = tuple(file_id for file_id, _href in adapter.text_files(Scope.ALL_XHTML))
         return ScopeOutcome(True, TargetSelection(Scope.ALL_XHTML, ids), initial_language)
 

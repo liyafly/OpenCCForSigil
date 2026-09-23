@@ -37,6 +37,7 @@ def test_unsaved_default_profile_restores_existing_rulesets_from_run_options(tmp
 
 def test_saved_profile_ruleset_ids_win_over_old_run_options(tmp_path):
     store = ProfileStore(tmp_path / "profiles")
+    RuleStore(tmp_path / "rules").save(RuleSet("mine"))
     profile = Profile(id="saved", name="Saved", ruleset_ids=("mine",))
     store.save(profile)
     settings = RunSettings(
@@ -164,7 +165,7 @@ def test_new_ruleset_is_applied_on_the_next_controller_run(monkeypatch, tmp_path
     hashes = []
     sources = []
 
-    monkeypatch.setattr("ui.preview_window.choose_scope", lambda _adapter, initial_language:
+    monkeypatch.setattr("ui.preview_window.choose_scope", lambda _adapter, initial_language, **_kw:
                         ScopeOutcome(True, TargetSelection(Scope.SINGLE, ("a",)),
                                      initial_language))
     monkeypatch.setattr("ui.preview_window.choose_conversion_config",

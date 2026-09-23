@@ -34,6 +34,7 @@ class ScopeOutcome:
     accepted: bool
     selection: TargetSelection | None
     language: str
+    checkpoint_notice_shown: bool = False
 
 
 @dataclass(frozen=True)
@@ -177,6 +178,16 @@ _LOCAL_TEXT = {
         "preview.filter_all": "All",
         "preview.back_settings": "Back to settings",
         "preview.checkpoint_title": "Checkpoint required",
+        "preview.checkpoint_confirm": (
+            "Plugin changes cannot be undone with Ctrl+Z. Confirm that you created a Checkpoint or backup before starting?"
+        ),
+        "preview.checkpoint_confirm_yes": "Backed up; continue applying",
+        "preview.checkpoint_confirm_back": "Return to preview",
+        "scope.checkpoint_notice": (
+            "Before starting, create a Sigil Checkpoint. The Sigil window is unavailable while the plugin runs."
+        ),
+        "scope.checkpoint_hide": "Do not show again",
+        "scope.checkpoint_close": "Close checkpoint reminder",
         "preview.checkpoint_message": (
             "Plugin changes cannot be undone with Ctrl+Z. Create a Sigil Checkpoint before applying.\n\n"
             "Continue applying the selected changes?"
@@ -200,6 +211,12 @@ _LOCAL_TEXT = {
         "preview.filter_all": "全部",
         "preview.back_settings": "返回设置",
         "preview.checkpoint_title": "需要建立 Checkpoint",
+        "preview.checkpoint_confirm": "插件修改无法用 Ctrl+Z 撤销。请确认已在启动插件前建立 Checkpoint 或备份。",
+        "preview.checkpoint_confirm_yes": "已备份，继续应用",
+        "preview.checkpoint_confirm_back": "返回预览",
+        "scope.checkpoint_notice": "开始前建议先在 Sigil 中建立 Checkpoint；插件运行期间无法操作 Sigil 主窗口。",
+        "scope.checkpoint_hide": "以后不再提示",
+        "scope.checkpoint_close": "关闭 Checkpoint 提示",
         "preview.checkpoint_message": "插件修改无法用 Ctrl+Z 撤销。应用前请先在 Sigil 中建立 Checkpoint。\n\n继续应用已选择的变化吗？",
         "preview.checkpoint_yes": "我已建立 Checkpoint，继续",
         "preview.checkpoint_no": "取消",
@@ -220,6 +237,12 @@ _LOCAL_TEXT = {
         "preview.filter_all": "全部",
         "preview.back_settings": "返回設定",
         "preview.checkpoint_title": "需要建立 Checkpoint",
+        "preview.checkpoint_confirm": "外掛程式修改無法用 Ctrl+Z 復原。請確認已在啟動外掛程式前建立 Checkpoint 或備份。",
+        "preview.checkpoint_confirm_yes": "已備份，繼續套用",
+        "preview.checkpoint_confirm_back": "返回預覽",
+        "scope.checkpoint_notice": "開始前建議先在 Sigil 中建立 Checkpoint；外掛程式執行期間無法操作 Sigil 主視窗。",
+        "scope.checkpoint_hide": "以後不再提示",
+        "scope.checkpoint_close": "關閉 Checkpoint 提示",
         "preview.checkpoint_message": "外掛程式修改無法用 Ctrl+Z 復原。套用前請先在 Sigil 中建立 Checkpoint。\n\n要繼續套用已選取的變化嗎？",
         "preview.checkpoint_yes": "我已建立 Checkpoint，繼續",
         "preview.checkpoint_no": "取消",
@@ -314,6 +337,8 @@ def choose_scope(
     initial_language: str = "en",
     notice=(),
     initial_selection: TargetSelection | None = None,
+    checkpoint_notice_enabled: bool = False,
+    hide_checkpoint_notice=None,
 ) -> ScopeOutcome:
     """Choose a frozen XHTML target set after enumerating metadata only."""
 
@@ -338,18 +363,22 @@ def choose_scope(
         spine_ids=spine_ids,
         recovery_notices=notice,
         initial_scope=initial_scope,
+        checkpoint_notice_enabled=checkpoint_notice_enabled,
+        hide_checkpoint_notice=hide_checkpoint_notice,
     )
     exec_method = getattr(dialog.dialog, "exec", None) or dialog.dialog.exec_
     exec_method()
     if not dialog.accepted:
-        return ScopeOutcome(False, None, dialog.language)
+        return ScopeOutcome(
+            False, None, dialog.language, dialog.checkpoint_notice_shown)
     _translator.set_language(dialog.language)
     selection = resolve_target_selection(
         inventory,
         dialog.scope,
         dialog.spine_ids if dialog.scope is Scope.SPINE else dialog.selected_ids(),
     )
-    return ScopeOutcome(True, selection, dialog.language)
+    return ScopeOutcome(
+        True, selection, dialog.language, dialog.checkpoint_notice_shown)
 
 
 def create_progress_reporter(total: int, parent: Any = None) -> ProgressReporter:
@@ -956,10 +985,12 @@ class _PreviewDialog:
         self.checkpoint_notice_shown = True
         box = message_box(self.dialog)
         box.setWindowTitle(_ui_text("preview.checkpoint_title"))
-        box.setText(_ui_text("preview.checkpoint_message"))
+        box.setText(_ui_text("preview.checkpoint_confirm"))
         box.setIcon(message_box.Warning)
-        accept = box.addButton(_ui_text("preview.checkpoint_yes"), message_box.AcceptRole)
-        cancel = box.addButton(_ui_text("preview.checkpoint_no"), message_box.RejectRole)
+        accept = box.addButton(
+            _ui_text("preview.checkpoint_confirm_yes"), message_box.AcceptRole)
+        cancel = box.addButton(
+            _ui_text("preview.checkpoint_confirm_back"), message_box.RejectRole)
         box.setDefaultButton(cancel)
         hide = self._qt.QCheckBox(_ui_text("preview.checkpoint_hide"))
         box.setCheckBox(hide)
@@ -1215,6 +1246,8 @@ class _ScopeDialog:
         spine_ids: Tuple[str, ...] = (),
         recovery_notices=(),
         initial_scope: Scope | None = None,
+        checkpoint_notice_enabled: bool = False,
+        hide_checkpoint_notice=None,
     ) -> None:
         self._qt = qt_widgets
         self._inventory = inventory
@@ -1223,6 +1256,9 @@ class _ScopeDialog:
         self.language = language
         self.ignored_non_xhtml = max(0, ignored_non_xhtml)
         self.spine_ids = tuple(file_id for file_id in spine_ids if file_id)
+        self.checkpoint_notice_shown = bool(checkpoint_notice_enabled)
+        self._hide_checkpoint_notice_callback = hide_checkpoint_notice
+        self._checkpoint_notice_hidden = False
         self.dialog = qt_widgets.QDialog()
         self.dialog.setWindowTitle(translator.text("scope.title"))
         self.dialog.resize(700, 560)
@@ -1233,6 +1269,8 @@ class _ScopeDialog:
             self.recovery_notice_label = qt_widgets.QLabel("\n".join(notice_lines))
             self.recovery_notice_label.setWordWrap(True)
             layout.addWidget(self.recovery_notice_label)
+        self._build_checkpoint_banner(
+            qt_widgets, layout, translator, checkpoint_notice_enabled)
 
         language_row = qt_widgets.QHBoxLayout()
         self.language_label = qt_widgets.QLabel(translator.text("language.label"))
@@ -1332,10 +1370,48 @@ class _ScopeDialog:
         self.filter_edit.setPlaceholderText(self._translator.text("scope.filter"))
         self.select_visible.setText(self._translator.text("scope.select_visible"))
         self.clear_visible.setText(self._translator.text("scope.clear_visible"))
+        if self.checkpoint_banner is not None:
+            self.checkpoint_notice_label.setText(
+                self._translator.text("scope.checkpoint_notice"))
+            self.checkpoint_hide_checkbox.setText(
+                self._translator.text("scope.checkpoint_hide"))
+            self.checkpoint_close_button.setToolTip(
+                self._translator.text("scope.checkpoint_close"))
         self.cancel_button.setText(self._translator.text("common.cancel"))
         self.analyze_button.setText(self._translator.text("scope.analyze"))
         self._refresh_count()
         self._update_analyze_enabled()
+
+    def _checkpoint_notice_preference_changed(self, checked: bool) -> None:
+        if not checked or self._checkpoint_notice_hidden:
+            return
+        self._checkpoint_notice_hidden = True
+        if callable(self._hide_checkpoint_notice_callback):
+            self._hide_checkpoint_notice_callback()
+        if self.checkpoint_banner is not None:
+            self.checkpoint_banner.hide()
+
+    def _build_checkpoint_banner(self, qt_widgets, layout, translator, enabled):
+        self.checkpoint_banner = None
+        if not enabled:
+            return
+        self.checkpoint_banner = qt_widgets.QWidget()
+        checkpoint_layout = qt_widgets.QHBoxLayout(self.checkpoint_banner)
+        self.checkpoint_notice_label = qt_widgets.QLabel(
+            translator.text("scope.checkpoint_notice"))
+        self.checkpoint_notice_label.setWordWrap(True)
+        checkpoint_layout.addWidget(self.checkpoint_notice_label, 1)
+        self.checkpoint_hide_checkbox = qt_widgets.QCheckBox(
+            translator.text("scope.checkpoint_hide"))
+        self.checkpoint_hide_checkbox.toggled.connect(
+            self._checkpoint_notice_preference_changed)
+        checkpoint_layout.addWidget(self.checkpoint_hide_checkbox)
+        self.checkpoint_close_button = qt_widgets.QPushButton("×")
+        self.checkpoint_close_button.setToolTip(
+            translator.text("scope.checkpoint_close"))
+        self.checkpoint_close_button.clicked.connect(self.checkpoint_banner.hide)
+        checkpoint_layout.addWidget(self.checkpoint_close_button)
+        layout.addWidget(self.checkpoint_banner)
 
     def _checked_ids(self) -> Tuple[str, ...]:
         checked = self._qt.Qt.Checked
