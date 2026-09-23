@@ -6,7 +6,7 @@ from dataclasses import replace
 from typing import Any, Iterable
 
 from app.profiles import Profile, ProfileStore, ProfileValidationError
-from rules.precedence import base_direction
+from opencc_backend.configs import BASE_CONFIG_BY_JIEBA, JIEBA_CONFIG_BY_BASE, SUPPORTED_CONFIGS, V1_CONFIGS
 
 
 _LABELS = {
@@ -18,6 +18,8 @@ _LABELS = {
         "save": "Save",
         "cancel": "Cancel",
         "new": "New",
+        "jieba": "Advanced Jieba",
+        "unavailable": "unavailable on this host",
     },
     "zh-Hans": {
         "title": "配置方案",
@@ -27,6 +29,8 @@ _LABELS = {
         "save": "保存",
         "cancel": "取消",
         "new": "新建",
+        "jieba": "高级 Jieba",
+        "unavailable": "本机不可用",
     },
     "zh-Hant": {
         "title": "設定檔",
@@ -36,26 +40,11 @@ _LABELS = {
         "save": "儲存",
         "cancel": "取消",
         "new": "新增",
+        "jieba": "進階 Jieba",
+        "unavailable": "此主機不可用",
     },
 }
-STANDARD_CONFIGS = (
-    "s2t",
-    "t2s",
-    "s2tw",
-    "tw2s",
-    "s2twp",
-    "tw2sp",
-    "s2hk",
-    "hk2s",
-    "s2hkp",
-    "hk2sp",
-    "t2tw",
-    "tw2t",
-    "t2hk",
-    "hk2t",
-    "t2jp",
-    "jp2t",
-)
+STANDARD_CONFIGS = V1_CONFIGS
 
 
 def _labels(translator: Any) -> dict[str, str]:
@@ -101,7 +90,12 @@ class ProfileManagerDialog:
         self._labels = _labels(translator)
         self._profiles = list(profiles)
         self._store = store
-        self._available_configs = _base_config_options(available_configs)
+        available = tuple(SUPPORTED_CONFIGS if available_configs is None else available_configs)
+        self._available_configs = _base_config_options(available)
+        self._available_config_ids = set(available)
+        self._jieba_configs = {base: config for base, config in JIEBA_CONFIG_BY_BASE.items()
+                               if config in self._available_config_ids}
+        self._loading = False
         self.selected: Profile | None = None
         self.accepted = False
         self.dialog = qt_widgets.QDialog()
@@ -127,9 +121,11 @@ class ProfileManagerDialog:
         self.config_combo = qt.QComboBox()
         for config in self._available_configs:
             self.config_combo.addItem(config, config)
+        self.jieba_checkbox = qt.QCheckBox(self._labels["jieba"])
         self.rules_edit = qt.QLineEdit()
         form.addRow(self._labels["name"], self.name_edit)
         form.addRow(self._labels["config"], self.config_combo)
+        form.addRow(self.jieba_checkbox)
         form.addRow(self._labels["rules"], self.rules_edit)
         layout.addLayout(form)
         buttons = qt.QHBoxLayout()
@@ -140,6 +136,7 @@ class ProfileManagerDialog:
             buttons.addWidget(button)
         layout.addLayout(buttons)
         self.combo.currentIndexChanged.connect(self._load)
+        self.config_combo.currentIndexChanged.connect(self._config_changed)
         self.new_button.clicked.connect(self._new)
         self.save_button.clicked.connect(self._save)
         self.cancel_button.clicked.connect(self.dialog.reject)
@@ -150,8 +147,42 @@ class ProfileManagerDialog:
             return
         profile = self._profiles[index]
         self.name_edit.setText(profile.name)
-        self.config_combo.setCurrentIndex(self.config_combo.findData(profile.conversion))
+        self._loading = True
+        conversion = profile.conversion
+        if conversion in BASE_CONFIG_BY_JIEBA:
+            base = BASE_CONFIG_BY_JIEBA[conversion]
+            if conversion not in self._available_config_ids:
+                config_index = self.config_combo.findData(conversion)
+                if config_index < 0:
+                    self.config_combo.addItem(
+                        f"{conversion} ({self._labels['unavailable']})", conversion)
+                    config_index = self.config_combo.findData(conversion)
+                if config_index >= 0:
+                    self.config_combo.setCurrentIndex(config_index)
+                self.jieba_checkbox.setChecked(False)
+                self.jieba_checkbox.setEnabled(False)
+                self.jieba_checkbox.setToolTip(self._labels["unavailable"])
+            else:
+                config_index = self.config_combo.findData(base)
+                if config_index >= 0:
+                    self.config_combo.setCurrentIndex(config_index)
+                self.jieba_checkbox.setChecked(True)
+                self.jieba_checkbox.setEnabled(True)
+                self.jieba_checkbox.setToolTip("")
+        else:
+            config_index = self.config_combo.findData(conversion)
+            if config_index < 0:
+                self.config_combo.addItem(
+                    f"{conversion} ({self._labels['unavailable']})", conversion)
+                config_index = self.config_combo.findData(conversion)
+            if config_index >= 0:
+                self.config_combo.setCurrentIndex(config_index)
+            plugin = JIEBA_CONFIG_BY_BASE.get(conversion)
+            self.jieba_checkbox.setChecked(False)
+            self.jieba_checkbox.setEnabled(plugin in self._available_config_ids)
+            self.jieba_checkbox.setToolTip("")
         self.rules_edit.setText(",".join(profile.ruleset_ids))
+        self._loading = False
 
     def _new(self) -> None:
         profile = Profile(name="New profile")
@@ -167,10 +198,13 @@ class ProfileManagerDialog:
             index = self.combo.currentIndex()
         old = self._profiles[index]
         try:
+            conversion = _profile_conversion(
+                self.config_combo, self.jieba_checkbox, self._jieba_configs, old.conversion)
             profile = replace(
                 old,
                 name=self.name_edit.text().strip(),
-                conversion=str(self.config_combo.currentData()),
+                conversion=conversion,
+                segmentation="jieba" if conversion.endswith("_jieba") else "mmseg",
                 ruleset_ids=tuple(
                     item.strip() for item in self.rules_edit.text().split(",") if item.strip()
                 ),
@@ -185,6 +219,21 @@ class ProfileManagerDialog:
             self.dialog.accept()
         except (ProfileValidationError, ValueError) as exc:
             self._qt.QMessageBox.warning(self.dialog, self._labels["title"], str(exc))
+
+    def _config_changed(self, *_args):
+        if self._loading:
+            return
+        config = self.config_combo.currentData()
+        if config in BASE_CONFIG_BY_JIEBA:
+            self.jieba_checkbox.setChecked(False)
+            self.jieba_checkbox.setEnabled(False)
+            self.jieba_checkbox.setToolTip(self._labels["unavailable"])
+            return
+        plugin = JIEBA_CONFIG_BY_BASE.get(config)
+        available = plugin in self._available_config_ids
+        self.jieba_checkbox.setChecked(False)
+        self.jieba_checkbox.setEnabled(available)
+        self.jieba_checkbox.setToolTip("" if available else self._labels["unavailable"])
 
 
 def _load_qt_widgets() -> Any:
@@ -207,15 +256,19 @@ _application: Any = None
 
 
 def _base_config_options(available_configs: Iterable[str] | None) -> tuple[str, ...]:
-    values = STANDARD_CONFIGS if available_configs is None else available_configs
-    seen: set[str] = set()
-    result: list[str] = []
-    for value in values:
-        direction = base_direction(str(value))
-        if direction in STANDARD_CONFIGS and direction not in seen:
-            seen.add(direction)
-            result.append(direction)
-    return tuple(result)
+    values = tuple(V1_CONFIGS if available_configs is None else available_configs)
+    seen = set(values)
+    seen.update(BASE_CONFIG_BY_JIEBA[value] for value in values if value in BASE_CONFIG_BY_JIEBA)
+    return tuple(config for config in V1_CONFIGS if config in seen)
+
+
+def _profile_conversion(config_combo, jieba_checkbox, jieba_configs, original):
+    selected = config_combo.currentData()
+    if not isinstance(selected, str) or not selected:
+        return original
+    if selected in BASE_CONFIG_BY_JIEBA:
+        return selected
+    return jieba_configs.get(selected, selected) if jieba_checkbox.isChecked() else selected
 
 
 def _ensure_application(qt: Any) -> Any:

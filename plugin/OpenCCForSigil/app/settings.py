@@ -28,10 +28,23 @@ class RunSettings:
         self.storage, self.adapter, self.backend = storage, adapter, backend
         self.profiles = ProfileStore(storage.paths.profiles)
         self.rules = RuleStore(storage.paths.rules)
+        self._pending_missing_rulesets: tuple[str, ...] = ()
+        self._reported_missing_rulesets: set[str] = set()
         identifier = preferences.get("profile_id")
-        self.active = self.profiles.load(identifier) if identifier else Profile(
-            id="conservative", name="Conservative", ruleset_ids=("default",))
+        if identifier:
+            self.active = self.profiles.load(identifier)
+        else:
+            options = preferences.get("run_options")
+            saved_ids = options.get("ruleset_ids", ()) if isinstance(options, dict) else ()
+            self.active = Profile(
+                id="conservative", name="Conservative",
+                ruleset_ids=self._existing_ruleset_ids(saved_ids),
+            )
         self._book_fingerprint = None
+
+    @property
+    def active_profile_is_saved(self):
+        return (self.profiles.directory / f"{self.active.id}.json").is_file()
 
     @property
     def book_fingerprint(self):
@@ -45,10 +58,36 @@ class RunSettings:
                         if key not in {"id", "name", "schema_version", "profile_id"}})
         payload["conversion"] = config
         payload["segmentation"] = "jieba" if config.endswith("_jieba") else "mmseg"
+        payload["attributes"] = tuple(name for name, enabled in (
+            ("alt", payload.get("convert_alt", True)),
+            ("title", payload.get("convert_title", True)),
+            ("aria-label", payload.get("convert_aria_label", False)),
+        ) if enabled)
+        payload["ruleset_ids"] = self._existing_ruleset_ids(payload.get("ruleset_ids", ()))
         profile = Profile.from_dict(payload)
         if profile.force_pivot and (not profile.pivot_chain or profile.pivot_chain[-1] != config):
             raise ValueError("force-pivot must end in the selected configuration")
         return profile
+
+    def _existing_ruleset_ids(self, identifiers):
+        if isinstance(identifiers, str):
+            identifiers = (identifiers,)
+        elif not isinstance(identifiers, (tuple, list, set, frozenset)):
+            identifiers = ()
+        values = tuple(dict.fromkeys(str(item) for item in identifiers if item))
+        available = {path.stem for path in self.rules.directory.glob("*.json")}
+        kept = tuple(item for item in values if item == "default" or item in available)
+        missing = tuple(item for item in values if item != "default" and item not in available)
+        self._pending_missing_rulesets = tuple(dict.fromkeys(
+            (*self._pending_missing_rulesets, *missing)))
+        return kept
+
+    def take_missing_rulesets_notice(self):
+        pending = tuple(item for item in self._pending_missing_rulesets
+                        if item not in self._reported_missing_rulesets)
+        self._reported_missing_rulesets.update(pending)
+        self._pending_missing_rulesets = ()
+        return pending
 
     def pick_profile(self, config, options, translator):
         from ui.profile_window import show_profile_window
@@ -93,11 +132,27 @@ class RunSettings:
             available_configs=self.backend.available_configs())
         if result is not None:
             self.rules.save(RuleSet(identifier, result, ruleset.name))
-            self.active = replace(self.active, ruleset_ids=tuple(dict.fromkeys(
+            updated = replace(self.active, ruleset_ids=tuple(dict.fromkeys(
                 (*self.active.ruleset_ids, identifier))))
+            if self.active_profile_is_saved:
+                response = qt.QMessageBox.question(
+                    parent, translator.text("settings.rules"),
+                    translator.text("settings.add_ruleset_to_profile",
+                                    ruleset=identifier, profile=self.active.name or self.active.id),
+                    qt.QMessageBox.Yes | qt.QMessageBox.No,
+                    qt.QMessageBox.No,
+                )
+                if response == qt.QMessageBox.Yes:
+                    self.profiles.save(updated)
+                else:
+                    qt.QMessageBox.information(
+                        parent, translator.text("settings.rules"),
+                        translator.text("settings.ruleset_session_only", ruleset=identifier),
+                    )
+            self.active = updated
 
     def freeze_rules(self, profile):
-        identifiers = tuple(profile.ruleset_ids)
+        identifiers = self._existing_ruleset_ids(profile.ruleset_ids)
         rules = []
         for identifier in identifiers:
             # The built-in empty set does not need an on-disk file.

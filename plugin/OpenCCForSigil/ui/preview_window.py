@@ -930,6 +930,7 @@ class _ConversionConfigDialog:
         self.cancel_button.clicked.connect(self.dialog.reject)
         self.continue_button.clicked.connect(self._accept)
         self.combo.currentIndexChanged.connect(self._update_jieba_state)
+        self.jieba_checkbox.stateChanged.connect(self._update_jieba_state)
         default_base = BASE_CONFIG_BY_JIEBA.get(default_config, default_config)
         selected_index = self.combo.findData(default_base)
         if selected_index >= 0:
@@ -967,6 +968,8 @@ class _ConversionConfigDialog:
                 self._translator.text("config.jieba_unavailable")
                 + ("\n" + _jieba_unavailable_reason if _jieba_unavailable_reason else "")
             )
+        if hasattr(self, "options_panel"):
+            self.options_panel.update_enablement(self._get_config())
 
     def _accept(self) -> None:
         from transforms.language_tags import target_language

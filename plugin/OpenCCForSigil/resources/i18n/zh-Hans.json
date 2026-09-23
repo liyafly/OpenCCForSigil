@@ -120,5 +120,11 @@
   "options.pivot_chain": "明确中转链",
   "options.diagnose_mixed": "诊断混合简繁",
   "options.detailed_classification": "比较官方配置并分类",
-  "options.decode_numeric_cjk_refs": "转换数字汉字引用"
+  "options.decode_numeric_cjk_refs": "转换数字汉字引用",
+  "options.force_pivot_unavailable": "没有以 {config} 结束的可用强制中转链。",
+  "options.missing_rulesets": "以下规则集不存在，已跳过：{ids}",
+  "options.current_profile": "当前方案：{name}{status}",
+  "options.profile_modified": "（已修改）",
+  "settings.add_ruleset_to_profile": "将规则集 {ruleset} 加入方案 {profile}？",
+  "settings.ruleset_session_only": "规则集 {ruleset} 仅在本次运行中生效。"
 }

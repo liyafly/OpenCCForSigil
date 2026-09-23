@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from datetime import datetime, timezone
 from typing import Any, Callable, Iterable, Mapping
 
 from rules.conflicts import find_conflicts
@@ -10,12 +11,14 @@ from rules.engine import convert_with_overlay
 from rules.models import Rule, RuleSnapshot
 from rules.precedence import base_direction
 from rules.validators import RuleValidationError, validate_rules
+from opencc_backend.configs import V1_CONFIGS
 
 
 _LABELS = {
     "en": {
         "title": "Rules",
-        "add": "Add / update",
+        "add": "Add",
+        "update": "Update selected",
         "remove": "Remove",
         "test": "Test",
         "inspect": "Inspect dictionary",
@@ -47,7 +50,8 @@ _LABELS = {
     },
     "zh-Hans": {
         "title": "规则管理",
-        "add": "添加 / 更新",
+        "add": "新增",
+        "update": "更新所选",
         "remove": "删除",
         "test": "测试",
         "inspect": "词典检查",
@@ -79,7 +83,8 @@ _LABELS = {
     },
     "zh-Hant": {
         "title": "規則管理",
-        "add": "新增 / 更新",
+        "add": "新增",
+        "update": "更新所選",
         "remove": "刪除",
         "test": "測試",
         "inspect": "詞典檢查",
@@ -111,24 +116,7 @@ _LABELS = {
     },
 }
 
-STANDARD_CONFIGS = (
-    "s2t",
-    "t2s",
-    "s2tw",
-    "tw2s",
-    "s2twp",
-    "tw2sp",
-    "s2hk",
-    "hk2s",
-    "s2hkp",
-    "hk2sp",
-    "t2tw",
-    "tw2t",
-    "t2hk",
-    "hk2t",
-    "t2jp",
-    "jp2t",
-)
+STANDARD_CONFIGS = V1_CONFIGS
 
 
 def _labels(translator: Any) -> Mapping[str, str]:
@@ -331,10 +319,11 @@ class RuleManagerDialog:
                 for key in ("type", "direction", "source", "target", "scope", "priority")
             ]
         )
+        _configure_rule_table(self.table, qt)
         layout.addWidget(self.table)
-        self.conflict_label = qt.QLabel()
-        self.conflict_label.setWordWrap(True)
-        layout.addWidget(self.conflict_label)
+        self.conflict_list = qt.QListWidget()
+        self.conflict_list.itemClicked.connect(self._select_conflict_item)
+        layout.addWidget(self.conflict_list)
         form = qt.QGridLayout()
         self.type_combo = qt.QComboBox()
         self.type_combo.addItem(self._labels["exact"], "exact")
@@ -350,6 +339,7 @@ class RuleManagerDialog:
         self.priority_edit = qt.QSpinBox()
         self.priority_edit.setRange(-100000, 100000)
         self.priority_edit.setValue(100)
+        _select_default_direction(self.direction_combo, self._config)
         controls = (
             ("type", self.type_combo),
             ("direction", self.direction_combo),
@@ -364,6 +354,7 @@ class RuleManagerDialog:
         layout.addLayout(form)
         buttons = qt.QHBoxLayout()
         self.add_button = qt.QPushButton(self._labels["add"])
+        self.update_button = qt.QPushButton(self._labels["update"])
         self.remove_button = qt.QPushButton(self._labels["remove"])
         self.test_button = qt.QPushButton(self._labels["test"])
         self.inspect_button = qt.QPushButton(self._labels["inspect"])
@@ -373,6 +364,7 @@ class RuleManagerDialog:
         self.cancel_button = qt.QPushButton(self._labels["cancel"])
         for button in (
             self.add_button,
+            self.update_button,
             self.remove_button,
             self.test_button,
             self.inspect_button,
@@ -391,6 +383,7 @@ class RuleManagerDialog:
         self.test_output.setPlaceholderText(self._labels["output"])
         layout.addWidget(self.test_output)
         self.add_button.clicked.connect(self._add)
+        self.update_button.clicked.connect(self._update_selected)
         self.remove_button.clicked.connect(self._remove)
         self.test_button.clicked.connect(self._test)
         self.inspect_button.clicked.connect(self._inspect)
@@ -398,7 +391,8 @@ class RuleManagerDialog:
         self.export_button.clicked.connect(self._export)
         self.apply_button.clicked.connect(self._apply)
         self.cancel_button.clicked.connect(self.dialog.reject)
-        self.table.itemSelectionChanged.connect(self._load_selected)
+        self.type_combo.currentIndexChanged.connect(self._type_changed)
+        self.table.itemSelectionChanged.connect(self._selection_changed)
 
     def _refresh(self) -> None:
         self.table.setRowCount(0)
@@ -417,28 +411,52 @@ class RuleManagerDialog:
                 self.table.setItem(row, column, self._qt.QTableWidgetItem(value))
         conflicts = find_conflicts(self.rules)
         self.apply_button.setEnabled(not any(conflict.blocking for conflict in conflicts))
-        self.conflict_label.setText("\n".join(conflict.message for conflict in conflicts))
+        self.conflict_list.clear()
+        for conflict in conflicts:
+            item = self._qt.QListWidgetItem(conflict.message)
+            item.setData(getattr(self._qt.Qt, "UserRole", 32),
+                         tuple(rule.id for rule in conflict.rules))
+            self.conflict_list.addItem(item)
+        self._update_selection_state()
 
     def _add(self) -> None:
+        rule = self._rule_from_form()
+        if rule is None:
+            return
+        self.rules.append(rule)
+        self._refresh()
+
+    def _update_selected(self) -> None:
+        row = self.table.currentRow()
+        if row < 0 or row >= len(self.rules):
+            return
+        candidate = self._rule_from_form()
+        if candidate is None:
+            return
+        previous = self.rules[row]
+        updated_at = datetime.now(timezone.utc).isoformat(timespec="microseconds").replace(
+            "+00:00", "Z")
+        self.rules[row] = replace(candidate, id=previous.id,
+                                  created_at=previous.created_at, updated_at=updated_at)
+        self._refresh()
+
+    def _rule_from_form(self):
+        rule_type = str(self.type_combo.currentData())
         values = {
-            "type": str(self.type_combo.currentData()),
+            "type": rule_type,
             "direction": str(self.direction_combo.currentData()),
             "source": self.source_edit.text(),
-            "target": self.source_edit.text()
-            if self.type_combo.currentData() == "protect"
-            else self.target_edit.text(),
+            "target": self.source_edit.text() if rule_type == "protect" else self.target_edit.text(),
             "scope": str(self.scope_combo.currentData()),
             "priority": int(self.priority_edit.value()),
             "profile_id": self._profile_id or "",
             "book_fingerprint": self._book_fingerprint or "",
         }
         try:
-            rule = validate_rules((Rule.from_dict(values),))[0]
+            return validate_rules((Rule.from_dict(values),))[0]
         except RuleValidationError as exc:
             self._qt.QMessageBox.warning(self.dialog, self._labels["title"], str(exc))
-            return
-        self.rules.append(rule)
-        self._refresh()
+            return None
 
     def _remove(self) -> None:
         row = self.table.currentRow()
@@ -457,6 +475,32 @@ class RuleManagerDialog:
         self.target_edit.setText(rule.target)
         self.scope_combo.setCurrentIndex(self.scope_combo.findData(rule.scope))
         self.priority_edit.setValue(rule.priority)
+        self._type_changed()
+        if rule.type == "protect":
+            self.target_edit.clear()
+
+    def _type_changed(self, *_args):
+        is_protect = self.type_combo.currentData() == "protect"
+        self.target_edit.setEnabled(not is_protect)
+        if is_protect:
+            self.target_edit.clear()
+
+    def _selection_changed(self):
+        self._load_selected()
+        self._update_selection_state()
+
+    def _update_selection_state(self):
+        row = self.table.currentRow()
+        self.update_button.setEnabled(0 <= row < len(self.rules))
+
+    def _select_conflict_item(self, item):
+        rule_ids = item.data(getattr(self._qt.Qt, "UserRole", 32))
+        if not rule_ids:
+            return
+        row = next((index for index, rule in enumerate(self.rules)
+                    if rule.id in rule_ids), -1)
+        if row >= 0:
+            self.table.selectRow(row)
 
     def _test(self) -> None:
         if self._official_convert is None:
@@ -596,6 +640,17 @@ def _base_config_options(available_configs: Iterable[str] | None) -> tuple[str, 
             seen.add(direction)
             result.append(direction)
     return tuple(result)
+
+
+def _configure_rule_table(table, qt):
+    table.setEditTriggers(qt.QAbstractItemView.NoEditTriggers)
+    table.setSelectionBehavior(qt.QAbstractItemView.SelectRows)
+
+
+def _select_default_direction(combo, config):
+    index = combo.findData(base_direction(config))
+    if index >= 0:
+        combo.setCurrentIndex(index)
 
 
 __all__ = [

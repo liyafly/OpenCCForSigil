@@ -126,6 +126,9 @@ class Controller:
                 initial_options = profile_options(settings.active)
                 previous_options = preferences.get("run_options")
                 if isinstance(previous_options, dict):
+                    previous_options = dict(previous_options)
+                    if settings.active_profile_is_saved:
+                        previous_options.pop("ruleset_ids", None)
                     initial_options.update(previous_options)
                 configure_run_options(initial_options, metadata_available=adapter.metadata_supported(),
                                       services=settings)
