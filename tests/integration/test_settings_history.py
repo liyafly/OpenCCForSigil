@@ -81,7 +81,7 @@ def test_controller_records_hashes_and_counts_without_document_text(monkeypatch,
     ui(monkeypatch)
     monkeypatch.setattr("ui.preview_window.show_preview", accept)
     assert Controller(book, data_dir=tmp_path).run() == 0
-    history = json.loads((tmp_path / "history/index.json").read_text())
+    history = json.loads((tmp_path / "history/index.json").read_text(encoding="utf-8"))
     record = history["sessions"][0]
     assert record["summary"]["changes"] == 1
     assert record["summary"]["config"] == "t2s"

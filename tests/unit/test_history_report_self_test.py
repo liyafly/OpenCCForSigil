@@ -48,7 +48,7 @@ def test_history_persists_metadata_hashes_and_rejects_text(tmp_path: Path):
     assert record["summary"]["book_name"] == "Book.epub"
     assert "source" not in record["summary"]
     assert record["commit_manifest"]["files"][0]["before_sha256"] == "a" * 64
-    assert json.loads((tmp_path / "history" / "index.json").read_text())["schema_version"] == 1
+    assert json.loads((tmp_path / "history" / "index.json").read_text(encoding="utf-8"))["schema_version"] == 1
 
 
 def test_history_corruption_is_visible_and_not_reset(tmp_path: Path):
