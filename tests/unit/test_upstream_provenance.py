@@ -64,3 +64,14 @@ def test_ci_cache_key_and_checkout_ref_use_provenance_inputs():
         "tools/merge_verified_payloads.py",
     ):
         assert path in cache_line
+
+
+def test_windows_jieba_build_uses_lf_checkout_and_msvc_ninja_environment():
+    root = Path(__file__).resolve().parents[2]
+    workflow = (root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+
+    line_endings_step = workflow.index("Disable Git line-ending conversion")
+    upstream_checkout = workflow.index("Check out pinned OpenCC source")
+    assert line_endings_step < upstream_checkout
+    assert "git config --global core.autocrlf false" in workflow
+    assert "ilammy/msvc-dev-cmd@v1" in workflow

@@ -64,6 +64,37 @@ def _payload_id(record: Mapping[str, object]) -> str:
     return f"{record['os']}-{record['architecture']}-{record['python_abi']}"
 
 
+def _validate_jieba_resource_consistency(records: Iterable[Mapping[str, object]]) -> None:
+    reference_path = None
+    reference: dict[str, str] | None = None
+    for record in records:
+        payload_path = str(record.get("payload_path", "<unknown payload>"))
+        native_plugins = record.get("native_plugins")
+        plugin = (native_plugins.get("opencc-jieba")
+                  if isinstance(native_plugins, Mapping) else None)
+        resources = plugin.get("resource_hashes") if isinstance(plugin, Mapping) else None
+        if not isinstance(resources, Mapping) or not resources:
+            raise SystemExit(
+                f"Jieba resource hashes are missing from payload {payload_path}"
+            )
+        current = {str(path): str(digest).lower() for path, digest in resources.items()}
+        if reference is None:
+            reference_path = payload_path
+            reference = current
+            continue
+        if set(current) != set(reference):
+            raise SystemExit(
+                "Jieba resource list mismatch between "
+                f"{reference_path} and {payload_path}"
+            )
+        for resource_path in sorted(reference):
+            if current[resource_path] != reference[resource_path]:
+                raise SystemExit(
+                    f"Jieba resource hash mismatch for {resource_path} between "
+                    f"{reference_path} and {payload_path}"
+                )
+
+
 def _copy_payload(source: Path, destination: Path) -> None:
     if destination.exists():
         if _sha256_tree(destination) != _sha256_tree(source):
@@ -165,6 +196,8 @@ def merge(
                     + ",".join(format_runtime_identity(item) for item in sorted(unexpected, key=str))
                 )
             raise SystemExit("verified payload runtime matrix mismatch: " + "; ".join(details))
+
+    _validate_jieba_resource_consistency(records.values())
 
     for payload_root in sorted((vendor_root / "payloads").glob("*/opencc/clib/bin")):
         for executable in payload_root.iterdir():

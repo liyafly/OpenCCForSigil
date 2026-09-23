@@ -9,6 +9,12 @@
     "version": "3.14",
     "abi": "cp314"
   },
+  "jieba_resources": {
+    "jieba_merged.ocd2": "3d6e9e6614a95cae37ddf6d4995c8c9d338df9d26de377d6e61ccd18f81e9b78",
+    "hmm_model.utf8": "f17790586ac86dd048c8adffed052c4bd2b28ed0682972c1275e59040c0589a7",
+    "idf.utf8": "dbd1e03d72b2263cc8d84a4304ed77677eed9e7deaf43a1a5133bbba9733b535",
+    "stop_words.utf8": "b788b8a939d2e2fe079abd579ea98f12f9fb84370bfd0dddd81bb9381f7ab42c"
+  },
   "wheels": [
     {
       "python_implementation": "CPython",

@@ -31,7 +31,14 @@ ROOT = Path(__file__).resolve().parents[1]
 PLUGIN_ROOT = ROOT / "plugin" / "OpenCCForSigil"
 VENDOR_ROOT = PLUGIN_ROOT / "vendor" / "opencc"
 MANIFEST_PATH = VENDOR_ROOT / "manifest.json"
+PAYLOAD_LOCK_PATH = ROOT / "native_build" / "payload-lock.json"
 JIEBA_PLUGIN_NAME = "opencc-jieba"
+LOCKED_JIEBA_RESOURCE_NAMES = (
+    "jieba_merged.ocd2",
+    "hmm_model.utf8",
+    "idf.utf8",
+    "stop_words.utf8",
+)
 JIEBA_CONFIGS = (
     "s2t_jieba",
     "s2tw_jieba",
@@ -76,6 +83,41 @@ def _sha256_tree(root: Path) -> str:
 def _canonical_hash(values: Mapping[str, str]) -> str:
     encoded = json.dumps(values, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _locked_jieba_resource_hashes(lock_path: Path = PAYLOAD_LOCK_PATH) -> dict[str, str]:
+    lock = json.loads(lock_path.read_text(encoding="utf-8"))
+    values = lock.get("jieba_resources")
+    if not isinstance(values, dict) or set(values) != set(LOCKED_JIEBA_RESOURCE_NAMES):
+        raise SystemExit("payload lock must pin all required Jieba resource hashes")
+    for name, digest in values.items():
+        if (not isinstance(digest, str) or len(digest) != 64
+                or any(char not in "0123456789abcdef" for char in digest.lower())):
+            raise SystemExit(f"payload lock has an invalid Jieba resource hash: {name}")
+    return {name: str(values[name]).lower() for name in LOCKED_JIEBA_RESOURCE_NAMES}
+
+
+def _validate_jieba_resources(
+    dictionary_root: Path,
+    expected_hashes: Mapping[str, str],
+) -> None:
+    merged = dictionary_root / "jieba_merged.ocd2"
+    if not merged.is_file():
+        raise SystemExit(f"official Jieba merged dictionary is missing: {merged}")
+    for path in _files(dictionary_root):
+        if path.suffix == ".utf8" and b"\r\n" in path.read_bytes():
+            raise SystemExit(f"official Jieba resource contains CRLF line endings: {path}")
+    for name in LOCKED_JIEBA_RESOURCE_NAMES:
+        path = dictionary_root / name
+        if not path.is_file():
+            raise SystemExit(f"locked official Jieba resource is missing: {path}")
+        actual = _sha256_file(path)
+        expected = str(expected_hashes.get(name, "")).lower()
+        if actual != expected:
+            raise SystemExit(
+                f"official Jieba resource hash mismatch for {name}: "
+                f"expected {expected or '<missing>'}, got {actual}"
+            )
 
 
 def _data_manifest(payload_root: Path) -> dict[str, str]:
@@ -242,6 +284,12 @@ def _cmake_baseline_options(runtime_os: str) -> list[str]:
     return []
 
 
+def _cmake_generator_options(runtime_os: str) -> list[str]:
+    """Use Ninja on Windows so upstream can run the wheel's opencc_dict tool."""
+
+    return ["-G", "Ninja"] if runtime_os == "windows" else []
+
+
 def _strip_plugin(plugin_library: Path, runtime_os: str) -> None:
     """Remove build-time symbols and paths before hashing the release payload."""
 
@@ -280,6 +328,7 @@ def _build_plugin(
         "-DOPENCC_ENABLE_INSTALL=ON",
         "-DBUILD_SHARED_LIBS=OFF",
     ]
+    configure.extend(_cmake_generator_options(runtime_os))
     configure.extend(_cmake_baseline_options(runtime_os))
     if runtime_os != "windows":
         # Put reproducibility and ABI flags in the general flag set.  Setting
@@ -349,6 +398,7 @@ def _copy_plugin_payload(
     runtime_os: str,
     plugin_library: Path,
     install_root: Path,
+    expected_jieba_hashes: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     plugin_dir, share_dir = _platform_paths(payload_root, runtime_os)
     plugin_dir.mkdir(parents=True, exist_ok=True)
@@ -373,6 +423,11 @@ def _copy_plugin_payload(
     destination_dict.mkdir(parents=True, exist_ok=True)
     for source in _files(installed_dict):
         shutil.copy2(source, destination_dict / source.name)
+
+    _validate_jieba_resources(
+        destination_dict,
+        expected_jieba_hashes or _locked_jieba_resource_hashes(),
+    )
 
     resource_paths = [share_dir / f"{config}.json" for config in JIEBA_CONFIGS]
     resource_paths.extend(sorted(_files(destination_dict)))

@@ -54,6 +54,10 @@ jobs:
         if: steps.payload-cache.outputs.cache-hit == 'true'
         run: mise exec -- uv run python tools/merge_verified_payloads.py --artifact-root native_build/artifacts/verified-payload
 
+      - name: Disable Git line-ending conversion for the upstream checkout
+        if: steps.payload-cache.outputs.cache-hit != 'true'
+        run: git config --global core.autocrlf false
+
       - name: Check out pinned OpenCC source for the official Jieba plugin
         if: steps.payload-cache.outputs.cache-hit != 'true'
         uses: actions/checkout@v7
@@ -66,6 +70,10 @@ jobs:
       - name: Vendor the exact official wheel for this runner
         if: steps.payload-cache.outputs.cache-hit != 'true'
         run: mise exec -- uv run python tools/vendor_opencc.py --version 1.4.2
+
+      - name: Set up the MSVC environment for the Windows Ninja build
+        if: runner.os == 'Windows' && steps.payload-cache.outputs.cache-hit != 'true'
+        uses: ilammy/msvc-dev-cmd@v1
 
       - name: Build and vendor the official native Jieba plugin
         if: steps.payload-cache.outputs.cache-hit != 'true'
