@@ -965,7 +965,9 @@ class _PreviewDialog:
         self.apply_button.clicked.connect(self._apply)
         self.back_settings_button.clicked.connect(self._back_to_settings)
         self.cancel_button.clicked.connect(self.dialog.reject)
-        self.export_button.setEnabled(self._export_service() is not None)
+        self.export_button.setEnabled(
+            getattr(self._services, "export_preview", None) is not None
+        )
         self._bind_shortcuts()
 
     def _bind_shortcuts(self) -> None:
@@ -2045,7 +2047,7 @@ class _ScopeDialog:
                 for index in range(self.list_widget.count()):
                     item = self.list_widget.item(index)
                     item.setFlags(item.flags() & ~checkable)
-                    item.setCheckState(qt.Unchecked)
+                    item.setData(qt.CheckStateRole, None)
                 row = next((index for index in range(self.list_widget.count())
                             if self.list_widget.item(index).data(qt.UserRole)
                             == self._single_selected_id), -1)
@@ -2070,7 +2072,7 @@ class _ScopeDialog:
     def _update_analyze_enabled(self) -> None:
         if not hasattr(self, "analyze_button"):
             return
-        count = len(self._checked_ids())
+        count = len(self.selected_ids())
         valid = bool(self._inventory)
         if self.single_radio.isChecked():
             valid = count == 1
