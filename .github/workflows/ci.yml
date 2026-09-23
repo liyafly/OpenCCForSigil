@@ -19,6 +19,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - id: linux-aarch64
+            runner: ubuntu-22.04-arm
           - id: linux-x86_64
             runner: ubuntu-22.04
           - id: macos-arm64

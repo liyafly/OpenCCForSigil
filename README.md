@@ -33,12 +33,12 @@ See [document conversion](docs/extended-document-conversion.md),
 [current validation boundaries](docs/deviations.md). Rules, preferences, logs,
 profiles, and history live outside the plugin installation and the EPUB.
 
-The checked-in payload is macOS arm64/cp314. CI assembles the four-platform Fat
+The checked-in payload is macOS arm64/cp314. CI assembles the five-platform Fat
 Plugin and inspects actual native OS/ABI requirements: macOS deployment target
 13.0 or earlier, and Linux GLIBC/GLIBCXX at most 2.35/3.4.30. This does not
 replace installing, applying, saving, and reopening an EPUB in each real Sigil
-host. Windows and Linux ARM, and other Python minor versions, are not declared
-supported payloads.
+host. Linux aarch64 is supported through its native payload. Windows ARM and
+Python minor versions other than 3.14 are not declared supported payloads.
 
 Standard preflight is independent of optional Jieba loading. An optional load
 failure disables Jieba with its reason; corruption/provenance failures block
@@ -72,10 +72,11 @@ Windows runners, then assembles the verified Fat Plugin artifact. See
 local Windows/Linux installation is not required.
 
 The official wheel set is pinned in `native_build/payload-lock.json`. Push and
-manual CI runs reuse previously target-tested payloads from a verified cache;
-when the cache is absent, the locked wheels and native build are reproduced on
-the matching hosted runners. The release job requires all four supported
-runtime payloads and rechecks their hashes from the final ZIP.
+manual CI runs may restore complete target-tested payloads from a verified
+cache, then rerun full-tree tests and CLI differences before deriving the
+runtime subset. When the cache is absent, the locked wheels and native build
+are reproduced on the matching hosted runners. The release job requires all
+five supported runtime payloads and rechecks their hashes from the final ZIP.
 
 For future workflow runs, the CI job uploads one Actions artifact named
 `OpenCCForSigil-fat-plugin-${{ github.sha }}` containing

@@ -16,7 +16,9 @@ def _macho(*, architecture: str = "arm64", minos: tuple[int, int, int] = (13, 0,
     return header + command
 
 
-def _elf64(*, glibc: str = "2.35", glibcxx: str = "3.4.30") -> bytes:
+def _elf64(
+    *, glibc: str = "2.35", glibcxx: str = "3.4.30", architecture: str = "x86_64"
+) -> bytes:
     dynstr = (
         b"\0libc.so.6\0libstdc++.so.6\0GLIBC_"
         + glibc.encode()
@@ -56,13 +58,14 @@ def _elf64(*, glibc: str = "2.35", glibcxx: str = "3.4.30") -> bytes:
             offset = 0
         sh = (0, section_type, 0, 0, offset, size, link, 0, 1, entry_size)
         struct.pack_into("<IIQQQQIIQQ", body, shoff + index * 64, *sh)
+    machine = {"x86_64": 62, "aarch64": 183}[architecture]
     struct.pack_into(
         "<16sHHIQQQIHHHHHH",
         body,
         0,
         b"\x7fELF" + bytes((2, 1, 1, 0)) + b"\0" * 8,
         3,
-        62,
+        machine,
         1,
         0,
         0,
@@ -105,6 +108,12 @@ def test_macos_binary_rejects_wrong_architecture():
 
 def test_linux_binary_accepts_ubuntu_2204_version_floor():
     validate_binary_bytes(_elf64(), runtime_os="linux", architecture="x86_64")
+
+
+def test_linux_aarch64_binary_accepts_ubuntu_2204_version_floor():
+    validate_binary_bytes(
+        _elf64(architecture="aarch64"), runtime_os="linux", architecture="aarch64"
+    )
 
 
 @pytest.mark.parametrize(

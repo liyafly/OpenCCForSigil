@@ -33,6 +33,7 @@ own official plugin.
 matrix:
 
 ```text
+ubuntu-22.04-arm → linux-aarch64-cp314
 ubuntu-22.04   → linux-x86_64-cp314
 macos-15       → macos-arm64-cp314
 macos-15-intel → macos-x86_64-cp314
@@ -107,9 +108,10 @@ The publish job uses `docs/releases/<tag>.md` when present, otherwise GitHub's
 generated notes. Notes must distinguish automated validation from real Sigil
 host acceptance; a regular release does not imply that untested hosts were tested.
 
-Release mode requires exactly these four runtime identities, with no missing or
-extra payload: Linux x86_64, macOS arm64, macOS x86_64, and Windows x86_64,
-all on CPython 3.14/cp314. `tools/build_plugin.py --require-runtimes` writes a
+Release mode requires exactly these five runtime identities, with no missing
+or extra payload: Linux aarch64, Linux x86_64, macOS arm64, macOS x86_64, and
+Windows x86_64, all on CPython 3.14/cp314. Linux aarch64 uses GitHub's
+`ubuntu-22.04-arm` hosted runner. `tools/build_plugin.py --require-runtimes` writes a
 deterministic ZIP with fixed member order, timestamps, and permissions. The
 same ZIP is then passed through `tools/validate_artifact.py --require-runtimes`,
 which recomputes every payload tree and data hash from the archive itself.

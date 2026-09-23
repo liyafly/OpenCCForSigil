@@ -14,6 +14,7 @@ RUNTIME_FIELDS = (
 )
 
 SUPPORTED_RUNTIME_IDENTITIES = (
+    ("CPython", "3.14", "cp314", "linux", "aarch64"),
     ("CPython", "3.14", "cp314", "linux", "x86_64"),
     ("CPython", "3.14", "cp314", "macos", "arm64"),
     ("CPython", "3.14", "cp314", "macos", "x86_64"),

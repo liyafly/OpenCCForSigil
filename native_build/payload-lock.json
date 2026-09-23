@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "asset_revision": "native-opencc-1.4.2-cp314-r1",
+  "asset_revision": "native-opencc-1.4.2-cp314-r2",
   "opencc_version": "1.4.2",
   "opencc_upstream_tag": "ver.1.4.2",
   "opencc_upstream_commit": "025f371dc76b598d77384fbdab90c937471844d8",
@@ -16,6 +16,17 @@
     "stop_words.utf8": "b788b8a939d2e2fe079abd579ea98f12f9fb84370bfd0dddd81bb9381f7ab42c"
   },
   "wheels": [
+    {
+      "python_implementation": "CPython",
+      "python_version": "3.14",
+      "python_abi": "cp314",
+      "os": "linux",
+      "architecture": "aarch64",
+      "filename": "opencc-1.4.2-cp314-cp314-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",
+      "size": 2408987,
+      "sha256": "050bdc8516b4830be810504dfed1e5d6ac8ca81f19030b7c187abec5160683ca",
+      "url": "https://files.pythonhosted.org/packages/03/a6/45a09a6f0344cca2d645254ee9494684733ecdf1c7faf3135577430a4d8c/opencc-1.4.2-cp314-cp314-manylinux2014_aarch64.manylinux_2_17_aarch64.whl"
+    },
     {
       "python_implementation": "CPython",
       "python_version": "3.14",

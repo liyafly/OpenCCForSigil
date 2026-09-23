@@ -1,3 +1,5 @@
+import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -6,6 +8,7 @@ from app.version import supports_formal_runtime
 from opencc_backend.backend import OpenCCBackend
 from opencc_backend.errors import RuntimeSelectionError
 from opencc_backend.manifest import RuntimeKey, VendorManifest
+from opencc_backend import runtime_selector
 from opencc_backend.runtime_selector import RuntimeSelector, detect_runtime
 
 
@@ -31,6 +34,28 @@ def test_unmatched_runtime_fails_without_fallback():
     runtime = RuntimeKey("CPython", 3, 14, "cp314", "test-os", "test-arch")
     with pytest.raises(RuntimeSelectionError, match="no exact vendored OpenCC payload"):
         RuntimeSelector().manifest.select(runtime)
+
+
+def test_linux_aarch64_runtime_selects_the_exact_payload(monkeypatch, tmp_path: Path):
+    monkeypatch.setattr(runtime_selector.sys, "platform", "linux")
+    monkeypatch.setattr(runtime_selector.platform, "machine", lambda: "aarch64")
+    runtime = detect_runtime()
+    assert runtime.os == "linux"
+    assert runtime.architecture == "aarch64"
+
+    source = json.loads(RuntimeSelector().manifest_path.read_text(encoding="utf-8"))
+    record = dict(source["payloads"][0])
+    record["os"] = "linux"
+    record["architecture"] = "aarch64"
+    record["payload_path"] = "payloads/linux-aarch64-cp314"
+    source["payloads"] = [record]
+    source["config_data"]["payloads"] = {record["payload_path"]: record["config_data"]}
+    manifest_path = tmp_path / "vendor" / "opencc" / "manifest.json"
+    manifest_path.parent.mkdir(parents=True)
+    manifest_path.write_text(json.dumps(source), encoding="utf-8")
+
+    selected = RuntimeSelector(manifest_path=manifest_path).manifest.select(runtime.key)
+    assert selected.payload_path == "payloads/linux-aarch64-cp314"
 
 
 def test_backend_uses_official_binding_and_runs_self_test():
