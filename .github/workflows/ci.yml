@@ -30,10 +30,10 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Check out
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install mise toolchain
-        uses: jdx/mise-action@v2
+        uses: jdx/mise-action@v4
 
       - name: Install locked Python dependencies
         run: mise exec -- uv sync --locked
@@ -45,7 +45,7 @@ jobs:
       - name: Restore target-tested payload cache
         id: payload-cache
         if: github.event_name != 'pull_request'
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: native_build/artifacts/verified-payload
           key: opencc-payload-${{ matrix.id }}-${{ hashFiles('.github/workflows/ci.yml', 'native_build/payload-lock.json', 'tools/vendor_opencc.py', 'tools/build_opencc_jieba.py', 'tools/native_compatibility.py', 'tools/check_upstream_provenance.py', 'tools/export_verified_payload.py', 'tools/merge_verified_payloads.py', 'plugin/OpenCCForSigil/vendor/opencc/manifest.json') }}
@@ -56,7 +56,7 @@ jobs:
 
       - name: Check out pinned OpenCC source for the official Jieba plugin
         if: steps.payload-cache.outputs.cache-hit != 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: BYVoid/OpenCC
           ref: ${{ steps.upstream.outputs.commit }}
@@ -117,7 +117,7 @@ jobs:
         run: mise exec -- uv run python tools/export_verified_payload.py --output native_build/artifacts/verified-payload
 
       - name: Upload target-tested payload
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: opencc-payload-${{ matrix.id }}
           path: native_build/artifacts/verified-payload
@@ -130,16 +130,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install mise toolchain
-        uses: jdx/mise-action@v2
+        uses: jdx/mise-action@v4
 
       - name: Install locked Python dependencies
         run: mise exec -- uv sync --locked
 
       - name: Download all target-tested payload artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           path: native_build/artifacts
 
@@ -168,7 +168,7 @@ jobs:
         run: mise exec -- uv run python tools/validate_artifact.py --require-runtimes dist/OpenCCForSigil_${{ github.sha }}.zip
 
       - name: Upload final artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: OpenCCForSigil-fat-plugin-${{ github.sha }}
           path: dist/OpenCCForSigil_${{ github.sha }}.zip
@@ -187,10 +187,10 @@ jobs:
       GH_REPO: ${{ github.repository }}
     steps:
       - name: Check out release notes
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Download the validated Fat Plugin artifact
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: OpenCCForSigil-fat-plugin-${{ github.sha }}
           path: release-artifacts
