@@ -1,6 +1,6 @@
 from core.models import ConversionPlan, Diagnostic, SourceSpan, TokenChange
 from core.preview import PreviewSession
-from ui.preview_window import _PreviewDialog, _translator
+from ui.preview_window import _PreviewDialog, _guarded_preview_dialog, _translator
 
 
 class _FakeItem:
@@ -55,9 +55,13 @@ class _FakeDetail:
 class _FakeDialog:
     def __init__(self) -> None:
         self.accept_calls = 0
+        self.reject_calls = 0
 
     def accept(self) -> None:
         self.accept_calls += 1
+
+    def reject(self) -> None:
+        self.reject_calls += 1
 
 
 class _FakeCombo:
@@ -92,6 +96,8 @@ def _preview_dialog(change_count: int = 3, current_row: int = 1):
     dialog._previews = (preview,)
     dialog._entries = entries
     dialog.applied = False
+    dialog.back_to_settings = False
+    dialog._allow_reject = False
     dialog.list_widget = _FakeListWidget(items, current_row)
     dialog.summary = _FakeLabel()
     dialog.detail = _FakeDetail()
@@ -242,3 +248,34 @@ def test_plan_diagnostics_are_visible_in_summary_and_detail():
     assert "INLINE_BOUNDARY" in dialog.summary.text
     assert "MIXED_SCRIPT" in dialog.detail.text
     assert "mixed script input" in dialog.detail.text
+
+
+def test_preview_exit_confirmation_protects_decisions_and_allows_empty_exit():
+    dialog, preview, _items = _preview_dialog(change_count=1, current_row=0)
+    confirm_calls = []
+    dialog._confirm_discard_decisions = lambda: confirm_calls.append(True) or False
+    preview.accept_this("change-0")
+
+    assert dialog._guard_reject() is False
+    assert confirm_calls == [True]
+    dialog._back_to_settings()
+    assert dialog.back_to_settings is False
+    assert dialog.dialog.reject_calls == 0
+
+    empty_dialog, _empty_preview, _ = _preview_dialog(change_count=0, current_row=-1)
+    empty_dialog._qt = object()
+    assert empty_dialog._guard_reject() is True
+
+
+def test_return_to_scope_confirms_discarded_decisions_once():
+    dialog, preview, _items = _preview_dialog(change_count=1, current_row=0)
+    preview.reject_this("change-0")
+    dialog._confirm_discard_decisions = lambda: True
+    dialog.dialog = _guarded_preview_dialog(
+        type("Qt", (), {"QDialog": _FakeDialog}), dialog._guard_reject)
+
+    dialog._back_to_settings()
+
+    assert dialog.back_to_settings
+    assert dialog.dialog.reject_calls == 1
+    assert dialog._allow_reject is False

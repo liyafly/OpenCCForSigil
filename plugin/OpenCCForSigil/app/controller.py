@@ -347,6 +347,16 @@ class Controller:
                             files_without_changes=files_without_changes,
                         )
                     )
+                    _show_result_safely(
+                        show_result,
+                        status="cancelled",
+                        files_scanned=len(planned),
+                        files_changed=0,
+                        accepted_changes=0,
+                        skipped_changes=0,
+                        files_not_written=len(planned),
+                        files_without_changes=files_without_changes,
+                    )
                     return 1
 
                 break

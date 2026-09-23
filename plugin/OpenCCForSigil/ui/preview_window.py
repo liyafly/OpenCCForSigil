@@ -177,6 +177,10 @@ _LOCAL_TEXT = {
         "preview.filter_risk": "Risk",
         "preview.filter_all": "All",
         "preview.back_settings": "Back to settings",
+        "preview.discard_title": "Discard preview decisions?",
+        "preview.discard_message": "Discard {count} decisions and exit this preview?",
+        "preview.discard_yes": "Discard and exit",
+        "preview.discard_no": "Return to preview",
         "preview.checkpoint_title": "Checkpoint required",
         "preview.checkpoint_confirm": (
             "Plugin changes cannot be undone with Ctrl+Z. Confirm that you created a Checkpoint or backup before starting?"
@@ -210,6 +214,10 @@ _LOCAL_TEXT = {
         "preview.filter_risk": "风险",
         "preview.filter_all": "全部",
         "preview.back_settings": "返回设置",
+        "preview.discard_title": "放弃预览决定？",
+        "preview.discard_message": "放弃本次预览中的 {count} 项决定并退出？",
+        "preview.discard_yes": "放弃并退出",
+        "preview.discard_no": "返回预览",
         "preview.checkpoint_title": "需要建立 Checkpoint",
         "preview.checkpoint_confirm": "插件修改无法用 Ctrl+Z 撤销。请确认已在启动插件前建立 Checkpoint 或备份。",
         "preview.checkpoint_confirm_yes": "已备份，继续应用",
@@ -236,6 +244,10 @@ _LOCAL_TEXT = {
         "preview.filter_risk": "風險",
         "preview.filter_all": "全部",
         "preview.back_settings": "返回設定",
+        "preview.discard_title": "放棄預覽決定？",
+        "preview.discard_message": "放棄本次預覽中的 {count} 項決定並退出？",
+        "preview.discard_yes": "放棄並退出",
+        "preview.discard_no": "返回預覽",
         "preview.checkpoint_title": "需要建立 Checkpoint",
         "preview.checkpoint_confirm": "外掛程式修改無法用 Ctrl+Z 復原。請確認已在啟動外掛程式前建立 Checkpoint 或備份。",
         "preview.checkpoint_confirm_yes": "已備份，繼續套用",
@@ -589,6 +601,17 @@ def _recovery_notice_text(kind: str, value: str) -> str:
     return _translator.text(key, value=value)
 
 
+def _guarded_preview_dialog(qt_widgets, guard):
+    base_dialog = qt_widgets.QDialog
+
+    class GuardedPreviewDialog(base_dialog):
+        def reject(self):
+            if guard():
+                super().reject()
+
+    return GuardedPreviewDialog()
+
+
 _application: Any = None
 
 
@@ -641,8 +664,9 @@ class _PreviewDialog:
         self.applied = False
         self.back_to_settings = False
         self.checkpoint_notice_shown = False
+        self._allow_reject = False
 
-        self.dialog = qt_widgets.QDialog()
+        self.dialog = _guarded_preview_dialog(qt_widgets, self._guard_reject)
         self.dialog.setWindowTitle(_translator.text("preview.title"))
         self.dialog.resize(900, 620)
         self._build()
@@ -969,8 +993,39 @@ class _PreviewDialog:
     def _back_to_settings(self) -> None:
         if self.applied:
             return
+        if not self._confirm_discard_decisions():
+            return
         self.back_to_settings = True
+        self._allow_reject = True
         self.dialog.reject()
+
+    def _guard_reject(self) -> bool:
+        if self._allow_reject:
+            self._allow_reject = False
+            return True
+        return self._confirm_discard_decisions()
+
+    def _confirm_discard_decisions(self) -> bool:
+        decided = sum(
+            summary["accepted"] + summary["rejected"]
+            for summary in (preview.summary() for preview in self._previews)
+        )
+        if not decided:
+            return True
+        message_box = getattr(self._qt, "QMessageBox", None)
+        if not callable(message_box):
+            return False
+        box = message_box(self.dialog)
+        box.setWindowTitle(_translator.text("preview.discard_title"))
+        box.setText(_translator.text("preview.discard_message", count=decided))
+        discard = box.addButton(
+            _translator.text("preview.discard_yes"), message_box.AcceptRole)
+        back = box.addButton(
+            _translator.text("preview.discard_no"), message_box.RejectRole)
+        box.setDefaultButton(back)
+        exec_method = getattr(box, "exec", None) or box.exec_
+        exec_method()
+        return box.clickedButton() is discard
 
     def _checkpoint_confirm(self) -> bool:
         if not any(preview.summary()["accepted"] for preview in self._previews):

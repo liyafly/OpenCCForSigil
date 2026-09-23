@@ -327,3 +327,31 @@ def test_returning_from_preview_reselects_scope_and_discards_old_plan(
     assert preview_plans == [("a",), ("c",)]
     assert "b" not in book.reads
     assert [file_id for file_id, _data in book.writes] == ["c"]
+
+
+def test_cancelling_preview_shows_cancelled_result_without_writing(monkeypatch, tmp_path):
+    book = ConversionBook()
+    result_calls = []
+    monkeypatch.setattr(
+        "ui.preview_window.choose_scope",
+        lambda _adapter, initial_language, **_kwargs: ScopeOutcome(
+            True, TargetSelection(Scope.SINGLE, ("chapter",)), initial_language),
+    )
+    monkeypatch.setattr(
+        "ui.preview_window.choose_conversion_config",
+        lambda *_args, **_kwargs: "t2s",
+    )
+    monkeypatch.setattr(
+        "ui.preview_window.create_progress_reporter", lambda _total: _NoProgress())
+    monkeypatch.setattr(
+        "ui.preview_window.show_preview",
+        lambda planned: PreviewOutcome(accepted=False, previews=()),
+    )
+    monkeypatch.setattr(
+        "ui.preview_window.show_result", lambda **values: result_calls.append(values))
+
+    assert Controller(book, data_dir=tmp_path / "plugin-data").run() == 1
+
+    assert book.writes == []
+    assert len(result_calls) == 1
+    assert result_calls[0]["status"] == "cancelled"
