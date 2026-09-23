@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from app.controller import Controller
@@ -133,3 +135,94 @@ def test_partial_write_uses_partial_result_and_not_error_dialog(monkeypatch, tmp
     assert results and results[0]["status"] == "partial_failure"
     assert errors == []
     assert book.writes == ["a"]
+
+
+def test_commit_progress_failure_is_logged_and_does_not_stop_writeback(
+    monkeypatch, tmp_path
+):
+    results = []
+    errors = []
+    book = Book({"a": "<p>汉字</p>", "b": "<p>汉字</p>"})
+    _patch_ui(monkeypatch, results=results, errors=errors)
+
+    class FailingCommitProgress(NoProgress):
+        failed = False
+
+        def disable_cancel(self):
+            pass
+
+        def update(self, phase, index, _total, _href):
+            if phase == "committing" and index == 1 and not self.failed:
+                self.failed = True
+                raise RuntimeError("progress widget was deleted")
+
+    monkeypatch.setattr(
+        "ui.preview_window.create_progress_reporter",
+        lambda *_args, **_kwargs: FailingCommitProgress(),
+    )
+    controller = Controller(book, data_dir=tmp_path)
+
+    assert controller.run() == 0
+
+    assert book.writes == ["a", "b"]
+    assert results[-1]["status"] == "success"
+    assert errors == []
+    events = [
+        json.loads(line)
+        for line in controller.logger.log_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert any(event["event"] == "progress_failed" for event in events)
+    summary = json.loads(controller.logger.summary_path.read_text(encoding="utf-8"))
+    assert summary["status"] == "success"
+    assert summary["files_changed"] == 2
+
+
+def test_post_write_progress_close_failure_uses_adapter_commit_record(
+    monkeypatch, tmp_path
+):
+    results = []
+    errors = []
+    book = Book()
+    _patch_ui(monkeypatch, results=results, errors=errors)
+
+    class CloseFailingProgress(NoProgress):
+        def disable_cancel(self):
+            pass
+
+        def close(self):
+            raise RuntimeError("progress widget was deleted")
+
+    reporters = iter((NoProgress(), CloseFailingProgress()))
+    monkeypatch.setattr(
+        "ui.preview_window.create_progress_reporter",
+        lambda *_args, **_kwargs: next(reporters),
+    )
+    controller = Controller(book, data_dir=tmp_path)
+
+    with pytest.raises(RuntimeError, match="progress widget was deleted"):
+        controller.run()
+
+    assert book.writes == ["a"]
+    assert results[-1]["status"] == "partial_failure"
+    assert results[-1]["files_changed"] == 1
+    assert errors == []
+    summary = json.loads(controller.logger.summary_path.read_text(encoding="utf-8"))
+    assert summary["status"] == "partial_failure"
+    assert summary["files_changed"] == 1
+
+
+def test_result_dialog_failure_does_not_change_success_summary(monkeypatch, tmp_path):
+    book = Book()
+    _patch_ui(monkeypatch, errors=[])
+    monkeypatch.setattr(
+        "ui.preview_window.show_result",
+        lambda **_values: (_ for _ in ()).throw(RuntimeError("dialog closed unexpectedly")),
+    )
+    controller = Controller(book, data_dir=tmp_path)
+
+    assert controller.run() == 0
+
+    assert book.writes == ["a"]
+    summary = json.loads(controller.logger.summary_path.read_text(encoding="utf-8"))
+    assert summary["status"] == "success"
+    assert summary["files_changed"] == 1

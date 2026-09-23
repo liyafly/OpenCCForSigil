@@ -52,6 +52,13 @@ class SigilBookAdapter:
 
     def __init__(self, bk: Any) -> None:
         self._bk = bk
+        self._committed_file_ids: Tuple[str, ...] = ()
+
+    @property
+    def committed_file_ids(self) -> Tuple[str, ...]:
+        """Return file ids successfully written by the latest commit attempt."""
+
+        return self._committed_file_ids
 
     def read(self, file_id: str) -> str:
         if file_id == METADATA_ID:
@@ -171,15 +178,32 @@ class SigilBookAdapter:
 
     def commit(self, staged_files: Iterable[Tuple[str, str]]) -> CommitResult:
         committed: list[str] = []
-        for file_id, data in staged_files:
+        self._committed_file_ids = ()
+        try:
+            iterator = iter(staged_files)
+        except Exception as exc:
+            raise CommitError("<staged-iterator>", committed, exc) from exc
+        while True:
+            try:
+                file_id, data = next(iterator)
+            except StopIteration:
+                break
+            except Exception as exc:
+                failed_file_id = str(
+                    getattr(exc, "file_id", getattr(exc, "failed_file_id", "<staged-iterator>"))
+                )
+                self._committed_file_ids = tuple(committed)
+                raise CommitError(failed_file_id, committed, exc) from exc
             try:
                 if file_id == METADATA_ID:
                     self._bk.setmetadataxml(data)
                 else:
                     self._bk.writefile(file_id, data)
             except Exception as exc:
+                self._committed_file_ids = tuple(committed)
                 raise CommitError(file_id, committed, exc) from exc
             committed.append(file_id)
+            self._committed_file_ids = tuple(committed)
         return CommitResult(tuple(committed))
 
 

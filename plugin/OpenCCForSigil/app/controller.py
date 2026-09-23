@@ -51,6 +51,7 @@ class Controller:
 
         self.logger.event("run_started", state=self.session.state.value)
         backend: Optional[OpenCCBackend] = None
+        adapter: Optional[SigilBookAdapter] = None
         planned = ()
         staged = ()
         planned_change_count = 0
@@ -457,7 +458,20 @@ class Controller:
                     passed=all(result.passed for result in verification),
                 )
                 self.session.transition(SessionState.COMMITTING)
-                workflow.commit(staged, progress=post_preview_progress.update)
+                workflow.commit(
+                    staged,
+                    progress=post_preview_progress.update,
+                    on_progress_failure=lambda phase, index, total, href, error: self.logger.event(
+                        "progress_failed",
+                        level="ERROR",
+                        phase=phase,
+                        index=index,
+                        total=total,
+                        href=href,
+                        error_type=type(error).__name__,
+                        error=str(error),
+                    ),
+                )
             finally:
                 post_preview_progress.close()
             files_written = len(staged)
@@ -542,6 +556,42 @@ class Controller:
                 SessionState.FAILED,
             }:
                 self.session.transition(SessionState.FAILED)
+            committed = set(adapter.committed_file_ids if adapter is not None else ())
+            if committed:
+                files_written = len(committed)
+                accepted = sum(
+                    len(item.plan.changes) for item in staged if item.file_id in committed
+                )
+                self.logger.exception("controller_failed_after_write", exc)
+                self.logger.event(
+                    "commit_partial_failure",
+                    committed_file_ids=sorted(committed),
+                    failed_file_id=getattr(exc, "failed_file_id", None),
+                )
+                self.logger.summary(
+                    self._summary(
+                        status="partial_failure",
+                        files_scanned=len(planned),
+                        changes=accepted,
+                        files_changed=files_written,
+                        files_without_changes=files_without_changes,
+                        skipped_changes=max(0, planned_change_count - accepted),
+                        committed_file_ids=sorted(committed),
+                    )
+                )
+                _show_result_safely(
+                    show_result,
+                    translator=translator,
+                    status="partial_failure",
+                    files_scanned=len(planned),
+                    files_changed=files_written,
+                    accepted_changes=accepted,
+                    skipped_changes=max(0, planned_change_count - accepted),
+                    files_not_written=max(0, len(planned) - files_written),
+                    files_without_changes=files_without_changes,
+                    failed_file=getattr(exc, "failed_file_id", None),
+                )
+                raise
             self.logger.exception("controller_failed")
             self.logger.summary(
                 self._summary(status="failed", files_scanned=0, changes=0, files_changed=0)

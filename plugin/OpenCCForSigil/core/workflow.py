@@ -427,6 +427,9 @@ class ConversionWorkflow:
         staged: Optional[Iterable[StagedFile]] = None,
         *,
         progress: Optional[Callable[[str, int, int, str], None]] = None,
+        on_progress_failure: Optional[
+            Callable[[str, int, int, str, BaseException], None]
+        ] = None,
     ) -> CommitResult:
         files = tuple(staged) if staged is not None else tuple(self.staging.values())
         if not files:
@@ -455,14 +458,25 @@ class ConversionWorkflow:
             except ValueError as exc:
                 raise WorkflowError(str(exc), code="SETTINGS_CHANGED") from exc
 
+        def report_write_progress(index: int, href: str) -> None:
+            if progress is None:
+                return
+            try:
+                progress("committing", index, len(files), href)
+            except Exception as exc:
+                if on_progress_failure is not None:
+                    try:
+                        on_progress_failure("committing", index, len(files), href, exc)
+                    except Exception:
+                        # Logging a UI failure must not become another write failure.
+                        pass
+
         def write_items():
             for index, staged_file in enumerate(files):
                 href = href_by_id.get(staged_file.file_id, staged_file.file_id)
-                if progress is not None:
-                    progress("committing", index, len(files), href)
+                report_write_progress(index, href)
                 yield staged_file.file_id, staged_file.converted
-                if progress is not None:
-                    progress("committing", index + 1, len(files), href)
+                report_write_progress(index + 1, href)
 
         try:
             return self.adapter.commit(write_items())
