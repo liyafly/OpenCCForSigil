@@ -1,8 +1,39 @@
 import pytest
+import threading
+import time
 
 from document.xml_processor import tokenize_xml, XMLDocumentError
 from transforms.language_tags import is_han_language, target_language, with_language_targets
 from document.tokenizer import tokenize_xhtml
+
+
+def test_tokenizer_unicode_i_preserves_offsets_after_raw_text_tags():
+    sources = (
+        '<html><head><title>İstanbul 游记</title><style>p{漢字}</style></head>'
+        '<body><p>汉字</p></body></html>',
+        '<html><head><script>var title = "İstanbul 漢字";</script></head>'
+        '<body><p>汉字</p></body></html>',
+        '<html title="İstanbul"><head><style>p{}</style></head>'
+        '<body><p>汉字</p></body></html>',
+    )
+    results = []
+
+    def tokenize_all():
+        for source in sources:
+            started = time.perf_counter()
+            document = tokenize_xhtml(source)
+            results.append((document, time.perf_counter() - started))
+
+    worker = threading.Thread(target=tokenize_all, daemon=True)
+    worker.start()
+    worker.join(timeout=1)
+    assert not worker.is_alive(), "tokenize_xhtml did not return within one second"
+    assert len(results) == len(sources)
+    for document, elapsed in results:
+        texts = [target.source_text for target in document.targets]
+        assert elapsed < 1
+        assert "汉字" in texts
+        assert not any("漢字" in text or "p{}" in text for text in texts)
 
 
 def test_ncx_keeps_entity_doctype_paths_comments_and_source_offsets():

@@ -8,6 +8,7 @@ The original source is always available for patch application.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Iterable, Optional, Sequence, Tuple
 
@@ -32,6 +33,8 @@ VOID_ELEMENTS = (
     "track",
     "wbr",
 )
+
+_CLOSING_TAG_PATTERNS: dict[str, re.Pattern[str]] = {}
 
 
 @dataclass(frozen=True)
@@ -289,7 +292,12 @@ def _raw_protected_name(stack: Sequence[str], options: TokenizerOptions) -> Opti
 
 
 def _find_closing_tag(source: str, start: int, name: str) -> int:
-    return source.lower().find("</" + name, start)
+    pattern = _CLOSING_TAG_PATTERNS.get(name)
+    if pattern is None:
+        pattern = re.compile("</" + re.escape(name), re.IGNORECASE)
+        _CLOSING_TAG_PATTERNS[name] = pattern
+    match = pattern.search(source, start)
+    return match.start() if match else -1
 
 
 def _is_closing_tag_at(source: str, start: int, name: str) -> bool:
