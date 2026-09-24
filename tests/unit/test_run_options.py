@@ -466,7 +466,11 @@ def test_conversion_dialog_keeps_direction_panel_and_footer_in_order():
         "QHBoxLayout", "QHBoxLayout", "QGroupBox", "QToolButton", "QWidget",
     ]
     assert footer.children[0]._text == Translator("en").text("settings.tools")
-    assert footer.children[-1] is dialog.button_box
+    assert footer.children[-1] is dialog.button_layout
+    assert dialog.button_layout.children == [
+        dialog.back_button, "<stretch>", dialog.cancel_button, dialog.continue_button,
+    ]
+    assert dialog.continue_button.isDefault()
     assert dialog.cancel_button.text() == Translator("en").text("common.cancel")
 
 

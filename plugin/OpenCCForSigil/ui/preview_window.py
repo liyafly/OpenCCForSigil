@@ -1806,32 +1806,17 @@ class _ConversionConfigDialog:
         )
         self.options_panel.bind(self._get_config, self._set_config, self.dialog)
 
-        button_box_type = getattr(qt_widgets, "QDialogButtonBox", None)
-        if button_box_type is not None:
-            self.button_box = button_box_type(self.dialog)
-            roles = getattr(button_box_type, "ButtonRole", button_box_type)
-            action_role = getattr(roles, "ActionRole", 0)
-            accept_role = getattr(roles, "AcceptRole", 0)
-            reject_role = getattr(roles, "RejectRole", 0)
-            self.back_button = self.button_box.addButton(
-                self._translator.text("scope.back"), action_role)
-            self.cancel_button = self.button_box.addButton(
-                self._translator.text("common.cancel"), reject_role)
-            self.continue_button = self.button_box.addButton(
-                self._translator.text("config.continue"), accept_role)
-            self.continue_button.setDefault(True)
-            self.options_panel.tool_layout.addWidget(self.button_box)
-        else:
-            buttons = qt_widgets.QHBoxLayout()
-            self.back_button = qt_widgets.QPushButton(self._translator.text("scope.back"))
-            self.cancel_button = qt_widgets.QPushButton(self._translator.text("common.cancel"))
-            self.continue_button = qt_widgets.QPushButton(
-                self._translator.text("config.continue"))
-            self.continue_button.setDefault(True)
-            buttons.addWidget(self.back_button)
-            buttons.addWidget(self.cancel_button)
-            buttons.addWidget(self.continue_button)
-            self.options_panel.tool_layout.addLayout(buttons)
+        self.button_layout = qt_widgets.QHBoxLayout()
+        self.back_button = qt_widgets.QPushButton(self._translator.text("scope.back"))
+        self.cancel_button = qt_widgets.QPushButton(self._translator.text("common.cancel"))
+        self.continue_button = qt_widgets.QPushButton(
+            self._translator.text("config.continue"))
+        self.continue_button.setDefault(True)
+        self.button_layout.addWidget(self.back_button)
+        self.button_layout.addStretch(1)
+        self.button_layout.addWidget(self.cancel_button)
+        self.button_layout.addWidget(self.continue_button)
+        self.options_panel.tool_layout.addLayout(self.button_layout)
         self.cancel_button.clicked.connect(self.dialog.reject)
         self.cancel_button.clicked.connect(self._stop_probe_timer)
         self.back_button.clicked.connect(self._back_to_scope)
