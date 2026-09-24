@@ -3,12 +3,13 @@ from dataclasses import replace
 import pytest
 
 from core.models import (ConversionPlan, RuleSnapshot as CoreRuleSnapshot, SourceSpan,
-                         TextTarget, TokenChange)
+                         TextTarget, TokenChange, ConvertResult)
 from core.preview import PreviewError, PreviewFilter, PreviewSession
 from core.staging import StagingArea, StagingError
 from core.verifier import verify_staged_file
 from core.models import ConvertRequest
 from core.planner import build_conversion_plan
+from core import planner as planner_module
 from core.workflow import ConversionWorkflow, WorkflowCancelled, WorkflowCommitError
 from document.tokenizer import tokenize_xhtml
 from opencc_backend.backend import OpenCCBackend
@@ -85,6 +86,45 @@ def test_plan_stage_and_verify_change_only_planned_spans():
 
     tampered = replace(staged, converted=staged.converted.replace('id="stable"', 'id="changed"'))
     assert not verify_staged_file(tampered).passed
+
+
+def test_planner_constructs_each_change_once(monkeypatch):
+    text = "汉" * 100
+    source = f"<p>{text}</p>"
+    changes = tuple(
+        TokenChange(
+            source="汉", target="漢", span=SourceSpan(index, index + 1),
+            rule_source="test", change_id=f"local-{index}",
+        )
+        for index in range(len(text))
+    )
+
+    class Converter:
+        @staticmethod
+        def convert(value, _request, *, quotation_pairer=None):
+            return ConvertResult(value, value, changes)
+
+    calls = []
+    original_replace = planner_module.replace
+
+    def counted_replace(*args, **kwargs):
+        calls.append(True)
+        return original_replace(*args, **kwargs)
+
+    monkeypatch.setattr(planner_module, "replace", counted_replace)
+    backend = OpenCCBackend("s2t")
+    plan = build_conversion_plan(
+        file_id="chapter.xhtml",
+        source=source,
+        document=tokenize_xhtml(source),
+        backend=backend,
+        request=ConvertRequest("s2t", detailed_classification=False, diagnose_mixed=False),
+        converter=Converter(),
+    )
+    backend.close()
+
+    assert len(plan.changes) == 100
+    assert len(calls) < 10
 
 
 def test_planned_change_includes_bounded_plain_text_context():

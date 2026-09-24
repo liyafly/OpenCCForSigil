@@ -144,10 +144,10 @@ def build_conversion_plan(
             change = _absolute_change(
                 file_id, target, local_change, source,
                 cdata_ranges=cdata_ranges, cdata_starts=cdata_starts,
+                document_kind=document_kind,
+                risk_override="HIGH" if document_kind == "metadata" else None,
             )
-            if document_kind == "metadata":
-                change = replace(change, risk="HIGH")
-            changes.append(replace(change, document_kind=document_kind))
+            changes.append(change)
             if block_index is not None and change.category == "quotation":
                 block_quote_change_ids.setdefault(block_index, []).append(change.change_id)
 
@@ -286,6 +286,8 @@ def _absolute_change(
     *,
     cdata_ranges: Optional[tuple[tuple[int, int], ...]] = None,
     cdata_starts: Optional[tuple[int, ...]] = None,
+    document_kind: str,
+    risk_override: Optional[str] = None,
 ) -> TokenChange:
     start = target.source_start + local_change.span.start
     end = target.source_start + local_change.span.end
@@ -338,7 +340,7 @@ def _absolute_change(
         file_id=file_id,
         target_id=target.node_id,
         category=local_change.category,
-        risk=local_change.risk,
+        risk=risk_override or local_change.risk,
         attribution_method=local_change.attribution_method,
         comparison_stage=local_change.comparison_stage,
         attribution_confidence=local_change.attribution_confidence,
@@ -346,7 +348,7 @@ def _absolute_change(
         context_after=source[patch_end:after_end],
         text_context_before=text_context_before,
         text_context_after=text_context_after,
-        document_kind=target.document_kind,
+        document_kind=document_kind,
         group_id=local_change.group_id,
     )
 
