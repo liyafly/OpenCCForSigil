@@ -58,6 +58,7 @@ class Controller:
         staged = ()
         planned_change_count = 0
         files_without_changes = 0
+        files_all_skipped = 0
         accepted_change_count = 0
         skipped_change_count = 0
         files_written = 0
@@ -371,6 +372,7 @@ class Controller:
                     progress.close()
                 planned_change_count = sum(len(item.plan.changes) for item in planned)
                 files_without_changes = sum(not item.plan.changes for item in planned)
+                files_all_skipped = 0
                 self.logger.event(
                     "plan_built",
                     profile_id=active_profile.id,
@@ -437,6 +439,8 @@ class Controller:
                     ui_preferences=ui_preferences,
                     save_ui_preferences=save_run_ui_preferences,
                 )
+                files_all_skipped = _count_files_all_skipped(
+                    planned, getattr(preview, "previews", ()))
                 if getattr(preview, "back_to_settings", False):
                     default_config = selected_config
                     settings.bind_run(active_profile, backend)
@@ -464,6 +468,7 @@ class Controller:
                         skipped_changes=0,
                         files_not_written=len(planned),
                         files_without_changes=files_without_changes,
+                        files_all_skipped=files_all_skipped,
                     )
                     return 1
 
@@ -564,6 +569,7 @@ class Controller:
                 skipped_changes=skipped_change_count,
                 files_not_written=max(0, len(planned) - len(staged)),
                 files_without_changes=files_without_changes,
+                files_all_skipped=files_all_skipped,
                 diagnostics=invalid_source_diagnostics,
                 report_text=report_text,
             )
@@ -607,6 +613,7 @@ class Controller:
                 skipped_changes=max(0, planned_change_count - accepted),
                 files_not_written=max(0, len(planned) - files_changed),
                 files_without_changes=files_without_changes,
+                files_all_skipped=files_all_skipped,
                 failed_file=exc.failed_file_id,
             )
             raise
@@ -652,6 +659,7 @@ class Controller:
                     skipped_changes=max(0, planned_change_count - accepted),
                     files_not_written=max(0, len(planned) - files_written),
                     files_without_changes=files_without_changes,
+                    files_all_skipped=files_all_skipped,
                     failed_file=getattr(exc, "failed_file_id", None),
                 )
                 raise
@@ -798,6 +806,22 @@ class Controller:
         if committed_file_ids is not None:
             summary["committed_file_ids"] = committed_file_ids
         return summary
+
+
+def _count_files_all_skipped(planned, previews) -> int:
+    """Count documents whose proposed changes were all explicitly rejected."""
+
+    if previews is None or len(planned) != len(previews):
+        return 0
+    count = 0
+    for item, preview in zip(planned, previews):
+        total = len(item.plan.changes)
+        if total <= 0:
+            continue
+        summary = preview.summary()
+        if summary.get("accepted", 0) == 0 and summary.get("rejected", 0) == total:
+            count += 1
+    return count
 
 
 def _show_result_safely(

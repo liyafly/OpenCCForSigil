@@ -167,6 +167,7 @@ _I18N_REQUIRED_KEYS = frozenset(
         "progress.phase.committing",
         "result.back_to_scope",
         "result.invalid_sources",
+        "result.files_all_skipped",
         "error.no_config",
         "a11y.scope.information",
         "error.ui_unavailable",

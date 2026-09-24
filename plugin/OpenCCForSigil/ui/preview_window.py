@@ -491,6 +491,7 @@ def show_result(
     skipped_changes: int,
     files_not_written: int | None = None,
     files_without_changes: int = 0,
+    files_all_skipped: int = 0,
     failed_file: str | None = None,
     return_to_scope: bool = False,
     diagnostics=(),
@@ -517,6 +518,8 @@ def show_result(
         translator.text(
             "result.row.unwritten", files=not_written,
             unchanged=max(int(files_without_changes), 0)),
+        translator.text(
+            "result.files_all_skipped", count=max(int(files_all_skipped), 0)),
     )
     if status == "partial_failure":
         status_line = translator.text("result.status.partial", file=failed_file or "?")

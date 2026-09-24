@@ -1,8 +1,9 @@
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
-from app.controller import Controller
+from app.controller import Controller, _count_files_all_skipped
 from tests.support import fake_qt
 from ui import preview_window
 from ui.i18n import Translator
@@ -35,6 +36,24 @@ def test_controller_summary_keeps_unwritten_total_and_unchanged_subset(
     assert summary["files_without_changes"] <= summary["files_not_written"]
 
 
+def test_controller_counts_only_files_with_every_proposal_rejected():
+    planned = (
+        SimpleNamespace(plan=SimpleNamespace(changes=("a", "b"))),
+        SimpleNamespace(plan=SimpleNamespace(changes=("c",))),
+        SimpleNamespace(plan=SimpleNamespace(changes=())),
+        SimpleNamespace(plan=SimpleNamespace(changes=("d", "e"))),
+    )
+    previews = (
+        SimpleNamespace(summary=lambda: {"accepted": 0, "rejected": 2}),
+        SimpleNamespace(summary=lambda: {"accepted": 1, "rejected": 0}),
+        SimpleNamespace(summary=lambda: {"accepted": 0, "rejected": 0}),
+        SimpleNamespace(summary=lambda: {"accepted": 0, "rejected": 1}),
+    )
+
+    assert _count_files_all_skipped(planned, previews) == 1
+    assert _count_files_all_skipped(planned, previews[:2]) == 0
+
+
 class _MessageBox:
     messages = []
 
@@ -56,18 +75,19 @@ class _MessageBox:
         "skipped_changes",
         "files_not_written",
         "files_without_changes",
+        "files_all_skipped",
         "expected_unwritten",
     ),
     (
-        ("en", 1, 1, 1, 0, 0, 0, "Files not written: 0 (no proposed changes: 0)"),
-        ("en", 2, 1, 1, 0, 1, 1, "Files not written: 1 (no proposed changes: 1)"),
-        ("en", 3, 1, 1, 2, 2, 2, "Files not written: 2 (no proposed changes: 2)"),
-        ("zh-Hans", 1, 1, 1, 0, 0, 0, "未写回：0 个文件（其中没有建议变更：0 个）"),
-        ("zh-Hans", 2, 1, 1, 0, 1, 1, "未写回：1 个文件（其中没有建议变更：1 个）"),
-        ("zh-Hans", 3, 1, 1, 2, 2, 2, "未写回：2 个文件（其中没有建议变更：2 个）"),
-        ("zh-Hant", 1, 1, 1, 0, 0, 0, "未寫回：0 個檔案（其中沒有建議變更：0 個）"),
-        ("zh-Hant", 2, 1, 1, 0, 1, 1, "未寫回：1 個檔案（其中沒有建議變更：1 個）"),
-        ("zh-Hant", 3, 1, 1, 2, 2, 2, "未寫回：2 個檔案（其中沒有建議變更：2 個）"),
+        ("en", 1, 1, 1, 0, 0, 0, 0, "Files not written: 0 (no proposed changes: 0)"),
+        ("en", 2, 1, 1, 0, 1, 1, 0, "Files not written: 1 (no proposed changes: 1)"),
+        ("en", 3, 1, 1, 2, 2, 1, 1, "Files not written: 2 (no proposed changes: 1)"),
+        ("zh-Hans", 1, 1, 1, 0, 0, 0, 0, "未写回：0 个文件（其中没有建议变更：0 个）"),
+        ("zh-Hans", 2, 1, 1, 0, 1, 1, 0, "未写回：1 个文件（其中没有建议变更：1 个）"),
+        ("zh-Hans", 3, 1, 1, 2, 2, 1, 1, "未写回：2 个文件（其中没有建议变更：1 个）"),
+        ("zh-Hant", 1, 1, 1, 0, 0, 0, 0, "未寫回：0 個檔案（其中沒有建議變更：0 個）"),
+        ("zh-Hant", 2, 1, 1, 0, 1, 1, 0, "未寫回：1 個檔案（其中沒有建議變更：1 個）"),
+        ("zh-Hant", 3, 1, 1, 2, 2, 1, 1, "未寫回：2 個檔案（其中沒有建議變更：1 個）"),
     ),
 )
 def test_result_done_states_unwritten_files_include_unchanged_subset(
@@ -79,6 +99,7 @@ def test_result_done_states_unwritten_files_include_unchanged_subset(
     skipped_changes: int,
     files_not_written: int,
     files_without_changes: int,
+    files_all_skipped: int,
     expected_unwritten: str,
 ):
     _MessageBox.messages = []
@@ -95,6 +116,7 @@ def test_result_done_states_unwritten_files_include_unchanged_subset(
         skipped_changes=skipped_changes,
         files_not_written=files_not_written,
         files_without_changes=files_without_changes,
+        files_all_skipped=files_all_skipped,
         translator=translator,
     )
 
@@ -105,6 +127,8 @@ def test_result_done_states_unwritten_files_include_unchanged_subset(
     assert str(accepted_changes) in lines[3]
     assert str(skipped_changes) in lines[3]
     assert lines[4] == expected_unwritten
+    assert lines[5] == translator.text(
+        "result.files_all_skipped", count=files_all_skipped)
 
 
 def test_noop_result_offers_scope_return_and_lists_invalid_sources(monkeypatch):
@@ -206,6 +230,7 @@ def test_result_status_and_count_rows_are_localized_line_by_line(
         skipped_changes=skipped,
         files_not_written=3,
         files_without_changes=1,
+        files_all_skipped=2,
         failed_file="Text/ch.xhtml",
         translator=translator,
     )
@@ -220,8 +245,9 @@ def test_result_status_and_count_rows_are_localized_line_by_line(
         "result.row.written", files=1, accepted=accepted, skipped=skipped)
     assert lines[4] == translator.text(
         "result.row.unwritten", files=3, unchanged=1)
+    assert lines[5] == translator.text("result.files_all_skipped", count=2)
     if reminder:
-        assert lines[6] == translator.text("result.save_reminder")
+        assert lines[7] == translator.text("result.save_reminder")
     else:
         assert translator.text("result.save_reminder") not in lines
 

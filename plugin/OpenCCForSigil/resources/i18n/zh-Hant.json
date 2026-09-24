@@ -248,6 +248,7 @@
   "result.row.scanned": "已分析：{count} 個檔案",
   "result.row.written": "已寫入：{files} 個檔案（已接受 {accepted} 項變更，已跳過 {skipped} 項）",
   "result.row.unwritten": "未寫回：{files} 個檔案（其中沒有建議變更：{unchanged} 個）",
+  "result.files_all_skipped": "全部略過：{count} 個檔案",
   "result.status.success": "轉換完成。",
   "result.status.partial": "寫回在 {file} 處出錯。Sigil 會放棄本次全部變更，書將維持原樣。",
   "result.status.cancelled": "轉換已取消。",

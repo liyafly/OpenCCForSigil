@@ -248,6 +248,7 @@
   "result.row.scanned": "Analyzed files: {count}",
   "result.row.written": "Written files: {files} (applied changes: {accepted}, skipped changes: {skipped})",
   "result.row.unwritten": "Files not written: {files} (no proposed changes: {unchanged})",
+  "result.files_all_skipped": "Files fully skipped: {count}",
   "result.status.success": "Conversion completed.",
   "result.status.partial": "Write-back failed at {file}. Sigil will discard all changes from this run; the book will remain unchanged.",
   "result.status.cancelled": "Conversion was cancelled.",
