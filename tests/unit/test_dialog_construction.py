@@ -20,6 +20,8 @@ from ui.preview_window import (
 from ui.profile_window import ProfileManagerDialog
 from ui.rules_window import RuleManagerDialog
 
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+
 
 def _preview_inputs():
     change = TokenChange(
@@ -187,9 +189,11 @@ def _class_methods(node: ast.ClassDef, classes: dict[str, ast.ClassDef]) -> set[
 
 
 def test_ui_self_method_calls_resolve_in_the_class_or_its_local_bases():
-    ui_root = Path("plugin/OpenCCForSigil/ui")
+    ui_root = REPOSITORY_ROOT / "plugin" / "OpenCCForSigil" / "ui"
+    files = tuple(sorted(ui_root.glob("*.py")))
+    assert files, f"no UI source files found under {ui_root}"
     failures: list[str] = []
-    for path in sorted(ui_root.glob("*.py")):
+    for path in files:
         module = ast.parse(path.read_text(encoding="utf-8"))
         classes = {node.name: node for node in ast.walk(module) if isinstance(node, ast.ClassDef)}
         for node in classes.values():
@@ -228,5 +232,49 @@ def test_ui_self_method_calls_resolve_in_the_class_or_its_local_bases():
                     and call.func.attr not in assigned
                 ):
                     failures.append(f"{path}:{call.lineno}: {node.name}.self.{call.func.attr}")
+
+    assert not failures, "\n".join(failures)
+
+
+def test_backend_self_attribute_reads_resolve_in_package_classes():
+    backend_root = REPOSITORY_ROOT / "plugin" / "OpenCCForSigil" / "opencc_backend"
+    files = tuple(sorted(backend_root.rglob("*.py")))
+    assert files, f"no backend source files found under {backend_root}"
+    failures: list[str] = []
+    for path in files:
+        module = ast.parse(path.read_text(encoding="utf-8"))
+        classes = {node.name: node for node in ast.walk(module) if isinstance(node, ast.ClassDef)}
+        for node in classes.values():
+            has_external_base = any(
+                not isinstance(base, ast.Name) or base.id not in classes
+                for base in node.bases
+            )
+            if has_external_base:
+                continue
+            defined = _class_methods(node, classes)
+            defined.update(
+                child.target.id
+                for child in node.body
+                if isinstance(child, ast.AnnAssign) and isinstance(child.target, ast.Name)
+            )
+            defined.update(
+                child.attr
+                for child in ast.walk(node)
+                if (
+                    isinstance(child, ast.Attribute)
+                    and isinstance(child.value, ast.Name)
+                    and child.value.id == "self"
+                    and isinstance(child.ctx, ast.Store)
+                )
+            )
+            for read in ast.walk(node):
+                if (
+                    isinstance(read, ast.Attribute)
+                    and isinstance(read.value, ast.Name)
+                    and read.value.id == "self"
+                    and isinstance(read.ctx, ast.Load)
+                    and read.attr not in defined
+                ):
+                    failures.append(f"{path}:{read.lineno}: {node.name}.self.{read.attr}")
 
     assert not failures, "\n".join(failures)
