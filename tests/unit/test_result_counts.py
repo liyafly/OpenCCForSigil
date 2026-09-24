@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from app.controller import Controller
+from tests.support import fake_qt
 from ui import preview_window
 from ui.i18n import Translator
 
@@ -107,53 +108,11 @@ def test_result_done_states_unwritten_files_include_unchanged_subset(
 
 
 def test_noop_result_offers_scope_return_and_lists_invalid_sources(monkeypatch):
-    class Button:
-        def __init__(self, label, role):
-            self.label = label
-            self.role = role
-
-    class MessageBox:
-        RejectRole = "reject"
-        AcceptRole = "accept"
-        response = "back"
-        instances = []
-
-        @classmethod
-        def information(cls, *_args):
-            raise AssertionError("interactive result box should be used")
-
-        @classmethod
-        def warning(cls, *_args):
-            raise AssertionError("interactive result box should be used")
-
-        def __init__(self):
-            self.buttons = []
-            self.text = ""
-            self.default_button = None
-            self.instances.append(self)
-
-        def setWindowTitle(self, _title):
-            pass
-
-        def setText(self, text):
-            self.text = text
-
-        def addButton(self, label, role):
-            button = Button(label, role)
-            self.buttons.append(button)
-            return button
-
-        def setDefaultButton(self, button):
-            self.default_button = button
-
-        def exec(self):
-            pass
-
-        def clickedButton(self):
-            return self.buttons[0] if self.response == "back" else self.buttons[1]
-
-    fake_qt = type("FakeQt", (), {"QMessageBox": MessageBox})
-    monkeypatch.setattr(preview_window, "load_qt", lambda: fake_qt)
+    qt = fake_qt.make()
+    MessageBox = qt.QMessageBox
+    MessageBox.instances = []
+    MessageBox.response = "back"
+    monkeypatch.setattr(preview_window, "load_qt", lambda: qt)
     monkeypatch.setattr(preview_window, "ensure_application", lambda _qt: None)
     translator = Translator("zh-Hans")
 
@@ -169,12 +128,12 @@ def test_noop_result_offers_scope_return_and_lists_invalid_sources(monkeypatch):
     )
     assert preview_window.show_result(**values) == "back_to_scope"
     back_box = MessageBox.instances[-1]
-    assert "没有需要转换的内容" in back_box.text
-    assert "以下源文件 XHTML 不合法，已跳过：" in back_box.text
+    assert "没有需要转换的内容" in back_box.text()
+    assert "以下源文件 XHTML 不合法，已跳过：" in back_box.text()
     invalid_source = Translator("zh-Hans").text(
         "diagnostic.source_invalid_xhtml", count=1)
-    assert f"Text/bad.xhtml: {invalid_source}" in back_box.text
-    assert "line 1, column 2" not in back_box.text
+    assert f"Text/bad.xhtml: {invalid_source}" in back_box.text()
+    assert "line 1, column 2" not in back_box.text()
     assert [button.label for button in back_box.buttons] == ["返回文件选择", "关闭"]
     assert back_box.default_button is back_box.buttons[1]
 
@@ -182,6 +141,11 @@ def test_noop_result_offers_scope_return_and_lists_invalid_sources(monkeypatch):
     assert preview_window.show_result(**values) == "close"
     close_box = MessageBox.instances[-1]
     assert close_box.default_button is close_box.buttons[1]
+
+    MessageBox.response = "escape"
+    assert preview_window.show_result(**values) == "close"
+    escape_box = MessageBox.instances[-1]
+    assert escape_box.escape_button is escape_box.buttons[1]
 
 
 @pytest.mark.parametrize("language", ("en", "zh-Hans", "zh-Hant"))
@@ -266,6 +230,9 @@ def test_success_result_opens_this_sessions_markdown_report(monkeypatch):
 
         def setDefaultButton(self, button):
             self.default = button
+
+        def setEscapeButton(self, button):
+            self.escape = button
 
         def exec(self):
             pass

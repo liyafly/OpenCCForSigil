@@ -474,13 +474,14 @@ def show_result(
         back = None
         if return_to_scope:
             back = box.addButton(
-                translator.text("result.back_to_scope"), qt_widgets.QMessageBox.RejectRole)
+                translator.text("result.back_to_scope"), qt_widgets.QMessageBox.ActionRole)
         view_report = None
         if report_text:
             view_report = box.addButton(
                 translator.text("result.view_report"), qt_widgets.QMessageBox.ActionRole)
         close = box.addButton(translator.text("common.close"), qt_widgets.QMessageBox.AcceptRole)
         box.setDefaultButton(close)
+        box.setEscapeButton(close)
         exec_dialog(box)
         clicked = box.clickedButton()
         if view_report is not None and clicked is view_report:

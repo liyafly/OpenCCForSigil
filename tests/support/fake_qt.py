@@ -183,6 +183,67 @@ class Timer(Base):
         return self._active
 
 
+class MessageButton:
+    def __init__(self, label, role):
+        self.label = label
+        self.role = role
+
+
+class MessageBox(Base):
+    AcceptRole = 0
+    RejectRole = 1
+    ActionRole = 3
+    Warning = 2
+    Yes = 0x4000
+    No = 0x10000
+    response = "back"
+    instances = []
+
+    @classmethod
+    def information(cls, *args):
+        LOG.append(("information", args))
+
+    @classmethod
+    def warning(cls, *args):
+        LOG.append(("warning", args))
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.buttons = []
+        self.default_button = None
+        self.escape_button = None
+        self._clicked_button = None
+        type(self).instances.append(self)
+
+    def addButton(self, label, role):
+        button = MessageButton(label, role)
+        self.buttons.append(button)
+        return button
+
+    def setDefaultButton(self, button):
+        self.default_button = button
+
+    def setEscapeButton(self, button):
+        self.escape_button = button
+
+    def clickedButton(self):
+        return self._clicked_button
+
+    def exec(self):
+        if type(self).response == "escape":
+            self.press_escape()
+        elif self.buttons:
+            self._clicked_button = (
+                self.buttons[0] if type(self).response == "back" else self.buttons[-1]
+            )
+
+    def press_escape(self):
+        self._clicked_button = self.escape_button or next(
+            (button for button in self.buttons if button.role == self.RejectRole),
+            self.default_button,
+        )
+
+
 class Layout(Base):
     def __init__(self, parent=None, *a):
         super().__init__()
@@ -533,20 +594,7 @@ def make():
         processEvents=lambda: None,
         clipboard=lambda: SimpleNamespace(setText=lambda t: None),
     )
-    qt.QMessageBox = type(
-        "QMessageBox",
-        (Base,),
-        {
-            "AcceptRole": 0,
-            "RejectRole": 1,
-            "ActionRole": 3,
-            "Warning": 2,
-            "Yes": 0x4000,
-            "No": 0x10000,
-        },
-    )
-    qt.QMessageBox.warning = staticmethod(lambda *a: LOG.append(("warning", a)))
-    qt.QMessageBox.information = staticmethod(lambda *a: LOG.append(("information", a)))
+    qt.QMessageBox = MessageBox
     qt.QAbstractItemView = SimpleNamespace(
         SelectRows=1, SingleSelection=1, NoEditTriggers=0, ExtendedSelection=3
     )
