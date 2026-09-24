@@ -4,6 +4,7 @@ import pytest
 
 from app.settings import RunSettings
 from app.profiles import Profile
+from opencc_backend.configs import V1_CONFIGS
 from tests.support.fake_qt import make as make_fake_qt
 from ui.i18n import Translator
 from ui.run_options import (
@@ -164,6 +165,43 @@ def test_realistic_combo_signals_do_not_replace_saved_pivot_chain():
     panel.update_enablement("t2s")
 
     assert panel.values()["pivot_chain"] == ("s2twp", "t2s")
+
+
+@pytest.mark.parametrize(
+    ("direction", "chain"),
+    (
+        ("t2s", ("s2tw", "t2s")),
+        ("t2s", ("s2twp", "t2s")),
+        ("s2tw", ("t2s", "s2tw")),
+        ("s2t", ("t2s", "s2t")),
+    ),
+)
+def test_opening_dialog_preserves_saved_pivot_chain(direction, chain):
+    dialog = _ConversionConfigDialog(
+        make_fake_qt(), tuple(V1_CONFIGS), direction, {}, translator=Translator("en"),
+        initial_options={"force_pivot": True, "pivot_chain": chain},
+    )
+    panel = dialog.options_panel
+
+    assert panel.values()["pivot_chain"] == chain
+    assert panel.preference_values()["pivot_chain"] == chain
+
+
+def test_manual_pivot_chain_selection_survives_direction_changes():
+    dialog = _ConversionConfigDialog(
+        make_fake_qt(), tuple(V1_CONFIGS), "t2s", {}, translator=Translator("en"),
+        initial_options={"force_pivot": True, "pivot_chain": ("s2tw", "t2s")},
+    )
+    panel = dialog.options_panel
+    chain_combo = panel.combos["pivot_chain"]
+    selected = chain_combo.findData("s2twp>t2s")
+    assert selected >= 0
+    chain_combo.setCurrentIndex(selected)
+
+    dialog.combo.setCurrentIndex(dialog.combo.findData("s2t"))
+    dialog.combo.setCurrentIndex(dialog.combo.findData("t2s"))
+
+    assert panel.preference_values()["pivot_chain"] == ("s2twp", "t2s")
 
 
 def test_profile_load_applies_direction_before_saved_disabled_options():

@@ -186,8 +186,9 @@ class RunOptionsPanel:
     def _connect_option_changes(self):
         for control in self.checks.values():
             control.stateChanged.connect(self._option_changed)
-        for combo in self.combos.values():
-            combo.currentIndexChanged.connect(self._option_changed)
+        for name, combo in self.combos.items():
+            if name != "pivot_chain":
+                combo.currentIndexChanged.connect(self._option_changed)
         self.combos["pivot_chain"].currentIndexChanged.connect(self._pivot_chain_changed)
 
     def values(self):
@@ -250,9 +251,6 @@ class RunOptionsPanel:
         if config is None:
             config = (self._get_config() if hasattr(self, "_get_config")
                       else self._initial.get("conversion", "s2t"))
-        current_chain = self.combos["pivot_chain"].currentData()
-        if current_chain:
-            self._preferred_pivot_chain = _pivot_chain_key(current_chain)
         compatible = tuple(sorted(chain for chain in FORCE_PIVOT_CHAINS if chain[-1] == str(config)))
         combo = self.combos["pivot_chain"]
         previously_blocked = combo.blockSignals(True)
