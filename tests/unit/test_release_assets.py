@@ -75,6 +75,7 @@ def test_ci_and_release_contract_smokes_each_package_and_publishes_eight_assets(
     assert "    needs:\n      - package-smoke\n      - attest-release-assets" in release_job
     assert "OpenCCForSigil-packages-${{ github.sha }}" in workflow
     assert "tools/package_smoke.py" in workflow
+    assert "      - name: Smoke-test the Fat Plugin under CPython 3.14\n        shell: bash" in workflow
     assert "tools/release_assets.py" in workflow
     assert release_shell.count("gh release create") == 1
     assert '"release-artifacts/OpenCCForSigil_${version}.zip"' in release_shell

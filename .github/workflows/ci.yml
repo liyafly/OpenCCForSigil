@@ -455,6 +455,7 @@ jobs:
             --expected-runtime "$EXPECTED_RUNTIME"
 
       - name: Smoke-test the Fat Plugin under CPython 3.14
+        shell: bash
         env:
           EXPECTED_RUNTIME: ${{ matrix.fat_runtime }}
         run: |
