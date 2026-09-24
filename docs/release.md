@@ -140,7 +140,7 @@ deterministic ZIP with fixed member order, timestamps, and permissions. The
 same ZIP is then passed through `tools/validate_artifact.py --require-runtimes`,
 which recomputes every payload tree and data hash from the archive itself.
 
-To use it, push the branch or select **Actions → CI and Fat Plugin build → Run
+To use it, push the branch or select **Actions → CI and plugin packages → Run
 workflow**. Download the artifact named
 `OpenCCForSigil-packages-<commit>` from the successful run. It contains all
 seven release assets after package validation. No local
@@ -170,3 +170,64 @@ OpenCC wheel from the upstream project and add that verified wheel following
 the existing native payload workflow. Building a production wheel from the
 sdist remains outside the current provenance invariant and requires a separate
 specification decision.
+
+## 发版步骤清单
+
+1. **运行 E-01。** 在 `main` 最新提交上手动运行完整 CI：
+   **Actions → CI and plugin packages → Run workflow → Branch: `main`**。
+   或运行 `gh workflow run ci.yml --ref main`。用下面的命令等待运行结束，
+   并记录运行链接、head SHA 和结论；所有 payload、Jieba 一致性、打包及
+   五个平台 smoke job 都必须通过：
+
+   ```sh
+   gh run list --workflow ci.yml --branch main --limit 1
+   gh run watch <run-id> --exit-status
+   gh run view <run-id> --json url,headSha,status,conclusion
+   ```
+
+2. **核对包大小。** 从该次运行下载名为
+   `OpenCCForSigil-packages-<head-sha>` 的 artifact，解压后检查六个 ZIP
+   的字节数：平台 ZIP 不超过 7,000,000 字节，Fat ZIP 不超过 30,000,000
+   字节。也要确认六个 ZIP 和 `SHA256SUMS.txt` 都存在。
+
+   ```sh
+   gh run download <run-id> \
+     --name OpenCCForSigil-packages-<head-sha> \
+     --dir /tmp/openccforsigil-packages
+   for asset in /tmp/openccforsigil-packages/*.zip; do
+     printf '%s ' "$(basename "$asset")"
+     wc -c < "$asset"
+   done
+   ```
+
+3. **完成 E-02。** 核对 `main` 自上一版以来的变更，更新插件版本、
+   `CHANGELOG.md` 和 `docs/releases/v<version>.md`。发布说明应记录 E-01
+   的运行链接、head SHA 和包大小，并清楚区分 CI 结果与真实 Sigil 主机
+   验收。
+
+4. **打标签并推送。** 确认版本更新已提交到 `main`，再创建并推送对应标签：
+
+   ```sh
+   git tag v<version>
+   git push origin v<version>
+   ```
+
+5. **等待发布工作流。** 在 GitHub 的 **Actions → CI and plugin packages**
+   打开这个 tag 对应的运行。只有五个平台的 `package-smoke` 和
+   `publish-release` 都成功，发布才完成。
+
+6. **下载并验证 Release 资产。** 从该 tag 的 Release 页面下载全部附件，
+   包含六个 ZIP 和 `SHA256SUMS.txt`。在仓库 checkout 中运行：
+
+   ```sh
+   mise exec -- uv run python tools/release_assets.py \
+     --asset-dir /path/to/downloaded-assets \
+     --version <version>
+   ```
+
+   工具会验证 ZIP 内的版本和 runtime 清单，并核对 `SHA256SUMS.txt` 与
+   六个 ZIP 的 SHA-256。
+
+7. **更新 README 下载表。** 将表格中的版本和链接指向刚验证的 Release
+   资产；记录每个 ZIP 的大小和校验文件名，并确认自动生成的源码压缩包
+   没有被列作可安装插件。

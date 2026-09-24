@@ -1,4 +1,4 @@
-name: CI and Fat Plugin build
+name: CI and plugin packages
 
 on:
   push:
