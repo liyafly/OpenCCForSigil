@@ -344,11 +344,23 @@ class ProfileManagerDialog:
 
 
 def _profile_signature(profile: Profile) -> tuple:
-    payload = profile.to_dict()
+    payload = _with_panel_defaults(profile.to_dict())
     payload.pop("id", None)
     payload.pop("name", None)
     return tuple(sorted((key, tuple(value) if isinstance(value, list) else value)
                         for key, value in payload.items()))
+
+
+def _with_panel_defaults(options: dict) -> dict:
+    """Fill optional panel-only profile values before comparing profiles."""
+
+    from ui.run_options import PANEL_OPTION_DEFAULTS
+
+    values = dict(options)
+    for name, default in PANEL_OPTION_DEFAULTS.items():
+        if values.get(name) is None:
+            values[name] = default
+    return values
 
 
 __all__ = ["ProfileManagerDialog", "show_profile_window"]

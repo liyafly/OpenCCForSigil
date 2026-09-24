@@ -1,9 +1,13 @@
 from types import SimpleNamespace
 
 from app.profiles import Profile, ProfileStore
+from app.settings import RunSettings, profile_options
+from sigil.storage import UserDataStore
+from tests.support.fake_qt import make as make_fake_qt
 from ui.i18n import CatalogView, Translator
 from ui import profile_window
 from ui.profile_window import ProfileManagerDialog
+from ui.run_options import RunOptionsPanel
 
 
 class ProfileList:
@@ -156,6 +160,51 @@ def test_unchanged_active_profile_can_be_renamed_or_deleted(tmp_path):
     manager._refresh_summary()
     assert manager.rename_button.enabled
     assert manager.delete_button.enabled
+
+
+def _profile_options_fixture(tmp_path):
+    storage = UserDataStore(tmp_path)
+    storage.ensure_layout()
+    ProfileStore(storage.paths.profiles).save(
+        Profile(id="p1", name="Mine", conversion="s2t"))
+    settings = RunSettings(
+        storage, SimpleNamespace(), {"profile_id": "p1"},
+        language="en", session_id="profile-test",
+    )
+    qt = make_fake_qt()
+    panel = RunOptionsPanel(
+        qt, Translator("en"), qt.QVBoxLayout(),
+        initial=profile_options(settings.active), metadata_available=True,
+        nav_available=True, services=settings,
+    )
+    panel.bind(lambda: "s2t", lambda _config: None, None)
+    return settings, panel
+
+
+def test_untouched_profile_is_not_modified_and_remains_manageable(
+    tmp_path, monkeypatch,
+):
+    settings, panel = _profile_options_fixture(tmp_path)
+    captured = {}
+
+    def fake_show(values, **kwargs):
+        captured["manager"] = ProfileManagerDialog(make_fake_qt(), values, **kwargs)
+
+    monkeypatch.setattr(profile_window, "show_profile_window", fake_show)
+    settings.pick_profile("s2t", panel.values(), Translator("en"))
+
+    modified = Translator("en").text("options.profile_modified")
+    assert modified not in panel.profile_label.text()
+    assert captured["manager"].rename_button.isEnabled()
+    assert captured["manager"].delete_button.isEnabled()
+
+
+def test_changed_quotation_option_marks_profile_as_modified(tmp_path):
+    _settings, panel = _profile_options_fixture(tmp_path)
+    combo = panel.combos["quotation_mode"]
+    combo.setCurrentIndex(combo.findData("corner"))
+
+    assert Translator("en").text("options.profile_modified") in panel.profile_label.text()
 
 
 def test_profile_summary_uses_localized_direction_and_option_labels(tmp_path):

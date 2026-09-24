@@ -5,6 +5,11 @@ from opencc_backend.configs import base_config
 from ui.i18n import profile_display_name, settings_error_message, show_error_details
 from ui.qt import enum_value
 
+PANEL_OPTION_DEFAULTS = {
+    "diagnose_mixed": True,
+    "detailed_classification": True,
+}
+
 
 def option_enablement(config: str, values: dict) -> dict[str, bool]:
     """Return option-control availability for one direction and current values."""
@@ -115,8 +120,8 @@ class RunOptionsPanel:
         language_note.setWordWrap(True)
         language_form.addRow(language_note)
         advanced_layout.addWidget(language_group)
-        self._add_option_group(advanced_layout, "options.diagnostics", (
-            ("diagnose_mixed", True), ("detailed_classification", True)))
+        self._add_option_group(
+            advanced_layout, "options.diagnostics", tuple(PANEL_OPTION_DEFAULTS.items()))
         high_risk = qt.QGroupBox(translator.text("options.high_risk"))
         high_risk_layout = qt.QFormLayout(high_risk)
         self._add_check(high_risk_layout, "force_pivot", False)
@@ -310,14 +315,15 @@ class RunOptionsPanel:
         self._option_changed()
 
     def _update_profile_label(self, config):
-        from app.settings import profile_options, settings_hash
+        from app.settings import profile_options
+        from ui.profile_window import _profile_signature
 
         current = self._services.current_profile(config, self.values())
         active = self._services.active
         normalized_active = self._services.current_profile(
             active.conversion, profile_options(active))
         status = (self._tr.text("options.profile_modified")
-        if settings_hash(current) != settings_hash(normalized_active) else "")
+                  if _profile_signature(current) != _profile_signature(normalized_active) else "")
         self.profile_label.setText(self._tr.text(
             "options.current_profile", name=profile_display_name(active, self._tr), status=status))
         self.ruleset_label.setText(self._tr.text(
