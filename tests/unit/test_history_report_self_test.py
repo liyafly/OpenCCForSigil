@@ -11,6 +11,8 @@ from app.self_test import run_self_test
 from logging_ext.history import HistoryError, HistoryStore
 from logging_ext.report import ReportError, export_json, export_markdown
 from logging_ext.retention import cleanup
+from tests.support.fake_qt import make_with_table
+from ui import history_window
 from ui.history_window import _configure_history_table, cleanup_with_confirmation, history_rows
 
 
@@ -228,3 +230,15 @@ def test_history_table_is_not_editable_and_selects_whole_rows():
     _configure_history_table(table, SimpleNamespace(QAbstractItemView=View))
     assert table.edit_triggers == View.NoEditTriggers
     assert table.selection == View.SelectRows
+
+
+def test_history_dialog_button_defaults_and_empty_cleanup_state(monkeypatch, tmp_path):
+    qt = make_with_table()
+    monkeypatch.setattr(history_window, "ensure_application", lambda *_args: None)
+    monkeypatch.setattr(history_window, "exec_dialog", lambda *_args: None)
+
+    dialog = history_window.show_history(tmp_path / "history", qt_widgets=qt)
+
+    assert not dialog.cleanup_button.isEnabled()
+    assert dialog.history_buttons[1].isDefault()
+    assert all(button.autoDefault() is False for button in dialog.history_buttons)

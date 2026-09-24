@@ -138,6 +138,10 @@ def show_history(
     inspect_button = qt_widgets.QPushButton(translator.text("history.open"), dialog)
     export_button = qt_widgets.QPushButton(translator.text("history.export"), dialog)
     close_button = qt_widgets.QPushButton(translator.text("history.close"), dialog)
+    for button in (cleanup_button, inspect_button, export_button, close_button):
+        button.setAutoDefault(False)
+    inspect_button.setDefault(True)
+    cleanup_button.setEnabled(bool(records))
     buttons.addWidget(cleanup_button)
     buttons.addStretch(1)
     buttons.addWidget(inspect_button)
@@ -185,6 +189,7 @@ def show_history(
         records[:] = HistoryStore(Path(history_root)).load()
         _render_table(table, records, qt_widgets, translator)
         empty.setVisible(not records)
+        cleanup_button.setEnabled(bool(records))
 
     inspect_button.clicked.connect(inspect)
     export_button.clicked.connect(export)
@@ -194,6 +199,7 @@ def show_history(
     dialog.history_records = records
     dialog.history_table = table
     dialog.cleanup_button = cleanup_button
+    dialog.history_buttons = (cleanup_button, inspect_button, export_button, close_button)
     dialog.show()
     return dialog
 
