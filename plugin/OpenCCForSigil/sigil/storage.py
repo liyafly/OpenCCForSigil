@@ -4,6 +4,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
+import os
 from pathlib import Path
 import tempfile
 from typing import Any, Mapping, Optional
@@ -195,11 +196,26 @@ class UserDataStore:
     @staticmethod
     def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = path.with_suffix(path.suffix + ".tmp")
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix="preferences.", suffix=".tmp", dir=path.parent
+        )
+        temporary = Path(temporary_name)
         try:
-            with temporary.open("w", encoding="utf-8") as handle:
+            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
                 json.dump(payload, handle, ensure_ascii=False, indent=2, sort_keys=True)
                 handle.write("\n")
-            temporary.replace(path)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, path)
         except OSError as exc:
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                pass
             raise StorageError(f"could not write JSON storage: {path}") from exc
+        except BaseException:
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                pass
+            raise
