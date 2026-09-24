@@ -5,6 +5,7 @@ import pytest
 from app.controller import Controller
 from core.models import Diagnostic, VerificationResult
 from core.workflow import WorkflowCommitError, WorkflowError
+from logging_ext.logger import SessionLogger
 from sigil.scope import Scope, TargetSelection
 from ui.preview_window import PreviewOutcome, ScopeOutcome
 
@@ -177,12 +178,10 @@ def test_commit_progress_failure_is_logged_and_does_not_stop_writeback(
     assert summary["files_changed"] == 2
 
 
-def test_post_write_progress_close_failure_uses_adapter_commit_record(
-    monkeypatch, tmp_path
-):
+def test_post_write_progress_close_failure_is_best_effort(monkeypatch, tmp_path):
     results = []
     errors = []
-    book = Book()
+    book = Book({"a": "<p>汉字</p>", "b": "<p>汉字</p>"})
     _patch_ui(monkeypatch, results=results, errors=errors)
 
     class CloseFailingProgress(NoProgress):
@@ -199,16 +198,58 @@ def test_post_write_progress_close_failure_uses_adapter_commit_record(
     )
     controller = Controller(book, data_dir=tmp_path)
 
-    with pytest.raises(RuntimeError, match="progress widget was deleted"):
-        controller.run()
+    assert controller.run() == 0
 
-    assert book.writes == ["a"]
-    assert results[-1]["status"] == "partial_failure"
-    assert results[-1]["files_changed"] == 1
+    assert book.writes == ["a", "b"]
+    assert results[-1]["status"] == "success"
+    assert results[-1]["files_changed"] == 2
     assert errors == []
     summary = json.loads(controller.logger.summary_path.read_text(encoding="utf-8"))
-    assert summary["status"] == "partial_failure"
-    assert summary["files_changed"] == 1
+    assert summary["status"] == "success"
+    assert summary["files_changed"] == 2
+    events = [
+        json.loads(line)
+        for line in controller.logger.log_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert any(event["event"] == "post_commit_progress_close_failed" for event in events)
+
+
+def test_summary_failure_after_commit_still_succeeds(monkeypatch, tmp_path):
+    results = []
+    book = Book({"a": "<p>汉字</p>", "b": "<p>汉字</p>"})
+    _patch_ui(monkeypatch, results=results, errors=[])
+    original_summary = SessionLogger.summary
+
+    def fail_success_summary(logger, values):
+        if values.get("status") == "success":
+            raise OSError("simulated full disk")
+        return original_summary(logger, values)
+
+    monkeypatch.setattr(SessionLogger, "summary", fail_success_summary)
+    controller = Controller(book, data_dir=tmp_path)
+
+    assert controller.run() == 0
+
+    assert book.writes == ["a", "b"]
+    assert results[-1]["status"] == "success"
+
+
+def test_history_failure_after_commit_still_succeeds(monkeypatch, tmp_path):
+    results = []
+    book = Book({"a": "<p>汉字</p>", "b": "<p>汉字</p>"})
+    _patch_ui(monkeypatch, results=results, errors=[])
+    controller = Controller(book, data_dir=tmp_path)
+    monkeypatch.setattr(
+        controller,
+        "_record_history",
+        lambda *_args: (_ for _ in ()).throw(RuntimeError("simulated history failure")),
+    )
+
+    assert controller.run() == 0
+
+    assert book.writes == ["a", "b"]
+    assert results[-1]["status"] == "success"
+    assert results[-1]["report_text"] is None
 
 
 def test_result_dialog_failure_does_not_change_success_summary(monkeypatch, tmp_path):

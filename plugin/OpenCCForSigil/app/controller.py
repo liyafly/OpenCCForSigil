@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -455,6 +456,7 @@ class Controller:
 
             self.session.transition(SessionState.APPLYING_TO_STAGE)
             post_preview_progress = create_progress_reporter(len(planned), translator=translator)
+            commit_succeeded = False
             try:
                 # Staging and verification happen before the write boundary;
                 # keep the user informed without offering a cancellation
@@ -491,26 +493,38 @@ class Controller:
                         error=str(error),
                     ),
                 )
+                commit_succeeded = True
             finally:
-                post_preview_progress.close()
+                if commit_succeeded:
+                    self.session.complete()
+                    self._best_effort("progress_close", post_preview_progress.close)
+                else:
+                    post_preview_progress.close()
             files_written = len(staged)
-            self.session.complete()
-            self.logger.event(
+            self._best_effort(
                 "commit_completed",
-                files_changed=len(staged),
-                changes=accepted_change_count,
-            )
-            self.logger.summary(
-                self._summary(
-                    status="success",
-                    files_scanned=len(planned),
-                    changes=accepted_change_count,
+                lambda: self.logger.event(
+                    "commit_completed",
                     files_changed=len(staged),
-                    files_without_changes=files_without_changes,
-                    skipped_changes=skipped_change_count,
-                )
+                    changes=accepted_change_count,
+                ),
             )
-            report_text = self._record_history(planned, staged, backend)
+            self._best_effort(
+                "summary",
+                lambda: self.logger.summary(
+                    self._summary(
+                        status="success",
+                        files_scanned=len(planned),
+                        changes=accepted_change_count,
+                        files_changed=len(staged),
+                        files_without_changes=files_without_changes,
+                        skipped_changes=skipped_change_count,
+                    )
+                ),
+            )
+            report_text = self._best_effort(
+                "history", lambda: self._record_history(planned, staged, backend), default=None
+            )
             _show_result_safely(
                 show_result, translator=translator,
                 status="success",
@@ -651,6 +665,21 @@ class Controller:
         )
         if not self_test.passed:
             raise RuntimeError(self_test.error or "official OpenCC backend self-test failed")
+
+    def _best_effort(self, label, action, default=None):
+        """Run post-commit bookkeeping without undoing a completed write."""
+
+        try:
+            return action()
+        except Exception as error:  # noqa: BLE001 - bookkeeping must not undo a commit
+            try:
+                self.logger.exception(f"post_commit_{label}_failed", error)
+            except Exception:
+                print(
+                    f"OpenCCForSigil: {label} failed after commit: {error}",
+                    file=sys.stderr,
+                )
+            return default
 
     def _complete_noop(
         self,
