@@ -39,13 +39,18 @@ def bounded_opcodes(source: str, target: str) -> tuple[Opcode, ...]:
     result always partitions both strings, and every non-equal opcode carries
     the exact source and target slices for that region.  It is therefore safe
     for callers to use the opcodes as source patches even when alignment falls
-    back to a coarse ``replace``.
+    back to a coarse ``replace``. Equal-length text is compared by position;
+    unequal-length changes separated by one equal character are merged so a
+    phrase is not split into independently accepted changes.
     """
 
     if source == target:
         return (("equal", 0, len(source), 0, len(target)),) if source else ()
+    if len(source) == len(target):
+        return _positional_opcodes(source, target)
     if max(len(source), len(target)) <= _DETAILED_LIMIT:
-        return _detailed_opcodes(source, target)
+        opcodes = tuple(_coalesce_opcodes(list(_detailed_opcodes(source, target))))
+        return tuple(_merge_close_changes(opcodes, source, target))
     prefix = _common_prefix(source, target)
     source_end = len(source)
     target_end = len(target)
@@ -71,7 +76,71 @@ def bounded_opcodes(source: str, target: str) -> tuple[Opcode, ...]:
 
     if suffix:
         opcodes.append(("equal", source_mid_end, source_end, target_mid_end, target_end))
-    return tuple(_coalesce_opcodes(opcodes))
+    coalesced = tuple(_coalesce_opcodes(opcodes))
+    return tuple(_merge_close_changes(coalesced, source, target))
+
+
+def _positional_opcodes(source: str, target: str) -> tuple[Opcode, ...]:
+    """Diff equal-length strings by position, grouping adjacent differences.
+
+    Consecutive differing characters form one ``replace`` opcode, which keeps
+    an OpenCC phrase such as 打印机 -> 印表機 together.
+    """
+
+    opcodes = []
+    index = 0
+    length = len(source)
+    while index < length:
+        end = index
+        same = source[index] == target[index]
+        while end < length and (source[end] == target[end]) == same:
+            end += 1
+        opcodes.append(("equal" if same else "replace", index, end, index, end))
+        index = end
+    return tuple(opcodes)
+
+
+def _merge_close_changes(
+    opcodes: tuple[Opcode, ...], source: str, target: str
+) -> tuple[Opcode, ...]:
+    """Merge changes separated by at most one equal source character."""
+
+    merged = []
+    cursor = 0
+    while cursor < len(opcodes):
+        current = opcodes[cursor]
+        if current[0] != "equal" and cursor + 2 < len(opcodes):
+            equal = opcodes[cursor + 1]
+            following = opcodes[cursor + 2]
+            equal_source = source[equal[1]:equal[2]]
+            equal_target = target[equal[3]:equal[4]]
+            if (
+                equal[0] == "equal"
+                and len(equal_source) <= 1
+                and equal_source == equal_target
+                and following[0] != "equal"
+            ):
+                combined = ("replace", current[1], following[2], current[3], following[4])
+                cursor += 3
+                while cursor + 1 < len(opcodes):
+                    equal = opcodes[cursor]
+                    following = opcodes[cursor + 1]
+                    equal_source = source[equal[1]:equal[2]]
+                    equal_target = target[equal[3]:equal[4]]
+                    if (
+                        equal[0] != "equal"
+                        or len(equal_source) > 1
+                        or equal_source != equal_target
+                        or following[0] == "equal"
+                    ):
+                        break
+                    combined = ("replace", combined[1], following[2], combined[3], following[4])
+                    cursor += 2
+                merged.append(combined)
+                continue
+        merged.append(current)
+        cursor += 1
+    return tuple(merged)
 
 
 def _detailed_opcodes(source: str, target: str) -> tuple[Opcode, ...]:
