@@ -180,6 +180,41 @@ def test_add_appends_new_rule_and_protect_uses_source_as_target():
     assert protected.rules[0].target == "保护词"
 
 
+def test_enter_in_rule_editor_submits_without_opening_ruleset_prompt():
+    qt = make_with_table()
+    qt.QInputDialog = SimpleNamespace(
+        getText=lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("Enter should not open the ruleset prompt")
+        )
+    )
+    manager = RuleManagerDialog(qt, (), translator=Translator("en"))
+    manager.source_edit.setText("术语")
+    manager.target_edit.setText("新词")
+
+    manager.source_edit.returnPressed.emit()
+
+    assert len(manager.rules) == 1
+    assert manager.rules[0].source == "术语"
+    assert manager.rules[0].target == "新词"
+    assert manager.table.rowCount() == 1
+    assert all(
+        button.autoDefault() is False
+        for button in (
+            manager.new_ruleset_button,
+            manager.rename_ruleset_button,
+            manager.add_button,
+            manager.update_button,
+            manager.remove_button,
+            manager.import_button,
+            manager.export_button,
+            manager.test_button,
+            manager.inspect_button,
+            manager.apply_button,
+            manager.cancel_button,
+        )
+    )
+
+
 def test_direction_default_is_selected_from_current_config():
     class DirectionCombo:
         def __init__(self):

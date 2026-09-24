@@ -56,6 +56,7 @@ class Base:
             "stateChanged",
             "currentIndexChanged",
             "textChanged",
+            "returnPressed",
             "activated",
             "triggered",
             "timeout",
@@ -328,6 +329,12 @@ class Button(Check):
 
     def setDefault(self, v):
         self.default = v
+
+    def isDefault(self):
+        return self.default
+
+    def autoDefault(self):
+        return self.auto_default
 
     def setAutoDefault(self, v):
         self.auto_default = v

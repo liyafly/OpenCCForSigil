@@ -333,6 +333,8 @@ class RuleManagerDialog:
         self.ruleset_combo = qt.QComboBox()
         self.new_ruleset_button = qt.QPushButton(self._labels["new_ruleset"])
         self.rename_ruleset_button = qt.QPushButton(self._labels["rename_ruleset"])
+        for button in (self.new_ruleset_button, self.rename_ruleset_button):
+            button.setAutoDefault(False)
         ruleset_row.addWidget(self.ruleset_combo, 1)
         ruleset_row.addWidget(self.new_ruleset_button)
         ruleset_row.addWidget(self.rename_ruleset_button)
@@ -385,6 +387,8 @@ class RuleManagerDialog:
         self.update_button = qt.QPushButton(self._labels["update"])
         self.remove_button = qt.QPushButton(self._labels["remove"])
         for button in (self.add_button, self.update_button, self.remove_button):
+            button.setAutoDefault(False)
+        for button in (self.add_button, self.update_button, self.remove_button):
             buttons.addWidget(button)
         layout.addWidget(editor_box)
 
@@ -392,6 +396,8 @@ class RuleManagerDialog:
         transfer = qt.QHBoxLayout(transfer_box)
         self.import_button = qt.QPushButton(self._labels["import"])
         self.export_button = qt.QPushButton(self._labels["export"])
+        for button in (self.import_button, self.export_button):
+            button.setAutoDefault(False)
         transfer.addWidget(self.import_button)
         transfer.addWidget(self.export_button)
         layout.addWidget(transfer_box)
@@ -401,6 +407,8 @@ class RuleManagerDialog:
         test_buttons = qt.QHBoxLayout()
         self.test_button = qt.QPushButton(self._labels["test"])
         self.inspect_button = qt.QPushButton(self._labels["inspect"])
+        for button in (self.test_button, self.inspect_button):
+            button.setAutoDefault(False)
         test_buttons.addWidget(self.test_button)
         test_buttons.addWidget(self.inspect_button)
         test_layout.addLayout(test_buttons)
@@ -417,6 +425,8 @@ class RuleManagerDialog:
         actions.addStretch(1)
         self.apply_button = qt.QPushButton(self._labels["apply"])
         self.cancel_button = qt.QPushButton(self._labels["cancel"])
+        for button in (self.apply_button, self.cancel_button):
+            button.setAutoDefault(False)
         actions.addWidget(self.cancel_button)
         actions.addWidget(self.apply_button)
         layout.addLayout(actions)
@@ -433,6 +443,8 @@ class RuleManagerDialog:
         self.export_button.clicked.connect(self._export)
         self.apply_button.clicked.connect(self._apply)
         self.cancel_button.clicked.connect(self.dialog.reject)
+        self.source_edit.returnPressed.connect(self._submit_editor)
+        self.target_edit.returnPressed.connect(self._submit_editor)
         self.type_combo.currentIndexChanged.connect(self._type_changed)
         self.table.itemSelectionChanged.connect(self._selection_changed)
 
@@ -559,6 +571,12 @@ class RuleManagerDialog:
             return
         self.rules.append(rule)
         self._refresh()
+
+    def _submit_editor(self) -> None:
+        if self.update_button.isEnabled():
+            self._update_selected()
+        else:
+            self._add()
 
     def _update_selected(self) -> None:
         row = self.table.currentRow()
