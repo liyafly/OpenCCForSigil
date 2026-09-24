@@ -4,7 +4,7 @@ import time
 
 from document.xml_processor import tokenize_xml, XMLDocumentError
 from transforms.language_tags import is_han_language, target_language, with_language_targets
-from document.tokenizer import tokenize_xhtml
+from document.tokenizer import TokenizerOptions, tokenize_xhtml
 
 
 def test_tokenizer_unicode_i_preserves_offsets_after_raw_text_tags():
@@ -81,6 +81,29 @@ def test_xml_crlf_astral_offsets_and_namespace_prefixes():
     assert ''.join(t.source_text for t in document.targets) == '𠮷汉字软件'
     for target in document.targets:
         assert source[target.source_start:target.source_end] == target.source_text
+
+
+@pytest.mark.parametrize(
+    ("source", "protected_text"),
+    (
+        ("<m:math><m:mtext>数学</m:mtext></m:math>", "数学"),
+        ("<svg:svg><svg:text>图形</svg:text></svg:svg>", "图形"),
+        ("<math xmlns='urn:mathml'><mtext>数学</mtext></math>", "数学"),
+    ),
+)
+def test_prefixed_mathml_and_svg_are_protected(source, protected_text):
+    document = tokenize_xhtml(source)
+
+    assert protected_text not in [target.source_text for target in document.targets]
+
+
+def test_prefixed_svg_text_is_writable_when_enabled():
+    document = tokenize_xhtml(
+        "<svg:svg><svg:text>图形</svg:text></svg:svg>",
+        options=TokenizerOptions(svg_text=True),
+    )
+
+    assert "图形" in [target.source_text for target in document.targets]
 
 
 def test_language_modes_do_not_assign_generic_traditional_to_taiwan():

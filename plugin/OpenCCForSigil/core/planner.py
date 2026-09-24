@@ -217,16 +217,17 @@ def _ignored_quotation_ranges(source, tags):
     protected_names = {"script", "style", "code", "pre", "svg", "math"}
     stack = []
     for tag in tags:
-        if tag.name not in protected_names:
+        local_name = tag.name.rsplit(":", 1)[-1]
+        if local_name not in protected_names:
             continue
         if tag.closing:
             match_index = next((index for index in range(len(stack) - 1, -1, -1)
-                                if stack[index][0] == tag.name), None)
+                                if stack[index][0] == local_name), None)
             if match_index is not None:
                 _name, content_start = stack.pop(match_index)
                 ranges.append((content_start, tag.start))
         elif not tag.self_closing:
-            stack.append((tag.name, tag.end))
+            stack.append((local_name, tag.end))
     ranges.extend((start, len(source)) for _name, start in stack)
     ranges.sort()
     merged = []

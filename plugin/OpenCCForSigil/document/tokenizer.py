@@ -265,30 +265,36 @@ def _make_target(
 
 def _is_protected(stack: Sequence[str], options: TokenizerOptions) -> bool:
     for name in stack:
-        if name in options.protected_elements:
+        local_name = _local_name(name)
+        if name in options.protected_elements or local_name in options.protected_elements:
             return True
-        if name == "svg" and not options.svg_text:
+        if local_name == "svg" and not options.svg_text:
             return True
-        if name == "math" and not options.mathml:
+        if local_name == "math" and not options.mathml:
             return True
     return False
 
 
 def _element_is_writable(name: str, stack: Sequence[str], options: TokenizerOptions) -> bool:
-    if name in options.protected_elements:
+    local_name = _local_name(name)
+    if name in options.protected_elements or local_name in options.protected_elements:
         return False
-    if name == "svg" and not options.svg_text:
+    if local_name == "svg" and not options.svg_text:
         return False
-    if name == "math" and not options.mathml:
+    if local_name == "math" and not options.mathml:
         return False
     return not _is_protected(stack, options)
+
+
+def _local_name(name: str) -> str:
+    return name.rsplit(":", 1)[-1]
 
 
 def _raw_protected_name(stack: Sequence[str], options: TokenizerOptions) -> Optional[str]:
     if not stack:
         return None
     name = stack[-1]
-    return name if name in {"script", "style"} else None
+    return name if _local_name(name) in {"script", "style"} else None
 
 
 def _find_closing_tag(source: str, start: int, name: str) -> int:
