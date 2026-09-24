@@ -4,6 +4,7 @@ from core.models import ConversionPlan, Diagnostic, SourceSpan, TokenChange
 from core.preview import PreviewSession
 from core.workflow import ConversionWorkflow
 from tests.support.fake_qt import make_with_table
+from ui import preview_window
 from ui.preview_window import (
     _PreviewDialog,
     _create_preview_table_model,
@@ -493,3 +494,26 @@ def test_return_to_scope_confirms_discarded_decisions_once():
     assert dialog.back_to_settings
     assert dialog.dialog.reject_calls == 1
     assert dialog._allow_reject is False
+
+
+def test_error_dialog_uses_close_as_default_not_details(monkeypatch):
+    qt = make_with_table()
+    shown = []
+    monkeypatch.setattr(preview_window, "_load_ui_qt", lambda _translator: qt)
+    monkeypatch.setattr(preview_window, "ensure_application", lambda *_args: None)
+    monkeypatch.setattr(preview_window, "exec_dialog", lambda dialog: shown.append(dialog))
+
+    preview_window.show_error(
+        kind="UNEXPECTED",
+        detail="RuntimeError",
+        files_written=0,
+        log_path="/tmp/plugin.log",
+    )
+
+    dialog = shown[0]
+    details_button = dialog._layout.children[3]
+    copy_button, close_button = dialog._layout.children[-1].children
+    assert details_button.autoDefault() is False
+    assert copy_button.autoDefault() is False
+    assert close_button.autoDefault() is False
+    assert close_button.isDefault()

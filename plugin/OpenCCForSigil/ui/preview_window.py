@@ -555,6 +555,7 @@ def show_error(
     diagnostic = "\n".join(lines)
 
     details_button = qt_widgets.QPushButton(translator.text("error.details"))
+    details_button.setAutoDefault(False)
     details = qt_widgets.QPlainTextEdit()
     details.setReadOnly(True)
     details.setPlainText(diagnostic)
@@ -566,6 +567,9 @@ def show_error(
     buttons = qt_widgets.QHBoxLayout()
     copy_button = qt_widgets.QPushButton(translator.text("error.copy_diagnostics"))
     close_button = qt_widgets.QPushButton(translator.text("common.close"))
+    copy_button.setAutoDefault(False)
+    close_button.setAutoDefault(False)
+    close_button.setDefault(True)
     copy_button.clicked.connect(lambda: qt_widgets.QApplication.clipboard().setText(diagnostic))
     close_button.clicked.connect(dialog.accept)
     buttons.addWidget(copy_button)
