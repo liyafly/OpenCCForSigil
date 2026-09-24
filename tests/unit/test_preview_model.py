@@ -2,7 +2,7 @@ import random
 import time
 from types import SimpleNamespace
 
-from core.models import ConversionPlan, SourceSpan, TokenChange
+from core.models import ConversionPlan, SourceSpan, TextTarget, TokenChange
 from core.preview import PreviewSession
 from tests.support.fake_qt import make_with_table
 from ui.i18n import Translator
@@ -25,8 +25,6 @@ def _change(**values):
         file_id="chapter",
         category="regional",
         risk="REVIEW",
-        text_context_before="他使用",
-        text_context_after="处理",
     )
     defaults.update(values)
     return TokenChange(**defaults)
@@ -34,14 +32,23 @@ def _change(**values):
 
 def test_format_change_row_is_plain_text_with_href_and_context():
     translator = Translator("en")
+    before, after = "他使用", "处理"
+    source = '说\n“软件😀”'
     change = _change(
-        source='说\n“软件😀”',
+        source=source,
         target='說\n「軟體😀」',
-        text_context_before="他使用",
-        text_context_after="处理",
+        target_id="chapter:text:1",
+        span=SourceSpan(len(before), len(before) + len(source)),
+    )
+    target = TextTarget(
+        node_id=change.target_id, source_text=f"{before}{change.source}{after}",
+        source_start=0, source_end=len(f"{before}{change.source}{after}"),
     )
 
-    row = format_change_row(change, {"chapter": "Text/chapter.xhtml"}, translator)
+    row = format_change_row(
+        change, {"chapter": "Text/chapter.xhtml"}, translator,
+        {("chapter", change.target_id): target},
+    )
 
     assert row[0] == "chapter.xhtml"
     assert row[1] == "说↵“软件😀” → 說↵「軟體😀」"
@@ -58,11 +65,18 @@ def test_format_change_row_localizes_opf_metadata_and_keeps_plain_context():
     change = _change(
         file_id="metadata",
         document_kind="metadata",
-        text_context_before="作者",
-        text_context_after="标题",
+        target_id="metadata:title",
+        span=SourceSpan(2, 4),
+    )
+    target = TextTarget(
+        node_id=change.target_id, source_text="作者软件标题", source_start=0,
+        source_end=len("作者软件标题"), document_kind="metadata",
     )
 
-    row = format_change_row(change, {"metadata": "OPF metadata"}, translator)
+    row = format_change_row(
+        change, {"metadata": "OPF metadata"}, translator,
+        {("metadata", change.target_id): target},
+    )
 
     assert row[0] == "OPF 元数据"
     assert "<" not in row[2]
@@ -73,11 +87,18 @@ def test_format_change_row_localizes_opf_metadata_and_keeps_plain_context():
 def test_preview_context_keeps_the_changed_text_visible_when_surrounding_context_is_long():
     change = _change(
         source="后", target="後",
-        text_context_before="前" * 50,
-        text_context_after="后" * 50,
+        target_id="chapter:text:1",
+        span=SourceSpan(50, 51),
+    )
+    target = TextTarget(
+        node_id=change.target_id, source_text="前" * 50 + "后" * 51,
+        source_start=0, source_end=101,
     )
 
-    row = format_change_row(change, {"chapter": "Text/ch001.xhtml"}, Translator("zh-Hans"))
+    row = format_change_row(
+        change, {"chapter": "Text/ch001.xhtml"}, Translator("zh-Hans"),
+        {("chapter", change.target_id): target},
+    )
 
     assert row[0] == "ch001.xhtml"
     assert row[1] == "后 → 後"
@@ -129,12 +150,19 @@ def test_table_model_row_count_tracks_filtered_entries():
 def test_preview_model_exposes_change_file_path_and_full_tooltips():
     change = _change(
         source="后", target="後",
-        text_context_before="很长的前文" * 5,
-        text_context_after="很长的后文" * 5,
+        target_id="chapter:text:1",
+        span=SourceSpan(len("很长的前文" * 5), len("很长的前文" * 5) + 1),
+    )
+    before = "很长的前文" * 5
+    after = "很长的后文" * 5
+    target = TextTarget(
+        node_id=change.target_id, source_text=before + change.source + after,
+        source_start=0, source_end=len(before + change.source + after),
     )
     preview = PreviewSession(ConversionPlan(source_sha256="", changes=(change,)))
     model_type = _create_preview_table_model(
-        _FakeQt, ((preview, change),), {"chapter": "Text/ch001.xhtml"})
+        _FakeQt, ((preview, change),), {"chapter": "Text/ch001.xhtml"},
+        targets_by_id={("chapter", change.target_id): target})
     model = model_type()
 
     def index(column):
@@ -149,7 +177,7 @@ def test_preview_model_exposes_change_file_path_and_full_tooltips():
     assert model.data(index(2), _FakeQt.Qt.DisplayRole) == "后 → 後"
     assert model.data(index(1), _FakeQt.Qt.ToolTipRole) == "Text/ch001.xhtml"
     assert model.data(index(2), _FakeQt.Qt.ToolTipRole) == "后 → 後"
-    assert "很长的前文" * 5 in model.data(index(3), _FakeQt.Qt.ToolTipRole)
+    assert ("…" + "很长的前文" * 4) in model.data(index(3), _FakeQt.Qt.ToolTipRole)
 
 
 def test_preview_status_colors_follow_the_parent_palette_lightness():

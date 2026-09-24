@@ -727,9 +727,37 @@ def _single_line(value: object) -> str:
     return str(value).replace("\r\n", "\n").replace("\r", "\n").replace("\n", "↵").replace("\t", "⇥")
 
 
-def _format_change_row(change, href_by_id, translator, *, trim_context: bool) -> Tuple[str, ...]:
-    before = _single_line(getattr(change, "text_context_before", ""))
-    after = _single_line(getattr(change, "text_context_after", ""))
+def _text_context(change, targets_by_id) -> Tuple[str, str]:
+    target = (targets_by_id or {}).get((change.file_id, change.target_id))
+    if target is None:
+        return "", ""
+    text = target.source_text
+    start = max(0, min(change.span.start - target.source_start, len(text)))
+    end = max(start, min(change.span.end - target.source_start, len(text)))
+    before_start = max(0, start - 20)
+    after_end = min(len(text), end + 20)
+    before = text[before_start:start]
+    after = text[end:after_end]
+    if before_start:
+        before = "…" + before
+    if after_end < len(text):
+        after += "…"
+    return before, after
+
+
+def _source_context(change, sources_by_id) -> Tuple[str, str]:
+    source = (sources_by_id or {}).get(change.file_id, "")
+    start = max(0, min(change.span.start, len(source)))
+    end = max(start, min(change.span.end, len(source)))
+    return source[max(0, start - 32):start], source[end:min(len(source), end + 32)]
+
+
+def _format_change_row(
+    change, href_by_id, translator, *, trim_context: bool, targets_by_id=None,
+) -> Tuple[str, ...]:
+    before, after = _text_context(change, targets_by_id)
+    before = _single_line(before)
+    after = _single_line(after)
     if trim_context:
         before = f"…{before[-12:]}" if len(before) > 12 else before
         after = f"{after[:12]}…" if len(after) > 12 else after
@@ -748,21 +776,24 @@ def _format_change_row(change, href_by_id, translator, *, trim_context: bool) ->
     return (file_name, f"{source_text} → {target_text}", source, target, category, risk)
 
 
-def format_change_row(change, href_by_id, translator) -> Tuple[str, ...]:
+def format_change_row(change, href_by_id, translator, targets_by_id=None) -> Tuple[str, ...]:
     """Return concise, plain, localized display values for one preview table row."""
 
-    return _format_change_row(change, href_by_id, translator, trim_context=True)
+    return _format_change_row(
+        change, href_by_id, translator, trim_context=True, targets_by_id=targets_by_id)
 
 
 class _PreviewTableData:
     """Qt-independent row formatting and filtering boundary for preview UI."""
 
-    def __init__(self, entries, href_by_id, translator, group_stats=None, display_cache=None):
+    def __init__(self, entries, href_by_id, translator, group_stats=None, display_cache=None,
+                 targets_by_id=None):
         self.entries = tuple(entries)
         self.href_by_id = href_by_id
         self.translator = translator
         self.group_stats = group_stats or {}
         self.display_cache = display_cache if display_cache is not None else {}
+        self.targets_by_id = targets_by_id or {}
 
     def _status(self, preview, change):
         decision = preview.decision(change.change_id)
@@ -774,7 +805,8 @@ class _PreviewTableData:
 
     def _format(self, row: int) -> Tuple[str, ...]:
         _preview, change = self.entries[row]
-        values = list(format_change_row(change, self.href_by_id, self.translator))
+        values = list(format_change_row(
+            change, self.href_by_id, self.translator, self.targets_by_id))
         if change.group_id and change.group_id in self.group_stats:
             count, files = self.group_stats[change.group_id]
             values[4] += " — " + self.translator.text(
@@ -784,7 +816,8 @@ class _PreviewTableData:
     def tooltip_values(self, row: int) -> Tuple[str, ...]:
         _preview, change = self.entries[row]
         values = _format_change_row(
-            change, self.href_by_id, self.translator, trim_context=False)
+            change, self.href_by_id, self.translator, trim_context=False,
+            targets_by_id=self.targets_by_id)
         if change.group_id and change.group_id in self.group_stats:
             count, files = self.group_stats[change.group_id]
             values = (*values[:4], values[4] + " — " + self.translator.text(
@@ -810,6 +843,7 @@ class _PreviewTableData:
 
 def _create_preview_table_model(
     qt_widgets, entries, href_by_id, group_stats=None, translator: Translator | None = None,
+    targets_by_id=None,
 ):
     translator = translator or Translator("en")
     qt_core = getattr(qt_widgets, "QtCore", None)
@@ -825,7 +859,7 @@ def _create_preview_table_model(
         def __init__(self, parent=None):
             super().__init__(parent)
             self.rows = _PreviewTableData(
-                entries, href_by_id, translator, group_stats, display_cache)
+                entries, href_by_id, translator, group_stats, display_cache, targets_by_id)
 
         def rowCount(self, parent=None):
             if parent is not None and parent.isValid():
@@ -906,7 +940,7 @@ def _create_preview_table_model(
                 return
             self.beginResetModel()
             self.rows = _PreviewTableData(
-                next_entries, href_by_id, translator, group_stats, display_cache)
+                next_entries, href_by_id, translator, group_stats, display_cache, targets_by_id)
             self.endResetModel()
 
         def refresh(self, rows=None):
@@ -947,6 +981,16 @@ class _PreviewDialog:
         )
         self._href_by_id = {
             item.source.file_id: item.source.href for item in self._planned
+        }
+        self._source_by_id = {
+            item.source.file_id: item.source.source
+            for item in self._planned
+            if isinstance(getattr(item.source, "source", None), str)
+        }
+        self._targets_by_id = {
+            (item.source.file_id, target.node_id): target
+            for item in self._planned
+            for target in getattr(item.plan, "targets", ())
         }
         self._kind_by_id = {
             item.source.file_id: item.source.document_kind for item in self._planned
@@ -1089,7 +1133,8 @@ class _PreviewDialog:
 
         self.table_view = qt.QTableView()
         self.table_model = _create_preview_table_model(
-            qt, self._entries, self._href_by_id, self._group_stats, self._translator)(self.table_view)
+            qt, self._entries, self._href_by_id, self._group_stats, self._translator,
+            self._targets_by_id)(self.table_view)
         self.table_view.setModel(self.table_model)
         item_view = qt.QAbstractItemView
         self.table_view.setSelectionBehavior(_enum_value(item_view, "SelectRows"))
@@ -1599,11 +1644,11 @@ class _PreviewDialog:
         )
         show_source = getattr(self, "show_source_context", None)
         if show_source is not None and show_source.isChecked():
-            context_before = _single_line(change.context_before)
-            context_after = _single_line(change.context_after)
+            context_before, context_after = _source_context(change, self._source_by_id)
         else:
-            context_before = _single_line(change.text_context_before)
-            context_after = _single_line(change.text_context_after)
+            context_before, context_after = _text_context(change, self._targets_by_id)
+        context_before = _single_line(context_before)
+        context_after = _single_line(context_after)
         source_line = f"{context_before}【{_single_line(unescape(change.source))}】{context_after}"
         target_line = f"{context_before}【{_single_line(unescape(change.target))}】{context_after}"
         group_text = ""

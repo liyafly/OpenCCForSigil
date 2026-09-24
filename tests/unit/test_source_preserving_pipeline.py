@@ -135,9 +135,15 @@ def test_planned_change_includes_bounded_plain_text_context():
     )
     change = next(item for item in plan.changes if item.source == "软件")
 
-    assert change.text_context_before == "…" + "甲" * 20
-    assert change.text_context_after == "乙" * 20 + "…"
-    assert "<" not in change.text_context_before + change.text_context_after
+    from ui.preview_window import _text_context
+
+    context_before, context_after = _text_context(
+        change,
+        {(plan.file_id, target.node_id): target for target in plan.targets},
+    )
+    assert context_before == "…" + "甲" * 20
+    assert context_after == "乙" * 20 + "…"
+    assert "<" not in context_before + context_after
 
 
 def test_long_text_fallback_preserves_unmodified_greater_than():

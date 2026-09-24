@@ -90,10 +90,6 @@ class TokenChange:
     attribution_method: Optional[str] = None
     comparison_stage: Optional[str] = None
     attribution_confidence: Optional[str] = None
-    context_before: str = ""
-    context_after: str = ""
-    text_context_before: str = ""
-    text_context_after: str = ""
     document_kind: str = "xhtml"
     group_id: str = ""
 

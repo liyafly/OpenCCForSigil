@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from core.models import ConversionPlan, Diagnostic, SourceSpan, TokenChange
+from core.models import ConversionPlan, Diagnostic, SourceSpan, TextTarget, TokenChange
 from core.preview import PreviewSession
 from core.workflow import ConversionWorkflow
 from tests.support.fake_qt import make_with_table
@@ -40,8 +40,6 @@ def _preview_dialog(
             file_id="chapter.xhtml",
             category="character",
             risk="LOW",
-            context_before="before ",
-            context_after=" after",
         )
         for index, (source, target) in enumerate((("甲", "乙"), ("丙", "丁"), ("戊", "己")))
     )[:change_count]
@@ -82,6 +80,36 @@ def test_preview_detail_uses_translated_label_separator():
     assert (
         f"{label}{translator.text('common.label_separator')}test-rule" in detail
     )
+
+
+def test_preview_context_is_sliced_from_source_only_when_requested():
+    source = "<p>前漢字后</p>"
+    target = TextTarget(
+        node_id="xhtml:text:1", source_text="前漢字后", source_start=3, source_end=7,
+    )
+    change = TokenChange(
+        source="漢字", target="汉字", span=SourceSpan(4, 6),
+        rule_source="OpenCC:s2t", change_id="context", file_id="chapter.xhtml",
+        target_id=target.node_id,
+    )
+    preview = PreviewSession(ConversionPlan(
+        source_sha256="", changes=(change,), targets=(target,), file_id="chapter.xhtml",
+    ))
+    planned = (SimpleNamespace(
+        source=SimpleNamespace(
+            file_id="chapter.xhtml", href="Text/chapter.xhtml", document_kind="xhtml",
+            source=source,
+        ),
+        plan=preview.plan,
+    ),)
+    dialog = _PreviewDialog(
+        make_with_table(), planned, (preview,), Translator("en"), None)
+
+    detail = dialog.detail.toPlainText()
+    assert "前【漢字】后" in detail
+    dialog.show_source_context.setChecked(True)
+    detail = dialog.detail.toPlainText()
+    assert "<p>前【漢字】后</p>" in detail
 
 
 def test_preview_window_splitter_and_size_preferences_restore():
@@ -175,6 +203,8 @@ def _table_dialog(entries, previews, *, current_row=0, category="all", file_id=N
     dialog._visible_entries_cache = tuple(entries)
     dialog._planned = ()
     dialog._href_by_id = {}
+    dialog._source_by_id = {}
+    dialog._targets_by_id = {}
     dialog._kind_by_id = {}
     dialog._group_stats = {}
     dialog.file_filter = qt.QComboBox()
