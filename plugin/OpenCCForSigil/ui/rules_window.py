@@ -12,8 +12,8 @@ from rules.models import Rule, RuleSnapshot
 from rules.precedence import base_direction
 from rules.validators import RuleValidationError, validate_rules
 from opencc_backend.configs import base_config_options
-from rules.store import RuleSet
-from rules.importers import ImportResult, rule_dedup_key
+from rules.store import RuleSet, RuleStore
+from rules.importers import ImportResult, reassign_colliding_ids, rule_dedup_key
 from ui.i18n import (
     CatalogView,
     Translator,
@@ -30,6 +30,7 @@ class RuleImportReview:
     duplicate_count: int
     diagnostics: tuple[object, ...]
     conflicts: tuple[object, ...]
+    id_reassigned_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -39,7 +40,9 @@ class RuleWindowResult:
     renamed: tuple[tuple[str, str], ...] = ()
 
 
-def review_import(existing: Iterable[Rule], imported: ImportResult) -> RuleImportReview:
+def review_import(
+    existing: Iterable[Rule], imported: ImportResult, *, id_reassigned_count: int = 0
+) -> RuleImportReview:
     """Prepare additions without changing the current rule list."""
 
     existing_rules = tuple(existing)
@@ -54,7 +57,9 @@ def review_import(existing: Iterable[Rule], imported: ImportResult) -> RuleImpor
             known.add(key)
             additions.append(rule)
     conflicts = tuple(find_conflicts((*existing_rules, *additions)))
-    return RuleImportReview(tuple(additions), duplicates, imported.diagnostics, conflicts)
+    return RuleImportReview(
+        tuple(additions), duplicates, imported.diagnostics, conflicts, id_reassigned_count
+    )
 
 
 
@@ -229,6 +234,7 @@ def show_rules_window(
     storage_errors: Iterable[str] = (),
     rulesets: Iterable[RuleSet] | None = None,
     ruleset_id: str | None = None,
+    rule_store: RuleStore | None = None,
     jieba_pending: bool = False,
 ) -> tuple[Rule, ...] | RuleWindowResult | None:
     """Open the manager and return committed rules, or ``None`` on cancel."""
@@ -248,6 +254,7 @@ def show_rules_window(
         storage_errors=storage_errors,
         rulesets=rulesets,
         ruleset_id=ruleset_id,
+        rule_store=rule_store,
         jieba_pending=jieba_pending,
     )
     exec_dialog(dialog.dialog)
@@ -274,6 +281,7 @@ class RuleManagerDialog:
         storage_errors: Iterable[str] = (),
         rulesets: Iterable[RuleSet] | None = None,
         ruleset_id: str | None = None,
+        rule_store: RuleStore | None = None,
         jieba_pending: bool = False,
     ) -> None:
         self._qt = qt_widgets
@@ -284,6 +292,7 @@ class RuleManagerDialog:
         if not values:
             values = (RuleSet(ruleset_id or "default", tuple(rules)),)
         self._rulesets = {item.id: item for item in values}
+        self._rule_store = rule_store
         selected = ruleset_id if ruleset_id in self._rulesets else values[0].id
         self._ruleset_id = selected
         self._renamed: list[tuple[str, str]] = []
@@ -716,7 +725,25 @@ class RuleManagerDialog:
                 book_fingerprint=self._book_fingerprint or "",
                 strict=options["strict"],
             )
-            review = review_import(self.rules, result)
+            self._stash_ruleset()
+            existing_ids = {
+                rule.id
+                for ruleset in self._rulesets.values()
+                for rule in ruleset.rules
+            }
+            if self._rule_store is not None:
+                saved_rulesets, _errors = self._rule_store.list()
+                existing_ids.update(
+                    rule.id for ruleset in saved_rulesets for rule in ruleset.rules
+                )
+            reassigned_rules = reassign_colliding_ids(result.rules, existing_ids)
+            id_reassigned_count = sum(
+                before.id != after.id for before, after in zip(result.rules, reassigned_rules)
+            )
+            result = replace(result, rules=reassigned_rules)
+            review = review_import(
+                self.rules, result, id_reassigned_count=id_reassigned_count
+            )
             if self._confirm_import(review):
                 self.rules.extend(review.additions)
                 self._refresh()
@@ -786,6 +813,10 @@ class RuleManagerDialog:
             new=len(review.additions), duplicates=review.duplicate_count,
             discarded=discarded, errors=errors,
         )
+        if review.id_reassigned_count:
+            message += "\n" + self._translator.text(
+                "rules.import_ids_reassigned", count=review.id_reassigned_count
+            )
         detail_lines = [self._labels["import_line"].format(
             line=item.line, message=item.message) for item in diagnostics]
         detail_lines.extend(

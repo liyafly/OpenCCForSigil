@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import csv
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import io
 import json
 from pathlib import Path
 from typing import Any, Iterable, TextIO
 
 from .conflicts import RuleConflict, find_conflicts
-from .models import Rule
+from .models import Rule, new_rule_id
 from .validators import RuleValidationError, validate_rules
 
 
@@ -39,6 +39,22 @@ def rule_dedup_key(rule: Rule) -> tuple:
     return (rule.direction, rule.scope, rule.type, rule.source, rule.target, rule.priority,
             rule.profile_id if rule.scope == "profile" else "",
             rule.book_fingerprint if rule.scope == "book" else "")
+
+
+def reassign_colliding_ids(rules: Iterable[Rule], existing_ids: Iterable[str]) -> tuple[Rule, ...]:
+    """Return rules with fresh IDs wherever an ID is already in use."""
+
+    used_ids = set(existing_ids)
+    result = []
+    for rule in rules:
+        if rule.id in used_ids:
+            identifier = new_rule_id()
+            while identifier in used_ids:
+                identifier = new_rule_id()
+            rule = replace(rule, id=identifier)
+        used_ids.add(rule.id)
+        result.append(rule)
+    return tuple(result)
 
 
 def import_rules(
@@ -275,5 +291,6 @@ __all__ = [
     "import_rules",
     "import_tsv",
     "parse_rules",
+    "reassign_colliding_ids",
     "rule_dedup_key",
 ]

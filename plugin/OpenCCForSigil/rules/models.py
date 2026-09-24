@@ -45,8 +45,11 @@ def _now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
-def _new_id() -> str:
+def new_rule_id() -> str:
     return str(uuid.uuid4())
+
+
+_new_id = new_rule_id
 
 
 @dataclass(frozen=True)
@@ -58,7 +61,7 @@ class Rule:
     separate mutable registry and means a snapshot is self-contained.
     """
 
-    id: str = field(default_factory=_new_id)
+    id: str = field(default_factory=new_rule_id)
     enabled: bool = True
     type: str = "exact"
     direction: str = ""
@@ -231,6 +234,7 @@ __all__ = [
     "SUPPORTED_SCOPES",
     "Rule",
     "RuleSnapshot",
+    "new_rule_id",
     "canonical_rule_dict",
     "canonical_rules_json",
 ]

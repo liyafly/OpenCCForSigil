@@ -285,6 +285,7 @@ class RunSettings:
             comparison_configs=comparison_configs(config),
             storage_errors=self._storage_error_labels(errors, translator),
             rulesets=tuple(values.values()), ruleset_id=initial_id,
+            rule_store=self.rules,
         )
         if result is not None:
             if isinstance(result, tuple):

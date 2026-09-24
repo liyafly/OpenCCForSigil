@@ -1,14 +1,21 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 
 import pytest
 
-from rules.conflicts import BlockingRuleConflict, blocking_conflicts, find_conflicts
+from rules.conflicts import (
+    BlockingRuleConflict,
+    blocking_conflicts,
+    find_conflicts,
+    validate_no_blocking_conflicts,
+)
 from rules.engine import convert_with_overlay, lock_spans
 from rules.exporters import export_rules
-from rules.importers import import_rules
+from rules.importers import import_rules, reassign_colliding_ids
 from rules.models import Rule, RuleSnapshot
+from rules.store import RuleSet, RuleStore
 from rules.validators import RuleValidationError
 
 
@@ -180,3 +187,31 @@ def test_global_conflicts_ignore_inactive_profile_owner_fields():
         Rule(id="two", direction="s2t", source="软件", target="乙", scope="global", profile_id="b"),
     ]
     assert blocking_conflicts(rules)
+
+
+def test_json_import_reassigns_ids_used_by_another_ruleset(tmp_path):
+    store = RuleStore(tmp_path)
+    original = Rule(id="shared", direction="s2t", source="头发", target="頭髮")
+    store.save(RuleSet("A", (original,)))
+    exported = export_rules((original,), format="json")
+    store.save(RuleSet("A", (replace(original, enabled=False),)))
+    store.save(RuleSet("B"))
+
+    imported = import_rules(exported, format="json")
+    saved_rulesets, errors = store.list()
+    assert errors == ()
+    existing_ids = {rule.id for ruleset in saved_rulesets for rule in ruleset.rules}
+    rules = reassign_colliding_ids(imported.rules, existing_ids)
+    store.save(RuleSet("B", rules))
+
+    current = store.load("B").rules[0]
+    assert current.id != original.id
+    assert (current.source, current.target) == (original.source, original.target)
+    validate_no_blocking_conflicts(store.load_many(("A", "B")))
+
+
+def test_json_import_keeps_ids_when_importing_into_empty_store(tmp_path):
+    original = Rule(id="kept", direction="s2t", source="头发", target="頭髮")
+    imported = import_rules(export_rules((original,), format="json"), format="json")
+
+    assert reassign_colliding_ids(imported.rules, set()) == imported.rules

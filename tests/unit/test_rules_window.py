@@ -4,6 +4,8 @@ from tests.support.fake_qt import make_with_table
 from rules.models import Rule
 from rules.models import RuleSnapshot
 from rules.importers import import_rules
+from rules.exporters import export_rules
+from rules.store import RuleSet, RuleStore
 from rules.conflicts import find_conflicts
 from opencc_backend.configs import comparison_configs
 from ui.rules_window import (
@@ -266,6 +268,49 @@ def test_import_review_counts_existing_rules_as_duplicates_without_adding():
 
     assert review.additions == ()
     assert review.duplicate_count == 1
+
+
+def test_import_reassigns_ids_colliding_with_any_saved_ruleset(tmp_path):
+    store = RuleStore(tmp_path)
+    original = Rule(id="shared", source="术语", target="专名", direction="s2t")
+    store.save(RuleSet("A", (original,)))
+    payload = export_rules((original,), format="json")
+    store.save(RuleSet("A", (Rule(
+        id="shared", source="术语", target="专名", direction="s2t", enabled=False,
+    ),)))
+    store.save(RuleSet("B"))
+    imported_path = tmp_path / "rules.json"
+    imported_path.write_text(payload, encoding="utf-8")
+
+    manager = object.__new__(RuleManagerDialog)
+    manager._qt = SimpleNamespace(
+        QFileDialog=SimpleNamespace(getOpenFileName=lambda *_args: (str(imported_path), "")),
+    )
+    manager._labels = {"import": "Import"}
+    manager._rule_store = store
+    manager._rulesets = {}
+    saved, errors = store.list()
+    assert errors == ()
+    manager._rulesets = {item.id: item for item in saved}
+    manager._rulesets["B"] = RuleSet("B")
+    manager._ruleset_id = "B"
+    manager.rules = []
+    manager.dialog = object()
+    manager._profile_id = None
+    manager._book_fingerprint = None
+    manager._import_options = lambda _path: {
+        "format": "json", "direction": "s2t", "scope": "global", "strict": True,
+    }
+    reviews = []
+    manager._confirm_import = lambda review: (reviews.append(review), True)[1]
+    manager._refresh = lambda: None
+    manager._show_exception = lambda error: (_ for _ in ()).throw(error)
+
+    manager._import()
+
+    assert len(manager.rules) == 1
+    assert manager.rules[0].id != "shared"
+    assert reviews[0].id_reassigned_count == 1
 
 
 def test_dictionary_inspection_applies_profile_rules_and_comparison_configs():
