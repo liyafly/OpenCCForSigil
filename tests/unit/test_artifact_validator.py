@@ -57,7 +57,11 @@ def test_all_runtime_error_and_settings_keys_are_required_by_artifact_validation
     runtime_keys = {
         key for key in catalog
         if key.startswith(("error.", "settings."))
-    } | {"options.current_profile", "options.profile_modified"}
+    } | {
+        "diagnostic.source_invalid",
+        "options.current_profile",
+        "options.profile_modified",
+    }
 
     assert runtime_keys <= _I18N_REQUIRED_KEYS
 

@@ -233,7 +233,7 @@ _I18N_REQUIRED_KEYS = _I18N_REQUIRED_KEYS | frozenset(
         'diagnostic.inline_boundary',
         'diagnostic.mixed_script',
         'diagnostic.quote_unbalanced',
-        'diagnostic.source_invalid_xhtml',
+        'diagnostic.source_invalid',
         'diagnostic.unknown',
         'preview.accept_filter',
         'preview.back_settings',
