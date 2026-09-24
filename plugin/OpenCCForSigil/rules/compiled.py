@@ -60,21 +60,56 @@ class CompiledOverlay:
 
 
 def lock_spans_compiled(text: str, overlay: CompiledOverlay):
-    """Return the same deterministic matches as ``lock_spans`` using one bucket."""
+    """Return deterministic matches after reserving all protected ranges."""
 
     from .engine import LockedSpan
 
-    spans = []
+    protected = []
     cursor = 0
     while cursor < len(text):
-        match = next((rule for rule in overlay.index.get(text[cursor], ())
-                      if text.startswith(rule.source, cursor)), None)
+        match = next(
+            (
+                rule for rule in overlay.index.get(text[cursor], ())
+                if rule.type == "protect" and text.startswith(rule.source, cursor)
+            ),
+            None,
+        )
         if match is None:
             cursor += 1
             continue
         end = cursor + len(match.source)
-        target = match.source if match.type == "protect" else match.target
-        spans.append(LockedSpan(cursor, end, match.source, target, match))
+        protected.append(LockedSpan(cursor, end, match.source, match.source, match))
+        cursor = end
+
+    spans = []
+    protected_index = 0
+    cursor = 0
+    while cursor < len(text):
+        while protected_index < len(protected) and protected[protected_index].end <= cursor:
+            protected_index += 1
+        if (protected_index < len(protected)
+                and protected[protected_index].start == cursor):
+            span = protected[protected_index]
+            spans.append(span)
+            cursor = span.end
+            protected_index += 1
+            continue
+
+        match = None
+        for rule in overlay.index.get(text[cursor], ()):
+            if not text.startswith(rule.source, cursor):
+                continue
+            end = cursor + len(rule.source)
+            if (rule.type != "protect" and protected_index < len(protected)
+                    and protected[protected_index].start < end):
+                continue
+            match = rule
+            break
+        if match is None:
+            cursor += 1
+            continue
+        end = cursor + len(match.source)
+        spans.append(LockedSpan(cursor, end, match.source, match.target, match))
         cursor = end
     return tuple(spans)
 

@@ -153,6 +153,35 @@ def test_compiled_overlay_rejects_mismatched_requested_hash():
         CompiledOverlay.build(snapshot, expected_hash="0" * 64, config="s2t")
 
 
+def test_protect_rule_wins_over_earlier_overlapping_exact_match():
+    from rules.compiled import CompiledOverlay, lock_spans_compiled
+
+    snapshot = RuleSnapshot.freeze((
+        Rule(id="protect", type="protect", source="乾隆", direction="s2t"),
+        Rule(id="exact", source="大乾", target="大幹", direction="s2t"),
+    ))
+    overlay = CompiledOverlay.build(snapshot, config="s2t")
+
+    spans = lock_spans_compiled("大乾隆帝", overlay)
+
+    assert any(span.source == "乾隆" and span.target == "乾隆" for span in spans)
+    assert not any(span.source == "大乾" for span in spans)
+
+
+def test_exact_rule_still_matches_when_it_does_not_overlap_a_protect_span():
+    from rules.compiled import CompiledOverlay, lock_spans_compiled
+
+    snapshot = RuleSnapshot.freeze((
+        Rule(id="protect", type="protect", source="乾隆", direction="s2t"),
+        Rule(id="exact", source="大乾", target="大幹", direction="s2t"),
+    ))
+    overlay = CompiledOverlay.build(snapshot, config="s2t")
+
+    spans = lock_spans_compiled("大乾坤", overlay)
+
+    assert [(span.source, span.target) for span in spans] == [("大乾", "大幹")]
+
+
 def test_converter_revalidates_a_different_rules_tuple_for_a_cached_hash():
     from core.converter import OfficialBackendConverter
 
