@@ -63,7 +63,22 @@
    - 5 个平台的包级冒烟全部通过；
    - 每个平台包和 Fat 包的实际大小（与 7 / 30 / 12 MB 上限比较）；
    - `SHA256SUMS` 生成且内容与产物一致。
-3. 把运行链接和上面的数字写进 `docs/releases/v0.1.1.md`（E-02）。
+3. 先把运行链接、测试 SHA、包大小和校验结果写在本节的运行记录中；E-02 获准后再复制到 `docs/releases/v0.1.1.md`。
+
+**本次 E-01 运行结果（2026-09-24）**：
+- [手动运行 #35996603837](https://github.com/liyafly/OpenCCForSigil/actions/runs/35996603837)（`workflow_dispatch`，`main`，SHA `600d9035e159a7ff2f0cc814869b7761126a0fad`）：5 个平台 payload、跨平台 Jieba 输出比较、包构建与校验、5 个平台包冒烟全部通过。
+- Windows payload job 命中 target-tested payload 缓存，没有在这次运行中重新编译；job 的 `verify_vendor.py` 完整性校验通过，官方 Jieba CLI/Python Binding 差分 10/10 通过；跨平台输出比较通过。包构建阶段再次校验合并后的所有平台 payload。
+- 下载本次 run 的 `OpenCCForSigil-packages-600d9035e159a7ff2f0cc814869b7761126a0fad` artifact。`tools/release_assets.py --version 0.1.0` 验证 7 个发布资产（6 个 ZIP 与 `SHA256SUMS.txt`）；`sha256sum -c SHA256SUMS.txt` 中 6 个 ZIP 均为 `OK`。
+- ZIP 实际大小（十进制 MB）：
+
+  | 资产 | 字节 | MB | 预算结果 |
+  | --- | ---: | ---: | --- |
+  | `OpenCCForSigil_0.1.0_linux-aarch64.zip` | 5,800,462 | 5.80 | 平台包 ≤ 7 MB，通过 |
+  | `OpenCCForSigil_0.1.0_linux-x86_64.zip` | 5,851,890 | 5.85 | 平台包 ≤ 7 MB，通过 |
+  | `OpenCCForSigil_0.1.0_macos-arm64.zip` | 5,426,017 | 5.43 | 平台包 ≤ 7 MB，通过 |
+  | `OpenCCForSigil_0.1.0_macos-x86_64.zip` | 5,473,616 | 5.47 | 平台包 ≤ 7 MB，通过 |
+  | `OpenCCForSigil_0.1.0_windows-x86_64.zip` | 5,573,003 | 5.57 | 平台包 ≤ 7 MB，通过 |
+  | `OpenCCForSigil_0.1.0.zip` | 27,273,373 | 27.27 | 第一阶段 Fat 包 ≤ 30 MB，通过；第三阶段 ≤ 12 MB 目标尚未达到 |
 
 **失败时**：记录失败的 job 名称和日志片段，作为新条目加到这份文档第 3 节末尾，不要为了让 CI 通过而放宽检查。
 
