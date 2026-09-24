@@ -649,6 +649,7 @@ def _guarded_preview_dialog(qt_widgets, guard):
 _PREVIEW_COLUMNS = (
     "status",
     "file",
+    "change",
     "source",
     "target",
     "category",
@@ -660,27 +661,31 @@ def _single_line(value: object) -> str:
     return str(value).replace("\r\n", "\n").replace("\r", "\n").replace("\n", "↵").replace("\t", "⇥")
 
 
-def format_change_row(change, href_by_id, translator) -> Tuple[str, ...]:
-    """Return plain, localized display values for one preview table row."""
-
+def _format_change_row(change, href_by_id, translator, *, trim_context: bool) -> Tuple[str, ...]:
     before = _single_line(getattr(change, "text_context_before", ""))
     after = _single_line(getattr(change, "text_context_after", ""))
-    source = f"{before}【{_single_line(unescape(change.source))}】{after}"
-    target = f"{before}【{_single_line(unescape(change.target))}】{after}"
+    if trim_context:
+        before = f"…{before[-12:]}" if len(before) > 12 else before
+        after = f"{after[:12]}…" if len(after) > 12 else after
+    source_text = _single_line(unescape(change.source))
+    target_text = _single_line(unescape(change.target))
+    source = f"{before}【{source_text}】{after}"
+    target = f"{before}【{target_text}】{after}"
     category = translator.text(f"preview.category_value.{change.category}")
     risk = translator.text(f"preview.risk_value.{change.risk.lower()}")
-    href = (
+    href = str(
         translator.text("preview.file.metadata")
         if change.document_kind == "metadata"
         else href_by_id.get(change.file_id, change.file_id)
     )
-    return (
-        str(href),
-        source,
-        target,
-        category,
-        risk,
-    )
+    file_name = href.rsplit("/", 1)[-1] if change.document_kind != "metadata" else href
+    return (file_name, f"{source_text} → {target_text}", source, target, category, risk)
+
+
+def format_change_row(change, href_by_id, translator) -> Tuple[str, ...]:
+    """Return concise, plain, localized display values for one preview table row."""
+
+    return _format_change_row(change, href_by_id, translator, trim_context=True)
 
 
 class _PreviewTableData:
@@ -706,9 +711,24 @@ class _PreviewTableData:
         values = list(format_change_row(change, self.href_by_id, self.translator))
         if change.group_id and change.group_id in self.group_stats:
             count, files = self.group_stats[change.group_id]
-            values[3] += " — " + self.translator.text(
+            values[4] += " — " + self.translator.text(
                 "preview.group_row_marker", count=count, files=files)
         return tuple(values)
+
+    def tooltip_values(self, row: int) -> Tuple[str, ...]:
+        _preview, change = self.entries[row]
+        values = _format_change_row(
+            change, self.href_by_id, self.translator, trim_context=False)
+        if change.group_id and change.group_id in self.group_stats:
+            count, files = self.group_stats[change.group_id]
+            values = (*values[:4], values[4] + " — " + self.translator.text(
+                "preview.group_row_marker", count=count, files=files), values[5])
+        href = str(
+            self.translator.text("preview.file.metadata")
+            if change.document_kind == "metadata"
+            else self.href_by_id.get(change.file_id, change.file_id)
+        )
+        return (self._status(*self.entries[row]), href, *values[1:])
 
     def row_count(self) -> int:
         return len(self.entries)
@@ -758,6 +778,9 @@ def _create_preview_table_model(
             display_role = _enum_value(qt, "DisplayRole")
             if role == display_role:
                 return values[index.column()]
+            if role == _enum_value(qt, "ToolTipRole"):
+                tooltips = self.rows.tooltip_values(index.row())
+                return tooltips[index.column()]
             if role == _enum_value(qt, "ForegroundRole") and gui is not None:
                 colors = {
                     translator.text("preview.status.accepted"): "#267a35",
@@ -766,7 +789,7 @@ def _create_preview_table_model(
                 }
                 color = colors.get(values[0]) if index.column() == 0 else None
                 return gui.QColor(color) if color else None
-            if role == _enum_value(qt, "FontRole") and gui is not None and index.column() == 5:
+            if role == _enum_value(qt, "FontRole") and gui is not None and index.column() == 6:
                 entry = self.rows.entries[index.row()]
                 if entry[1].risk in {"HIGH", "REVIEW"}:
                     font = gui.QFont()
@@ -935,7 +958,16 @@ class _PreviewDialog:
                               category_values, self._translator)
         self._populate_filter(self.risk_filter, self._translator.text("preview.filter_risk"),
                               risk_values, self._translator)
+        adjust_policy = _enum_value(
+            qt.QComboBox, "AdjustToMinimumContentsLengthWithIcon")
         for widget in (self.file_filter, self.category_filter, self.risk_filter):
+            if adjust_policy is not None:
+                set_adjust_policy = getattr(widget, "setSizeAdjustPolicy", None)
+                if callable(set_adjust_policy):
+                    set_adjust_policy(adjust_policy)
+            set_minimum_length = getattr(widget, "setMinimumContentsLength", None)
+            if callable(set_minimum_length):
+                set_minimum_length(16)
             filter_row.addWidget(widget)
             widget.currentIndexChanged.connect(lambda *_args: self._refresh())
         layout.addLayout(filter_row)
@@ -953,14 +985,13 @@ class _PreviewDialog:
         interactive = _enum_value(qt.QHeaderView, "Interactive")
         stretch = _enum_value(qt.QHeaderView, "Stretch")
         if interactive is not None and stretch is not None:
-            for column in (0, 1, 4, 5):
+            for column in (0, 1, 2, 5, 6):
                 header.setSectionResizeMode(column, interactive)
-            for column in (2, 3):
+            for column in (3, 4):
                 header.setSectionResizeMode(column, stretch)
         set_precision = getattr(header, "setResizeContentsPrecision", None)
         if callable(set_precision):
             set_precision(50)
-        header.setStretchLastSection(True)
         self.table_view.setAlternatingRowColors(True)
         layout.addWidget(self.table_view)
         resize_columns = getattr(self.table_view, "resizeColumnsToContents", None)

@@ -138,13 +138,23 @@ def test_preview_table_uses_interactive_columns_and_resizes_once():
     assert [args for name, args in header.calls if name == "setSectionResizeMode"] == [
         (0, dialog._qt.QHeaderView.Interactive),
         (1, dialog._qt.QHeaderView.Interactive),
-        (4, dialog._qt.QHeaderView.Interactive),
+        (2, dialog._qt.QHeaderView.Interactive),
         (5, dialog._qt.QHeaderView.Interactive),
-        (2, dialog._qt.QHeaderView.Stretch),
+        (6, dialog._qt.QHeaderView.Interactive),
         (3, dialog._qt.QHeaderView.Stretch),
+        (4, dialog._qt.QHeaderView.Stretch),
     ]
     assert ("setResizeContentsPrecision", (50,)) in header.calls
+    assert not any(name == "setStretchLastSection" for name, _args in header.calls)
     assert dialog.table_view.calls.count(("resizeColumnsToContents", ())) == 1
+
+
+def test_preview_filters_use_minimum_contents_length():
+    dialog, _preview, _model = _preview_dialog()
+
+    for combo in (dialog.file_filter, dialog.category_filter, dialog.risk_filter):
+        assert ("setSizeAdjustPolicy", (6,)) in combo.calls
+        assert ("setMinimumContentsLength", (16,)) in combo.calls
 
 
 def test_preview_dialog_single_decisions_update_only_selected_row_and_summary():
@@ -287,7 +297,7 @@ def test_preview_decoding_is_display_only_and_group_feedback_clears_on_normal_ac
     dialog._show_current(1)
     row = dialog.table_model.rows.row_values(1)
 
-    assert row[3] == "【A&B】"
+    assert row[4] == "【A&B】"
     assert "A&B" in dialog.detail.toPlainText()
     assert "A&amp;B" not in dialog.detail.toPlainText()
     assert change.target == "A&amp;B"
@@ -405,7 +415,7 @@ def test_language_group_row_includes_change_and_file_counts():
         {"language_metadata": (2, 2)},
     ).row_values(0)
 
-    assert "Language tag group (2 changes / 2 files)" in row[4]
+    assert "Language tag group (2 changes / 2 files)" in row[5]
 
 
 def test_preview_row_truncates_long_text_but_detail_keeps_full_text():
@@ -417,7 +427,8 @@ def test_preview_row_truncates_long_text_but_detail_keeps_full_text():
     row = format_change_row(change, {"chapter.xhtml": "Text/chapter.xhtml"}, Translator("en"))
 
     assert source in row[1]
-    assert "後" * 300 in row[2]
+    assert source in row[2]
+    assert "後" * 300 in row[3]
 
 
 def test_plan_diagnostics_are_visible_in_summary_and_detail():

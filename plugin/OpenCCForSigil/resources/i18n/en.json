@@ -108,6 +108,7 @@
   "preview.risk": "Risk",
   "preview.column.status": "Status",
   "preview.column.file": "File",
+  "preview.column.change": "Change",
   "preview.column.source": "Original with context",
   "preview.column.target": "Converted with context",
   "preview.column.category": "Category",

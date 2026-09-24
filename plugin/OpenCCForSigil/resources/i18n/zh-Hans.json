@@ -108,6 +108,7 @@
   "preview.risk": "风险",
   "preview.column.status": "状态",
   "preview.column.file": "文件",
+  "preview.column.change": "变更",
   "preview.column.source": "原文（含上下文）",
   "preview.column.target": "转换后（含上下文）",
   "preview.column.category": "类别",

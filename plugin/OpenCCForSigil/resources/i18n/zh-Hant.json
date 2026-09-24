@@ -108,6 +108,7 @@
   "preview.risk": "風險",
   "preview.column.status": "狀態",
   "preview.column.file": "檔案",
+  "preview.column.change": "變更",
   "preview.column.source": "原文（含上下文）",
   "preview.column.target": "轉換後（含上下文）",
   "preview.column.category": "類別",
