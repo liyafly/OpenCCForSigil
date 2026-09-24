@@ -55,6 +55,18 @@ def test_option_enablement_truth_table():
         assert result == expected
 
 
+def test_run_options_content_stays_at_the_top_and_blank_labels_do_not_expand():
+    qt = make_fake_qt()
+    root_layout = qt.QVBoxLayout()
+    panel = RunOptionsPanel(qt, Translator("en"), root_layout)
+    scroll = root_layout.children[0]
+    body_layout = scroll.widget()._layout
+
+    assert body_layout.children[-1] == "<stretch>"
+    for label in (panel.profile_label, panel.ruleset_label):
+        assert ("setSizePolicy", (qt.QSizePolicy.Preferred, qt.QSizePolicy.Maximum)) in label.calls
+
+
 def test_pivot_chain_profile_list_uses_string_item_key():
     assert _pivot_chain_key(["t2s", "s2tw"]) == "t2s>s2tw"
     assert _decode_pivot_chain("t2s>s2tw") == ("t2s", "s2tw")
@@ -464,7 +476,9 @@ def test_conversion_dialog_keeps_direction_panel_and_footer_in_order():
     scroll_body = outer[6].widget()
     assert [type(item).__name__ for item in scroll_body._layout.children] == [
         "QHBoxLayout", "QHBoxLayout", "QGroupBox", "QToolButton", "QWidget",
+        "str",
     ]
+    assert scroll_body._layout.children[-1] == "<stretch>"
     assert footer.children[0]._text == Translator("en").text("settings.tools")
     assert footer.children[-1] is dialog.button_layout
     assert dialog.button_layout.children == [

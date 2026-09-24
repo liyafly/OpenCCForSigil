@@ -18,6 +18,7 @@ class Control:
         self.enabled = True
         self.tooltip = ""
         self.text = ""
+        self.visible = True
 
     def currentData(self):
         return self.value
@@ -36,6 +37,12 @@ class Control:
 
     def setText(self, value):
         self.text = value
+
+    def setVisible(self, value):
+        self.visible = bool(value)
+
+    def isVisible(self):
+        return self.visible
 
 
 class Probe:
@@ -166,3 +173,12 @@ def test_reject_stops_jieba_probe_timer():
     dialog.dialog.reject()
 
     assert not dialog._probe_timer.isActive()
+
+
+def test_jieba_details_is_hidden_without_error_and_visible_after_failure():
+    dialog = _full_dialog(Probe("available"))
+    assert not dialog.jieba_details_button.isVisible()
+
+    failed_dialog = _full_dialog(Probe("unavailable", "native probe failed"))
+
+    assert failed_dialog.jieba_details_button.isVisible()

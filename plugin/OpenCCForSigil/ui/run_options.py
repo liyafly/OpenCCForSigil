@@ -53,6 +53,12 @@ class RunOptionsPanel:
         self.combos = {}
         self.profile_label = qt.QLabel()
         self.ruleset_label = qt.QLabel()
+        size_policy = getattr(qt.QSizePolicy, "Policy", qt.QSizePolicy)
+        preferred = getattr(size_policy, "Preferred", None)
+        maximum = getattr(size_policy, "Maximum", None)
+        if preferred is not None and maximum is not None:
+            self.profile_label.setSizePolicy(preferred, maximum)
+            self.ruleset_label.setSizePolicy(preferred, maximum)
         body = qt.QWidget()
         body_layout = qt.QVBoxLayout(body)
         profile_row = qt.QHBoxLayout()
@@ -129,6 +135,7 @@ class RunOptionsPanel:
         advanced_layout.addWidget(high_risk)
         body_layout.addWidget(self.advanced_button)
         body_layout.addWidget(self.advanced_content)
+        body_layout.addStretch(1)
         self.advanced_content.setVisible(self._advanced_expanded)
         self.advanced_button.toggled.connect(self._advanced_toggled)
         self._advanced_toggled(self._advanced_expanded)

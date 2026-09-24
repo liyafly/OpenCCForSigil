@@ -1796,6 +1796,7 @@ class _ConversionConfigDialog:
         self.jieba_details_button = qt_widgets.QPushButton(
             self._translator.text("config.jieba_details"))
         self.jieba_details_button.setEnabled(False)
+        self.jieba_details_button.setVisible(False)
         layout.addWidget(self.jieba_details_button)
 
         from ui.run_options import RunOptionsPanel
@@ -1897,6 +1898,7 @@ class _ConversionConfigDialog:
         self.jieba_status.setToolTip(tooltip)
         self.jieba_status.setText(status)
         self.jieba_details_button.setEnabled(bool(self._probe_error))
+        self.jieba_details_button.setVisible(bool(self._probe_error))
         if self._preferred_jieba and self._probe_state in {"not_started", "pending"}:
             self.continue_button.setEnabled(False)
         elif (self._preferred_jieba and self._probe_state == "unavailable"

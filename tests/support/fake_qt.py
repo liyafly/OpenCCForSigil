@@ -591,6 +591,7 @@ def make():
     qt.QPushButton = type("QPushButton", (Button,), {})
     qt.QComboBox = type("QComboBox", (Combo,), {})
     qt.QComboBox.AdjustToMinimumContentsLengthWithIcon = 6
+    qt.QSizePolicy = SimpleNamespace(Preferred=0, Maximum=1)
     qt.QSpinBox = SpinBox
     qt.QListWidget = type("QListWidget", (ListWidget,), {})
     qt.QTableWidget = type("QTableWidget", (TableWidget,), {})
