@@ -71,6 +71,12 @@ class ProgressReporter:
         self.dialog = qt_widgets.QProgressDialog(
             "", self._translator.text("common.cancel"), 0, self._total, parent
         )
+        set_minimum_width = getattr(self.dialog, "setMinimumWidth", None)
+        if callable(set_minimum_width):
+            set_minimum_width(480)
+        set_fixed_width = getattr(self.dialog, "setFixedWidth", None)
+        if callable(set_fixed_width):
+            set_fixed_width(480)
         self.dialog.setWindowTitle(self._translator.text("progress.title"))
         # A parent supplied by a future plugin-owned QWidget scopes modality to
         # that window.  The current entry point has no stable host QWidget, so
@@ -138,10 +144,37 @@ class ProgressReporter:
                     phase=self._translator.text(f"progress.phase.{self._phase}"),
                     index=self._value,
                     total=total,
-                    file=href,
+                    file=self._elided_filename(href),
                 )
             )
         self._process_events()
+
+    def _elided_filename(self, href: str) -> str:
+        full_name = str(href)
+        label_method = getattr(self.dialog, "label", None)
+        label = label_method() if callable(label_method) else None
+        if label is not None:
+            set_tooltip = getattr(label, "setToolTip", None)
+            if callable(set_tooltip):
+                set_tooltip(full_name)
+            width_method = getattr(label, "width", None)
+            width = (width_method() if callable(width_method) else 0) or 440
+        else:
+            set_tooltip = getattr(self.dialog, "setToolTip", None)
+            if callable(set_tooltip):
+                set_tooltip(full_name)
+            width = 440
+
+        qt_gui = getattr(self._qt, "QtGui", None)
+        font_metrics = getattr(qt_gui, "QFontMetrics", None)
+        if callable(font_metrics) and label is not None:
+            qt = getattr(self._qt, "Qt", None)
+            mode = getattr(qt, "ElideMiddle", None)
+            if mode is None:
+                mode = getattr(getattr(qt, "TextElideMode", None), "ElideMiddle", None)
+            if mode is not None:
+                return font_metrics(label.font()).elidedText(full_name, mode, width)
+        return _elide_middle_by_width(full_name, width)
 
     def cancelled(self) -> bool:
         self._process_events()
@@ -211,6 +244,15 @@ class ProgressReporter:
         process_events = getattr(self._qt.QApplication, "processEvents", None)
         if callable(process_events):
             process_events()
+
+
+def _elide_middle_by_width(value: str, width: int) -> str:
+    max_characters = max(8, int(width) // 8)
+    if len(value) <= max_characters:
+        return value
+    left_count = (max_characters - 1) // 2
+    right_count = max_characters - left_count - 1
+    return f"{value[:left_count]}…{value[-right_count:]}"
 
 
 CONFIG_SELECTION_ORDER = V1_CONFIGS

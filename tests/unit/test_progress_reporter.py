@@ -22,6 +22,27 @@ class _FakeApplication:
         return None
 
 
+class _FakeProgressLabel:
+    def __init__(self):
+        self.text = ""
+        self.tooltip = ""
+
+    def width(self):
+        return 440
+
+    def font(self):
+        return None
+
+    def setText(self, value):
+        self.text = value
+
+    def setToolTip(self, value):
+        self.tooltip = value
+
+    def toolTip(self):
+        return self.tooltip
+
+
 class _FakeProgressDialog:
     def __init__(self, _label, _cancel, _minimum, maximum, parent) -> None:
         self.parent = parent
@@ -35,6 +56,18 @@ class _FakeProgressDialog:
         self.close_calls = 0
         self.window_flags = []
         self.event_filters = []
+        self.status_label = _FakeProgressLabel()
+        self.minimum_widths = []
+        self.fixed_widths = []
+
+    def setMinimumWidth(self, width) -> None:
+        self.minimum_widths.append(width)
+
+    def setFixedWidth(self, width) -> None:
+        self.fixed_widths.append(width)
+
+    def label(self):
+        return self.status_label
 
     def setWindowTitle(self, _title) -> None:
         return None
@@ -59,6 +92,7 @@ class _FakeProgressDialog:
 
     def setLabelText(self, value) -> None:
         self.labels.append(value)
+        self.status_label.setText(value)
 
     def setCancelButton(self, button) -> None:
         self.cancel_buttons.append(button)
@@ -120,6 +154,20 @@ def test_progress_reporter_resets_each_phase_and_clamps_repeated_updates():
     assert reporter.dialog.values == [0, 1, 2, 2, 0, 0, 1]
     assert reporter.dialog.maximums == [2, 1]
     assert reporter.dialog.labels[-1] == "Planning: 1/1 — Text/a.xhtml"
+
+
+def test_progress_reporter_elides_long_filename_and_keeps_full_tooltip():
+    reporter = preview_window.ProgressReporter(_FakeQt, 1)
+    filename = "Text/" + "chapter-name-" * 24 + ".xhtml"
+
+    reporter.update("planning", 1, 1, filename)
+
+    assert reporter.dialog.minimum_widths == [480]
+    assert reporter.dialog.fixed_widths == [480]
+    assert len(reporter.dialog.labels[-1]) < len(filename) + 40
+    assert "…" in reporter.dialog.labels[-1]
+    assert filename not in reporter.dialog.labels[-1]
+    assert reporter.dialog.label().toolTip() == filename
 
 
 def test_progress_reporter_scopes_modality_to_parent_and_closes_once():
