@@ -85,8 +85,11 @@ def test_preview_context_keeps_the_changed_text_visible_when_surrounding_context
 
 
 class _FakeAbstractTableModel:
-    def __init__(self, _parent=None):
-        pass
+    def __init__(self, parent=None):
+        self._parent = parent
+
+    def parent(self):
+        return self._parent
 
     def beginResetModel(self):
         pass
@@ -105,7 +108,12 @@ class _FakeQt:
     class Qt:
         DisplayRole = 0
         ToolTipRole = 3
+        ForegroundRole = 9
         Horizontal = 1
+
+    class QtGui:
+        QPalette = SimpleNamespace(Base=10)
+        QColor = staticmethod(lambda color: color)
 
 
 def test_table_model_row_count_tracks_filtered_entries():
@@ -142,6 +150,54 @@ def test_preview_model_exposes_change_file_path_and_full_tooltips():
     assert model.data(index(1), _FakeQt.Qt.ToolTipRole) == "Text/ch001.xhtml"
     assert model.data(index(2), _FakeQt.Qt.ToolTipRole) == "后 → 後"
     assert "很长的前文" * 5 in model.data(index(3), _FakeQt.Qt.ToolTipRole)
+
+
+def test_preview_status_colors_follow_the_parent_palette_lightness():
+    change = _change()
+
+    class Palette:
+        def __init__(self, lightness):
+            self.lightness = lightness
+
+        def color(self, role):
+            assert role == _FakeQt.QtGui.QPalette.Base
+            return SimpleNamespace(lightness=lambda: self.lightness)
+
+    def status_color(lightness, status):
+        preview = PreviewSession(ConversionPlan(source_sha256="", changes=(change,)))
+        model_type = _create_preview_table_model(
+            _FakeQt, ((preview, change),), {"chapter": "Text/chapter.xhtml"})
+        model = model_type(parent=SimpleNamespace(palette=lambda: Palette(lightness)))
+        if status == "accepted":
+            preview.accept_this(change.change_id)
+        elif status == "skipped":
+            preview.reject_this(change.change_id)
+        return model.data(
+            SimpleNamespace(
+                isValid=lambda: True,
+                row=lambda: 0,
+                column=lambda: 0,
+            ),
+            _FakeQt.Qt.ForegroundRole,
+        )
+
+    assert status_color(240, "accepted") == "#1f6f2e"
+    assert status_color(30, "accepted") == "#7fd18b"
+    assert status_color(240, "skipped") == "#5f5f5f"
+    assert status_color(30, "skipped") == "#b0b0b0"
+    assert status_color(240, "pending") == "#8a4d00"
+    assert status_color(30, "pending") == "#f0b050"
+
+
+def test_preview_status_colors_defer_to_qt_when_palette_is_unavailable():
+    change = _change()
+    preview = PreviewSession(ConversionPlan(source_sha256="", changes=(change,)))
+    model_type = _create_preview_table_model(
+        _FakeQt, ((preview, change),), {"chapter": "Text/chapter.xhtml"})
+    model = model_type()
+    index = SimpleNamespace(isValid=lambda: True, row=lambda: 0, column=lambda: 0)
+
+    assert model.data(index, _FakeQt.Qt.ForegroundRole) is None
 
 
 def test_table_model_row_count_scales_to_large_preview_lists():

@@ -75,7 +75,8 @@ def enum_value(namespace: Any, name: str) -> Any:
         return value
     for enum_name in (
         "WindowType", "Key", "ItemDataRole", "Orientation", "SelectionBehavior",
-        "SelectionMode", "ResizeMode", "SizeAdjustPolicy", "ShortcutContext", "ToolButtonPopupMode",
+        "SelectionMode", "ResizeMode", "SizeAdjustPolicy", "ColorRole", "ShortcutContext",
+        "ToolButtonPopupMode",
         "ToolButtonStyle", "ArrowType", "ButtonRole",
     ):
         enum = getattr(namespace, enum_name, None)

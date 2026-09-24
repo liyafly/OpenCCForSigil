@@ -782,11 +782,43 @@ def _create_preview_table_model(
                 tooltips = self.rows.tooltip_values(index.row())
                 return tooltips[index.column()]
             if role == _enum_value(qt, "ForegroundRole") and gui is not None:
-                colors = {
-                    translator.text("preview.status.accepted"): "#267a35",
-                    translator.text("preview.status.skipped"): "#777777",
-                    translator.text("preview.status.pending"): "#a15c00",
-                }
+                palette = None
+                parent_method = getattr(self, "parent", None)
+                parent = parent_method() if callable(parent_method) else None
+                palette_method = getattr(parent, "palette", None)
+                if callable(palette_method):
+                    palette = palette_method()
+                if palette is None:
+                    application = getattr(qt_widgets, "QApplication", None)
+                    palette_method = getattr(application, "palette", None)
+                    if callable(palette_method):
+                        palette = palette_method()
+
+                dark_mode = None
+                palette_type = getattr(gui, "QPalette", None)
+                base_role = _enum_value(palette_type, "Base")
+                color_method = getattr(palette, "color", None)
+                if base_role is not None and callable(color_method):
+                    base_color = color_method(base_role)
+                    lightness_method = getattr(base_color, "lightness", None)
+                    if callable(lightness_method):
+                        dark_mode = lightness_method() < 128
+                if dark_mode is None:
+                    return None
+
+                colors = (
+                    {
+                        translator.text("preview.status.accepted"): "#7fd18b",
+                        translator.text("preview.status.skipped"): "#b0b0b0",
+                        translator.text("preview.status.pending"): "#f0b050",
+                    }
+                    if dark_mode else
+                    {
+                        translator.text("preview.status.accepted"): "#1f6f2e",
+                        translator.text("preview.status.skipped"): "#5f5f5f",
+                        translator.text("preview.status.pending"): "#8a4d00",
+                    }
+                )
                 color = colors.get(values[0]) if index.column() == 0 else None
                 return gui.QColor(color) if color else None
             if role == _enum_value(qt, "FontRole") and gui is not None and index.column() == 6:
