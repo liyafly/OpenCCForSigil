@@ -58,7 +58,10 @@ def validate_xhtml_syntax(source: str) -> None:
         parser.Parse(_VALIDATION_ROOT + validation_copy + "</validation-root>", True)
     except expat.ExpatError as exc:
         line = max(int(exc.lineno), 1)
-        column = max(int(exc.offset) - (len(_VALIDATION_ROOT) if line == 1 else 0), 0)
+        column = max(
+            int(exc.offset) - (len(_VALIDATION_ROOT) if line == 1 else 0) + 1,
+            1,
+        )
         detail = str(exc).split(": line ", 1)[0]
         message = f"invalid XHTML syntax: {detail}: line {line}, column {column}"
         raise XHTMLSyntaxError(message, line=line, column=column) from exc
