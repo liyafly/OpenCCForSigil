@@ -113,6 +113,12 @@ def test_preview_dialog_buttons_are_never_default_or_auto_default():
     assert all(not button.default and button.auto_default is False for button in buttons)
 
 
+def test_preview_dialog_focuses_change_table_on_open():
+    dialog, _preview, _model = _preview_dialog()
+
+    assert any(name == "setFocus" for name, _args in dialog.table_view.calls)
+
+
 def test_single_decision_refreshes_only_its_status_cell():
     dialog, _preview, model = _preview_dialog(change_count=3, current_row=1)
     ranges = []

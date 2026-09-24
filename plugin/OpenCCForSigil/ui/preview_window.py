@@ -817,6 +817,7 @@ class _PreviewDialog:
         self.dialog.resize(900, 620)
         self._build()
         self._refresh()
+        self.table_view.setFocus()
 
     def _build(self) -> None:
         qt = self._qt
