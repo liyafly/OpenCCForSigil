@@ -72,6 +72,9 @@ class _FakeProgressDialog:
     def setWindowTitle(self, _title) -> None:
         return None
 
+    def resize(self, _width, _height) -> None:
+        return None
+
     def setWindowModality(self, modality) -> None:
         self.modality = modality
 
@@ -163,7 +166,7 @@ def test_progress_reporter_elides_long_filename_and_keeps_full_tooltip():
     reporter.update("planning", 1, 1, filename)
 
     assert reporter.dialog.minimum_widths == [480]
-    assert reporter.dialog.fixed_widths == [480]
+    assert reporter.dialog.fixed_widths == []
     assert len(reporter.dialog.labels[-1]) < len(filename) + 40
     assert "…" in reporter.dialog.labels[-1]
     assert filename not in reporter.dialog.labels[-1]

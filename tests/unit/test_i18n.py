@@ -14,6 +14,7 @@ from ui.i18n import (
     rule_validation_message,
     settings_error_message,
     show_error_details,
+    plugin_window_title,
 )
 from ui import preview_window, qt as qt_helpers
 from ui.qt import ask_confirmation
@@ -86,6 +87,16 @@ def test_profile_summary_uses_locale_label_separator():
         assert translator.text(
             "profile.summary_option", label="Name", value="Value", separator=separator
         ) == f"Name{separator}Value"
+
+
+def test_plugin_window_title_prefixes_the_application_name():
+    for language, expected in (
+        ("en", "OpenCCForSigil — Profiles"),
+        ("zh-Hans", "OpenCCForSigil — 方案"),
+        ("zh-Hant", "OpenCCForSigil — 設定檔"),
+    ):
+        translator = Translator(language)
+        assert plugin_window_title(translator, translator.text("profile.title")) == expected
 
 
 def test_traditional_chinese_separates_accepting_changes_from_applying_them():
@@ -298,6 +309,9 @@ def test_progress_reporter_paints_initial_state_immediately():
 
         def setMinimumDuration(self, value):
             self.minimum_duration = value
+
+        def resize(self, _width, _height):
+            pass
 
         def setAutoClose(self, _value):
             pass

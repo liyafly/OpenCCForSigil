@@ -59,6 +59,17 @@ class Translator:
             return value
 
 
+def plugin_window_title(translator: Translator, title: str) -> str:
+    """Prefix a translated window name with the plugin's name."""
+
+    app_name = translator.text("app.title")
+    prefix = f"{app_name} — "
+    value = str(title)
+    if value == app_name or value.startswith(prefix):
+        return value
+    return prefix + value
+
+
 class CatalogView:
     """Expose one namespaced catalog through the legacy mapping-shaped UI API."""
 
@@ -153,7 +164,7 @@ def show_error_details(qt: Any, parent: Any, title: str, summary: str, detail: s
     if not all(callable(getattr(box, name, None)) for name in ("setWindowTitle", "setText")):
         message_box.warning(parent, title, summary)
         return
-    box.setWindowTitle(title)
+    box.setWindowTitle(plugin_window_title(Translator(), title))
     box.setText(summary)
     set_details = getattr(box, "setDetailedText", None)
     if callable(set_details):

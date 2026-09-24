@@ -21,9 +21,11 @@ from ui.i18n import (
     SUPPORTED_LANGUAGES,
     Translator,
     diagnostic_summary,
+    plugin_window_title,
     settings_error_message,
     show_error_details,
 )
+from ui.window_state import restore_window_size, save_window_size
 
 
 class UIUnavailableError(RuntimeError):
@@ -58,9 +60,12 @@ class ProgressReporter:
     def __init__(
         self, qt_widgets: Any, total: int, parent: Any = None,
         translator: Translator | None = None,
+        ui_preferences=None,
+        save_ui_preferences=None,
     ) -> None:
         self._qt = qt_widgets
         self._translator = translator or Translator("en")
+        self._save_ui_preferences = save_ui_preferences
         self._cancelled = False
         self._cancelling = False
         self._non_cancellable = False
@@ -74,10 +79,10 @@ class ProgressReporter:
         set_minimum_width = getattr(self.dialog, "setMinimumWidth", None)
         if callable(set_minimum_width):
             set_minimum_width(480)
-        set_fixed_width = getattr(self.dialog, "setFixedWidth", None)
-        if callable(set_fixed_width):
-            set_fixed_width(480)
-        self.dialog.setWindowTitle(self._translator.text("progress.title"))
+        self.dialog.setWindowTitle(plugin_window_title(
+            self._translator, self._translator.text("progress.title")))
+        restore_window_size(
+            self.dialog, ui_preferences, "progress_dialog_size", (520, 180))
         # A parent supplied by a future plugin-owned QWidget scopes modality to
         # that window.  The current entry point has no stable host QWidget, so
         # the unparented dialog is application-modal only within this plugin's
@@ -238,6 +243,8 @@ class ProgressReporter:
         if self._closed:
             return
         self._closed = True
+        save_window_size(
+            self.dialog, "progress_dialog_size", self._save_ui_preferences)
         self.dialog.close()
 
     def _process_events(self) -> None:
@@ -326,6 +333,8 @@ def choose_scope(
     checkpoint_notice_enabled: bool = False,
     hide_checkpoint_notice=None,
     translator: Translator | None = None,
+    ui_preferences=None,
+    save_ui_preferences=None,
 ) -> ScopeOutcome:
     """Choose a frozen XHTML target set after enumerating metadata only."""
 
@@ -357,8 +366,10 @@ def choose_scope(
         initial_scope=initial_scope,
         checkpoint_notice_enabled=checkpoint_notice_enabled,
         hide_checkpoint_notice=hide_checkpoint_notice,
+        ui_preferences=ui_preferences,
     )
     exec_dialog(dialog.dialog)
+    save_window_size(dialog.dialog, "scope_dialog_size", save_ui_preferences)
     if not dialog.accepted:
         return ScopeOutcome(
             False, None, dialog.language, dialog.checkpoint_notice_shown)
@@ -374,13 +385,18 @@ def choose_scope(
 
 def create_progress_reporter(
     total: int, parent: Any = None, *, translator: Translator | None = None,
+    ui_preferences=None, save_ui_preferences=None,
 ) -> ProgressReporter:
     """Create a progress reporter using Sigil's already available Qt runtime."""
 
     translator = translator or Translator("en")
     qt_widgets = _load_ui_qt(translator)
     ensure_application(qt_widgets, language=translator.language)
-    return ProgressReporter(qt_widgets, total, parent, translator)
+    return ProgressReporter(
+        qt_widgets, total, parent, translator,
+        ui_preferences=ui_preferences,
+        save_ui_preferences=save_ui_preferences,
+    )
 
 
 def _selected_xhtml_ids_and_ignored(
@@ -442,7 +458,7 @@ def show_preview(
     )
     exec_dialog(dialog.dialog)
     if callable(save_ui_preferences):
-        state = dict(ui_preferences or {})
+        state = dict(dialog._ui_preferences)
         size = dialog.dialog.size()
         width = getattr(size, "width", None)
         height = getattr(size, "height", None)
@@ -480,6 +496,8 @@ def show_result(
     diagnostics=(),
     report_text: str | None = None,
     translator: Translator | None = None,
+    ui_preferences=None,
+    save_ui_preferences=None,
 ) -> str | None:
     """Show a concise localized terminal result after the write boundary."""
 
@@ -534,7 +552,8 @@ def show_result(
         message += "\n\n" + translator.text("result.invalid_sources") + "\n" + "\n".join(rows)
     if return_to_scope or report_text:
         box = qt_widgets.QMessageBox()
-        box.setWindowTitle(translator.text("app.title"))
+        box.setWindowTitle(plugin_window_title(
+            translator, translator.text("result.title")))
         box.setText(message)
         back = None
         if return_to_scope:
@@ -551,17 +570,27 @@ def show_result(
             exec_dialog(box)
             clicked = box.clickedButton()
             if view_report is not None and clicked is view_report:
-                _show_report_text(qt_widgets, report_text, translator)
+                _show_report_text(
+                    qt_widgets, report_text, translator,
+                    ui_preferences=ui_preferences,
+                    save_ui_preferences=save_ui_preferences,
+                )
                 continue
             return "back_to_scope" if back is not None and clicked is back else "close"
-    method(None, translator.text("app.title"), message)
+    method(None, plugin_window_title(
+        translator, translator.text("result.title")), message)
     return None
 
 
-def _show_report_text(qt_widgets, report_text: str, translator: Translator) -> None:
+def _show_report_text(
+    qt_widgets, report_text: str, translator: Translator, *,
+    ui_preferences=None, save_ui_preferences=None,
+) -> None:
     dialog = qt_widgets.QDialog()
-    dialog.setWindowTitle(translator.text("result.view_report"))
-    dialog.resize(760, 560)
+    dialog.setWindowTitle(plugin_window_title(
+        translator, translator.text("result.view_report")))
+    restore_window_size(
+        dialog, ui_preferences, "result_report_dialog_size", (760, 560))
     layout = qt_widgets.QVBoxLayout(dialog)
     view = qt_widgets.QPlainTextEdit()
     view.setReadOnly(True)
@@ -571,6 +600,7 @@ def _show_report_text(qt_widgets, report_text: str, translator: Translator) -> N
     close.clicked.connect(dialog.accept)
     layout.addWidget(close)
     exec_dialog(dialog)
+    save_window_size(dialog, "result_report_dialog_size", save_ui_preferences)
 
 
 def show_error(
@@ -589,7 +619,8 @@ def show_error(
     qt_widgets = _load_ui_qt(translator)
     ensure_application(qt_widgets, language=translator.language)
     dialog = qt_widgets.QDialog()
-    dialog.setWindowTitle(translator.text("error.title"))
+    dialog.setWindowTitle(plugin_window_title(
+        translator, translator.text("error.title")))
     dialog.setMinimumWidth(420)
     layout = qt_widgets.QVBoxLayout(dialog)
     message_key = {
@@ -944,7 +975,8 @@ class _PreviewDialog:
         self._allow_reject = False
 
         self.dialog = _guarded_preview_dialog(qt_widgets, self._guard_reject)
-        self.dialog.setWindowTitle(self._translator.text("preview.title"))
+        self.dialog.setWindowTitle(plugin_window_title(
+            self._translator, self._translator.text("preview.title")))
         size = self._ui_preferences.get("preview_dialog_size")
         if (
             isinstance(size, (tuple, list))
@@ -1235,7 +1267,8 @@ class _PreviewDialog:
         except Exception as error:
             self._qt.QMessageBox.warning(
                 self.dialog,
-                self._translator.text("preview.export"),
+                plugin_window_title(
+                    self._translator, self._translator.text("preview.export")),
                 self._translator.text("preview.export_failed", reason=str(error)),
             )
 
@@ -1776,7 +1809,8 @@ class _PreviewDialog:
         if not callable(message_box):
             return False
         box = message_box(self.dialog)
-        box.setWindowTitle(self._translator.text("preview.discard_title"))
+        box.setWindowTitle(plugin_window_title(
+            self._translator, self._translator.text("preview.discard_title")))
         box.setText(self._translator.text("preview.discard_message", count=decided))
         discard = box.addButton(
             self._translator.text("preview.discard_yes"), message_box.AcceptRole)
@@ -1797,7 +1831,8 @@ class _PreviewDialog:
             return True
         self.checkpoint_notice_shown = True
         box = message_box(self.dialog)
-        box.setWindowTitle(self._translator.text("preview.checkpoint_title"))
+        box.setWindowTitle(plugin_window_title(
+            self._translator, self._translator.text("preview.checkpoint_title")))
         box.setText(self._translator.text("preview.checkpoint_confirm"))
         box.setIcon(message_box.Warning)
         accept = box.addButton(
@@ -1860,13 +1895,10 @@ class _ConversionConfigDialog:
         self.selected_config = None
         self.action = "cancel"
         self.dialog = qt_widgets.QDialog()
-        self.dialog.setWindowTitle(self._translator.text("config.title"))
-        size = self._ui_preferences.get("conversion_dialog_size")
-        if (isinstance(size, (tuple, list)) and len(size) == 2
-                and all(isinstance(item, int) and item > 0 for item in size)):
-            self.dialog.resize(size[0], size[1])
-        else:
-            self.dialog.resize(720, 720)
+        self.dialog.setWindowTitle(plugin_window_title(
+            self._translator, self._translator.text("config.title")))
+        restore_window_size(
+            self.dialog, self._ui_preferences, "conversion_dialog_size", (720, 720))
         self.dialog.setMinimumWidth(460)
 
         layout = qt_widgets.QVBoxLayout(self.dialog)
@@ -2049,7 +2081,8 @@ class _ConversionConfigDialog:
             return
         self._qt.QMessageBox.information(
             self.dialog,
-            self._translator.text("config.jieba_details_title"),
+            plugin_window_title(
+                self._translator, self._translator.text("config.jieba_details_title")),
             self._probe_error,
         )
 
@@ -2111,10 +2144,12 @@ class _ScopeDialog:
         initial_scope: Scope | None = None,
         checkpoint_notice_enabled: bool = False,
         hide_checkpoint_notice=None,
+        ui_preferences=None,
     ) -> None:
         self._qt = qt_widgets
         self._inventory = inventory
         self._translator = translator
+        self._ui_preferences = dict(ui_preferences or {})
         self.accepted = False
         self.language = language
         self.ignored_non_xhtml = max(0, ignored_non_xhtml)
@@ -2128,8 +2163,10 @@ class _ScopeDialog:
         self._hide_checkpoint_notice_callback = hide_checkpoint_notice
         self._checkpoint_notice_hidden = False
         self.dialog = qt_widgets.QDialog()
-        self.dialog.setWindowTitle(translator.text("scope.title"))
-        self.dialog.resize(700, 560)
+        self.dialog.setWindowTitle(plugin_window_title(
+            translator, translator.text("scope.title")))
+        restore_window_size(
+            self.dialog, self._ui_preferences, "scope_dialog_size", (700, 560))
         layout = qt_widgets.QVBoxLayout(self.dialog)
         self.recovery_notice_label = None
         if self._recovery_notices:
@@ -2274,7 +2311,8 @@ class _ScopeDialog:
         code = str(self.language_combo.currentData())
         self.language = code
         self._translator.set_language(code)
-        self.dialog.setWindowTitle(self._translator.text("scope.title"))
+        self.dialog.setWindowTitle(plugin_window_title(
+            self._translator, self._translator.text("scope.title")))
         self.language_label.setText(self._translator.text("language.label"))
         self.language_label.setAccessibleName(self._translator.text("a11y.scope.language"))
         self.guide_label.setText(self._translator.text("scope.selection_guide"))
@@ -2516,7 +2554,8 @@ class _ScopeDialog:
             )
             self._qt.QMessageBox.warning(
                 self.dialog,
-                self._translator.text("scope.title"),
+                plugin_window_title(
+                    self._translator, self._translator.text("scope.title")),
                 self._translator.text(message_key),
             )
             return

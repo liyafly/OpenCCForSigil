@@ -10,8 +10,9 @@ from app.profiles import Profile, ProfileFutureSchemaError, ProfileStore
 from core.models import RuleSnapshot
 from rules.store import RuleSet, RuleSetFutureSchemaError, RuleStore
 from opencc_backend.configs import comparison_configs
-from ui.i18n import Translator, profile_display_name, show_error_details
+from ui.i18n import Translator, plugin_window_title, profile_display_name, show_error_details
 from ui.qt import ask_confirmation, exec_dialog
+from ui.window_state import restore_window_size, save_window_size
 
 
 ALIASES = {"include_nav": "convert_nav", "include_ncx": "convert_ncx",
@@ -37,6 +38,8 @@ class RunSettings:
         self.rules = RuleStore(storage.paths.rules)
         self._pending_missing_rulesets: tuple[str, ...] = ()
         self._reported_missing_rulesets: set[str] = set()
+        self._ui_preferences: dict[str, object] = {}
+        self._save_ui_preferences_callback = None
         self.recovery_notice: tuple[str, str] | None = None
         self._recovery_notices: list[tuple[str, str]] = []
         self.clear_profile_preference = False
@@ -68,6 +71,18 @@ class RunSettings:
             ruleset_ids=self._validate_active_rulesets(self.active.ruleset_ids),
         )
         self._book_fingerprint = None
+
+    def bind_ui_preferences(self, ui_preferences, save_callback=None):
+        self._ui_preferences = dict(ui_preferences or {})
+        self._save_ui_preferences_callback = save_callback
+
+    def _store_ui_preferences(self, values):
+        self._ui_preferences.update(values)
+        if callable(self._save_ui_preferences_callback):
+            self._save_ui_preferences_callback(values)
+
+    def _save_window_size(self, window, key):
+        save_window_size(window, key, self._store_ui_preferences)
 
     def bind_run(self, profile, backend):
         """Bind the selected run profile and backend before preview actions."""
@@ -223,6 +238,8 @@ class RunSettings:
                 self.active.conversion, profile_options(self.active)),
             on_delete=profile_deleted,
             storage_errors=self._storage_error_labels(errors, translator),
+            ui_preferences=self._ui_preferences,
+            save_ui_preferences=self._store_ui_preferences,
         )
         return selected
 
@@ -248,15 +265,17 @@ class RunSettings:
         self.preserve_profile_preference = False
 
     def save_profile(self, config, options, translator, qt, parent):
-        name, accepted = qt.QInputDialog.getText(parent, translator.text("settings.save_profile"),
-                                               translator.text("settings.name"))
+        name, accepted = qt.QInputDialog.getText(
+            parent, plugin_window_title(translator, translator.text("settings.save_profile")),
+            translator.text("settings.name"))
         name = str(name).strip()
         if not accepted or not name:
             return
         profiles, _errors = self.profiles.load_all()
         if _duplicate_profile_name(name, profiles):
             qt.QMessageBox.warning(
-                parent, translator.text("settings.save_profile"),
+                parent, plugin_window_title(
+                    translator, translator.text("settings.save_profile")),
                 translator.text("settings.profile_duplicate"),
             )
             return
@@ -286,6 +305,8 @@ class RunSettings:
             storage_errors=self._storage_error_labels(errors, translator),
             rulesets=tuple(values.values()), ruleset_id=initial_id,
             rule_store=self.rules,
+            ui_preferences=self._ui_preferences,
+            save_ui_preferences=self._store_ui_preferences,
         )
         if result is not None:
             if isinstance(result, tuple):
@@ -325,7 +346,8 @@ class RunSettings:
                     self.profiles.save(updated)
                 else:
                     qt.QMessageBox.information(
-                        parent, translator.text("settings.rules"),
+                        parent, plugin_window_title(
+                            translator, translator.text("settings.rules")),
                         translator.text("settings.ruleset_session_only", ruleset=selected_id),
                     )
             self.active = updated
@@ -416,18 +438,21 @@ class RunSettings:
             dialog = show_history(
                 self.storage.paths.history, logs_root=self.storage.paths.logs,
                 parent=parent, language=translator.language, translator=translator,
+                ui_preferences=self._ui_preferences,
                 on_inspect=lambda record: self.inspect_report(record, translator, qt, parent),
                 on_export=lambda record, full, diff: self.export_report(
                     record, full, diff, translator, qt, parent))
             if dialog is not None:
                 exec_dialog(dialog)
+                self._save_window_size(dialog, "history_dialog_size")
 
-    @staticmethod
-    def show_self_test(report, translator, qt, parent):
+    def show_self_test(self, report, translator, qt, parent):
         payload = json.dumps(report.as_dict(), ensure_ascii=False, indent=2)
         dialog = qt.QDialog(parent)
-        dialog.setWindowTitle(translator.text("settings.self_test"))
-        dialog.resize(620, 480)
+        dialog.setWindowTitle(plugin_window_title(
+            translator, translator.text("settings.self_test")))
+        restore_window_size(
+            dialog, self._ui_preferences, "self_test_dialog_size", (620, 480))
         layout = qt.QVBoxLayout(dialog)
         table = qt.QTableWidget(len(report.checks), 2, dialog)
         table.setHorizontalHeaderLabels((
@@ -464,17 +489,23 @@ class RunSettings:
         buttons.addWidget(close_button)
         layout.addLayout(buttons)
         exec_dialog(dialog)
+        self._save_window_size(dialog, "self_test_dialog_size")
 
     def inspect_report(self, record, translator, qt, parent):
         from logging_ext.report import render_markdown
-        self.show_text(render_markdown(record["summary"], record["commit_manifest"],
-                                       record["provenance"]),
-                       translator.text("settings.history"), qt, parent, translator)
+        self.show_text(
+            render_markdown(record["summary"], record["commit_manifest"],
+                            record["provenance"]),
+            translator.text("settings.history"), qt, parent, translator,
+            preference_key="history_report_dialog_size",
+            ui_preferences=self._ui_preferences,
+            save_ui_preferences=self._store_ui_preferences,
+        )
 
     def export_report(self, record, full, diff, translator, qt, parent):
         from logging_ext.report import export_json, export_markdown
         path, _filter = qt.QFileDialog.getSaveFileName(
-            parent, translator.text("settings.history"),
+            parent, plugin_window_title(translator, translator.text("settings.history")),
             str(self.storage.paths.exports / (record["session_id"] + ".md")),
             translator.text("settings.export_filter"))
         if not path:
@@ -523,11 +554,18 @@ class RunSettings:
                            translator, qt, parent)
 
     @staticmethod
-    def show_text(text, title, qt, parent, translator=None):
+    def show_text(
+        text, title, qt, parent, translator=None, *, preference_key=None,
+        ui_preferences=None, save_ui_preferences=None,
+    ):
         translator = translator or Translator()
         dialog = qt.QDialog(parent)
-        dialog.setWindowTitle(title)
-        dialog.resize(720, 520)
+        dialog.setWindowTitle(plugin_window_title(translator, title))
+        if preference_key is None:
+            dialog.resize(720, 520)
+        else:
+            restore_window_size(
+                dialog, ui_preferences, preference_key, (720, 520))
         layout = qt.QVBoxLayout(dialog)
         view = qt.QPlainTextEdit()
         view.setReadOnly(True)
@@ -545,6 +583,8 @@ class RunSettings:
             close_button.clicked.connect(dialog.accept)
             layout.addWidget(close_button)
         exec_dialog(dialog)
+        if preference_key is not None:
+            save_window_size(dialog, preference_key, save_ui_preferences)
 
 
 def settings_hash(profile):

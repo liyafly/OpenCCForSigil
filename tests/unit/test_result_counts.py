@@ -280,7 +280,8 @@ def test_success_result_opens_this_sessions_markdown_report(monkeypatch):
         dialog.clicked_index = next(clicked_indices)
 
     monkeypatch.setattr(
-        preview_window, "_show_report_text", lambda _qt, text, _translator: opened.append(text))
+        preview_window, "_show_report_text",
+        lambda _qt, text, _translator, **_kwargs: opened.append(text))
     monkeypatch.setattr(preview_window, "exec_dialog", advance_box)
     translator = Translator("zh-Hans")
     assert preview_window.show_result(

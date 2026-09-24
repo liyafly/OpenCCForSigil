@@ -73,6 +73,7 @@ class Base:
     def __init__(self, *args, **kwargs):
         self._blocked = False
         self._visible = True
+        self._window_title = ""
         self._enabled = True
         self._maximum_height = 16777215
         self._minimum_width = 0
@@ -164,6 +165,12 @@ class Base:
 
     def minimumHeight(self):
         return self._minimum_height
+
+    def setWindowTitle(self, value):
+        self._window_title = str(value)
+
+    def windowTitle(self):
+        return self._window_title
 
     def resize(self, width, height):
         self._width = int(width)

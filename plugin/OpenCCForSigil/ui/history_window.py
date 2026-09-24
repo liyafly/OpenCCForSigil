@@ -9,8 +9,9 @@ from typing import Any, Callable, Mapping, Sequence
 from app.profiles import ProfileStore, ProfileValidationError
 from logging_ext.history import HistoryError, HistoryStore
 from logging_ext.retention import RetentionResult, cleanup, retention_policy
-from ui.i18n import Translator, configuration_label
+from ui.i18n import Translator, configuration_label, plugin_window_title
 from ui.qt import ask_confirmation, ensure_application, exec_dialog, load_qt
+from ui.window_state import restore_window_size
 
 
 
@@ -97,6 +98,7 @@ def show_history(
     on_inspect: Callable[[Mapping[str, Any]], None] | None = None,
     on_export: Callable[[Mapping[str, Any], bool, Any], None] | None = None,
     qt_widgets: Any = None,
+    ui_preferences=None,
 ) -> Any:
     """Show recent sessions and invoke root callbacks for inspect/export."""
 
@@ -108,7 +110,8 @@ def show_history(
         records = HistoryStore(Path(history_root)).load()
     except HistoryError as exc:
         box = qt_widgets.QMessageBox(parent)
-        box.setWindowTitle(translator.text("history.title"))
+        box.setWindowTitle(plugin_window_title(
+            translator, translator.text("history.title")))
         box.setText(translator.text("history.corrupt"))
         set_details = getattr(box, "setDetailedText", None)
         if callable(set_details):
@@ -122,14 +125,15 @@ def show_history(
         backup = backup_and_rebuild_history(Path(history_root))
         qt_widgets.QMessageBox.information(
             parent,
-            translator.text("history.title"),
+            plugin_window_title(translator, translator.text("history.title")),
             translator.text("history.rebuilt", file=backup.name),
         )
         records = HistoryStore(Path(history_root)).load()
 
     dialog = qt_widgets.QDialog(parent)
-    dialog.setWindowTitle(translator.text("history.title"))
-    dialog.resize(960, 500)
+    dialog.setWindowTitle(plugin_window_title(
+        translator, translator.text("history.title")))
+    restore_window_size(dialog, ui_preferences, "history_dialog_size", (960, 500))
     layout = qt_widgets.QVBoxLayout(dialog)
     table = qt_widgets.QTableWidget(0, 7, dialog)
     table.setHorizontalHeaderLabels([
@@ -171,7 +175,9 @@ def show_history(
         row = table.currentRow()
         if row < 0:
             qt_widgets.QMessageBox.information(
-                dialog, translator.text("history.title"), translator.text("history.select"))
+                dialog,
+                plugin_window_title(translator, translator.text("history.title")),
+                translator.text("history.select"))
             return None
         item = table.item(row, 0)
         role = getattr(qt_widgets.Qt, "UserRole", 32)
@@ -200,7 +206,7 @@ def show_history(
         if not completed:
             return
         qt_widgets.QMessageBox.information(
-            dialog, translator.text("history.cleanup"),
+            dialog, plugin_window_title(translator, translator.text("history.cleanup")),
             translator.text("history.cleanup_done", sessions=len(result.removed_sessions),
                             logs=len(result.removed_log_files)),
         )

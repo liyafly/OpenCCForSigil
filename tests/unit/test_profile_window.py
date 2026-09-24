@@ -189,6 +189,7 @@ def test_untouched_profile_is_not_modified_and_remains_manageable(
     captured = {}
 
     def fake_show(values, **kwargs):
+        kwargs.pop("save_ui_preferences", None)
         captured["manager"] = ProfileManagerDialog(make_fake_qt(), values, **kwargs)
 
     monkeypatch.setattr(profile_window, "show_profile_window", fake_show)

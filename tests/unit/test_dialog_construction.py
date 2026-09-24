@@ -75,8 +75,11 @@ def test_scope_dialog_constructs_and_single_file_can_continue_after_row_change()
         "en",
         Translator("en"),
         initial_scope=Scope.SINGLE,
+        ui_preferences={"scope_dialog_size": [820, 620]},
     )
 
+    assert (dialog.dialog.width(), dialog.dialog.height()) == (820, 620)
+    assert dialog.dialog.windowTitle() == "OpenCCForSigil — Choose files to convert"
     assert dialog.analyze_button.isEnabled()
     assert dialog.selected_ids() == ("a",)
     assert [dialog.list_widget.item(i).data(qt.Qt.CheckStateRole) for i in range(3)] == [
@@ -107,8 +110,20 @@ def test_conversion_profile_rule_and_history_dialogs_construct(monkeypatch, tmp_
         translator=Translator("en"),
         available_configs=("s2t",),
         jieba_pending=True,
+        ui_preferences={"profile_dialog_size": [910, 610]},
     )
     assert profile_dialog.dialog is not None
+    assert (profile_dialog.dialog.width(), profile_dialog.dialog.height()) == (910, 610)
+    assert profile_dialog.dialog.windowTitle() == "OpenCCForSigil — Profiles"
+    assert profile_dialog.dialog._layout.children[-1].children == [
+        profile_dialog.from_current_button,
+        profile_dialog.rename_button,
+        profile_dialog.copy_button,
+        profile_dialog.delete_button,
+        "<stretch>",
+        profile_dialog.close_button,
+        profile_dialog.use_button,
+    ]
     assert profile_dialog.jieba_notice.text() == "Checking the optional native Jieba plugin…"
 
     rule_dialog = RuleManagerDialog(
@@ -117,16 +132,22 @@ def test_conversion_profile_rule_and_history_dialogs_construct(monkeypatch, tmp_
         translator=Translator("en"),
         rulesets=(RuleSet("default"),),
         jieba_pending=True,
+        ui_preferences={"rules_dialog_size": [930, 640]},
     )
     assert rule_dialog.dialog is not None
+    assert (rule_dialog.dialog.width(), rule_dialog.dialog.height()) == (930, 640)
+    assert rule_dialog.dialog.windowTitle() == "OpenCCForSigil — Rules"
     assert rule_dialog.jieba_notice.text() == "Checking the optional native Jieba plugin…"
 
     history = show_history(
         tmp_path / "history",
         qt_widgets=fake_qt.make(),
         translator=Translator("en"),
+        ui_preferences={"history_dialog_size": [1020, 610]},
     )
     assert history is not None
+    assert (history.width(), history.height()) == (1020, 610)
+    assert history.windowTitle() == "OpenCCForSigil — Conversion history"
     assert history.history_table.rowCount() == 0
 
 

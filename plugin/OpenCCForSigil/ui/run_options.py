@@ -2,7 +2,12 @@
 
 from core.transformation import FORCE_PIVOT_CHAINS
 from opencc_backend.configs import base_config
-from ui.i18n import profile_display_name, settings_error_message, show_error_details
+from ui.i18n import (
+    plugin_window_title,
+    profile_display_name,
+    settings_error_message,
+    show_error_details,
+)
 from ui.qt import enum_value
 
 PANEL_OPTION_DEFAULTS = {
@@ -312,7 +317,7 @@ class RunOptionsPanel:
             if missing:
                 self._qt.QMessageBox.information(
                     self._parent,
-                    self._tr.text("options.title"),
+                    plugin_window_title(self._tr, self._tr.text("options.title")),
                     self._tr.text("options.missing_rulesets", ids=", ".join(missing)),
                 )
 

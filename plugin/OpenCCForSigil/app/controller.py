@@ -121,6 +121,22 @@ class Controller:
             # crash while merging the UI namespace.  Preserve valid unknown UI
             # keys, but normalize every other value to an empty mapping.
             ui_preferences = dict(raw_ui_preferences) if isinstance(raw_ui_preferences, dict) else {}
+
+            def save_run_ui_preferences(values):
+                nonlocal preferences, ui_preferences
+                ui_preferences = {**ui_preferences, **values}
+                preferences = update_preferences({"ui": values})
+                saved_ui = preferences.get("ui")
+                ui_preferences = (dict(saved_ui) if isinstance(saved_ui, dict)
+                                  else ui_preferences)
+
+            def show_result_with_preferences(**values):
+                return show_result(
+                    **values,
+                    ui_preferences=ui_preferences,
+                    save_ui_preferences=save_run_ui_preferences,
+                )
+
             explicit_language = ui_preferences.get("language")
             host_language = getattr(self.bk, "sigil_ui_lang", None)
             language = choose_language(explicit_language, host_language)
@@ -132,6 +148,7 @@ class Controller:
                 session_id=self.session.session_id,
             )
             settings.bind_run(settings.active, backend)
+            settings.bind_ui_preferences(ui_preferences, save_run_ui_preferences)
             if settings.clear_profile_preference:
                 update_preferences({"profile_id": None})
             recovery_notices = []
@@ -153,6 +170,8 @@ class Controller:
                     notice=tuple(recovery_notices),
                     checkpoint_notice_enabled=checkpoint_notice_enabled,
                     hide_checkpoint_notice=settings.hide_checkpoint_notice,
+                    ui_preferences=ui_preferences,
+                    save_ui_preferences=save_run_ui_preferences,
                 )
             else:
                 scope_outcome = choose_scope(
@@ -161,6 +180,8 @@ class Controller:
                     translator=translator,
                     checkpoint_notice_enabled=checkpoint_notice_enabled,
                     hide_checkpoint_notice=settings.hide_checkpoint_notice,
+                    ui_preferences=ui_preferences,
+                    save_ui_preferences=save_run_ui_preferences,
                 )
             checkpoint_notice_shown = bool(scope_outcome.checkpoint_notice_shown)
             language = scope_outcome.language
@@ -183,12 +204,15 @@ class Controller:
                 default_config = _preferred_config(preferences, default_config)
                 saved_ui = preferences.get("ui")
                 ui_preferences = dict(saved_ui) if isinstance(saved_ui, dict) else {}
+                settings.bind_ui_preferences(ui_preferences, save_run_ui_preferences)
                 scope_outcome = choose_scope(
                     adapter,
                     initial_language=language,
                     translator=translator,
                     initial_selection=previous_selection,
                     checkpoint_notice_enabled=False,
+                    ui_preferences=ui_preferences,
+                    save_ui_preferences=save_run_ui_preferences,
                 )
                 checkpoint_notice_shown = (
                     checkpoint_notice_shown or scope_outcome.checkpoint_notice_shown)
@@ -219,14 +243,6 @@ class Controller:
                     if settings.active_profile_is_saved:
                         previous_options.pop("ruleset_ids", None)
                     initial_options.update(previous_options)
-
-                def save_run_ui_preferences(values):
-                    nonlocal preferences, ui_preferences
-                    ui_preferences = {**ui_preferences, **values}
-                    preferences = update_preferences({"ui": values})
-                    saved_ui = preferences.get("ui")
-                    ui_preferences = (dict(saved_ui) if isinstance(saved_ui, dict)
-                                      else ui_preferences)
 
                 selected_config = choose_conversion_config(
                     available_configs,
@@ -326,7 +342,11 @@ class Controller:
                     profile_id=active_profile.id,
                     snapshot_guard=settings.snapshot_guard(),
                 )
-                progress = create_progress_reporter(len(targets.file_ids), translator=translator)
+                progress = create_progress_reporter(
+                    len(targets.file_ids), translator=translator,
+                    ui_preferences=ui_preferences,
+                    save_ui_preferences=save_run_ui_preferences,
+                )
                 try:
                     planned = workflow.plan_in_worker(
                         OpenCCBackend,
@@ -339,7 +359,7 @@ class Controller:
                         self._summary(status="cancelled", files_scanned=0, changes=0, files_changed=0)
                     )
                     _show_result_safely(
-                        show_result, translator=translator,
+                        show_result_with_preferences, translator=translator,
                         status="cancelled",
                         files_scanned=0,
                         files_changed=0,
@@ -375,7 +395,7 @@ class Controller:
                     self.session.transition(SessionState.PREVIEWING)
                     self.session.metadata["checkpoint_notice_shown"] = checkpoint_notice_shown
                     result_action = _show_result_safely(
-                        show_result, translator=translator,
+                        show_result_with_preferences, translator=translator,
                         status="success",
                         files_scanned=len(planned),
                         files_changed=0,
@@ -436,7 +456,7 @@ class Controller:
                         )
                     )
                     _show_result_safely(
-                        show_result, translator=translator,
+                        show_result_with_preferences, translator=translator,
                         status="cancelled",
                         files_scanned=len(planned),
                         files_changed=0,
@@ -461,7 +481,11 @@ class Controller:
             )
 
             self.session.transition(SessionState.APPLYING_TO_STAGE)
-            post_preview_progress = create_progress_reporter(len(planned), translator=translator)
+            post_preview_progress = create_progress_reporter(
+                len(planned), translator=translator,
+                ui_preferences=ui_preferences,
+                save_ui_preferences=save_run_ui_preferences,
+            )
             commit_succeeded = False
             try:
                 # Staging and verification happen before the write boundary;
@@ -532,7 +556,7 @@ class Controller:
                 "history", lambda: self._record_history(planned, staged, backend), default=None
             )
             _show_result_safely(
-                show_result, translator=translator,
+                show_result_with_preferences, translator=translator,
                 status="success",
                 files_scanned=len(planned),
                 files_changed=len(staged),
@@ -575,7 +599,7 @@ class Controller:
                 )
             )
             _show_result_safely(
-                show_result, translator=translator,
+                show_result_with_preferences, translator=translator,
                 status="partial_failure",
                 files_scanned=len(planned),
                 files_changed=files_changed,
@@ -619,7 +643,7 @@ class Controller:
                     )
                 )
                 _show_result_safely(
-                    show_result,
+                    show_result_with_preferences,
                     translator=translator,
                     status="partial_failure",
                     files_scanned=len(planned),

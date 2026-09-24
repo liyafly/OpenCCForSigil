@@ -157,6 +157,7 @@ _I18N_REQUIRED_KEYS = frozenset(
         "preview.risk_value.review",
         "preview.risk_value.high",
         "progress.title",
+        "result.title",
         "progress.status",
         "progress.phase.analyzing",
         "progress.phase.planning",

@@ -14,9 +14,11 @@ from ui.i18n import (
     Translator,
     configuration_label,
     profile_display_name,
+    plugin_window_title,
     show_error_details,
 )
 from ui.qt import ask_confirmation, ensure_application, exec_dialog, load_qt
+from ui.window_state import restore_window_size, save_window_size
 
 
 
@@ -127,6 +129,8 @@ def show_profile_window(
     on_delete=None,
     storage_errors: Iterable[str] = (),
     jieba_pending: bool = False,
+    ui_preferences=None,
+    save_ui_preferences=None,
 ) -> Profile | None:
     qt = load_qt()
     active_translator = translator or Translator("en")
@@ -136,8 +140,10 @@ def show_profile_window(
         available_configs=available_configs, available_rulesets=available_rulesets,
         current_profile=current_profile, active_profile=active_profile, on_delete=on_delete,
         storage_errors=storage_errors, jieba_pending=jieba_pending,
+        ui_preferences=ui_preferences,
     )
     exec_dialog(manager.dialog)
+    save_window_size(manager.dialog, "profile_dialog_size", save_ui_preferences)
     return manager.selected if manager.accepted else None
 
 
@@ -157,6 +163,7 @@ class ProfileManagerDialog:
         on_delete=None,
         storage_errors: Iterable[str] = (),
         jieba_pending: bool = False,
+        ui_preferences=None,
     ) -> None:
         self._qt = qt_widgets
         self._translator = translator or Translator("en")
@@ -166,6 +173,7 @@ class ProfileManagerDialog:
         self._on_delete = on_delete
         self._storage_errors = tuple(storage_errors)
         self._jieba_pending = bool(jieba_pending)
+        self._ui_preferences = dict(ui_preferences or {})
         self._current_profile = current_profile or (self._profiles[0] if self._profiles else None)
         self._active_profile = active_profile
         available = tuple(SUPPORTED_CONFIGS if available_configs is None else available_configs)
@@ -178,8 +186,10 @@ class ProfileManagerDialog:
         self.selected: Profile | None = None
         self.accepted = False
         self.dialog = qt_widgets.QDialog()
-        self.dialog.setWindowTitle(self._labels["title"])
-        self.dialog.resize(780, 500)
+        self.dialog.setWindowTitle(
+            plugin_window_title(self._translator, self._labels["title"]))
+        restore_window_size(
+            self.dialog, self._ui_preferences, "profile_dialog_size", (780, 500))
         self._build()
         self._refresh()
 
@@ -225,9 +235,13 @@ class ProfileManagerDialog:
         self.delete_button = qt.QPushButton(self._labels["delete"])
         self.from_current_button = qt.QPushButton(self._labels["from_current"])
         self.close_button = qt.QPushButton(self._labels["close"])
-        for button in (self.use_button, self.rename_button, self.copy_button,
-                       self.delete_button, self.from_current_button, self.close_button):
+        for button in (self.from_current_button, self.rename_button,
+                       self.copy_button, self.delete_button):
             actions.addWidget(button)
+        actions.addStretch(1)
+        actions.addWidget(self.close_button)
+        actions.addWidget(self.use_button)
+        self.actions_layout = actions
         root.addLayout(actions)
         self.profile_list.currentRowChanged.connect(self._refresh_summary)
         self.use_button.clicked.connect(self._use)
@@ -324,7 +338,8 @@ class ProfileManagerDialog:
 
     def _ask_name(self, prompt: str, value: str = "", *, exclude_id: str | None = None) -> str | None:
         name, accepted = self._qt.QInputDialog.getText(
-            self.dialog, self._labels["title"], prompt, text=value)
+            self.dialog, plugin_window_title(self._translator, self._labels["title"]),
+            prompt, text=value)
         if not accepted:
             return None
         name = str(name).strip()
@@ -414,7 +429,8 @@ class ProfileManagerDialog:
         self._refresh()
 
     def _warn(self, message: str) -> None:
-        self._qt.QMessageBox.warning(self.dialog, self._labels["title"], message)
+        self._qt.QMessageBox.warning(
+            self.dialog, plugin_window_title(self._translator, self._labels["title"]), message)
 
     def _save_profile(self, profile: Profile) -> bool:
         try:

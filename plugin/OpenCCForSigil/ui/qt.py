@@ -152,9 +152,11 @@ def enum_value(namespace: Any, name: str) -> Any:
 def ask_confirmation(qt: Any, parent: Any, title: str, message: str, translator: Any) -> bool:
     """Show a yes/no confirmation with plugin-localized button labels."""
 
+    from ui.i18n import plugin_window_title
+
     message_box = qt.QMessageBox
     box = message_box(parent)
-    box.setWindowTitle(title)
+    box.setWindowTitle(plugin_window_title(translator, title))
     box.setText(message)
     accept_role = enum_value(message_box, "AcceptRole")
     reject_role = enum_value(message_box, "RejectRole")

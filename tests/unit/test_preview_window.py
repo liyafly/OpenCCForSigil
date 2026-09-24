@@ -94,6 +94,7 @@ def test_preview_window_splitter_and_size_preferences_restore():
     )
 
     assert (dialog.dialog.width(), dialog.dialog.height()) == (1000, 700)
+    assert dialog.dialog.windowTitle() == "OpenCCForSigil — Preview conversion"
     assert dialog.splitter.widgets[0] is dialog.table_view
     assert dialog.splitter.stretch_factors == {0: 3, 1: 1}
     assert dialog.splitter.sizes() == [600, 200]

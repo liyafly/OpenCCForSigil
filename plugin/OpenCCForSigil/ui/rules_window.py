@@ -18,10 +18,12 @@ from ui.i18n import (
     CatalogView,
     Translator,
     configuration_label,
+    plugin_window_title,
     rule_validation_message,
     show_error_details,
 )
 from ui.qt import ensure_application, exec_dialog, load_qt
+from ui.window_state import restore_window_size, save_window_size
 
 
 @dataclass(frozen=True)
@@ -143,6 +145,8 @@ def show_dictionary_inspector(
     profile_id: str | None = None,
     book_fingerprint: str | None = None,
     translator: Any = None,
+    ui_preferences=None,
+    save_ui_preferences=None,
 ) -> DictionaryInspection:
     """Display read-only independent comparison results and return them."""
 
@@ -161,7 +165,10 @@ def show_dictionary_inspector(
     dialog = qt.QDialog()
     labels = _labels(active_translator)
     separator = active_translator.text("common.label_separator")
-    dialog.setWindowTitle(labels["inspector_title"])
+    dialog.setWindowTitle(plugin_window_title(
+        active_translator, labels["inspector_title"]))
+    restore_window_size(
+        dialog, ui_preferences, "dictionary_inspector_dialog_size", (720, 500))
     layout = qt.QVBoxLayout(dialog)
     view = qt.QPlainTextEdit()
     view.setReadOnly(True)
@@ -209,6 +216,8 @@ def show_dictionary_inspector(
     close.clicked.connect(dialog.accept)
     layout.addWidget(close)
     exec_dialog(dialog)
+    save_window_size(
+        dialog, "dictionary_inspector_dialog_size", save_ui_preferences)
     return inspection
 
 
@@ -251,6 +260,8 @@ def show_rules_window(
     ruleset_id: str | None = None,
     rule_store: RuleStore | None = None,
     jieba_pending: bool = False,
+    ui_preferences=None,
+    save_ui_preferences=None,
 ) -> tuple[Rule, ...] | RuleWindowResult | None:
     """Open the manager and return committed rules, or ``None`` on cancel."""
 
@@ -272,8 +283,11 @@ def show_rules_window(
         ruleset_id=ruleset_id,
         rule_store=rule_store,
         jieba_pending=jieba_pending,
+        ui_preferences=ui_preferences,
+        save_ui_preferences=save_ui_preferences,
     )
     exec_dialog(dialog.dialog)
+    save_window_size(dialog.dialog, "rules_dialog_size", save_ui_preferences)
     if not dialog.accepted:
         return None
     if dialog._managed:
@@ -299,6 +313,8 @@ class RuleManagerDialog:
         ruleset_id: str | None = None,
         rule_store: RuleStore | None = None,
         jieba_pending: bool = False,
+        ui_preferences=None,
+        save_ui_preferences=None,
     ) -> None:
         self._qt = qt_widgets
         self._translator = translator or Translator("en")
@@ -323,13 +339,23 @@ class RuleManagerDialog:
         self._comparison_configs = tuple(comparison_configs)
         self._storage_errors = tuple(storage_errors)
         self._jieba_pending = bool(jieba_pending)
+        self._ui_preferences = dict(ui_preferences or {})
+        self._save_ui_preferences_callback = save_ui_preferences
+        self._save_ui_preferences = self._store_ui_preferences
         self.accepted = False
         self.dialog = _guarded_rule_dialog(qt_widgets, self._guard_reject)
-        self.dialog.setWindowTitle(self._labels["title"])
-        self.dialog.resize(840, 540)
+        self.dialog.setWindowTitle(
+            plugin_window_title(self._translator, self._labels["title"]))
+        restore_window_size(
+            self.dialog, self._ui_preferences, "rules_dialog_size", (840, 540))
         self._build()
         self._populate_rulesets()
         self._refresh()
+
+    def _store_ui_preferences(self, values) -> None:
+        self._ui_preferences.update(values)
+        if callable(self._save_ui_preferences_callback):
+            self._save_ui_preferences_callback(values)
 
     def _build(self) -> None:
         qt = self._qt
@@ -518,7 +544,8 @@ class RuleManagerDialog:
         if not callable(message_box):
             return False
         box = message_box(self.dialog)
-        box.setWindowTitle(self._translator.text("rules.discard_title"))
+        box.setWindowTitle(plugin_window_title(
+            self._translator, self._translator.text("rules.discard_title")))
         box.setText(self._translator.text("rules.discard_message"))
         discard = box.addButton(
             self._translator.text("rules.discard_confirm"), message_box.AcceptRole)
@@ -541,8 +568,10 @@ class RuleManagerDialog:
         self._refresh()
 
     def _new_ruleset(self) -> None:
+        translator = getattr(self, "_translator", None) or Translator("en")
         identifier, accepted = self._qt.QInputDialog.getText(
-            self.dialog, self._labels["title"], self._labels["ruleset"])
+            self.dialog, plugin_window_title(translator, self._labels["title"]),
+            self._labels["ruleset"])
         identifier = str(identifier).strip()
         if not accepted:
             return
@@ -563,8 +592,10 @@ class RuleManagerDialog:
 
     def _rename_ruleset(self) -> None:
         old = self._ruleset_id
+        translator = getattr(self, "_translator", None) or Translator("en")
         identifier, accepted = self._qt.QInputDialog.getText(
-            self.dialog, self._labels["title"], self._labels["ruleset"],
+            self.dialog, plugin_window_title(translator, self._labels["title"]),
+            self._labels["ruleset"],
             text=old)
         identifier = str(identifier).strip()
         if not accepted or identifier == old:
@@ -602,7 +633,8 @@ class RuleManagerDialog:
             item.setEnabled(bool(self._book_fingerprint))
 
     def _warn(self, message: str) -> None:
-        self._qt.QMessageBox.warning(self.dialog, self._labels["title"], message)
+        self._qt.QMessageBox.warning(
+            self.dialog, plugin_window_title(self._translator, self._labels["title"]), message)
 
     def _refresh(self) -> None:
         self.table.setRowCount(0)
@@ -781,6 +813,8 @@ class RuleManagerDialog:
                 profile_id=self._profile_id,
                 book_fingerprint=self._book_fingerprint,
                 translator=self._translator,
+                ui_preferences=self._ui_preferences,
+                save_ui_preferences=self._save_ui_preferences,
             )
         except Exception as exc:
             show_error_details(
@@ -793,7 +827,7 @@ class RuleManagerDialog:
 
         path, _ = self._qt.QFileDialog.getOpenFileName(
             self.dialog,
-            self._labels["import"],
+            plugin_window_title(self._translator, self._labels["import"]),
             "",
             self._translator.text("rules.import_filter"),
         )
@@ -840,7 +874,10 @@ class RuleManagerDialog:
     def _import_options(self, path):
         qt = self._qt
         dialog = qt.QDialog(self.dialog)
-        dialog.setWindowTitle(self._labels["import"])
+        dialog.setWindowTitle(
+            plugin_window_title(self._translator, self._labels["import"]))
+        restore_window_size(
+            dialog, self._ui_preferences, "rules_import_options_dialog_size", (520, 280))
         layout = qt.QVBoxLayout(dialog)
         form = qt.QFormLayout()
         format_combo = qt.QComboBox()
@@ -883,6 +920,8 @@ class RuleManagerDialog:
         cancel.clicked.connect(dialog.reject)
         accept.clicked.connect(lambda: (state.update(accepted=True), dialog.accept()))
         exec_dialog(dialog)
+        save_window_size(
+            dialog, "rules_import_options_dialog_size", self._save_ui_preferences)
         if not state["accepted"]:
             return None
         return {
@@ -911,7 +950,10 @@ class RuleManagerDialog:
         detail = "\n".join(detail_lines)
         qt = self._qt
         dialog = qt.QDialog(self.dialog)
-        dialog.setWindowTitle(self._labels["import"])
+        dialog.setWindowTitle(
+            plugin_window_title(self._translator, self._labels["import"]))
+        restore_window_size(
+            dialog, self._ui_preferences, "rules_import_review_dialog_size", (640, 460))
         layout = qt.QVBoxLayout(dialog)
         summary = qt.QLabel(message)
         summary.setWordWrap(True)
@@ -932,6 +974,8 @@ class RuleManagerDialog:
         cancel.clicked.connect(dialog.reject)
         accept.clicked.connect(lambda: (state.update(accepted=True), dialog.accept()))
         exec_dialog(dialog)
+        save_window_size(
+            dialog, "rules_import_review_dialog_size", self._save_ui_preferences)
         return bool(state["accepted"])
 
     def _export(self) -> None:
@@ -939,7 +983,7 @@ class RuleManagerDialog:
 
         path, _ = self._qt.QFileDialog.getSaveFileName(
             self.dialog,
-            self._labels["export"],
+            plugin_window_title(self._translator, self._labels["export"]),
             self._translator.text("rules.export_default_filename"),
             self._translator.text("rules.export_filter"),
         )
