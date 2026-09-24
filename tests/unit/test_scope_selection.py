@@ -4,6 +4,8 @@ import pytest
 
 from sigil.scope import Scope, ScopeSelectionError, TargetSelection, TextFile, resolve_target_selection
 from sigil.adapter import SigilBookAdapter
+from tests.support.fake_qt import make_with_table
+from ui.i18n import Translator
 from ui.preview_window import (
     _ScopeDialog,
     _ordered_scope_inventory,
@@ -170,3 +172,26 @@ def test_single_scope_uses_one_row_selection_and_manual_selection_is_independent
     dialog.single_radio.checked = False
     dialog.selected_radio.checked = True
     assert dialog.selected_ids() == ("one",)
+
+
+def test_scope_filter_enter_focuses_first_visible_row_without_accepting():
+    dialog = _ScopeDialog(
+        make_with_table(), FILES, (), "en", Translator("en"))
+    dialog.filter_edit.setText("nested")
+    dialog.filter_edit.textChanged.emit("nested")
+
+    dialog.filter_edit.returnPressed.emit()
+
+    assert dialog.list_widget.currentRow() == 1
+    assert dialog.accepted is False
+    assert dialog.analyze_button.isDefault()
+    assert dialog.analyze_button.autoDefault() is False
+    assert all(
+        button.autoDefault() is False
+        for button in (
+            dialog.select_visible,
+            dialog.clear_visible,
+            dialog.cancel_button,
+            dialog.analyze_button,
+        )
+    )

@@ -1950,6 +1950,7 @@ class _ScopeDialog:
         self.filter_edit = qt_widgets.QLineEdit()
         self.filter_edit.setPlaceholderText(translator.text("scope.filter"))
         self.filter_edit.textChanged.connect(self._refresh_list)
+        self.filter_edit.returnPressed.connect(self._focus_first_visible_item)
         layout.addWidget(self.filter_edit)
         self.guide_label = qt_widgets.QLabel(translator.text("scope.selection_guide"))
         self.guide_label.setWordWrap(True)
@@ -1960,6 +1961,8 @@ class _ScopeDialog:
         action_row = qt_widgets.QHBoxLayout()
         self.select_visible = qt_widgets.QPushButton(translator.text("scope.select_visible"))
         self.clear_visible = qt_widgets.QPushButton(translator.text("scope.clear_visible"))
+        self.select_visible.setAutoDefault(False)
+        self.clear_visible.setAutoDefault(False)
         action_row.addWidget(self.select_visible)
         action_row.addWidget(self.clear_visible)
         action_row.addStretch(1)
@@ -1973,12 +1976,13 @@ class _ScopeDialog:
         button_row = qt_widgets.QHBoxLayout()
         self.cancel_button = qt_widgets.QPushButton(translator.text("common.cancel"))
         self.analyze_button = qt_widgets.QPushButton(translator.text("scope.analyze"))
+        self.cancel_button.setAutoDefault(False)
         set_default = getattr(self.analyze_button, "setDefault", None)
         if callable(set_default):
             set_default(True)
         set_auto_default = getattr(self.analyze_button, "setAutoDefault", None)
         if callable(set_auto_default):
-            set_auto_default(True)
+            set_auto_default(False)
         button_row.addStretch(1)
         button_row.addWidget(self.cancel_button)
         button_row.addWidget(self.analyze_button)
@@ -2019,6 +2023,14 @@ class _ScopeDialog:
             self.selected_radio.setChecked(True)
         self._refresh_enabled()
         self._refresh_count()
+
+    def _focus_first_visible_item(self) -> None:
+        for row in range(self.list_widget.count()):
+            item = self.list_widget.item(row)
+            if not item.isHidden():
+                self.list_widget.setCurrentRow(row)
+                self.list_widget.setFocus()
+                return
 
     def _item_changed(self, _item: Any) -> None:
         """Refresh counts and validity for direct checkbox changes."""
@@ -2088,6 +2100,9 @@ class _ScopeDialog:
             self._checkpoint_notice_preference_changed)
         checkpoint_layout.addWidget(self.checkpoint_hide_checkbox)
         self.checkpoint_close_button = qt_widgets.QPushButton("×")
+        set_auto_default = getattr(self.checkpoint_close_button, "setAutoDefault", None)
+        if callable(set_auto_default):
+            set_auto_default(False)
         self.checkpoint_close_button.setToolTip(
             translator.text("scope.checkpoint_close"))
         self.checkpoint_close_button.clicked.connect(self.checkpoint_banner.hide)
