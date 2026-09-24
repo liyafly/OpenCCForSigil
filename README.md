@@ -74,6 +74,11 @@ assets actually attached to that release. Every package requires CPython
 | `OpenCCForSigil_<version>_linux-x86_64.zip` | `uname -m` reports `x86_64`. |
 | `OpenCCForSigil_<version>_linux-aarch64.zip` | `uname -m` reports `aarch64`. |
 
+**Linux ZIPs require CPython 3.14 (`cp314`) in the Sigil plugin process.**
+Ubuntu 22.04, Ubuntu 24.04, Debian 12, and Fedora's current Sigil packages use
+other Python minor versions; see [the Linux Python compatibility notes](docs/native-backend.md#linux-上的-python-版本). The Flathub build has its own isolated Python
+runtime, which must also match the payload ABI.
+
 To check Sigil's process architecture, use **Activity Monitor → Sigil → Kind**
 on macOS (`Apple` or `Intel`), **Task Manager → Details → Platform** on
 Windows, or `uname -m` on Linux. Choose the platform package that matches the

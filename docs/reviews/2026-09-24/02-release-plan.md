@@ -110,12 +110,12 @@
 
 ### E-05 确认 Linux 上 Sigil 使用的 Python 版本（P1，调研）
 
-**为什么**：Linux 包的 native 模块是 cp314。如果主流发行版的 Sigil 用的是系统 Python 3.10 到 3.12，Linux 包实际上装不上。
+**为什么**：Linux 包的 native 模块是 cp314。官方包元数据显示，Ubuntu 22.04、Ubuntu 24.04、Debian 12、Fedora 45 和 Flathub Sigil 分别使用 Python 3.10、3.12、3.11、3.15 和 Flatpak 隔离运行时的 3.13；只有本次检查的 Arch Linux 包是 3.14。当前 Linux ZIP 不适用于大多数这些发行版 Sigil 包。
 
 **步骤**：
 1. 查 Ubuntu 22.04 / 24.04、Debian 12、Fedora 最新版、Arch、Flatpak（`com.sigil_ebook.Sigil`）上 Sigil 包的 Python 依赖版本，记录来源链接。
 2. 写进 `docs/native-backend.md` 的新小节"Linux 上的 Python 版本"。
-3. 如果多数不是 3.14，在 README 的下载表里注明"Linux 包需要 Python 3.14"，并在 `02-release-plan.md` 第 6 节加一个需要作者决定的问题：是否为 cp312 另建 Linux payload。
+3. 因多数不是 3.14，已在 README 的下载表下注明"Linux ZIP 需要 CPython 3.14"，并记录来源。
 
 ---
 
@@ -183,5 +183,5 @@
 | 2 | 非中文 `lang`（如 `lang="ja"`）内的文字是否跳过（A-11） | 默认跳过 / 默认转换但给诊断 / 保持现状 | 默认跳过；日文书里的汉字被转成繁体是数据损坏 |
 | 3 | P-11 Fat 包共享平台无关数据 | 实施 / 不实施 | 平台包发布后再看 Fat 包下载量决定 |
 | 4 | Windows ARM64 路线 B2（原生 ARM64 payload） | 实施 / 只支持 x64 模拟 | 先按第 4 节第 13 项确认模拟可用；可用就不做 B2 |
-| 5 | Linux cp312 payload（取决于 E-05 的结论） | 做 / 不做 | 等 E-05 |
+| 5 | 是否为 Linux 另建 `cp312` payload | 做 / 不做 | 做可支持 Ubuntu 24.04 官方 Sigil 包；仍无法覆盖 Jammy 3.10、Bookworm 3.11、Flathub 3.13 和 Fedora 45 的 3.15，需评估维护成本及其他 minor 的路线 |
 | 6 | A-02 的合并规则会把"被单个相同字符隔开"的两处变更合成一条（例如"软件的内存"），用户不能只接受其中一处 | 接受这个粒度 / 改用更复杂的词组边界 | 接受；正确性优先于粒度 |
