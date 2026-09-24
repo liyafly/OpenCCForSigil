@@ -109,7 +109,7 @@ class TokenizedDocument:
         values = []
         for tag_index, tag in enumerate(self.tags):
             for attribute in tag.attributes:
-                if attribute.name in protected:
+                if _is_protected_attribute(attribute.name, protected):
                     values.append(
                         (
                             tag_index,
@@ -119,6 +119,14 @@ class TokenizedDocument:
                         )
                     )
         return tuple(values)
+
+
+def _is_protected_attribute(name: str, protected: set[str]) -> bool:
+    if name in protected or name in {"epub:type", "role", "xmlns"}:
+        return True
+    if name.startswith("xmlns:"):
+        return True
+    return name.startswith("aria-") and name != "aria-label"
 
 
 def tokenize_xhtml(source: str, options: Optional[TokenizerOptions] = None) -> TokenizedDocument:

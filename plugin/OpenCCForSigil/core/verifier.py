@@ -1,6 +1,6 @@
 """Structural and planned-span verification boundary."""
 
-from core.models import StagedFile, VerificationResult
+from core.models import ConversionPlan, StagedFile, VerificationResult
 from core.staging import StagingError, apply_changes, source_sha256
 from document.tokenizer import TokenizedDocument, TokenizerOptions, tokenize_xhtml
 from document.xml_processor import tokenize_xml
@@ -42,6 +42,15 @@ def verify_staged_file(
         # The workflow already tokenized the immutable source while building
         # the plan. Reuse that document and tokenize only the staged output.
         original_doc = original_document
+    diagnostics.extend(
+        _verify_plan_boundaries(
+            staged_file.file_id,
+            staged_file.original,
+            staged_file.converted,
+            plan,
+            original_doc,
+        )
+    )
     converted_doc = tokenize(staged_file.converted)
     if plan.document_kind in {"xhtml", "nav"}:
         try:
@@ -59,6 +68,70 @@ def verify_staged_file(
         diagnostics=tuple(_diagnostic(value) for value in diagnostics),
         checked_change_ids=tuple(change.change_id for change in plan.changes),
     )
+
+
+def _verify_plan_boundaries(
+    file_id: str,
+    source: str,
+    converted: str,
+    plan: ConversionPlan,
+    original_doc: TokenizedDocument,
+) -> list[str]:
+    diagnostics = []
+    allowed_spans = set(plan.allowed_spans)
+    changed_spans = {change.span for change in plan.changes}
+    for change in plan.changes:
+        span = change.span
+        if not any(
+            target.source_start <= span.start and span.end <= target.source_end
+            for target in original_doc.targets
+        ):
+            diagnostics.append(
+                f"UNPLANNED_CHANGE:{file_id} span {span.start}:{span.end} "
+                "is outside every conversion target"
+            )
+        if allowed_spans and span not in allowed_spans:
+            diagnostics.append(
+                f"UNPLANNED_CHANGE:{file_id} span {span.start}:{span.end} "
+                "is outside the allowed spans"
+            )
+    if allowed_spans:
+        for span in plan.allowed_spans:
+            if span not in changed_spans:
+                diagnostics.append(
+                    f"UNPLANNED_CHANGE:{file_id} allowed span {span.start}:{span.end} "
+                    "has no planned change"
+                )
+
+    source_cursor = 0
+    output_cursor = 0
+    for change in sorted(plan.changes, key=lambda item: (item.span.start, item.span.end)):
+        span = change.span
+        if span.start < source_cursor or span.end > len(source):
+            diagnostics.append(
+                f"UNPLANNED_CHANGE:{file_id} invalid or overlapping span "
+                f"{span.start}:{span.end}"
+            )
+            return diagnostics
+        unchanged = source[source_cursor:span.start]
+        if converted[output_cursor : output_cursor + len(unchanged)] != unchanged:
+            diagnostics.append(
+                f"UNPLANNED_CHANGE:{file_id} text outside planned span "
+                f"{source_cursor}:{span.start} changed"
+            )
+        output_cursor += len(unchanged) + len(change.target)
+        source_cursor = span.end
+
+    unchanged = source[source_cursor:]
+    if (
+        converted[output_cursor : output_cursor + len(unchanged)] != unchanged
+        or output_cursor + len(unchanged) != len(converted)
+    ):
+        diagnostics.append(
+            f"UNPLANNED_CHANGE:{file_id} text outside planned span {source_cursor}:{len(source)} "
+            "changed"
+        )
+    return diagnostics
 
 
 def _diagnostic(message: str):

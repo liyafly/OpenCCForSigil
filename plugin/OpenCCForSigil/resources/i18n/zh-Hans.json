@@ -397,6 +397,8 @@
   "diagnostic.inline_boundary": "跨内联标签文本：{count} 处",
   "diagnostic.quote_unbalanced": "引号未配对的块：{count} 处",
   "diagnostic.source_invalid_xhtml": "已跳过不合法 XHTML 源文件：{count} 个",
+  "diagnostic.unplanned_change": "发现计划文本区间以外的改动：{count} 处",
+  "diagnostic.protected_attribute_changed": "发现受保护属性被意外改动：{count} 处",
   "diagnostic.unknown": "其他诊断 {code}：{count} 处",
   "profile.operation_failed": "无法保存或删除方案。",
   "rules.conflict.unknown": "规则冲突 {kind}： “{source}”。",

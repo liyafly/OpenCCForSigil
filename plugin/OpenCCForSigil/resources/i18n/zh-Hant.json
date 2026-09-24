@@ -397,6 +397,8 @@
   "diagnostic.inline_boundary": "跨內嵌標籤文字：{count} 處",
   "diagnostic.quote_unbalanced": "引號未配對的區塊：{count} 處",
   "diagnostic.source_invalid_xhtml": "已略過不合法 XHTML 來源檔案：{count} 個",
+  "diagnostic.unplanned_change": "發現計畫文字範圍以外的變更：{count} 處",
+  "diagnostic.protected_attribute_changed": "發現受保護屬性遭到意外變更：{count} 處",
   "diagnostic.unknown": "其他診斷 {code}：{count} 處",
   "profile.operation_failed": "無法儲存或刪除設定檔。",
   "rules.conflict.unknown": "規則衝突 {kind}：「{source}」。",

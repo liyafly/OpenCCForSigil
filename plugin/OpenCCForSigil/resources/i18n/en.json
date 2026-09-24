@@ -397,6 +397,8 @@
   "diagnostic.inline_boundary": "Text crosses inline markup: {count}",
   "diagnostic.quote_unbalanced": "Unbalanced quotation marks in block: {count}",
   "diagnostic.source_invalid_xhtml": "Invalid XHTML source skipped: {count}",
+  "diagnostic.unplanned_change": "A change was detected outside the planned text spans: {count}",
+  "diagnostic.protected_attribute_changed": "A protected attribute changed unexpectedly: {count}",
   "diagnostic.unknown": "Other diagnostic {code}: {count}",
   "profile.operation_failed": "The profile could not be saved or deleted.",
   "rules.conflict.unknown": "Rule conflict {kind} for “{source}”.",
