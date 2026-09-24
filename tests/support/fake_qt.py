@@ -144,6 +144,45 @@ class Base:
         return getattr(self, "_widget", None)
 
 
+class Dialog(Base):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.finished = Signal()
+        self.result = None
+
+    def done(self, result):
+        self.result = result
+        self._visible = False
+        self.finished.emit(result)
+
+    def accept(self):
+        self.accepted.emit()
+        self.done(1)
+
+    def reject(self):
+        self.rejected.emit()
+        self.done(0)
+
+
+class Timer(Base):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._active = False
+        self._interval = 0
+
+    def setInterval(self, interval):
+        self._interval = int(interval)
+
+    def start(self):
+        self._active = True
+
+    def stop(self):
+        self._active = False
+
+    def isActive(self):
+        return self._active
+
+
 class Layout(Base):
     def __init__(self, parent=None, *a):
         super().__init__()
@@ -453,7 +492,6 @@ def make():
     RADIO_GROUP.clear()
     qt = SimpleNamespace()
     for name in (
-        "QDialog",
         "QLabel",
         "QWidget",
         "QPlainTextEdit",
@@ -473,11 +511,11 @@ def make():
         "QDialogButtonBox",
         "QAction",
         "QShortcut",
-        "QTimer",
         "QTableWidgetItem",
         "QTabWidget",
     ):
         setattr(qt, name, type(name, (Base,), {}))
+    qt.QDialog = Dialog
     for name in ("QVBoxLayout", "QHBoxLayout", "QFormLayout", "QGridLayout"):
         setattr(qt, name, type(name, (Layout,), {}))
     qt.QCheckBox = type("QCheckBox", (Check,), {})
@@ -520,9 +558,9 @@ def make():
         QShortcut=qt.QShortcut,
         QKeySequence=qt.QKeySequence,
     )
+    qt.QTimer = Timer
     qt.QtCore = SimpleNamespace(QTimer=qt.QTimer, QObject=Base)
     qt.QShortcut = qt.QShortcut
-    qt.QTimer = qt.QTimer
     return qt
 
 

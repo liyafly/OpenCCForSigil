@@ -1554,6 +1554,7 @@ class _ConversionConfigDialog:
         self._default_base = BASE_CONFIG_BY_JIEBA.get(default_config, default_config)
         self._preferred_jieba = default_config in BASE_CONFIG_BY_JIEBA
         self._direction_reselected = not self._preferred_jieba
+        self._jieba_auto_checked = False
         self._updating_jieba = False
         self.accepted = False
         self.selected_config = None
@@ -1654,12 +1655,15 @@ class _ConversionConfigDialog:
             self.combo.setCurrentIndex(selected_index)
         self.jieba_checkbox.setChecked(
             default_config in self._jieba_configs.values())
+        if self.jieba_checkbox.isChecked():
+            self._jieba_auto_checked = True
         if self._jieba_probe is not None:
             self._poll_jieba_probe()
             if self._probe_state == "pending":
                 timer_type = getattr(qt_widgets, "QTimer", None)
                 if timer_type is not None:
                     self._probe_timer = timer_type(self.dialog)
+                    self.dialog.finished.connect(self._stop_probe_timer)
                     self._probe_timer.setInterval(50)
                     self._probe_timer.timeout.connect(self._poll_jieba_probe)
                     self._probe_timer.start()
@@ -1706,7 +1710,9 @@ class _ConversionConfigDialog:
             if self._preferred_jieba and not self._direction_reselected:
                 status += "\n" + self._translator.text("config.jieba_reselect")
         if self._probe_state == "available" and self._preferred_jieba \
-                and not self._direction_reselected and base_config == self._default_base:
+                and not self._direction_reselected and base_config == self._default_base \
+                and not self._jieba_auto_checked:
+            self._jieba_auto_checked = True
             self.jieba_checkbox.setChecked(True)
         if self._probe_error:
             tooltip = self._translator.text(
@@ -1745,6 +1751,8 @@ class _ConversionConfigDialog:
         elif state == "unavailable":
             self._jieba_configs = {}
         self._update_jieba_state()
+        if state != "pending":
+            self._stop_probe_timer()
 
     def _show_jieba_details(self):
         if not self._probe_error:

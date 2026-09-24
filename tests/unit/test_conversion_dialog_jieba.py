@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
-from opencc_backend.configs import SUPPORTED_CONFIGS
+from opencc_backend.configs import JIEBA_CONFIG_BY_BASE, SUPPORTED_CONFIGS
+from tests.support import fake_qt
 from ui.preview_window import _ConversionConfigDialog
 
 
@@ -63,6 +64,7 @@ def _dialog(probe):
     dialog._default_base = "s2t"
     dialog._preferred_jieba = True
     dialog._direction_reselected = False
+    dialog._jieba_auto_checked = False
     dialog._updating_jieba = False
     dialog.combo = Control("s2t")
     dialog.jieba_checkbox = Control(False)
@@ -71,6 +73,17 @@ def _dialog(probe):
     dialog.continue_button = Control(True)
     dialog.options_panel = SimpleNamespace(update_enablement=lambda _config: None)
     return dialog
+
+
+def _full_dialog(probe):
+    jieba_configs = {
+        base: config for base, config in JIEBA_CONFIG_BY_BASE.items()
+        if config in SUPPORTED_CONFIGS
+    }
+    return _ConversionConfigDialog(
+        fake_qt.make(), SUPPORTED_CONFIGS, "s2t_jieba", jieba_configs,
+        translator=Translator(), jieba_probe=probe,
+    )
 
 
 def test_pending_probe_disables_preferred_jieba_and_success_restores_it():
@@ -117,3 +130,39 @@ def test_failed_preferred_probe_requires_direction_reselection_and_shows_reason(
     dialog.combo.value = "t2s"
     dialog._direction_changed()
     assert dialog.continue_button.enabled
+
+
+def test_user_can_uncheck_preferred_jieba():
+    dialog = _full_dialog(Probe("available"))
+
+    assert dialog.jieba_checkbox.isChecked()
+    dialog.jieba_checkbox.setChecked(False)
+
+    assert not dialog.jieba_checkbox.isChecked()
+    assert dialog._get_config() == "s2t"
+
+
+def test_preferred_jieba_is_checked_once_when_probe_finishes():
+    probe = Probe("pending")
+    dialog = _full_dialog(probe)
+    assert dialog._probe_timer.isActive()
+
+    probe.state = "available"
+    dialog._poll_jieba_probe()
+    assert dialog.jieba_checkbox.isChecked()
+    assert not dialog._probe_timer.isActive()
+
+    dialog.jieba_checkbox.setChecked(False)
+    dialog._poll_jieba_probe()
+
+    assert not dialog.jieba_checkbox.isChecked()
+    assert dialog._get_config() == "s2t"
+
+
+def test_reject_stops_jieba_probe_timer():
+    dialog = _full_dialog(Probe("pending"))
+    assert dialog._probe_timer.isActive()
+
+    dialog.dialog.reject()
+
+    assert not dialog._probe_timer.isActive()
