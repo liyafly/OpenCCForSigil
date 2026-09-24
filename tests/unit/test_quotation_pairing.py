@@ -1,3 +1,5 @@
+import time
+
 from core.models import ConvertRequest, RuleSnapshot
 from core.preview import PreviewSession
 from core.converter import OfficialBackendConverter
@@ -169,3 +171,30 @@ def test_keep_mode_preserves_source_and_creates_no_changes():
     staged, verification = _stage_all(_workflow, planned)
     assert staged[0].converted == '<p>"他說<em>你好</em>"</p>'
     assert verification[0].passed
+
+
+def test_keep_mode_skips_entity_scan(monkeypatch):
+    import core.planner
+
+    calls = 0
+
+    def count_calls(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+
+    monkeypatch.setattr(core.planner, "_feed_quotation_entities", count_calls)
+    _plan('<p>&#12288;汉字</p>', quotation_mode="keep")
+
+    assert calls == 0
+
+
+def test_entity_scan_is_not_quadratic():
+    count = 16_000
+    source = '<html><body>' + "".join(
+        f"<p>&#12288;第{i}段。</p>" for i in range(count)
+    ) + "</body></html>"
+    started = time.perf_counter()
+    _book, _workflow, planned = _plan(source, quotation_mode="corner")
+
+    assert planned
+    assert time.perf_counter() - started < 3

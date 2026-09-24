@@ -60,6 +60,7 @@ def build_conversion_plan(
     block_tags = tuple(tag for tag in document.tags if tag.name.lower() in _BLOCK_LEVEL_ELEMENTS)
     block_tag_ends = tuple(tag.end for tag in block_tags)
     ignored_quote_ranges = _ignored_quotation_ranges(source, document.tags)
+    ignored_quote_starts = tuple(start for start, _end in ignored_quote_ranges)
     attribute_spans = tuple(sorted(
         (attribute.value_start, attribute.value_end, tag_index, attribute_index, attribute.name)
         for tag_index, tag in enumerate(document.tags)
@@ -106,8 +107,10 @@ def build_conversion_plan(
                 block_index,
                 block_tag_ends[block_index - 1] if block_index else 0,
             )
-            _feed_quotation_entities(
-                pairer, source, cursor, target.source_start, ignored_quote_ranges)
+            if request.quotation_mode != "keep":
+                _feed_quotation_entities(
+                    pairer, source, cursor, target.source_start,
+                    ignored_quote_ranges, ignored_quote_starts)
             block_quote_cursors[block_index] = target.source_end
         if target.attribute_name in {"lang", "xml:lang"} or target.tag_name == "dc:language":
             if not request.language_tag or not is_han_language(target.source_text):
@@ -150,8 +153,10 @@ def build_conversion_plan(
 
     for index, cursor in block_quote_cursors.items():
         block_end = block_tags[index].start if index < len(block_tags) else len(source)
-        _feed_quotation_entities(
-            block_pairers[index], source, cursor, block_end, ignored_quote_ranges)
+        if request.quotation_mode != "keep":
+            _feed_quotation_entities(
+                block_pairers[index], source, cursor, block_end,
+                ignored_quote_ranges, ignored_quote_starts)
 
     if request.quotation_mode != "keep":
         unbalanced_blocks = {
@@ -223,15 +228,23 @@ def _ignored_quotation_ranges(source, tags):
         elif not tag.self_closing:
             stack.append((tag.name, tag.end))
     ranges.extend((start, len(source)) for _name, start in stack)
-    return tuple(ranges)
+    ranges.sort()
+    merged = []
+    for start, end in ranges:
+        if merged and start <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        else:
+            merged.append((start, end))
+    return tuple(merged)
 
 
-def _feed_quotation_entities(pairer, source, start, end, ignored_ranges):
+def _feed_quotation_entities(pairer, source, start, end, ignored_ranges, ignored_starts):
     if start >= end:
         return
     for match in _ENTITY_REFERENCE.finditer(source, start, end):
-        if any(range_start <= match.start() < range_end
-               for range_start, range_end in ignored_ranges):
+        position = match.start()
+        index = bisect_right(ignored_starts, position) - 1
+        if index >= 0 and position < ignored_ranges[index][1]:
             continue
         decoded = unescape(match.group())
         if len(decoded) == 1 and decoded in DOUBLE_QUOTE_CHARACTERS:
