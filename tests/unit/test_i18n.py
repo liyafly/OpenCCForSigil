@@ -338,7 +338,7 @@ def test_result_dialog_explains_files_without_a_write(monkeypatch):
         QMessageBox = MessageBox
 
     monkeypatch.setattr(preview_window, "load_qt", lambda: FakeQt)
-    monkeypatch.setattr(preview_window, "ensure_application", lambda _qt: None)
+    monkeypatch.setattr(preview_window, "ensure_application", lambda *_args, **_kwargs: None)
 
     preview_window.show_result(
         status="success",

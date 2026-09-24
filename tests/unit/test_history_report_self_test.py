@@ -234,7 +234,7 @@ def test_history_table_is_not_editable_and_selects_whole_rows():
 
 def test_history_dialog_button_defaults_and_empty_cleanup_state(monkeypatch, tmp_path):
     qt = make_with_table()
-    monkeypatch.setattr(history_window, "ensure_application", lambda *_args: None)
+    monkeypatch.setattr(history_window, "ensure_application", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(history_window, "exec_dialog", lambda *_args: None)
 
     dialog = history_window.show_history(tmp_path / "history", qt_widgets=qt)

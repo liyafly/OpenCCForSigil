@@ -156,9 +156,9 @@ def show_dictionary_inspector(
         book_fingerprint=book_fingerprint,
     )
     qt = load_qt()
-    ensure_application(qt)
-    dialog = qt.QDialog()
     active_translator = translator or Translator("en")
+    ensure_application(qt, language=active_translator.language)
+    dialog = qt.QDialog()
     labels = _labels(active_translator)
     dialog.setWindowTitle(labels["inspector_title"])
     layout = qt.QVBoxLayout(dialog)
@@ -251,11 +251,12 @@ def show_rules_window(
     """Open the manager and return committed rules, or ``None`` on cancel."""
 
     qt = load_qt()
-    ensure_application(qt)
+    active_translator = translator or Translator("en")
+    ensure_application(qt, language=active_translator.language)
     dialog = RuleManagerDialog(
         qt,
         tuple(rules),
-        translator=translator,
+        translator=active_translator,
         official_convert=official_convert,
         config=config,
         profile_id=profile_id,

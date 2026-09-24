@@ -517,7 +517,7 @@ def test_error_dialog_uses_close_as_default_not_details(monkeypatch):
     qt = make_with_table()
     shown = []
     monkeypatch.setattr(preview_window, "_load_ui_qt", lambda _translator: qt)
-    monkeypatch.setattr(preview_window, "ensure_application", lambda *_args: None)
+    monkeypatch.setattr(preview_window, "ensure_application", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(preview_window, "exec_dialog", lambda dialog: shown.append(dialog))
 
     preview_window.show_error(

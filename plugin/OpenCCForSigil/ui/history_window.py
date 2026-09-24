@@ -84,8 +84,8 @@ def show_history(
     """Show recent sessions and invoke root callbacks for inspect/export."""
 
     qt_widgets = qt_widgets or load_qt()
-    ensure_application(qt_widgets)
     translator = translator or Translator(language)
+    ensure_application(qt_widgets, language=translator.language)
     logs_root = Path(logs_root) if logs_root is not None else Path(history_root).parent / "logs"
     try:
         records = HistoryStore(Path(history_root)).load()

@@ -84,7 +84,7 @@ def test_result_done_states_unwritten_files_include_unchanged_subset(
     _MessageBox.messages = []
     fake_qt = type("FakeQt", (), {"QMessageBox": _MessageBox})
     monkeypatch.setattr(preview_window, "load_qt", lambda: fake_qt)
-    monkeypatch.setattr(preview_window, "ensure_application", lambda _qt: None)
+    monkeypatch.setattr(preview_window, "ensure_application", lambda *_args, **_kwargs: None)
     translator = Translator(language)
 
     preview_window.show_result(
@@ -113,7 +113,7 @@ def test_noop_result_offers_scope_return_and_lists_invalid_sources(monkeypatch):
     MessageBox.instances = []
     MessageBox.response = "back"
     monkeypatch.setattr(preview_window, "load_qt", lambda: qt)
-    monkeypatch.setattr(preview_window, "ensure_application", lambda _qt: None)
+    monkeypatch.setattr(preview_window, "ensure_application", lambda *_args, **_kwargs: None)
     translator = Translator("zh-Hans")
 
     values = dict(
@@ -161,7 +161,7 @@ def test_result_box_returns_after_report_is_viewed_and_closed(monkeypatch):
             dialog.accept()
 
     monkeypatch.setattr(preview_window, "load_qt", lambda: qt)
-    monkeypatch.setattr(preview_window, "ensure_application", lambda _qt: None)
+    monkeypatch.setattr(preview_window, "ensure_application", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(preview_window, "exec_dialog", exec_dialog)
 
     result = preview_window.show_result(
@@ -195,7 +195,7 @@ def test_result_status_and_count_rows_are_localized_line_by_line(
     _MessageBox.messages = []
     fake_qt = type("FakeQt", (), {"QMessageBox": _MessageBox})
     monkeypatch.setattr(preview_window, "load_qt", lambda: fake_qt)
-    monkeypatch.setattr(preview_window, "ensure_application", lambda _qt: None)
+    monkeypatch.setattr(preview_window, "ensure_application", lambda *_args, **_kwargs: None)
     translator = Translator(language)
 
     preview_window.show_result(
@@ -272,7 +272,7 @@ def test_success_result_opens_this_sessions_markdown_report(monkeypatch):
 
     fake_qt = type("FakeQt", (), {"QMessageBox": MessageBox})
     monkeypatch.setattr(preview_window, "load_qt", lambda: fake_qt)
-    monkeypatch.setattr(preview_window, "ensure_application", lambda _qt: None)
+    monkeypatch.setattr(preview_window, "ensure_application", lambda *_args, **_kwargs: None)
     opened = []
     clicked_indices = iter((0, 1))
 

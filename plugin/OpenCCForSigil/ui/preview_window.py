@@ -292,7 +292,7 @@ def choose_conversion_config(
     if not configs:
         raise UIUnavailableError(translator.text("error.no_config"))
 
-    ensure_application(qt_widgets)
+    ensure_application(qt_widgets, language=translator.language)
     jieba_configs = {
         base: plugin
         for base, plugin in JIEBA_CONFIG_BY_BASE.items()
@@ -343,7 +343,7 @@ def choose_scope(
     language = initial_language or translator.language
     translator.set_language(language)
     qt_widgets = _load_ui_qt(translator)
-    ensure_application(qt_widgets)
+    ensure_application(qt_widgets, language=language)
     dialog = _ScopeDialog(
         qt_widgets,
         inventory,
@@ -379,7 +379,7 @@ def create_progress_reporter(
 
     translator = translator or Translator("en")
     qt_widgets = _load_ui_qt(translator)
-    ensure_application(qt_widgets)
+    ensure_application(qt_widgets, language=translator.language)
     return ProgressReporter(qt_widgets, total, parent, translator)
 
 
@@ -435,7 +435,7 @@ def show_preview(
     translator = translator or Translator("en")
     qt_widgets = _load_ui_qt(translator)
     previews = tuple(PreviewSession(item.plan) for item in planned)
-    ensure_application(qt_widgets)
+    ensure_application(qt_widgets, language=translator.language)
     dialog = _PreviewDialog(qt_widgets, planned, previews, translator, services)
     exec_dialog(dialog.dialog)
     return PreviewOutcome(
@@ -465,7 +465,7 @@ def show_result(
 
     translator = translator or Translator("en")
     qt_widgets = _load_ui_qt(translator)
-    ensure_application(qt_widgets)
+    ensure_application(qt_widgets, language=translator.language)
     not_written = (
         max(files_scanned - files_changed, 0)
         if files_not_written is None
@@ -564,7 +564,7 @@ def show_error(
 
     translator = translator or Translator("en")
     qt_widgets = _load_ui_qt(translator)
-    ensure_application(qt_widgets)
+    ensure_application(qt_widgets, language=translator.language)
     dialog = qt_widgets.QDialog()
     dialog.setWindowTitle(translator.text("error.title"))
     layout = qt_widgets.QVBoxLayout(dialog)

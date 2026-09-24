@@ -42,9 +42,10 @@ def show_profile_window(
     jieba_pending: bool = False,
 ) -> Profile | None:
     qt = load_qt()
-    ensure_application(qt)
+    active_translator = translator or Translator("en")
+    ensure_application(qt, language=active_translator.language)
     manager = ProfileManagerDialog(
-        qt, tuple(profiles), translator=translator, store=store, selected_id=selected_id,
+        qt, tuple(profiles), translator=active_translator, store=store, selected_id=selected_id,
         available_configs=available_configs, available_rulesets=available_rulesets,
         current_profile=current_profile, active_profile=active_profile, on_delete=on_delete,
         storage_errors=storage_errors, jieba_pending=jieba_pending,

@@ -409,7 +409,7 @@ def test_dictionary_inspector_localizes_config_classification_and_rule_labels(mo
 
     qt.QPlainTextEdit = CaptureText
     monkeypatch.setattr(rules_window, "load_qt", lambda: qt)
-    monkeypatch.setattr(rules_window, "ensure_application", lambda *_args: None)
+    monkeypatch.setattr(rules_window, "ensure_application", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(rules_window, "exec_dialog", lambda *_args: None)
     monkeypatch.setattr(rules_window, "inspect_dictionary", lambda *_args, **_kwargs: inspection)
 
