@@ -36,7 +36,7 @@
 | P-04 CI 的 ARM64 job | 代码已完成 | **从未运行过** → E-01 |
 | P-05 `--flavor` / `--runtime` | 已完成 | — |
 | P-06 装错平台包的提示 | 已完成 | 需宿主实测（第 4 节第 9 项） |
-| P-07 打包 job 与 5 平台冒烟 | 代码已完成 | **没有运行记录** → E-01 |
+| P-07 打包 job 与六个 runtime 冒烟 | 代码已完成 | v0.2.0 候选运行记录待 E-01 |
 | P-08 发布前检查、资产、说明模板 | 已完成 | — |
 
 本机结果：
@@ -91,7 +91,7 @@
 - `plugin/OpenCCForSigil/app/version.py`（`PLUGIN_VERSION`）
 - `pyproject.toml`（`[project] version`）
 - `uv.lock`（`opencc-for-sigil` 包的 `version`，用 `mise exec -- uv lock` 重新生成，不要手改）
-- `tests/unit/test_release_assets.py` 约第 29、34、40 行写死了 `"0.1.0"`
+- `tests/unit/test_release_assets.py` 从 `app.version.PLUGIN_VERSION` 读取期望值，并核对插件 XML、项目元数据和 lockfile 一致
 
 **本次目标**：按用户授权将批次 1 至 9 与 Linux x86_64/cp312 包合并为 v0.2.0。v0.1.0 之后的变更需逐项阅读并用面向用户的内容归纳到 `CHANGELOG.md`；不得把尚未完成的宿主验收描述为通过。
 
@@ -105,9 +105,7 @@
 
 ### E-03 在 Sigil 里验收（P0，需要人来做）
 
-按第 4 节执行，把结果填进第 4 节的表格，提交到仓库。
-
-本次按用户明确授权跳过真实 Sigil 宿主验收。所有宿主格保持“未测”；自动化、发布 CI、attestation 和 package smoke 结果不得改写为宿主验收通过。
+该项需要在真实 Sigil 宿主内人工操作。本次按用户明确授权跳过；第 4 节所有宿主格均标记为“未测”。自动化、发布 CI、attestation 和 package smoke 结果不得改写为宿主验收通过。
 
 ---
 
@@ -202,3 +200,5 @@
 | 4 | Windows ARM64 路线 B2（原生 ARM64 payload） | 实施 / 只支持 x64 模拟 | 先按第 4 节第 13 项确认模拟可用；可用就不做 B2 |
 | 5 | 是否为 Linux 另建 `cp312` payload | 做 / 不做 | 已采纳：单独发布 Linux x86_64/cp312 平台包，Fat 包保持五个 cp314 载荷 |
 | 6 | A-02 的合并规则会把"被单个相同字符隔开"的两处变更合成一条（例如"软件的内存"），用户不能只接受其中一处 | 接受这个粒度 / 改用更复杂的词组边界 | 接受；正确性优先于粒度 |
+
+本次按用户指示跳过 P-11 包体积优化。现有平台包与 Fat 包大小预算及发布资产体积检查继续执行。

@@ -148,9 +148,9 @@ and 30,000,000 bytes for the Fat ZIP. The future shared-data Fat target of
 implemented. Changing an enforced budget requires human review of the measured
 contents and expected release impact.
 
-Tags without a prerelease suffix (for example, `v0.1.0`) publish a regular
+Tags without a prerelease suffix (for example, `v0.2.0`) publish a regular
 GitHub release and mark it latest. Tags with a suffix (for example,
-`v0.1.1-beta`) publish a prerelease without replacing the latest stable release.
+`v0.2.1-beta`) publish a prerelease without replacing the latest stable release.
 The publish job uses `docs/releases/<tag>.md` when present, otherwise GitHub's
 generated notes. Notes must distinguish automated validation from real Sigil
 host acceptance; a regular release does not imply that untested hosts were tested.

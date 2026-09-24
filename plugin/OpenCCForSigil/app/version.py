@@ -1,7 +1,7 @@
 """Single source of truth for the plugin version."""
 
 PLUGIN_NAME = "OpenCCForSigil"
-PLUGIN_VERSION = "0.1.0"
+PLUGIN_VERSION = "0.2.0"
 SUPPORTED_PYTHON_IMPLEMENTATION = "CPython"
 SUPPORTED_PYTHON_MAJOR = 3
 SUPPORTED_PYTHON_MINORS = frozenset({12, 14})

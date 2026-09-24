@@ -27,18 +27,17 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def test_current_plugin_metadata_and_project_versions_are_consistent():
     plugin_xml = ET.parse(ROOT / "plugin" / "OpenCCForSigil" / "plugin.xml").getroot()
-    assert PLUGIN_VERSION == "0.1.0"
     assert plugin_xml.findtext("version") == PLUGIN_VERSION
     assert plugin_xml.findtext("author") == "liyafly"
 
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    assert pyproject["project"]["version"] == "0.1.0"
+    assert pyproject["project"]["version"] == PLUGIN_VERSION
 
     lock = tomllib.loads((ROOT / "uv.lock").read_text(encoding="utf-8"))
     project = next(
         package for package in lock["package"] if package["name"] == "opencc-for-sigil"
     )
-    assert project["version"] == "0.1.0"
+    assert project["version"] == PLUGIN_VERSION
     assert validate_plugin() == PLUGIN_VERSION
 
 
@@ -120,17 +119,17 @@ def test_release_ci_pins_actions_and_attests_all_published_assets():
 
 
 def test_expected_release_zip_names_cover_fat_and_six_platforms():
-    names = expected_zip_names("0.1.0")
+    names = expected_zip_names(PLUGIN_VERSION)
     assert len(names) == 7
-    assert names["fat"] == "OpenCCForSigil_0.1.0.zip"
+    assert names["fat"] == f"OpenCCForSigil_{PLUGIN_VERSION}.zip"
     assert set(names.values()) == {
-        "OpenCCForSigil_0.1.0.zip",
-        "OpenCCForSigil_0.1.0_macos-arm64.zip",
-        "OpenCCForSigil_0.1.0_macos-x86_64.zip",
-        "OpenCCForSigil_0.1.0_windows-x86_64.zip",
-        "OpenCCForSigil_0.1.0_linux-x86_64.zip",
-        "OpenCCForSigil_0.1.0_linux-aarch64.zip",
-        "OpenCCForSigil_0.1.0_linux-x86_64-cp312.zip",
+        f"OpenCCForSigil_{PLUGIN_VERSION}.zip",
+        f"OpenCCForSigil_{PLUGIN_VERSION}_macos-arm64.zip",
+        f"OpenCCForSigil_{PLUGIN_VERSION}_macos-x86_64.zip",
+        f"OpenCCForSigil_{PLUGIN_VERSION}_windows-x86_64.zip",
+        f"OpenCCForSigil_{PLUGIN_VERSION}_linux-x86_64.zip",
+        f"OpenCCForSigil_{PLUGIN_VERSION}_linux-aarch64.zip",
+        f"OpenCCForSigil_{PLUGIN_VERSION}_linux-x86_64-cp312.zip",
     }
 
 

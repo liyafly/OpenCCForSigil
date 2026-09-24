@@ -1,5 +1,49 @@
 # Changelog
 
+## 0.2.0 - 2026-09-24
+
+### Fixed
+
+- Keep each OpenCC phrase replacement together in the preview so a partial
+  acceptance cannot create text that is neither the source nor the conversion.
+- Preserve source spelling and offsets while scanning raw XHTML. Leave comments,
+  CDATA, script/style text, namespaced MathML/SVG elements, ruby annotations,
+  and foreign-language spans outside conversion as specified.
+- Verify that writes change only planned ranges and leave protected content
+  intact; report malformed XHTML, NCX, and metadata with accurate source
+  locations without failing unrelated files.
+- Make protection rules take precedence when they overlap earlier exact rules,
+  assign safe IDs to imported rules, and warn before lossy rule exports.
+- Preserve user settings, profile state, and rule sets across dialogs and
+  upgrades. Use unique temporary preference files and avoid replacing newer
+  schemas or concurrent preference updates.
+- Keep successful book writes successful if later progress or history reporting
+  fails, and show actionable diagnostics for prewrite and export failures.
+- Keep the optional Jieba probe out of standard conversion preflight, cancel
+  background probing cleanly, and retain the saved direction when reopening
+  conversion settings.
+
+### Changed
+
+- Make preview decisions responsive on large books by formatting rows lazily,
+  updating only changed rows, and avoiding repeated conversions, alignments,
+  rule overlays, and payload-tree hashing.
+- Refine conversion, profile, rule, history, progress, and result dialogs with
+  clearer navigation, localized controls, theme-aware colors, accessible
+  shortcuts, stable layouts, and explicit discard/error feedback.
+- Build native payloads on matching hosted runners and test Jieba output across
+  platforms before assembling installable packages.
+
+### Added
+
+- Add a separate Linux x86_64 CPython 3.12/cp312 package for compatible Sigil
+  builds, including Ubuntu 24.04; keep the Fat Plugin on its five cp314 runtimes.
+- Publish seven installable ZIPs with a SHA-256 manifest, test all six platform
+  runtimes, pin GitHub Actions to commit SHAs, and generate GitHub artifact
+  attestations for every ZIP and the checksum manifest.
+- Add diagnostics and regressions for mixed or unbalanced quote changes,
+  skipped XHTML source lines, report counts, and large preview models.
+
 ## 0.1.0 - 2026-09-22
 
 - Connect exact/protect rules, profile storage, rule import/export, a text
