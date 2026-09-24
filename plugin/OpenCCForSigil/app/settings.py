@@ -476,7 +476,7 @@ class RunSettings:
         path, _filter = qt.QFileDialog.getSaveFileName(
             parent, translator.text("settings.history"),
             str(self.storage.paths.exports / (record["session_id"] + ".md")),
-            "Markdown (*.md);;JSON (*.json)")
+            translator.text("settings.export_filter"))
         if not path:
             return
         exporter = export_json if path.lower().endswith(".json") else export_markdown
@@ -496,7 +496,8 @@ class RunSettings:
             raise RuntimeError("run settings are not bound to an active profile and backend")
         translator = Translator(self.language)
         session_id = self.session_id
-        summary = {"session_id": session_id, "status": "preview (not committed)",
+        summary = {"session_id": session_id,
+                   "status": translator.text("settings.preview_not_committed"),
                    "files_scanned": len(planned), "config": self.profile.conversion,
                    "profile_id": self.profile.id,
                    "changes": sum(len(item.plan.changes) for item in planned)}

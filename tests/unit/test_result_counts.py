@@ -132,7 +132,7 @@ def test_noop_result_offers_scope_return_and_lists_invalid_sources(monkeypatch):
     assert "以下源文件 XHTML 不合法，已跳过：" in back_box.text()
     invalid_source = Translator("zh-Hans").text(
         "diagnostic.source_invalid_xhtml", count=1)
-    assert f"Text/bad.xhtml: {invalid_source}" in back_box.text()
+    assert f"Text/bad.xhtml：{invalid_source}" in back_box.text()
     assert "line 1, column 2" not in back_box.text()
     assert [button.label for button in back_box.buttons] == ["返回文件选择", "关闭"]
     assert back_box.default_button is back_box.buttons[1]

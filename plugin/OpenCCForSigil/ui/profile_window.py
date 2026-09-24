@@ -283,7 +283,12 @@ class ProfileManagerDialog:
             value = _profile_summary_value(profile, name, self._translator)
             if name == "conversion":
                 value += status
-            options.append(self._translator.text("profile.summary_option", label=label, value=value))
+            options.append(self._translator.text(
+                "profile.summary_option",
+                label=label,
+                separator=self._translator.text("common.label_separator"),
+                value=value,
+            ))
         self.summary.setPlainText("\n".join(options))
         for identifier, check in self.rules_checks.items():
             check.setChecked(identifier in profile.ruleset_ids)

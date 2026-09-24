@@ -393,6 +393,7 @@ def test_import_reassigns_ids_colliding_with_any_saved_ruleset(tmp_path):
     imported_path.write_text(payload, encoding="utf-8")
 
     manager = object.__new__(RuleManagerDialog)
+    manager._translator = Translator("en")
     manager._qt = SimpleNamespace(
         QFileDialog=SimpleNamespace(getOpenFileName=lambda *_args: (str(imported_path), "")),
     )

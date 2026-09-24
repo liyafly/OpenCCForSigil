@@ -126,11 +126,11 @@ def test_validator_rejects_i18n_placeholder_mismatch(artifact: Path, tmp_path: P
     name = "OpenCCForSigil/resources/i18n/zh-Hant.json"
     catalog = _read_member(artifact, name)
     assert isinstance(catalog, dict)
-    catalog["scope.selected_count"] = "已選取 {selected} 個 XHTML 檔案"
+    catalog["scope.selection_count"] = "已選取 {selected} 個 XHTML 檔案"
     target = tmp_path / "i18n-placeholder-mismatch.zip"
     _rewrite_archive(artifact, target, {name: json.dumps(catalog, ensure_ascii=False).encode("utf-8")})
 
-    with pytest.raises(SystemExit, match="i18n resource placeholders differ.*scope.selected_count"):
+    with pytest.raises(SystemExit, match="i18n resource placeholders differ.*scope.selection_count"):
         validate_artifact(target)
 
 
@@ -141,6 +141,12 @@ def test_validator_rejects_i18n_placeholder_mismatch(artifact: Path, tmp_path: P
         "language.name.en",
         "options.region_required",
         "rules.validation.row_field",
+        "common.label_separator",
+        "preview.file_count_one",
+        "preview.file_count_many",
+        "rules.import_filter",
+        "rules.export_default_filename",
+        "rules.export_filter",
     ),
 )
 def test_validator_rejects_archive_missing_new_runtime_i18n_key(

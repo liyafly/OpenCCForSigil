@@ -30,6 +30,7 @@ _TEXT_ARGUMENTS = {
     "showMessage": (0,), "addAction": (0,), "addMenu": (0,), "addButton": (0,),
     "addRow": (0,), "warning": (1, 2), "information": (1, 2),
     "critical": (1, 2), "question": (1, 2), "getText": (1, 2), "getItem": (1, 2),
+    "getOpenFileName": (3,), "getSaveFileName": (3,),
 }
 
 
@@ -69,12 +70,22 @@ def test_supported_catalogs_have_same_keys_and_render_placeholders():
     expected = set(catalogs["en"])
     assert all(set(catalog) == expected for catalog in catalogs.values())
     for language in catalogs:
-        text = Translator(language).text("scope.selected_count", selected=2, total=8)
+        text = Translator(language).text(
+            "scope.selection_count", selected=2, total=8, visible=3)
         assert "2" in text and "8" in text
-        detail = Translator(language).text("preview.change")
-        assert detail and detail != "preview.change"
+        detail = Translator(language).text("preview.status.accepted")
+        assert detail and detail != "preview.status.accepted"
         progress = Translator(language).text("progress.status", phase=Translator(language).text("progress.phase.analyzing"), index=1, total=2, file="a.xhtml")
         assert "a.xhtml" in progress
+
+
+def test_profile_summary_uses_locale_label_separator():
+    for language, separator in (("en", ": "), ("zh-Hans", "："), ("zh-Hant", "：")):
+        translator = Translator(language)
+        assert translator.text("common.label_separator") == separator
+        assert translator.text(
+            "profile.summary_option", label="Name", value="Value", separator=separator
+        ) == f"Name{separator}Value"
 
 
 def test_traditional_chinese_separates_accepting_changes_from_applying_them():
@@ -353,6 +364,6 @@ def test_result_dialog_explains_files_without_a_write(monkeypatch):
     assert len(messages) == 1
     lines = messages[0].splitlines()
     assert lines[2] == "已分析：38 个文件"
-    assert lines[3] == "已写回：37 个文件（应用 37 项修改，跳过 0 项）"
+    assert lines[3] == "已写回：37 个文件（已接受 37 项变更，已跳过 0 项）"
     assert lines[4] == "未写回：1 个文件（其中没有建议变更：1 个）"
-    assert lines[6] == "修改已交给 Sigil，请在 Sigil 中检查并保存 EPUB。"
+    assert lines[6] == "变更已交给 Sigil，请在 Sigil 中检查并保存 EPUB。"

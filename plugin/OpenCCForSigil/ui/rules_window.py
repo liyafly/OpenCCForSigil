@@ -160,24 +160,28 @@ def show_dictionary_inspector(
     ensure_application(qt, language=active_translator.language)
     dialog = qt.QDialog()
     labels = _labels(active_translator)
+    separator = active_translator.text("common.label_separator")
     dialog.setWindowTitle(labels["inspector_title"])
     layout = qt.QVBoxLayout(dialog)
     view = qt.QPlainTextEdit()
     view.setReadOnly(True)
     lines = [
-        f"{labels['input_label']}: {inspection.input}",
-        f"{labels['config_label']}: {configuration_label(active_translator, inspection.config)}",
+        f"{labels['input_label']}{separator}{inspection.input}",
+        f"{labels['config_label']}{separator}"
+        f"{configuration_label(active_translator, inspection.config)}",
     ]
     lines.extend(
-        f"{configuration_label(active_translator, name)}: {value}"
+        f"{configuration_label(active_translator, name)}{separator}{value}"
         for name, value in inspection.comparisons
     )
-    lines.append(f"{labels['final_label']}: {inspection.final}")
+    lines.append(f"{labels['final_label']}{separator}{inspection.final}")
     attribution_key = (
         "rules.attribution_opencc" if inspection.attribution.startswith("OpenCC")
         else "rules.attribution_user"
     )
-    lines.append(f"{labels['attribution_label']}: {active_translator.text(attribution_key)}")
+    lines.append(
+        f"{labels['attribution_label']}{separator}"
+        f"{active_translator.text(attribution_key)}")
     for item in inspection.classifications:
         category = active_translator.text(f"preview.category_value.{item.category}")
         if category == f"preview.category_value.{item.category}":
@@ -791,7 +795,7 @@ class RuleManagerDialog:
             self.dialog,
             self._labels["import"],
             "",
-            "Rules (*.json *.tsv *.csv *.txt);;All files (*)",
+            self._translator.text("rules.import_filter"),
         )
         if not path:
             return
@@ -936,8 +940,8 @@ class RuleManagerDialog:
         path, _ = self._qt.QFileDialog.getSaveFileName(
             self.dialog,
             self._labels["export"],
-            "rules.json",
-            "JSON (*.json);;TSV (*.tsv);;CSV (*.csv);;OpenCC TXT (*.txt)",
+            self._translator.text("rules.export_default_filename"),
+            self._translator.text("rules.export_filter"),
         )
         if not path:
             return

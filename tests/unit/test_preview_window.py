@@ -28,7 +28,7 @@ class _FakeDialog:
 
 def _preview_dialog(
     change_count: int = 3, current_row: int = 1, *, ui_preferences=None,
-    preserve_dialog=False,
+    preserve_dialog=False, language="en",
 ):
     changes = tuple(
         TokenChange(
@@ -53,7 +53,7 @@ def _preview_dialog(
     ),)
     qt = make_with_table()
     dialog = _PreviewDialog(
-        qt, planned, (preview,), Translator("en"), None,
+        qt, planned, (preview,), Translator(language), None,
         ui_preferences=ui_preferences,
     )
     if not preserve_dialog:
@@ -61,6 +61,27 @@ def _preview_dialog(
     if current_row >= 0:
         dialog._set_current_row(current_row)
     return dialog, preview, dialog.table_model
+
+
+def test_apply_button_uses_singular_for_one_change():
+    dialog, _preview, _model = _preview_dialog(change_count=1, current_row=0)
+
+    dialog._accept_this()
+
+    assert dialog.apply_button.text() == "Apply 1 change to 1 file"
+
+
+def test_preview_detail_uses_translated_label_separator():
+    translator = Translator("zh-Hans")
+    dialog, _preview, _model = _preview_dialog(
+        change_count=1, current_row=0, language="zh-Hans")
+
+    detail = dialog.detail.toPlainText()
+    label = translator.text("preview.rule")
+    assert f"{label}: " not in detail
+    assert (
+        f"{label}{translator.text('common.label_separator')}test-rule" in detail
+    )
 
 
 def test_preview_window_splitter_and_size_preferences_restore():

@@ -524,7 +524,10 @@ def show_result(
         for item in diagnostics:
             if isinstance(item, (tuple, list)) and len(item) >= 2:
                 file_name, code = item[:2]
-                row = f"{file_name}: {diagnostic_summary(translator, str(code))}"
+                row = (
+                    f"{file_name}{translator.text('common.label_separator')}"
+                    f"{diagnostic_summary(translator, str(code))}"
+                )
                 rows.append(row)
             else:
                 rows.append(str(item))
@@ -1240,7 +1243,9 @@ class _PreviewDialog:
     def _populate_filter(
         combo: Any, label: str, values: Sequence[Tuple[str, str]], translator: Translator,
     ) -> None:
-        combo.addItem(f"{label}: {translator.text('preview.filter_all')}", None)
+        combo.addItem(
+            f"{label}{translator.text('common.label_separator')}"
+            f"{translator.text('preview.filter_all')}", None)
         for display, value in values:
             combo.addItem(str(display), str(value))
 
@@ -1375,7 +1380,9 @@ class _PreviewDialog:
                     line=line,
                     column=column,
                 )
-                rows.append(f"{href}: {location}")
+                rows.append(
+                    f"{href}{self._translator.text('common.label_separator')}{location}"
+                )
         return tuple(rows)
 
     def _refresh(self, *_args, recalculate_counts=False, refresh_statuses=False) -> None:
@@ -1462,10 +1469,22 @@ class _PreviewDialog:
             status_key = "preview.apply_status_pending"
             status_values = {"count": totals["undecided"]}
         elif accepted_count:
-            apply_key = "preview.apply_decisions_one" if len(accepted_files) == 1 else "preview.apply_decisions_many"
+            apply_key = (
+                "preview.apply_decisions_one"
+                if accepted_count == 1
+                else "preview.apply_decisions_many"
+            )
+            file_count_key = (
+                "preview.file_count_one"
+                if len(accepted_files) == 1
+                else "preview.file_count_many"
+            )
             self.apply_button.setText(self._translator.text(
-                apply_key, changes=accepted_count,
-                files=len(accepted_files)))
+                apply_key,
+                changes=accepted_count,
+                files=self._translator.text(
+                    file_count_key, count=len(accepted_files)),
+            ))
             status_key = "preview.apply_status_ready"
             status_values = {}
         else:
@@ -1547,17 +1566,17 @@ class _PreviewDialog:
             count, files = getattr(self, "_group_stats", {}).get(change.group_id, (1, 1))
             group_text = "\n" + self._translator.text(
                 "preview.group_explanation", count=count, files=files)
-        self.detail.setPlainText(
-            f"{self._translator.text('preview.rule')}: {change.rule_source}\n"
-            f"{self._translator.text('preview.category')}: "
+        separator = self._translator.text("common.label_separator")
+        self.detail.setPlainText("\n".join((
+            f"{self._translator.text('preview.rule')}{separator}{change.rule_source}",
+            f"{self._translator.text('preview.category')}{separator}"
             f"{self._translator.text(f'preview.category_value.{change.category}')}    "
-            f"{self._translator.text('preview.risk')}: "
-            f"{self._translator.text(f'preview.risk_value.{change.risk.lower()}')}\n"
-            f"{self._translator.text('preview.before')}: {source_line}\n"
-            f"{self._translator.text('preview.after')}: {target_line}"
-            f"{group_text}"
-            f"{diagnostic_text}"
-        )
+            f"{self._translator.text('preview.risk')}{separator}"
+            f"{self._translator.text(f'preview.risk_value.{change.risk.lower()}')}",
+            f"{self._translator.text('preview.before')}{separator}{source_line}",
+            f"{self._translator.text('preview.after')}{separator}{target_line}"
+            f"{group_text}{diagnostic_text}",
+        )))
         self._update_group_controls(change.file_id)
 
     def _current_entry(self):
