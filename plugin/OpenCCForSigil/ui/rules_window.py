@@ -344,7 +344,7 @@ class RuleManagerDialog:
         ruleset_row = qt.QHBoxLayout()
         ruleset_row.addWidget(qt.QLabel(self._labels["ruleset"]))
         self.ruleset_combo = qt.QComboBox()
-        self.new_ruleset_button = qt.QPushButton(self._labels["new_ruleset"])
+        self.new_ruleset_button = qt.QPushButton(self._labels["new_set"])
         self.rename_ruleset_button = qt.QPushButton(self._labels["rename_ruleset"])
         for button in (self.new_ruleset_button, self.rename_ruleset_button):
             button.setAutoDefault(False)
@@ -363,6 +363,9 @@ class RuleManagerDialog:
         _configure_rule_table(self.table, qt)
         layout.addWidget(self.table)
         self.conflict_list = qt.QListWidget()
+        self.conflicts_label = qt.QLabel(self._labels["conflicts_title"])
+        layout.addWidget(self.conflicts_label)
+        self.conflict_list.setMaximumHeight(120)
         self.conflict_list.itemClicked.connect(self._select_conflict_item)
         layout.addWidget(self.conflict_list)
         form = qt.QGridLayout()
@@ -371,7 +374,12 @@ class RuleManagerDialog:
         self.type_combo.addItem(self._labels["protect"], "protect")
         self.direction_combo = qt.QComboBox()
         for direction in (*self._available_configs, "*"):
-            self.direction_combo.addItem(direction, direction)
+            label = (
+                self._labels["direction_any"]
+                if direction == "*"
+                else configuration_label(self._translator, direction)
+            )
+            self.direction_combo.addItem(label, direction)
         self.source_edit = qt.QLineEdit()
         self.target_edit = qt.QLineEdit()
         self.scope_combo = qt.QComboBox()
@@ -416,6 +424,9 @@ class RuleManagerDialog:
         layout.addWidget(transfer_box)
 
         test_box = qt.QGroupBox(self._labels["test_group"])
+        test_box.setCheckable(True)
+        test_box.setChecked(False)
+        self.test_box = test_box
         test_layout = qt.QVBoxLayout(test_box)
         test_buttons = qt.QHBoxLayout()
         self.test_button = qt.QPushButton(self._labels["test"])
@@ -465,7 +476,12 @@ class RuleManagerDialog:
         self.ruleset_combo.blockSignals(True)
         self.ruleset_combo.clear()
         for identifier, ruleset in self._rulesets.items():
-            self.ruleset_combo.addItem(ruleset.name or identifier, identifier)
+            label = (
+                self._labels["default_set_name"]
+                if identifier == "default"
+                else ruleset.name or identifier
+            )
+            self.ruleset_combo.addItem(label, identifier)
         index = self.ruleset_combo.findData(self._ruleset_id)
         if index >= 0:
             self.ruleset_combo.setCurrentIndex(index)
@@ -586,8 +602,12 @@ class RuleManagerDialog:
             row = self.table.rowCount()
             self.table.insertRow(row)
             values = (
-                rule.type,
-                rule.direction,
+                self._labels.get(rule.type, rule.type),
+                (
+                    self._labels["direction_any"]
+                    if rule.direction == "*"
+                    else configuration_label(self._translator, rule.direction)
+                ),
                 rule.source,
                 rule.target or rule.source,
                 self._labels.get(f"scope_{rule.scope}", rule.scope),

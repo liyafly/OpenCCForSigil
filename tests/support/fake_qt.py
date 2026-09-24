@@ -45,6 +45,7 @@ class Base:
         self._blocked = False
         self._visible = True
         self._enabled = True
+        self._maximum_height = 16777215
         self._text = ""
         self._tooltip = ""
         self._plain_text = ""
@@ -113,6 +114,12 @@ class Base:
     def setEnabled(self, v):
         self._enabled = bool(v)
 
+    def setMaximumHeight(self, value):
+        self._maximum_height = int(value)
+
+    def maximumHeight(self):
+        return self._maximum_height
+
     def isEnabled(self):
         return self._enabled
 
@@ -150,6 +157,9 @@ class Dialog(Base):
         super().__init__(*args, **kwargs)
         self.finished = Signal()
         self.result = None
+
+    def minimumSizeHint(self):
+        return None
 
     def done(self, result):
         self.result = result
@@ -341,6 +351,32 @@ class Button(Check):
 
     def click(self):
         self.clicked.emit(False)
+
+
+class GroupBox(Base):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._checkable = False
+        self._checked = True
+        self._maximum_height = 16777215
+
+    def setCheckable(self, value):
+        self._checkable = bool(value)
+
+    def isCheckable(self):
+        return self._checkable
+
+    def setChecked(self, value):
+        self._checked = bool(value)
+
+    def isChecked(self):
+        return self._checked
+
+    def setMaximumHeight(self, value):
+        self._maximum_height = int(value)
+
+    def maximumHeight(self):
+        return self._maximum_height
 
 
 class SpinBox(Base):
@@ -566,7 +602,6 @@ def make():
         "QTextEdit",
         "QLineEdit",
         "QScrollArea",
-        "QGroupBox",
         "QMenu",
         "QTableView",
         "QTableWidget",
@@ -589,6 +624,7 @@ def make():
     qt.QCheckBox = type("QCheckBox", (Check,), {})
     qt.QRadioButton = type("QRadioButton", (Radio,), {})
     qt.QPushButton = type("QPushButton", (Button,), {})
+    qt.QGroupBox = type("QGroupBox", (GroupBox,), {})
     qt.QComboBox = type("QComboBox", (Combo,), {})
     qt.QComboBox.AdjustToMinimumContentsLengthWithIcon = 6
     qt.QSizePolicy = SimpleNamespace(Preferred=0, Maximum=1)

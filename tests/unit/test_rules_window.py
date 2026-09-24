@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+import pytest
 from tests.support.fake_qt import make_with_table
 
 from rules.models import Rule
@@ -18,6 +19,7 @@ from ui.rules_window import (
     review_import,
 )
 from ui.i18n import Translator
+from ui.i18n import configuration_label
 from ui import rules_window
 
 
@@ -132,6 +134,7 @@ def _manager(rules, *, config="s2t", row=0, rule_type="exact", source="术语", 
         QMessageBox=QMessageBox,
     )
     manager._labels = {"title": "Rules"}
+    manager._translator = Translator("en")
     manager.rules = list(rules)
     manager._profile_id = "profile"
     manager._book_fingerprint = "book-hash"
@@ -239,6 +242,43 @@ def test_reject_without_rule_changes_does_not_prompt():
 
     assert confirm_calls == []
     assert manager.dialog.result == 0
+
+
+def test_rule_table_and_default_ruleset_use_localized_labels():
+    qt = make_with_table()
+    rule = Rule(id="localized", source="术语", target="专名", direction="s2t")
+    wildcard = Rule(
+        id="wildcard", type="protect", source="受保护", direction="*"
+    )
+    translator = Translator("zh-Hans")
+    manager = RuleManagerDialog(qt, (rule, wildcard), translator=translator)
+
+    assert manager.table.item(0, 0).text() == translator.text("rules.exact")
+    assert manager.table.item(0, 1).text() == configuration_label(translator, "s2t")
+    assert manager.table.item(1, 0).text() == translator.text("rules.protect")
+    assert manager.table.item(1, 1).text() == translator.text("rules.direction_any")
+    any_index = manager.direction_combo.findData("*")
+    assert manager.direction_combo.itemText(any_index) == translator.text("rules.direction_any")
+    assert manager.ruleset_combo.itemText(0) == translator.text("rules.default_set_name")
+    assert manager.new_ruleset_button.text() == translator.text("rules.new_set")
+
+
+def test_rule_conflicts_have_a_bounded_section_and_test_box_starts_collapsed():
+    manager = RuleManagerDialog(make_with_table(), (), translator=Translator("en"))
+
+    assert manager.conflicts_label.text() == Translator("en").text("rules.conflicts_title")
+    assert manager.conflict_list.maximumHeight() == 120
+    assert manager.test_box.isCheckable()
+    assert not manager.test_box.isChecked()
+
+
+def test_rules_window_minimum_height_fits_common_screen():
+    manager = RuleManagerDialog(make_with_table(), (), translator=Translator("en"))
+    hint = manager.dialog.minimumSizeHint()
+    if hint is None:
+        pytest.skip("fake Qt does not calculate widget layout sizes")
+
+    assert hint.height() < 600
 
 
 def test_direction_default_is_selected_from_current_config():
