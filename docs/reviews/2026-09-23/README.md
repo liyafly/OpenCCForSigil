@@ -36,5 +36,6 @@ scripts/
 - `packaging/` 下的脚本会联网下载 PyPI wheel、GitHub Release 资产和上游源码，缓存在 `build/review-cache/`（git 忽略，可随时删除）。
 - `round1/bench_preview.py` 只适用于基线 `b2f674b` 的列表式预览；在当前代码上会直接提示并退出。当前代码请看 `round2/preview_repro.py` 与 `round2/perf_model.py`。
 - `round2/fakeqt.py` 是按真实 Qt 信号规则写的假 Qt，只用于复现，不能代替在 Sigil 中的实测。
+- `round2/probe_check.py`、`round2/s1_jieba_loop.py` 和 `round2/preview_repro.py` 对应提交 `263f657`；自 `4706a92` 起不再适用于当前实现。
 - 这些脚本用于复现与核对，不是回归测试。修复时应按文档各条目的"验证"部分把场景写进 `tests/`。
 - 脚本通过仓库的 `ruff check .`（`make check` 的一部分）。
