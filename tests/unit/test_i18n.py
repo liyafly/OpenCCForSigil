@@ -131,7 +131,7 @@ def test_ui_strings_live_in_the_three_catalogs_and_cover_configs_and_diagnostics
             "diagnostic.mixed_script",
             "diagnostic.inline_boundary",
             "diagnostic.quote_unbalanced",
-            "diagnostic.source_invalid_xhtml",
+            "diagnostic.source_invalid",
         ))
         assert all(key in catalog for key in (
             "rules.validation.row_field",

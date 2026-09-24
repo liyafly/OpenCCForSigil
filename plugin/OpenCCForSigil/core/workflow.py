@@ -16,7 +16,7 @@ from core.staging import StagedFile, StagingArea, source_sha256
 from core.verifier import verify_staged_file
 from document.tokenizer import TokenizedDocument, TokenizerOptions, tokenize_xhtml
 from document.validation import validate_xhtml_syntax
-from document.xml_processor import tokenize_xml
+from document.xml_processor import XMLDocumentError, tokenize_xml
 from transforms.language_tags import with_language_targets
 from opencc_backend.backend import OpenCCBackend
 from sigil.adapter import CommitError, CommitResult, SigilBookAdapter
@@ -520,11 +520,35 @@ class ConversionWorkflow:
                     replace(plan, diagnostics=(diagnostic,)),
                 )
         if kind in {"ncx", "metadata"}:
-            tokenized = tokenize_xml(
-                source_document.source, document_kind=kind,
-                convert_metadata=bool(self.targets and self.targets.include_metadata),
-                include_language=bool(self.request.language_tag),
-            )
+            try:
+                tokenized = tokenize_xml(
+                    source_document.source, document_kind=kind,
+                    convert_metadata=bool(self.targets and self.targets.include_metadata),
+                    include_language=bool(self.request.language_tag),
+                )
+            except XMLDocumentError as exc:
+                tokenized = TokenizedDocument(source_document.source, (), ())
+                plan = build_conversion_plan(
+                    file_id=source_document.file_id,
+                    source=source_document.source,
+                    document=tokenized,
+                    backend=backend if backend is not None else self.backend,
+                    check_cancel=check_cancel,
+                    request=self.request,
+                    session_id=self.session_id,
+                    profile_id=self.profile_id,
+                    document_kind=kind,
+                    converter=converter,
+                )
+                diagnostic = Diagnostic(
+                    "SOURCE_INVALID_XHTML", str(exc),
+                    line=getattr(exc, "line", None),
+                    column=getattr(exc, "column", None),
+                )
+                return PlannedDocument(
+                    source_document, tokenized,
+                    replace(plan, diagnostics=(diagnostic,)),
+                )
         else:
             tokenized = tokenize_xhtml(source_document.source, self.tokenizer_options)
             if self.request.language_tag:

@@ -125,9 +125,43 @@ def test_language_group_cannot_be_partially_accepted():
         flow.finalize(previews)
 
 
-def test_malformed_ncx_aborts_before_writes():
+@pytest.mark.parametrize(("invalid_target", "invalid_source"), (
+    ("ncx", '<ncx><navLabel>汉字</ncx>'),
+    ("metadata", '<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">'
+                  '<dc:title>汉字</metadata>'),
+))
+def test_malformed_extended_xml_is_skipped_while_other_files_convert(
+    invalid_target, invalid_source,
+):
     book = Book()
-    book.files['ncx'] = '<ncx><navLabel>汉字</ncx>'
-    with pytest.raises(ValueError, match='invalid ncx XML'):
-        workflow(book).plan()
-    assert not book.writes
+    if invalid_target == "ncx":
+        book.files["ncx"] = invalid_source
+    else:
+        book.metadata = invalid_source
+
+    flow = workflow(book)
+    planned = flow.plan()
+    invalid = next(item for item in planned if item.source.document_kind == invalid_target)
+    diagnostic = next(
+        item for item in invalid.plan.diagnostics
+        if item.code == "SOURCE_INVALID_XHTML")
+    assert invalid.plan.changes == ()
+    assert diagnostic.line == 1
+    assert invalid_source.index("</") < diagnostic.column <= invalid_source.index("</") + 7
+    assert next(item for item in planned if item.source.file_id == "chapter").plan.changes
+
+    previews = flow.preview()
+    for preview in previews:
+        preview.accept_all()
+    staged = flow.stage(flow.finalize(previews))
+    flow.verify(staged)
+    flow.commit(staged)
+
+    assert invalid.source.source == invalid_source
+    assert "chapter" in book.writes
+    assert invalid.source.file_id not in book.writes
+    invalid_sources = tuple(
+        item.source.href for item in planned
+        if any(value.code == "SOURCE_INVALID_XHTML" for value in item.plan.diagnostics)
+    )
+    assert invalid.source.href in invalid_sources

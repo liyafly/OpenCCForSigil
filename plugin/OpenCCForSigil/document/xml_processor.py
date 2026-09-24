@@ -16,6 +16,12 @@ METADATA_FIELDS = frozenset({"title", "creator", "contributor", "publisher", "de
 class XMLDocumentError(ValueError):
     """Malformed/unsafe XML cannot enter the conversion plan."""
 
+    def __init__(self, message: str, *, line: int | None = None,
+                 column: int | None = None) -> None:
+        self.line = line
+        self.column = column
+        super().__init__(message)
+
 
 @dataclass
 class _Node:
@@ -56,6 +62,14 @@ def tokenize_xml(
     tags = []
     in_cdata = False
 
+    def source_error(message: str) -> XMLDocumentError:
+        line = max(int(parser.CurrentLineNumber), 1)
+        return XMLDocumentError(
+            message,
+            line=line,
+            column=max(int(parser.CurrentColumnNumber) + 1, 1),
+        )
+
     def position() -> int:
         return bisect_left(offsets, parser.CurrentByteIndex)
 
@@ -66,13 +80,13 @@ def tokenize_xml(
             expected = "ncx" if document_kind == "ncx" else "metadata"
             allowed_namespace = NCX if document_kind == "ncx" else OPF
             if local != expected or namespace not in {"", allowed_namespace}:
-                raise XMLDocumentError(f"expected {expected} XML root")
+                raise source_error(f"expected {expected} XML root")
         nodes.append(node)
         stack.append(node)
         begin = position()
         tag = _parse_tag(source, begin, _find_markup_end(source, begin + 1))
         if tag is None:
-            raise XMLDocumentError("XML start tag has no source span")
+            raise source_error("XML start tag has no source span")
         tags.append(tag)
 
     def end(_name):
@@ -80,7 +94,7 @@ def tokenize_xml(
         if source.startswith("</", begin):
             tag = _parse_tag(source, begin, _find_markup_end(source, begin + 2))
             if tag is None:
-                raise XMLDocumentError("XML end tag has no source span")
+                raise source_error("XML end tag has no source span")
             tags.append(tag)
         stack.pop()
 
@@ -108,7 +122,7 @@ def tokenize_xml(
             elif cursor < len(source) and source[cursor] == char:
                 cursor += 1
             else:
-                raise XMLDocumentError("XML text callback does not match its original source")
+                raise source_error("XML text callback does not match its original source")
         texts.append((stack[-1], begin, cursor))
 
     def reject_entity(*_args):
@@ -124,7 +138,11 @@ def tokenize_xml(
     try:
         parser.Parse(source.encode("utf-8"), True)
     except (expat.ExpatError, UnicodeError) as exc:
-        raise XMLDocumentError(f"invalid {document_kind} XML: {exc}") from exc
+        line = max(int(exc.lineno), 1) if isinstance(exc, expat.ExpatError) else None
+        column = max(int(exc.offset) + 1, 1) if isinstance(exc, expat.ExpatError) else None
+        raise XMLDocumentError(
+            f"invalid {document_kind} XML: {exc}", line=line, column=column,
+        ) from exc
 
     author_ids = {
         node.attributes["id"] for node in nodes
