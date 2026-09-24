@@ -10,7 +10,7 @@ from app.profiles import Profile, ProfileFutureSchemaError, ProfileStore
 from core.models import RuleSnapshot
 from rules.store import RuleSet, RuleSetFutureSchemaError, RuleStore
 from opencc_backend.configs import comparison_configs
-from ui.i18n import profile_display_name, show_error_details
+from ui.i18n import Translator, profile_display_name, show_error_details
 from ui.qt import ask_confirmation, exec_dialog
 
 
@@ -469,7 +469,7 @@ class RunSettings:
         from logging_ext.report import render_markdown
         self.show_text(render_markdown(record["summary"], record["commit_manifest"],
                                        record["provenance"]),
-                       translator.text("settings.history"), qt, parent)
+                       translator.text("settings.history"), qt, parent, translator)
 
     def export_report(self, record, full, diff, translator, qt, parent):
         from logging_ext.report import export_json, export_markdown
@@ -522,7 +522,8 @@ class RunSettings:
                            translator, qt, parent)
 
     @staticmethod
-    def show_text(text, title, qt, parent):
+    def show_text(text, title, qt, parent, translator=None):
+        translator = translator or Translator()
         dialog = qt.QDialog(parent)
         dialog.setWindowTitle(title)
         dialog.resize(720, 520)
@@ -531,6 +532,17 @@ class RunSettings:
         view.setReadOnly(True)
         view.setPlainText(text)
         layout.addWidget(view)
+        button_box_type = getattr(qt, "QDialogButtonBox", None)
+        standard_buttons = getattr(button_box_type, "StandardButton", button_box_type)
+        close_standard = getattr(standard_buttons, "Close", None)
+        if button_box_type is not None and close_standard is not None:
+            button_box = button_box_type(close_standard, dialog)
+            button_box.button(close_standard).clicked.connect(dialog.accept)
+            layout.addWidget(button_box)
+        else:
+            close_button = qt.QPushButton(translator.text("common.close"), dialog)
+            close_button.clicked.connect(dialog.accept)
+            layout.addWidget(close_button)
         exec_dialog(dialog)
 
 

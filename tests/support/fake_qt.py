@@ -725,8 +725,18 @@ def make_with_table():
 
 
 class ButtonBox(Base):
-    StandardButton = type("SB", (), {"Cancel": 0x400000})
+    StandardButton = type("SB", (), {"Cancel": 0x400000, "Close": 0x800000})
     ButtonRole = type("BR", (), {"ActionRole": 3, "AcceptRole": 0, "RejectRole": 1})
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._buttons = {}
+        close = self.StandardButton.Close
+        if close in args:
+            self._buttons[close] = Button("Close")
+
+    def button(self, standard):
+        return self._buttons.get(standard)
 
     def addButton(self, *a):
         b = Button(a[0] if isinstance(a[0], str) else f"<standard {a[0]:#x}>")

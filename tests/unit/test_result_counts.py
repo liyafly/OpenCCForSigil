@@ -148,6 +148,36 @@ def test_noop_result_offers_scope_return_and_lists_invalid_sources(monkeypatch):
     assert escape_box.escape_button is escape_box.buttons[1]
 
 
+def test_result_box_returns_after_report_is_viewed_and_closed(monkeypatch):
+    qt = fake_qt.make()
+    events = []
+
+    def exec_dialog(dialog):
+        if isinstance(dialog, qt.QMessageBox):
+            events.append("result")
+            dialog._clicked_button = dialog.buttons[0 if events.count("result") == 1 else 1]
+        else:
+            events.append("report")
+            dialog.accept()
+
+    monkeypatch.setattr(preview_window, "load_qt", lambda: qt)
+    monkeypatch.setattr(preview_window, "ensure_application", lambda _qt: None)
+    monkeypatch.setattr(preview_window, "exec_dialog", exec_dialog)
+
+    result = preview_window.show_result(
+        status="success",
+        files_scanned=1,
+        files_changed=1,
+        accepted_changes=1,
+        skipped_changes=0,
+        report_text="Full report",
+        translator=Translator("en"),
+    )
+
+    assert result == "close"
+    assert events == ["result", "report", "result"]
+
+
 @pytest.mark.parametrize("language", ("en", "zh-Hans", "zh-Hant"))
 @pytest.mark.parametrize(
     ("status", "accepted", "skipped", "status_key", "reminder"),
@@ -244,8 +274,14 @@ def test_success_result_opens_this_sessions_markdown_report(monkeypatch):
     monkeypatch.setattr(preview_window, "load_qt", lambda: fake_qt)
     monkeypatch.setattr(preview_window, "ensure_application", lambda _qt: None)
     opened = []
+    clicked_indices = iter((0, 1))
+
+    def advance_box(dialog):
+        dialog.clicked_index = next(clicked_indices)
+
     monkeypatch.setattr(
         preview_window, "_show_report_text", lambda _qt, text, _translator: opened.append(text))
+    monkeypatch.setattr(preview_window, "exec_dialog", advance_box)
     translator = Translator("zh-Hans")
     assert preview_window.show_result(
         status="success", files_scanned=1, files_changed=1,

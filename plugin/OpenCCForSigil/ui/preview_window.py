@@ -524,12 +524,13 @@ def show_result(
         close = box.addButton(translator.text("common.close"), qt_widgets.QMessageBox.AcceptRole)
         box.setDefaultButton(close)
         box.setEscapeButton(close)
-        exec_dialog(box)
-        clicked = box.clickedButton()
-        if view_report is not None and clicked is view_report:
-            _show_report_text(qt_widgets, report_text, translator)
-            return "close"
-        return "back_to_scope" if back is not None and clicked is back else "close"
+        while True:
+            exec_dialog(box)
+            clicked = box.clickedButton()
+            if view_report is not None and clicked is view_report:
+                _show_report_text(qt_widgets, report_text, translator)
+                continue
+            return "back_to_scope" if back is not None and clicked is back else "close"
     method(None, translator.text("app.title"), message)
     return None
 

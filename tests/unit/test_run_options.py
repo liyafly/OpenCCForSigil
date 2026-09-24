@@ -3,6 +3,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.settings import RunSettings
+from app import settings as settings_module
 from app.profiles import Profile
 from opencc_backend.configs import V1_CONFIGS
 from tests.support.fake_qt import make as make_fake_qt
@@ -57,6 +58,21 @@ def test_option_enablement_truth_table():
 def test_pivot_chain_profile_list_uses_string_item_key():
     assert _pivot_chain_key(["t2s", "s2tw"]) == "t2s>s2tw"
     assert _decode_pivot_chain("t2s>s2tw") == ("t2s", "s2tw")
+
+
+def test_report_text_dialog_has_a_close_button(monkeypatch):
+    qt = make_fake_qt()
+    dialogs = []
+    monkeypatch.setattr(settings_module, "exec_dialog", lambda dialog: dialogs.append(dialog))
+
+    RunSettings.show_text("Report contents", "Report", qt, None)
+
+    dialog = dialogs[0]
+    button_box = dialog._layout.children[-1]
+    close_button = button_box.button(qt.QDialogButtonBox.StandardButton.Close)
+    assert close_button is not None
+    close_button.clicked.emit()
+    assert dialog.result == 1
 
 
 class StatefulCombo:
