@@ -60,10 +60,11 @@ def test_failed_optional_probe_removes_only_jieba_and_is_cached(tmp_path):
     assert "_jieba_error" not in (result.error or "")
 
 
-def test_successful_probe_checks_every_advertised_jieba_config(tmp_path):
+def test_successful_probe_checks_one_config_and_advertises_all_jieba(tmp_path):
     backend, calls = backend_with_loader(tmp_path, fail_optional=False)
     assert backend.available_configs() == SUPPORTED_CONFIGS
-    assert set(JIEBA_CONFIGS) <= set(calls)
+    assert calls.count("s2t_jieba") == 1
+    assert set(calls) <= {"s2t", "s2t_jieba"}
     assert backend.jieba_error is None
     assert backend.self_test().passed
 

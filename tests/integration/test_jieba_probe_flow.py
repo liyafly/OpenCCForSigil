@@ -183,3 +183,28 @@ def test_cancel_before_text_ui_does_not_wait_for_daemon_probe(monkeypatch, tmp_p
     assert started.is_set()
     assert elapsed < 0.5
     assert not finished.is_set()
+
+
+def test_jieba_probe_constructs_one_config_and_reports_all_configs():
+    constructed = []
+
+    class Converter:
+        def convert(self, _text):
+            return "漢字"
+
+    class Module:
+        @staticmethod
+        def OpenCC(config):
+            constructed.append(config)
+            return Converter()
+
+    probe = JiebaProbe(
+        Module,
+        (*V1_CONFIGS, *JIEBA_CONFIGS),
+        native_plugin=object(),
+        identity=("test-payload",),
+    )
+
+    assert probe.probe()
+    assert constructed == ["s2t_jieba"]
+    assert set(JIEBA_CONFIGS) <= set(probe.available_configs_nonblocking())

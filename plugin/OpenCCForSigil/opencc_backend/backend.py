@@ -125,10 +125,9 @@ class JiebaProbe:
                 raise RuntimeError("official native Jieba is not included in this payload")
             if not set(JIEBA_CONFIGS) <= set(self._available_configs):
                 raise RuntimeError("official native Jieba configurations are incomplete")
-            for config in JIEBA_CONFIGS:
-                value = self._module.OpenCC(config).convert("汉字")
-                if not isinstance(value, str):
-                    raise TypeError(f"{config} returned a non-text result")
+            value = self._module.OpenCC("s2t_jieba").convert("汉字")
+            if not isinstance(value, str):
+                raise TypeError("s2t_jieba returned a non-text result")
             return True, None, (perf_counter() - started) * 1000
         except Exception as exc:
             return False, str(exc), (perf_counter() - started) * 1000

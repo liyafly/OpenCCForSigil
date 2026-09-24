@@ -18,6 +18,9 @@ annotations remain V1.1 scope and are not silently enabled by a V1 profile.
   picker. Scope selection remains explicit on every invocation.
 - Native conversion cannot be forcibly interrupted mid-call. Worker cancellation
   is cooperative at target boundaries and never writes a partial plan.
+- The optional Jieba probe constructs and exercises only `s2t_jieba`; all
+  advertised Jieba configs share its verified native data, while the selected
+  config is checked when its worker backend is constructed.
 - Completed conversions enter history; cancelled/failed sessions remain in their
   JSONL log and summary. Reports persist full diff only on explicit export.
 
