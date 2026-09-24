@@ -8,12 +8,19 @@ from types import SimpleNamespace
 import pytest
 
 from app.self_test import run_self_test
+from app.profiles import Profile, ProfileStore
 from logging_ext.history import HistoryError, HistoryStore
 from logging_ext.report import ReportError, export_json, export_markdown
 from logging_ext.retention import cleanup
 from tests.support.fake_qt import make_with_table
 from ui import history_window
-from ui.history_window import _configure_history_table, cleanup_with_confirmation, history_rows
+from ui.history_window import (
+    _configure_history_table,
+    _render_table,
+    cleanup_with_confirmation,
+    history_rows,
+)
+from ui.i18n import Translator, configuration_label
 
 
 SESSION_ID = "123e4567-e89b-12d3-a456-426614174000"
@@ -152,9 +159,7 @@ def test_self_test_uses_injected_backend_and_writes_no_book(tmp_path: Path):
 
 
 def test_history_rows_expose_metadata_only():
-    class Translator:
-        def text(self, key, **_values):
-            return {"history.empty_value": "—", "history.status.success": "已完成"}.get(key, key)
+    translator = Translator("en")
 
     rows = history_rows(
         [
@@ -168,16 +173,77 @@ def test_history_rows_expose_metadata_only():
                 },
             }
         ],
-        translator=Translator(),
+        translator=translator,
     )
     expected_date = datetime.fromisoformat("2026-01-01T00:00:00+00:00").astimezone().strftime(
         "%Y-%m-%d %H:%M")
-    assert rows == [(expected_date, "Book.epub", "—", "s2t", "0", "3", "已完成")]
+    assert rows == [(
+        expected_date, "Book.epub", "—", configuration_label(translator, "s2t"),
+        "0", "3", translator.text("history.status.success"),
+    )]
 
 
 def test_history_old_records_show_empty_book_label():
     rows = history_rows([{"recorded_at": "2026-01-01T00:00:00+00:00", "summary": {}}])
     assert rows[0][1] == "—"
+
+
+def test_history_rows_show_profile_name_and_localized_direction_and_sort_counts_numerically(
+    tmp_path,
+):
+    profiles = ProfileStore(tmp_path / "user-data")
+    profiles.save(Profile(id="profile-123456", name="My reading profile"))
+    translator = Translator("zh-Hans")
+    record = {
+        "recorded_at": "2026-01-01T00:00:00+00:00",
+        "session_id": SESSION_ID,
+        "summary": {
+            "profile_id": "profile-123456",
+            "config": "s2t",
+            "files_changed": 12,
+            "changes": 5,
+        },
+    }
+
+    rows = history_rows([record], translator=translator, profile_store=profiles)
+    assert rows[0][2] == "My reading profile"
+    assert rows[0][3] == configuration_label(translator, "s2t")
+
+    qt = make_with_table()
+    table = qt.QTableWidget(0, 7)
+    _render_table(table, [record], qt, translator, profile_store=profiles)
+    assert isinstance(table.item(0, 4).data(qt.Qt.DisplayRole), int)
+    assert isinstance(table.item(0, 5).data(qt.Qt.DisplayRole), int)
+
+
+def test_missing_history_profile_uses_short_id_fallback():
+    rows = history_rows(
+        [{"recorded_at": "2026-01-01T00:00:00+00:00", "summary": {"profile_id": "profile-123456"}}]
+    )
+    assert rows[0][2] == "profile-"
+
+
+def test_history_dialog_uses_the_adjacent_profile_store(monkeypatch, tmp_path):
+    user_data = tmp_path / "user-data"
+    ProfileStore(user_data).save(Profile(id="profile-123456", name="My profile"))
+    history_root = user_data / "history"
+    HistoryStore(history_root).record_session(
+        {**SUMMARY, "profile_id": "profile-123456", "config": "s2t"},
+        MANIFEST,
+        PROVENANCE,
+    )
+    monkeypatch.setattr(history_window, "ensure_application", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(history_window, "exec_dialog", lambda *_args: None)
+
+    qt = make_with_table()
+    dialog = history_window.show_history(
+        history_root, language="zh-Hans", qt_widgets=qt
+    )
+
+    assert dialog.history_table.item(0, 2).text() == "My profile"
+    assert dialog.history_table.item(0, 3).text() == configuration_label(
+        Translator("zh-Hans"), "s2t"
+    )
 
 
 def test_cleanup_confirmation_runs_dry_run_before_delete_and_respects_cancel(tmp_path):

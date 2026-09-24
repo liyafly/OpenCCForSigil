@@ -6,9 +6,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
+from app.profiles import ProfileStore, ProfileValidationError
 from logging_ext.history import HistoryError, HistoryStore
 from logging_ext.retention import RetentionResult, cleanup, retention_policy
-from ui.i18n import Translator
+from ui.i18n import Translator, configuration_label
 from ui.qt import ask_confirmation, ensure_application, exec_dialog, load_qt
 
 
@@ -26,6 +27,7 @@ def _local_datetime(value: str) -> str:
 
 def history_rows(
     records: Sequence[Mapping[str, Any]], *, translator: Any = None,
+    profile_store: ProfileStore | None = None,
 ) -> list[tuple[str, str, str, str, str, str, str]]:
     """Return localized table rows with metadata only."""
 
@@ -33,6 +35,7 @@ def history_rows(
     ordered = sorted(records, key=lambda item: str(item.get("recorded_at", "")), reverse=True)
     rows = []
     empty = tr.text("history.empty_value")
+    profile_names: dict[str, str] = {}
     for record in ordered:
         summary = record.get("summary", {})
         if not isinstance(summary, Mapping):
@@ -41,16 +44,30 @@ def history_rows(
         status_text = tr.text(f"history.status.{status}")
         if status_text == f"history.status.{status}":
             status_text = status or empty
+        profile_id = str(summary.get("profile_id", summary.get("profile", "")) or "")
+        if profile_id and profile_id not in profile_names:
+            profile_names[profile_id] = _profile_name(profile_id, profile_store)
+        config = str(summary.get("config", "") or "")
         rows.append((
             _local_datetime(str(record.get("recorded_at", ""))),
             str(summary.get("book_label") or empty),
-            str(summary.get("profile_id", summary.get("profile", "")) or empty),
-            str(summary.get("config", "") or empty),
+            profile_names.get(profile_id, empty),
+            configuration_label(tr, config) if config else empty,
             str(summary.get("files_changed", summary.get("files_scanned", 0))),
             str(summary.get("changes", 0)),
             status_text,
         ))
     return rows
+
+
+def _profile_name(profile_id: str, profile_store: ProfileStore | None) -> str:
+    if profile_store is not None:
+        try:
+            profile = profile_store.load(profile_id)
+            return profile.name or profile.id[:8]
+        except (OSError, ProfileValidationError):
+            pass
+    return profile_id[:8]
 
 
 def cleanup_with_confirmation(
@@ -122,7 +139,8 @@ def show_history(
         translator.text("history.status"),
     ])
     _configure_history_table(table, qt_widgets)
-    _render_table(table, records, qt_widgets, translator)
+    profile_store = ProfileStore(Path(history_root).parent)
+    _render_table(table, records, qt_widgets, translator, profile_store=profile_store)
     table.setSortingEnabled(True)
     table.sortItems(0, _descending_order(qt_widgets))
     header = table.horizontalHeader()
@@ -187,7 +205,7 @@ def show_history(
                             logs=len(result.removed_log_files)),
         )
         records[:] = HistoryStore(Path(history_root)).load()
-        _render_table(table, records, qt_widgets, translator)
+        _render_table(table, records, qt_widgets, translator, profile_store=profile_store)
         empty.setVisible(not records)
         cleanup_button.setEnabled(bool(records))
 
@@ -204,13 +222,16 @@ def show_history(
     return dialog
 
 
-def _render_table(table, records, qt, translator) -> None:
-    rows = history_rows(records, translator=translator)
+def _render_table(table, records, qt, translator, *, profile_store=None) -> None:
+    rows = history_rows(records, translator=translator, profile_store=profile_store)
     table.setSortingEnabled(False)
     table.setRowCount(len(rows))
     for row, values in enumerate(rows):
         for column, value in enumerate(values):
             item = qt.QTableWidgetItem(value)
+            if column in {4, 5}:
+                role = getattr(qt.Qt, "DisplayRole", 0)
+                item.setData(role, int(value))
             if column == 0:
                 role = getattr(qt.Qt, "UserRole", 32)
                 item.setData(role, records[row].get("session_id"))

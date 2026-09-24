@@ -569,6 +569,22 @@ class TableWidget(Base):
         return Base()
 
 
+class TableItem(Base):
+    def __init__(self, text="", *args):
+        super().__init__(text, *args)
+        self._data = {}
+
+    def setData(self, role, value):
+        self._data[role] = value
+        if role == Qt.DisplayRole:
+            self._text = str(value)
+
+    def data(self, role):
+        if role in self._data:
+            return self._data[role]
+        return self._text if role == Qt.DisplayRole else None
+
+
 class Qt:
     UserRole = 256
     CheckStateRole = 10
@@ -618,7 +634,6 @@ def make():
         "QDialogButtonBox",
         "QAction",
         "QShortcut",
-        "QTableWidgetItem",
         "QTabWidget",
     ):
         setattr(qt, name, type(name, (Base,), {}))
@@ -635,6 +650,7 @@ def make():
     qt.QSpinBox = SpinBox
     qt.QListWidget = type("QListWidget", (ListWidget,), {})
     qt.QTableWidget = type("QTableWidget", (TableWidget,), {})
+    qt.QTableWidgetItem = type("QTableWidgetItem", (TableItem,), {})
     qt.QListWidgetItem = ListItem
     qt.Qt = Qt
     qt.QKeySequence = lambda s: s
