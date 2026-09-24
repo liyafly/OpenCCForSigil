@@ -221,3 +221,16 @@ def test_scope_language_change_retranslates_guide_navigation_and_recovery_notice
         "Text/nav.xhtml " + english.text("scope.navigation_suffix"))
     assert dialog.recovery_notice_label.text() == english.text(
         "recovery.preferences_corrupt", value="preferences.json")
+
+
+def test_single_file_count_remains_visible_when_filter_hides_selected_item():
+    dialog = _ScopeDialog(
+        make_with_table(), FILES, ("a",), "en", Translator("en"),
+        initial_scope=Scope.SINGLE,
+    )
+    dialog.filter_edit.setText("nested/a.xhtml")
+    dialog.filter_edit.textChanged.emit("nested/a.xhtml")
+
+    assert dialog.count_label.text() == "Selected: Text/a.xhtml"
+    assert dialog.selected_ids() == ("a",)
+    assert dialog.list_widget.item(0).isHidden()

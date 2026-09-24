@@ -69,6 +69,7 @@
   "scope.navigation_suffix": "(navigation)",
   "scope.selection_guide": "Check the files to convert in the list.",
   "scope.selection_count": "Selected {selected} / {total} XHTML files (visible after filter: {visible})",
+  "scope.selected_file": "Selected: {file}",
   "scope.choose": "Choose files…",
   "scope.selected_count": "Selected {selected} of {total} XHTML files",
   "scope.all_count": "All {total} XHTML files will be analyzed",

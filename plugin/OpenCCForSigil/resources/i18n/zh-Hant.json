@@ -69,6 +69,7 @@
   "scope.navigation_suffix": "（導覽）",
   "scope.selection_guide": "在清單中勾選要轉換的檔案。",
   "scope.selection_count": "已選 {selected} / {total} 個 XHTML 檔案（篩選後可見 {visible} 個）",
+  "scope.selected_file": "已選擇：{file}",
   "scope.choose": "選擇檔案…",
   "scope.selected_count": "已選擇 {selected} / {total} 個 XHTML 檔案",
   "scope.all_count": "將分析全部 {total} 個 XHTML 檔案",

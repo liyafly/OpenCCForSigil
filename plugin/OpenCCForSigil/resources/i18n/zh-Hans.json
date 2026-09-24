@@ -69,6 +69,7 @@
   "scope.navigation_suffix": "（导航）",
   "scope.selection_guide": "在列表中勾选要转换的文件。",
   "scope.selection_count": "已选 {selected} / {total} 个 XHTML 文件（筛选后可见 {visible} 个）",
+  "scope.selected_file": "已选择：{file}",
   "scope.choose": "选择文件…",
   "scope.selected_count": "已选择 {selected} / {total} 个 XHTML 文件",
   "scope.all_count": "将分析全部 {total} 个 XHTML 文件",

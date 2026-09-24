@@ -2218,8 +2218,17 @@ class _ScopeDialog:
         selected = len(self.selected_ids()) if hasattr(self, "list_widget") else 0
         visible = sum(not self.list_widget.item(index).isHidden()
                       for index in range(total))
-        self.count_label.setText(self._translator.text(
-            "scope.selection_count", selected=selected, total=total, visible=visible))
+        if self.single_radio.isChecked():
+            selected_id = next(iter(self.selected_ids()), None)
+            selected_file = next(
+                (item.href for item in self._inventory if item.file_id == selected_id), None)
+            self.count_label.setText(
+                self._translator.text("scope.selected_file", file=selected_file)
+                if selected_file else self._translator.text("scope.none")
+            )
+        else:
+            self.count_label.setText(self._translator.text(
+                "scope.selection_count", selected=selected, total=total, visible=visible))
         if self.ignored_non_xhtml:
             self.ignored_label.setText(
                 self._translator.text(
