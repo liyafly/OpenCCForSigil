@@ -291,6 +291,7 @@
   "preview.skipped_sources": "Skipped malformed XHTML files:\n{files}",
   "preview.diagnostic_detail": "Diagnostics: {details}",
   "preview.export": "Export report",
+  "preview.export_failed": "Could not export the preview report: {reason}",
   "preview.export_full_diff": "Include full diff",
   "profile.title": "Profiles",
   "profile.use": "Use",

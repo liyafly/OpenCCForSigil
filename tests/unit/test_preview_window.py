@@ -523,3 +523,20 @@ def test_error_dialog_uses_close_as_default_not_details(monkeypatch):
     assert copy_button.autoDefault() is False
     assert close_button.autoDefault() is False
     assert close_button.isDefault()
+
+
+def test_preview_export_failure_is_shown_to_the_user(monkeypatch):
+    dialog, _preview, _model = _preview_dialog()
+    dialog._services = SimpleNamespace(
+        export_preview=lambda *_args: (_ for _ in ()).throw(RuntimeError("disk full")))
+    warnings = []
+    monkeypatch.setattr(
+        dialog._qt.QMessageBox,
+        "warning",
+        staticmethod(lambda parent, title, message: warnings.append((parent, title, message))),
+    )
+
+    dialog._export_preview()
+
+    assert len(warnings) == 1
+    assert "disk full" in warnings[0][2]

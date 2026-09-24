@@ -291,6 +291,7 @@
   "preview.skipped_sources": "已略過的不合法 XHTML 檔案：\n{files}",
   "preview.diagnostic_detail": "診斷：{details}",
   "preview.export": "匯出報告",
+  "preview.export_failed": "無法匯出預覽報告：{reason}",
   "preview.export_full_diff": "包含完整差異",
   "profile.title": "設定檔",
   "profile.use": "使用",

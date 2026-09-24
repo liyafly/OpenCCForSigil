@@ -1089,7 +1089,14 @@ class _PreviewDialog:
             return
         checkbox = getattr(self, "export_full_diff", None)
         include_full_diff = bool(checkbox is not None and checkbox.isChecked())
-        export(self._planned, self._previews, include_full_diff, self._qt, self.dialog)
+        try:
+            export(self._planned, self._previews, include_full_diff, self._qt, self.dialog)
+        except Exception as error:
+            self._qt.QMessageBox.warning(
+                self.dialog,
+                self._translator.text("preview.export"),
+                self._translator.text("preview.export_failed", reason=str(error)),
+            )
 
     @staticmethod
     def _populate_filter(
