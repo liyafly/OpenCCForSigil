@@ -7,6 +7,14 @@ from typing import Any
 
 
 _application: Any = None
+_host_bk: Any = None
+
+
+def set_host_book(bk: Any) -> None:
+    """Remember Sigil's book for its PluginApplication bootstrap."""
+
+    global _host_bk
+    _host_bk = bk
 
 
 def load_qt() -> Any:
@@ -35,7 +43,15 @@ def ensure_application(qt_widgets: Any) -> Any:
     global _application
     application = qt_widgets.QApplication.instance()
     if application is None:
-        application = qt_widgets.QApplication(sys.argv)
+        if _host_bk is not None:
+            try:
+                from plugin_utils import PluginApplication
+
+                application = PluginApplication(sys.argv, bk=_host_bk)
+            except Exception:  # noqa: BLE001 - older Sigil or no plugin_utils
+                application = None
+        if application is None:
+            application = qt_widgets.QApplication(sys.argv)
     _application = application
     return application
 
@@ -85,4 +101,7 @@ def ask_confirmation(qt: Any, parent: Any, title: str, message: str, translator:
     return box.clickedButton() is yes
 
 
-__all__ = ["ask_confirmation", "ensure_application", "enum_value", "exec_dialog", "load_qt"]
+__all__ = [
+    "ask_confirmation", "ensure_application", "enum_value", "exec_dialog", "load_qt",
+    "set_host_book",
+]

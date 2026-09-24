@@ -12,8 +12,10 @@ from app.errors import UserCancelled
 def run(bk: object) -> int:
     """Run the plugin and return Sigil's integer status code."""
     try:
+        from ui.qt import set_host_book
         from app.controller import Controller
 
+        set_host_book(bk)
         return Controller(bk).run()
     except UserCancelled:
         return 1
