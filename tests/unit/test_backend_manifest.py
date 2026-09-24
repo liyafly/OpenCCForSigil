@@ -22,6 +22,9 @@ def test_manifest_is_official_binding_only_and_payload_is_exact():
     assert manifest.python_compatibility["production_baseline"] == "3.14.2"
     assert manifest.python_compatibility["development_ci"] == "3.14.7"
     assert manifest.python_compatibility["patch_participates_in_payload_selection"] is False
+    assert manifest.python_compatibility["additional_runtime_identities"] == [
+        ["CPython", "3.12", "cp312", "linux", "x86_64"]
+    ]
     assert detect_runtime().python_abi.startswith("cp")
     assert detect_runtime().python_version.startswith("3.14.")
     runtime, payload, root = RuntimeSelector().select()
@@ -57,6 +60,28 @@ def test_linux_aarch64_runtime_selects_the_exact_payload(monkeypatch, tmp_path: 
 
     selected = RuntimeSelector(manifest_path=manifest_path).manifest.select(runtime.key)
     assert selected.payload_path == "payloads/linux-aarch64-cp314"
+
+
+def test_linux_x86_64_cp312_runtime_selects_the_exact_payload(tmp_path: Path):
+    source = json.loads(RuntimeSelector().manifest_path.read_text(encoding="utf-8"))
+    record = dict(source["payloads"][0])
+    record.update(
+        python_version="3.12",
+        python_abi="cp312",
+        os="linux",
+        architecture="x86_64",
+        payload_path="payloads/linux-x86_64-cp312",
+    )
+    source["payloads"] = [record]
+    source["config_data"]["payloads"] = {record["payload_path"]: record["config_data"]}
+    manifest_path = tmp_path / "vendor" / "opencc" / "manifest.json"
+    manifest_path.parent.mkdir(parents=True)
+    manifest_path.write_text(json.dumps(source), encoding="utf-8")
+
+    manifest = VendorManifest.load(manifest_path)
+    runtime = RuntimeKey("CPython", 3, 12, "cp312", "linux", "x86_64")
+
+    assert manifest.select(runtime).payload_path == "payloads/linux-x86_64-cp312"
 
 
 def test_platform_package_mismatch_has_structured_runtime_details(tmp_path: Path):
@@ -138,6 +163,7 @@ def test_backend_uses_official_binding_and_runs_self_test():
 def test_formal_runtime_accepts_any_314_patch_only():
     assert supports_formal_runtime("cpython", SimpleNamespace(major=3, minor=14, micro=2))
     assert supports_formal_runtime("cpython", SimpleNamespace(major=3, minor=14, micro=7))
+    assert supports_formal_runtime("cpython", SimpleNamespace(major=3, minor=12, micro=10))
     assert not supports_formal_runtime("cpython", SimpleNamespace(major=3, minor=13, micro=9))
     assert not supports_formal_runtime("cpython", SimpleNamespace(major=3, minor=15, micro=0))
     assert not supports_formal_runtime("pypy", SimpleNamespace(major=3, minor=14, micro=7))

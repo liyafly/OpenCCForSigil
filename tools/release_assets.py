@@ -13,10 +13,10 @@ import xml.etree.ElementTree as ET
 
 try:
     from package_contract import package_asset_name, package_oslist, package_runtime_ids
-    from runtime_matrix import SUPPORTED_RUNTIME_IDENTITIES
+    from runtime_matrix import FAT_RUNTIME_IDENTITIES, SUPPORTED_RUNTIME_IDENTITIES
 except ModuleNotFoundError:  # Imported as tools.release_assets by tests.
     from tools.package_contract import package_asset_name, package_oslist, package_runtime_ids
-    from tools.runtime_matrix import SUPPORTED_RUNTIME_IDENTITIES
+    from tools.runtime_matrix import FAT_RUNTIME_IDENTITIES, SUPPORTED_RUNTIME_IDENTITIES
 
 
 FAT_ASSET_PREFIX = "OpenCCForSigil_"
@@ -24,6 +24,10 @@ CHECKSUMS_NAME = "SHA256SUMS.txt"
 PLATFORM_RUNTIME_IDS = tuple(sorted(
     f"{identity[3]}-{identity[4]}-{identity[2]}"
     for identity in SUPPORTED_RUNTIME_IDENTITIES
+))
+FAT_RUNTIME_IDS = tuple(sorted(
+    f"{identity[3]}-{identity[4]}-{identity[2]}"
+    for identity in FAT_RUNTIME_IDENTITIES
 ))
 
 
@@ -93,7 +97,7 @@ def _validate_zip_contract(
         raise SystemExit(f"{archive_path.name}: package runtimes differ from payload records")
 
     if flavor == "fat":
-        expected_runtimes = list(PLATFORM_RUNTIME_IDS)
+        expected_runtimes = list(FAT_RUNTIME_IDS)
         expected_asset = package_asset_name(version, "fat")
     else:
         if runtime is None:
@@ -149,7 +153,7 @@ def validate_release_assets(asset_dir: Path, version: str) -> None:
     actual_files = {path.name for path in actual_paths if path.is_file()}
     if actual_files != expected_files or len(actual_paths) != len(expected_files):
         raise SystemExit(
-            "release asset directory must contain exactly the six plugin ZIPs and "
+            "release asset directory must contain exactly the seven plugin ZIPs and "
             f"{CHECKSUMS_NAME}; found {sorted(path.name for path in actual_paths)}"
         )
 
@@ -165,7 +169,7 @@ def validate_release_assets(asset_dir: Path, version: str) -> None:
             raise SystemExit(f"invalid or duplicate checksum line: {line!r}")
         parsed[match.group(2)] = match.group(1)
     if parsed != checksums:
-        raise SystemExit(f"{CHECKSUMS_NAME} does not match the six release ZIPs")
+        raise SystemExit(f"{CHECKSUMS_NAME} does not match the seven release ZIPs")
 
 
 def main() -> int:
@@ -177,7 +181,7 @@ def main() -> int:
     if args.write_checksums:
         write_checksums(args.asset_dir, args.version)
     validate_release_assets(args.asset_dir, args.version)
-    print(f"validated seven release assets for OpenCCForSigil {args.version}")
+    print(f"validated eight release assets for OpenCCForSigil {args.version}")
     return 0
 
 

@@ -19,6 +19,7 @@ from tools.release_assets import (
     validate_release_assets,
     write_checksums,
 )
+from tools.package_contract import package_asset_name
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -59,7 +60,7 @@ def _extract_run_block(workflow: str, step_name: str) -> str:
     return "\n".join(lines)
 
 
-def test_ci_and_release_contract_smokes_each_package_and_publishes_seven_assets():
+def test_ci_and_release_contract_smokes_each_package_and_publishes_eight_assets():
     workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     release_job = workflow.split("  publish-release:", maxsplit=1)[1]
     release_shell = _extract_run_block(release_job, "Create GitHub release")
@@ -72,7 +73,7 @@ def test_ci_and_release_contract_smokes_each_package_and_publishes_seven_assets(
     assert "  build-packages:" in workflow
     assert "  package-smoke:" in workflow
     assert "needs: build-packages" in workflow.split("  package-smoke:", maxsplit=1)[1]
-    assert "needs: package-smoke" in release_job
+    assert "    needs:\n      - package-smoke\n      - attest-release-assets" in release_job
     assert "OpenCCForSigil-packages-${{ github.sha }}" in workflow
     assert "tools/package_smoke.py" in workflow
     assert "tools/release_assets.py" in workflow
@@ -83,12 +84,44 @@ def test_ci_and_release_contract_smokes_each_package_and_publishes_seven_assets(
     assert '"release-artifacts/OpenCCForSigil_${version}_windows-x86_64.zip"' in release_shell
     assert '"release-artifacts/OpenCCForSigil_${version}_linux-x86_64.zip"' in release_shell
     assert '"release-artifacts/OpenCCForSigil_${version}_linux-aarch64.zip"' in release_shell
+    assert '"release-artifacts/OpenCCForSigil_${version}_linux-x86_64-cp312.zip"' in release_shell
     assert '"release-artifacts/SHA256SUMS.txt"' in release_shell
 
 
-def test_expected_release_zip_names_cover_fat_and_five_platforms():
+def test_release_ci_pins_actions_and_attests_all_published_assets():
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    attest_job = workflow.split("  attest-release-assets:", maxsplit=1)[1].split(
+        "  package-smoke:", maxsplit=1
+    )[0]
+    release_job = workflow.split("  publish-release:", maxsplit=1)[1]
+    verify_shell = _extract_run_block(release_job, "Verify release asset attestations")
+    action_refs = [
+        line.strip().split("uses:", maxsplit=1)[1].split("#", maxsplit=1)[0].strip()
+        for line in workflow.splitlines()
+        if "uses:" in line
+    ]
+
+    assert action_refs
+    assert all("@" in reference and len(reference.rsplit("@", maxsplit=1)[1]) == 40
+               for reference in action_refs)
+    assert "attestations: write" in attest_job
+    assert "id-token: write" in attest_job
+    assert "artifact-metadata: write" in attest_job
+    assert "uses: actions/attest@" in attest_job
+    assert "subject-path: release-artifacts/*" in attest_job
+    assert "attest-release-assets" in release_job.split("runs-on:", maxsplit=1)[0]
+    assert "attestations: read" in release_job
+    assert "GH_TOKEN: ${{ github.token }}" in release_job
+    assert 'gh attestation verify "$asset"' in verify_shell
+    assert '--repo "$GH_REPO"' in verify_shell
+    assert '--signer-workflow "$GH_REPO/.github/workflows/ci.yml"' in verify_shell
+    assert "release-artifacts/*.zip" in verify_shell
+    assert "release-artifacts/SHA256SUMS.txt" in verify_shell
+
+
+def test_expected_release_zip_names_cover_fat_and_six_platforms():
     names = expected_zip_names("0.1.0")
-    assert len(names) == 6
+    assert len(names) == 7
     assert names["fat"] == "OpenCCForSigil_0.1.0.zip"
     assert set(names.values()) == {
         "OpenCCForSigil_0.1.0.zip",
@@ -97,7 +130,14 @@ def test_expected_release_zip_names_cover_fat_and_five_platforms():
         "OpenCCForSigil_0.1.0_windows-x86_64.zip",
         "OpenCCForSigil_0.1.0_linux-x86_64.zip",
         "OpenCCForSigil_0.1.0_linux-aarch64.zip",
+        "OpenCCForSigil_0.1.0_linux-x86_64-cp312.zip",
     }
+
+
+def test_cp312_platform_asset_keeps_abi_in_filename():
+    assert package_asset_name("0.2.0", "platform", "linux-x86_64-cp312") == (
+        "OpenCCForSigil_0.2.0_linux-x86_64-cp312.zip"
+    )
 
 
 def test_release_asset_zip_version_must_match_the_tag(tmp_path: Path):
@@ -118,13 +158,18 @@ def test_release_asset_set_checksums_and_package_contracts(tmp_path: Path):
     records = [
         ("linux-aarch64-cp314", "linux", "aarch64"),
         ("linux-x86_64-cp314", "linux", "x86_64"),
+        ("linux-x86_64-cp312", "linux", "x86_64"),
         ("macos-arm64-cp314", "macos", "arm64"),
         ("macos-x86_64-cp314", "macos", "x86_64"),
         ("windows-x86_64-cp314", "windows", "x86_64"),
     ]
 
     for runtime, filename in names.items():
-        selected = records if runtime == "fat" else [record for record in records if record[0] == runtime]
+        selected = (
+            [record for record in records if record[0].endswith("cp314")]
+            if runtime == "fat"
+            else [record for record in records if record[0] == runtime]
+        )
         payloads = [
             {
                 "payload_path": f"payloads/{payload_id}",
@@ -185,6 +230,7 @@ def test_extracted_release_shell_uploads_the_version_named_zip_with_mock_gh(
         f"OpenCCForSigil_{version}_macos-x86_64.zip",
         f"OpenCCForSigil_{version}_windows-x86_64.zip",
         f"OpenCCForSigil_{version}_linux-x86_64.zip",
+        f"OpenCCForSigil_{version}_linux-x86_64-cp312.zip",
         f"OpenCCForSigil_{version}_linux-aarch64.zip",
         "SHA256SUMS.txt",
     ]

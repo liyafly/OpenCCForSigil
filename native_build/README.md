@@ -7,9 +7,10 @@ architecture combinations, verifies wheel hashes, extracts unchanged payloads,
 runs import/config/smoke tests where the native payload can run, and writes entries into
 `plugin/OpenCCForSigil/vendor/opencc/manifest.json`.
 
-V1's Python matrix is CPython 3.14.x / `cp314`; Sigil bundled Python 3.14.2
-is the production baseline and 3.14.7 is the development/CI baseline. Patch
-versions are provenance-only.
+The primary Python matrix is CPython 3.14.x / `cp314`; Sigil bundled Python
+3.14.2 is the production baseline and 3.14.7 is the development/CI baseline.
+The additional Linux x86_64 asset uses CPython 3.12 / `cp312`. Patch versions
+are provenance-only.
 
 The supported wheel filenames, download URLs, sizes, and SHA-256 values are
 locked in [`payload-lock.json`](payload-lock.json). `tools/vendor_opencc.py`

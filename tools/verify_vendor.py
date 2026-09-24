@@ -40,6 +40,9 @@ EXPECTED_POLICY = {
     "production_baseline": "3.14.2",
     "development_ci": "3.14.7",
     "patch_participates_in_payload_selection": False,
+    "additional_runtime_identities": [
+        ["CPython", "3.12", "cp312", "linux", "x86_64"],
+    ],
 }
 JIEBA_PLUGIN_NAME = "opencc-jieba"
 JIEBA_CONFIGS = (
@@ -261,12 +264,8 @@ def _validate_payload(
     missing = sorted(required - set(record))
     if missing:
         raise SystemExit("payload missing keys: " + ", ".join(missing))
-    if (
-        record["python_implementation"],
-        record["python_version"],
-        record["python_abi"],
-    ) != ("CPython", "3.14", "cp314"):
-        raise SystemExit("payload runtime is outside the CPython 3.14.x/cp314 policy")
+    if runtime_identity(record) not in SUPPORTED_RUNTIME_IDENTITIES:
+        raise SystemExit("payload runtime is outside the supported exact runtime identities")
     for key in ("wheel_sha256", "payload_sha256"):
         if not isinstance(record[key], str) or not HEX64.fullmatch(record[key]):
             raise SystemExit(f"payload {key} must be a SHA-256 hex digest")
@@ -377,7 +376,7 @@ def validate_manifest(
     if payload["distribution_name"] != "opencc" or payload["import_name"] != "opencc":
         raise SystemExit("manifest must describe the official opencc distribution/import")
     if payload["python_compatibility"] != EXPECTED_POLICY:
-        raise SystemExit("manifest Python compatibility policy is not CPython 3.14.x/cp314")
+        raise SystemExit("manifest Python compatibility policy does not match the supported runtimes")
     if not isinstance(payload["payloads"], list) or not payload["payloads"]:
         raise SystemExit("manifest must contain at least one verified official OpenCC payload")
     config_data = payload["config_data"]

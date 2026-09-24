@@ -17,11 +17,13 @@ try:
     from verify_vendor import validate_manifest
     from validate_artifact import validate as validate_artifact
     from runtime_subset import RuntimeSubsetError, derive_record, sha256_tree, validate_derivation
+    from runtime_matrix import FAT_RUNTIME_IDENTITIES, runtime_identity
 except ModuleNotFoundError:  # Imported as tools.build_plugin by tests.
     from tools.package_contract import package_asset_name, package_oslist, package_runtime_ids, payload_id
     from tools.verify_vendor import validate_manifest
     from tools.validate_artifact import validate as validate_artifact
     from tools.runtime_subset import RuntimeSubsetError, derive_record, sha256_tree, validate_derivation
+    from tools.runtime_matrix import FAT_RUNTIME_IDENTITIES, runtime_identity
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -160,7 +162,10 @@ def _prepare_package(
     if flavor == "fat":
         if runtime is not None:
             raise SystemExit("--runtime is only valid with --flavor platform")
-        selected = records
+        fat_runtimes = set(FAT_RUNTIME_IDENTITIES)
+        selected = [record for record in records if runtime_identity(record) in fat_runtimes]
+        if not selected:
+            raise SystemExit("vendor manifest contains no Fat Plugin runtime payloads")
     elif flavor == "platform":
         if not runtime:
             raise SystemExit("--runtime is required with --flavor platform")

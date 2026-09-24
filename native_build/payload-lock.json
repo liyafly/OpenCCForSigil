@@ -1,13 +1,22 @@
 {
   "schema_version": 1,
-  "asset_revision": "native-opencc-1.4.2-cp314-r2",
+  "asset_revision": "native-opencc-1.4.2-cp314-cp312-r1",
   "opencc_version": "1.4.2",
   "opencc_upstream_tag": "ver.1.4.2",
   "opencc_upstream_commit": "025f371dc76b598d77384fbdab90c937471844d8",
   "python_compatibility": {
     "implementation": "CPython",
     "version": "3.14",
-    "abi": "cp314"
+    "abi": "cp314",
+    "additional_runtime_identities": [
+      [
+        "CPython",
+        "3.12",
+        "cp312",
+        "linux",
+        "x86_64"
+      ]
+    ]
   },
   "jieba_resources": {
     "jieba_merged.ocd2": "3d6e9e6614a95cae37ddf6d4995c8c9d338df9d26de377d6e61ccd18f81e9b78",
@@ -37,6 +46,17 @@
       "size": 2446514,
       "sha256": "d054897f2e597d663410b9dc20b9e79d9410a893b9578ef3eaf3f6eef5fbcb52",
       "url": "https://files.pythonhosted.org/packages/c1/f4/9402bf733bd685b6a54a86d4f6ba3893e03088e0816080b5b95b63a94fda/opencc-1.4.2-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.whl"
+    },
+    {
+      "python_implementation": "CPython",
+      "python_version": "3.12",
+      "python_abi": "cp312",
+      "os": "linux",
+      "architecture": "x86_64",
+      "filename": "opencc-1.4.2-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+      "size": 2446507,
+      "sha256": "d90a8b76ea5d1f425a4f2eb16114cb33abd29a73c6a4ec367361c61b1c059a10",
+      "url": "https://files.pythonhosted.org/packages/75/8f/e8b80f225440a045c08dfc9bf251c8cb1019e0935d104c56715afff468ad/opencc-1.4.2-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl"
     },
     {
       "python_implementation": "CPython",

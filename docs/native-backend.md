@@ -7,10 +7,12 @@ distribution `opencc` version `1.4.2`. The source reference is checked out at:
 ../OpenCCForSigil-References/OpenCC
 ```
 
-V1 formally supports CPython 3.14.x with wheel ABI `cp314`. The current Sigil
-bundled Python 3.14.2 is the production baseline; Python 3.14.7 is used only
-for mise development/CI. Patch versions are recorded in provenance and do not
-participate in payload selection.
+The primary runtime matrix supports CPython 3.14.x with wheel ABI `cp314`.
+There is also a standalone Linux x86_64 payload for CPython 3.12 / `cp312`,
+matching Ubuntu 24.04's packaged Sigil. The current Sigil bundled Python
+3.14.2 is the production baseline; Python 3.14.7 is used for mise development
+and CI. Patch versions are recorded in provenance and do not participate in
+payload selection.
 
 Standard startup preflight checks standard conversions and the selected
 configuration. Optional Jieba load tests are performed once per backend when
@@ -56,7 +58,8 @@ manifest-approved payload.
 
 Reviewed on 2026-09-24. Linux packages use the Python interpreter that runs
 Sigil's plugins; the OpenCC native extension ABI must match that interpreter.
-The current Linux payload is CPython 3.14 / `cp314` (see
+The Linux x86_64 packages provide CPython 3.14 / `cp314` and CPython 3.12 /
+`cp312` payloads (see
 [`payload-lock.json`](../native_build/payload-lock.json)). Official distro
 package metadata and package contents show these versions:
 
@@ -69,15 +72,16 @@ package metadata and package contents show these versions:
 | Arch Linux, Sigil 2.8.1 | The package contains `.cpython-314.pyc` files, indicating CPython 3.14. ([Arch package file list](https://archlinux.org/packages/extra/x86_64/sigil/files/)) |
 | Flathub `com.sigil_ebook.Sigil` | The current manifest uses `org.kde.Platform` and `io.qt.PySide.BaseApp` 6.10 and sets `USE_SYSTEM_PYTHON=1`; its Python comes from the isolated Flatpak runtime, not the host distribution. The KDE 6.10 runtime's Python module path is `python3.13`, so this package uses CPython 3.13. ([Sigil manifest](https://github.com/flathub/com.sigil_ebook.Sigil/blob/master/com.sigil_ebook.Sigil.yml), [KDE 6.10 runtime Python path](https://github.com/flathub/org.qgis.qgis/blob/master/org.qgis.qgis.json)) |
 
-Five of the six checked packages therefore do not match `cp314`. The Linux
-platform ZIPs currently require CPython 3.14 in the Sigil plugin process; a
-successful native build on CI does not make those ZIPs compatible with a
-distribution Sigil built for another Python minor version. The Flatpak
+Ubuntu 24.04's package uses CPython 3.12 and has a matching standalone Linux
+x86_64 package. Jammy 3.10, Bookworm 3.11, Fedora 3.15, and the inspected
+Flathub runtime 3.13 remain unsupported. A successful native build or package
+smoke on CI does not establish real Sigil host acceptance. The Flatpak
 comparison is specific to its pinned runtime branch and can change when its
 manifest or runtime is updated. No distro package or real Sigil host was
 installed as part of this metadata review.
 
-The release plan retains an author decision on whether to add a separate
-Linux `cp312` payload. That would address Ubuntu 24.04's packaged Sigil, but
-would not cover Jammy, Bookworm, current Fedora, or this Flatpak runtime; those
-need separate ABI choices or continued unsupported status.
+The release plan's recommendation to add a separate Linux `cp312` payload has
+been adopted. PyPI publishes the exact CPython 3.12 Linux x86_64 wheel used by
+the locked build; the package targets Ubuntu 24.04's packaged Sigil. ([OpenCC
+1.4.2 on PyPI](https://pypi.org/project/OpenCC/1.4.2/), [Ubuntu Noble Sigil
+package](https://packages.ubuntu.com/noble/sigil))

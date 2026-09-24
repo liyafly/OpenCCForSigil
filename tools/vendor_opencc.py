@@ -28,8 +28,10 @@ import zipfile
 
 try:
     from fetch_opencc_wheels import fetch_metadata
+    from runtime_matrix import SUPPORTED_RUNTIME_IDENTITIES
 except ModuleNotFoundError:  # Imported from the repository test suite.
     from tools.fetch_opencc_wheels import fetch_metadata
+    from tools.runtime_matrix import SUPPORTED_RUNTIME_IDENTITIES
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -162,8 +164,11 @@ def _runtime_from_wheel(filename: str) -> tuple[str, int, int, str, str, str]:
     if len(digits) != 3:
         raise RuntimeError(f"unexpected CPython wheel tag: {python_tag}")
     major, minor = int(digits[0]), int(digits[1:])
-    if (major, minor, python_tag) != (3, 14, "cp314"):
-        raise RuntimeError(f"wheel is outside the V1 CPython 3.14/cp314 policy: {filename}")
+    if (major, minor, python_tag) not in {
+        (3, 14, "cp314"),
+        (3, 12, "cp312"),
+    }:
+        raise RuntimeError(f"wheel is outside the supported CPython ABI policy: {filename}")
 
     if platform_tag.startswith("macosx_"):
         os_name = "macos"
@@ -188,6 +193,9 @@ def _runtime_from_wheel(filename: str) -> tuple[str, int, int, str, str, str]:
         raise RuntimeError(f"unsupported wheel platform tag: {filename}")
     if architecture not in {"arm64", "aarch64", "x86_64"}:
         raise RuntimeError(f"unsupported wheel architecture: {filename}")
+    identity = ("CPython", f"{major}.{minor}", python_tag, os_name, architecture)
+    if identity not in SUPPORTED_RUNTIME_IDENTITIES:
+        raise RuntimeError(f"wheel runtime is not supported: {identity}")
     return "CPython", major, minor, python_tag, os_name, architecture
 
 
@@ -208,11 +216,19 @@ def _host_platform() -> tuple[str, str]:
     return os_name, architecture
 
 
-def _select_wheel(wheels: list[Mapping[str, Any]], wheel_name: str | None) -> Mapping[str, Any]:
+def _select_wheel(
+    wheels: list[Mapping[str, Any]],
+    wheel_name: str | None,
+    *,
+    python_version: tuple[int, int] | None = None,
+) -> Mapping[str, Any]:
     if wheel_name:
         matches = [item for item in wheels if item.get("filename") == wheel_name]
     else:
         host_os, host_architecture = _host_platform()
+        if python_version is None:
+            python_version = (sys.version_info.major, sys.version_info.minor)
+        current_abi = f"cp{python_version[0]}{python_version[1]:02d}"
         matches = []
         for item in wheels:
             name = str(item.get("filename", ""))
@@ -220,7 +236,13 @@ def _select_wheel(wheels: list[Mapping[str, Any]], wheel_name: str | None) -> Ma
                 _, major, minor, abi, os_name, architecture = _runtime_from_wheel(name)
             except RuntimeError:
                 continue
-            if (major, minor, abi, os_name, architecture) == (3, 14, "cp314", host_os, host_architecture):
+            if (major, minor, abi, os_name, architecture) == (
+                python_version[0],
+                python_version[1],
+                current_abi,
+                host_os,
+                host_architecture,
+            ):
                 matches.append(item)
     if len(matches) != 1:
         available = ", ".join(str(item.get("filename")) for item in wheels if item.get("filename"))

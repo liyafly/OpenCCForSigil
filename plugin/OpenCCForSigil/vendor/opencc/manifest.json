@@ -15,7 +15,16 @@
     "abi": "cp314",
     "production_baseline": "3.14.2",
     "development_ci": "3.14.7",
-    "patch_participates_in_payload_selection": false
+    "patch_participates_in_payload_selection": false,
+    "additional_runtime_identities": [
+      [
+        "CPython",
+        "3.12",
+        "cp312",
+        "linux",
+        "x86_64"
+      ]
+    ]
   },
   "payloads": [
     {

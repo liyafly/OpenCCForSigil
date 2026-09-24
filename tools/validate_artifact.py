@@ -15,7 +15,7 @@ import xml.etree.ElementTree as ET
 try:
     from package_contract import package_asset_name, package_oslist, package_runtime_ids
     from runtime_matrix import (
-        SUPPORTED_RUNTIME_IDENTITIES,
+        FAT_RUNTIME_IDENTITIES,
         format_runtime_identity,
         runtime_identity,
     )
@@ -24,7 +24,7 @@ try:
 except ModuleNotFoundError:  # Imported as tools.validate_artifact by tests.
     from tools.package_contract import package_asset_name, package_oslist, package_runtime_ids
     from tools.runtime_matrix import (
-        SUPPORTED_RUNTIME_IDENTITIES,
+        FAT_RUNTIME_IDENTITIES,
         format_runtime_identity,
         runtime_identity,
     )
@@ -677,7 +677,7 @@ def validate(
         if require_runtimes:
             if actual_flavor != "fat":
                 raise SystemExit("--require-runtimes is valid only for a Fat package")
-            expected = set(SUPPORTED_RUNTIME_IDENTITIES)
+            expected = set(FAT_RUNTIME_IDENTITIES)
             missing = expected - identities
             unexpected = identities - expected
             if missing or unexpected:

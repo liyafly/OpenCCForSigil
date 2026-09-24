@@ -7,7 +7,8 @@ Release packaging is split into two steps:
 
 The exact official wheel inputs are recorded in
 [`native_build/payload-lock.json`](../native_build/payload-lock.json). The lock
-contains one CPython 3.14/cp314 wheel for each supported runtime and is checked
+contains one CPython 3.14/cp314 wheel for each Fat Plugin runtime plus one
+CPython 3.12/cp312 Linux x86_64 wheel for its separate platform asset, and is checked
 against the live PyPI metadata before extraction. A changed wheel URL, size, or
 SHA-256 is a blocking error; the build never silently selects another release.
 
@@ -35,6 +36,7 @@ matrix:
 ```text
 ubuntu-22.04-arm → linux-aarch64-cp314
 ubuntu-22.04   → linux-x86_64-cp314
+ubuntu-22.04 + CPython 3.12 → linux-x86_64-cp312
 macos-15       → macos-arm64-cp314
 macos-15-intel → macos-x86_64-cp314
 windows-2022  → windows-x86_64-cp314
@@ -68,46 +70,67 @@ full-tree tests and CLI differences before the runtime subset is re-exported.
 Pull requests do not restore this cache, so untrusted workflow input cannot
 supply a native binary.
 
-The dependent `build-packages` job downloads all five artifacts, merges them
+The dependent `build-packages` job downloads all six runtime artifacts, merges them
 with `tools/merge_verified_payloads.py --require-runtimes`, and verifies every
 payload and provenance hash. Native jobs already ran the official CLI
 differentials on those exact payload bytes. The job builds and validates one
-Fat Plugin ZIP and five platform ZIPs, then smoke-tests the Fat Plugin's Linux
-x86_64 payload. It writes `SHA256SUMS.txt` and uploads all seven release assets
-in one Actions artifact. A payload marked `skipped-cross-platform` cannot enter
+Fat Plugin ZIP and six platform ZIPs, then smoke-tests the Fat Plugin's Linux
+x86_64/cp314 payload. It writes `SHA256SUMS.txt` and uploads all eight release
+assets in one Actions artifact. A payload marked `skipped-cross-platform` cannot enter
 any package.
 
-The dependent `package-smoke` matrix downloads that artifact on all five native
-runners. Each job extracts its platform ZIP and the Fat Plugin, confirms runtime
+On version tags, six runtime package smoke jobs must pass before
+`attest-release-assets` uses GitHub's `actions/attest` to create SLSA provenance
+for all seven ZIPs and `SHA256SUMS.txt`. The publisher downloads those exact
+smoke-tested files, verifies each attestation with `gh attestation verify`, then
+creates the GitHub release. The release job has only the `contents: write`
+permission; attestation permissions are scoped to the separate attestation job.
+After downloading a release, verify the package contracts and checksums with
+`tools/release_assets.py`, then verify the signed provenance for each file:
+
+```sh
+for asset in /path/to/downloaded-assets/*.zip /path/to/downloaded-assets/SHA256SUMS.txt; do
+  gh attestation verify "$asset" \
+    --repo liyafly/OpenCCForSigil \
+    --signer-workflow liyafly/OpenCCForSigil/.github/workflows/ci.yml
+done
+```
+
+The dependent `package-smoke` matrix downloads that artifact on all six runtime
+targets. Each job extracts its platform ZIP and the Fat Plugin, confirms runtime
 selection, runs the complete standard/Jieba self-test, checks one expected
 conversion for each of the 16 standard and 7 Jieba configurations, and rejects
-any Python bytecode cache in either extracted package. The tagged publication
-job runs only after all five smoke jobs pass.
+any Python bytecode cache in either extracted package. The Linux cp312 platform
+ZIP is smoke-tested under CPython 3.12; its Fat Plugin check uses CPython 3.14.
+The tagged publication job runs only after all six smoke jobs pass.
 
 ## Release asset contract
 
 `build-packages` uploads one Actions artifact named
-`OpenCCForSigil-packages-${{ github.sha }}` containing six installable ZIPs and
+`OpenCCForSigil-packages-${{ github.sha }}` containing seven installable ZIPs and
 `SHA256SUMS.txt`:
 
-- `OpenCCForSigil_<version>.zip`: the five-runtime Fat Plugin;
+- `OpenCCForSigil_<version>.zip`: the five-runtime CPython 3.14 Fat Plugin;
 - `OpenCCForSigil_<version>_macos-arm64.zip`;
 - `OpenCCForSigil_<version>_macos-x86_64.zip`;
 - `OpenCCForSigil_<version>_windows-x86_64.zip`;
 - `OpenCCForSigil_<version>_linux-x86_64.zip`;
+- `OpenCCForSigil_<version>_linux-x86_64-cp312.zip`;
 - `OpenCCForSigil_<version>_linux-aarch64.zip`;
-- `SHA256SUMS.txt`: SHA-256 digests for the six ZIP files above.
+- `SHA256SUMS.txt`: SHA-256 digests for the seven ZIP files above.
 
 Every ZIP has the single top-level `OpenCCForSigil/` directory required by
 Sigil. Platform packages contain exactly one verified runtime and generate the
 matching `plugin.xml` `oslist` inside the archive; the source tree's `plugin.xml`
-is unchanged. The Fat Plugin contains all five runtimes.
+is unchanged. The Fat Plugin contains all five CPython 3.14/cp314 runtimes.
+The additional Linux x86_64/cp312 runtime is available only in its platform ZIP.
 
 The tagged `publish-release` job downloads that exact commit's package
-artifact, verifies all six embedded plugin versions against the tag, checks the
-package manifests and checksum file, and publishes all seven files. The
-`package-smoke` matrix must pass on Linux aarch64, Linux x86_64, macOS arm64,
-macOS x86_64, and Windows x86_64 before publication is eligible.
+artifact, verifies all seven embedded plugin versions against the tag, checks
+the package manifests and checksum file, and publishes all eight files. The
+`package-smoke` matrix must pass on Linux aarch64, Linux x86_64 cp314, Linux
+x86_64 cp312, macOS arm64, macOS x86_64, and Windows x86_64 before publication
+is eligible.
 
 GitHub may also expose automatically generated source archives for a tag. Those
 source snapshots are generated by GitHub and are not product assets managed by
@@ -132,9 +155,10 @@ The publish job uses `docs/releases/<tag>.md` when present, otherwise GitHub's
 generated notes. Notes must distinguish automated validation from real Sigil
 host acceptance; a regular release does not imply that untested hosts were tested.
 
-Release mode requires exactly these five runtime identities, with no missing
-or extra payload: Linux aarch64, Linux x86_64, macOS arm64, macOS x86_64, and
-Windows x86_64, all on CPython 3.14/cp314. Linux aarch64 uses GitHub's
+Release assembly requires exactly six runtime identities, with no missing or
+extra payload: Linux aarch64, Linux x86_64/cp314, Linux x86_64/cp312, macOS
+arm64, macOS x86_64, and Windows x86_64. The Fat Plugin contract contains
+only the five CPython 3.14/cp314 identities. Linux aarch64 uses GitHub's
 `ubuntu-22.04-arm` hosted runner. `tools/build_plugin.py --require-runtimes` writes a
 deterministic ZIP with fixed member order, timestamps, and permissions. The
 same ZIP is then passed through `tools/validate_artifact.py --require-runtimes`,
@@ -143,7 +167,7 @@ which recomputes every payload tree and data hash from the archive itself.
 To use it, push the branch or select **Actions → CI and plugin packages → Run
 workflow**. Download the artifact named
 `OpenCCForSigil-packages-<commit>` from the successful run. It contains all
-seven release assets after package validation. No local
+eight release assets after package validation. No local
 Windows/Linux installation is required; GitHub-hosted runner availability and
 repository Actions-minute limits still apply.
 
@@ -173,11 +197,15 @@ specification decision.
 
 ## 发版步骤清单
 
-1. **运行 E-01。** 在 `main` 最新提交上手动运行完整 CI：
+1. **完成发布候选。** 升版本号并更新 `CHANGELOG.md`、
+   `docs/releases/v<version>.md` 和 README 下载链接；真实 Sigil 宿主验收
+   明确标为未测。运行 `make check`，并确保工作区干净。
+
+2. **运行 E-01。** 在发布候选的 `main` 提交上手动运行完整 CI：
    **Actions → CI and plugin packages → Run workflow → Branch: `main`**。
    或运行 `gh workflow run ci.yml --ref main`。用下面的命令等待运行结束，
    并记录运行链接、head SHA 和结论；所有 payload、Jieba 一致性、打包及
-   五个平台 smoke job 都必须通过：
+   六个 runtime smoke job 都必须通过：
 
    ```sh
    gh run list --workflow ci.yml --branch main --limit 1
@@ -185,10 +213,11 @@ specification decision.
    gh run view <run-id> --json url,headSha,status,conclusion
    ```
 
-2. **核对包大小。** 从该次运行下载名为
-   `OpenCCForSigil-packages-<head-sha>` 的 artifact，解压后检查六个 ZIP
+3. **核对资产。** 从该次运行下载名为
+   `OpenCCForSigil-packages-<head-sha>` 的 artifact，解压后检查七个 ZIP
    的字节数：平台 ZIP 不超过 7,000,000 字节，Fat ZIP 不超过 30,000,000
-   字节。也要确认六个 ZIP 和 `SHA256SUMS.txt` 都存在。
+   字节。确认七个 ZIP 与 `SHA256SUMS.txt` 都存在，并通过资产合同及 SHA-256
+   校验。
 
    ```sh
    gh run download <run-id> \
@@ -198,14 +227,13 @@ specification decision.
      printf '%s ' "$(basename "$asset")"
      wc -c < "$asset"
    done
+   mise exec -- uv run python tools/release_assets.py \
+     --asset-dir /tmp/openccforsigil-packages --version <version>
+   (cd /tmp/openccforsigil-packages && sha256sum -c SHA256SUMS.txt)
    ```
 
-3. **完成 E-02。** 核对 `main` 自上一版以来的变更，更新插件版本、
-   `CHANGELOG.md` 和 `docs/releases/v<version>.md`。发布说明应记录 E-01
-   的运行链接、head SHA 和包大小，并清楚区分 CI 结果与真实 Sigil 主机
-   验收。
-
-4. **打标签并推送。** 确认版本更新已提交到 `main`，再创建并推送对应标签：
+4. **打标签并推送。** E-01 和资产检查通过后，确认 tag 指向刚验证的同一
+   `main` SHA，再创建并推送对应标签：
 
    ```sh
    git tag v<version>
@@ -213,11 +241,11 @@ specification decision.
    ```
 
 5. **等待发布工作流。** 在 GitHub 的 **Actions → CI and plugin packages**
-   打开这个 tag 对应的运行。只有五个平台的 `package-smoke` 和
-   `publish-release` 都成功，发布才完成。
+   打开这个 tag 对应的运行。所有 runtime smoke、`attest-release-assets`
+   和 `publish-release` 都成功后，发布才完成。
 
 6. **下载并验证 Release 资产。** 从该 tag 的 Release 页面下载全部附件，
-   包含六个 ZIP 和 `SHA256SUMS.txt`。在仓库 checkout 中运行：
+   包含七个 ZIP 和 `SHA256SUMS.txt`。在仓库 checkout 中运行：
 
    ```sh
    mise exec -- uv run python tools/release_assets.py \
@@ -226,8 +254,12 @@ specification decision.
    ```
 
    工具会验证 ZIP 内的版本和 runtime 清单，并核对 `SHA256SUMS.txt` 与
-   六个 ZIP 的 SHA-256。
+   七个 ZIP 的 SHA-256。再逐一检查所有文件的 GitHub provenance：
 
-7. **更新 README 下载表。** 将表格中的版本和链接指向刚验证的 Release
-   资产；记录每个 ZIP 的大小和校验文件名，并确认自动生成的源码压缩包
-   没有被列作可安装插件。
+   ```sh
+   for asset in /path/to/downloaded-assets/*.zip /path/to/downloaded-assets/SHA256SUMS.txt; do
+     gh attestation verify "$asset" \
+       --repo liyafly/OpenCCForSigil \
+       --signer-workflow liyafly/OpenCCForSigil/.github/workflows/ci.yml
+   done
+   ```

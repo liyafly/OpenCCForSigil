@@ -12,6 +12,7 @@ from typing import Mapping, Sequence
 EXPECTED_PLATFORMS = frozenset({
     "linux-aarch64",
     "linux-x86_64",
+    "linux-x86_64-cp312",
     "macos-arm64",
     "macos-x86_64",
     "windows-x86_64",

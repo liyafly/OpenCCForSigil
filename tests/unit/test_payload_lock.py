@@ -18,6 +18,7 @@ def test_payload_lock_covers_every_supported_runtime():
         for entry in lock["wheels"]
     }
     assert identities == set(SUPPORTED_RUNTIME_IDENTITIES)
+    assert ("CPython", "3.12", "cp312", "linux", "x86_64") in identities
 
 
 def test_payload_lock_rejects_changed_metadata(tmp_path):

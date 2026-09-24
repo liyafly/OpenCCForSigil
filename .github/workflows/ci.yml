@@ -32,10 +32,10 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Check out
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install mise toolchain
-        uses: jdx/mise-action@v4
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4
 
       - name: Install locked Python dependencies
         run: mise exec -- uv sync --locked
@@ -47,7 +47,7 @@ jobs:
       - name: Restore target-tested payload cache
         id: payload-cache
         if: github.event_name != 'pull_request'
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: native_build/artifacts/full-payload
           key: opencc-payload-${{ matrix.id }}-${{ hashFiles('.github/workflows/ci.yml', 'native_build/payload-lock.json', 'tools/vendor_opencc.py', 'tools/build_opencc_jieba.py', 'tools/native_compatibility.py', 'tools/check_upstream_provenance.py', 'tools/export_verified_payload.py', 'tools/runtime_subset.py', 'tools/verify_runtime_subset.py', 'tools/merge_verified_payloads.py', 'plugin/OpenCCForSigil/vendor/opencc/manifest.json') }}
@@ -62,7 +62,7 @@ jobs:
 
       - name: Check out pinned OpenCC source for the official Jieba plugin
         if: steps.payload-cache.outputs.cache-hit != 'true'
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: BYVoid/OpenCC
           ref: ${{ steps.upstream.outputs.commit }}
@@ -75,7 +75,7 @@ jobs:
 
       - name: Set up the MSVC environment for the Windows Ninja build
         if: runner.os == 'Windows' && steps.payload-cache.outputs.cache-hit != 'true'
-        uses: ilammy/msvc-dev-cmd@v1
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
 
       - name: Build and vendor the official native Jieba plugin
         if: steps.payload-cache.outputs.cache-hit != 'true'
@@ -127,7 +127,7 @@ jobs:
           --output-json native_build/artifacts/jieba-outputs/${{ matrix.id }}.json
 
       - name: Upload per-platform native Jieba outputs
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: jieba-outputs-${{ matrix.id }}
           path: native_build/artifacts/jieba-outputs/${{ matrix.id }}.json
@@ -143,23 +143,87 @@ jobs:
         run: mise exec -- uv run python tools/verify_runtime_subset.py --export-root native_build/artifacts/verified-payload
 
       - name: Upload target-tested payload
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: opencc-payload-${{ matrix.id }}
           path: native_build/artifacts/verified-payload
           if-no-files-found: error
           retention-days: 14
 
+  build-linux-cp312-payload:
+    name: Verify linux-x86_64-cp312 payload
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up CPython 3.12
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12.10"
+
+      - name: Check pinned OpenCC provenance
+        id: upstream
+        run: python tools/check_upstream_provenance.py
+
+      - name: Check out pinned OpenCC source for the official Jieba plugin
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: BYVoid/OpenCC
+          ref: ${{ steps.upstream.outputs.commit }}
+          path: native_build/OpenCC
+          fetch-depth: 1
+
+      - name: Vendor the official CPython 3.12 wheel
+        run: python tools/vendor_opencc.py --version 1.4.2
+
+      - name: Build and vendor the official native Jieba plugin
+        run: python tools/build_opencc_jieba.py --source native_build/OpenCC
+
+      - name: Verify manifest, payload and native Jieba conversions
+        run: |
+          python tools/verify_vendor.py
+          python tools/differential_test.py --corpus tests/fixtures/opencc_smoke.jsonl
+          python tools/differential_jieba_test.py \
+            --corpus tests/fixtures/opencc_jieba_smoke.jsonl \
+            --output-json native_build/artifacts/jieba-outputs/linux-x86_64-cp312.json
+
+      - name: Upload CPython 3.12 Jieba outputs
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: jieba-outputs-linux-x86_64-cp312
+          path: native_build/artifacts/jieba-outputs/linux-x86_64-cp312.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Export and verify the CPython 3.12 runtime subset
+        run: |
+          python tools/export_verified_payload.py \
+            --output native_build/artifacts/verified-payload \
+            --full-output native_build/artifacts/full-payload
+          PYTHONDONTWRITEBYTECODE=1 python tools/verify_runtime_subset.py \
+            --export-root native_build/artifacts/verified-payload
+
+      - name: Upload target-tested CPython 3.12 payload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: opencc-payload-linux-x86_64-cp312
+          path: native_build/artifacts/verified-payload
+          if-no-files-found: error
+          retention-days: 14
+
   jieba-consistency:
     name: Compare Jieba output across platforms
-    needs: build-payload
+    needs:
+      - build-payload
+      - build-linux-cp312-payload
     runs-on: ubuntu-latest
     steps:
       - name: Check out
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Download per-platform Jieba outputs
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           pattern: jieba-outputs-*
           path: build/jieba-output-artifacts
@@ -171,20 +235,21 @@ jobs:
     name: Assemble and validate all Plugin packages
     needs:
       - build-payload
+      - build-linux-cp312-payload
       - jieba-consistency
     runs-on: ubuntu-latest
     steps:
       - name: Check out
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install mise toolchain
-        uses: jdx/mise-action@v4
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4
 
       - name: Install locked Python dependencies
         run: mise exec -- uv sync --locked
 
       - name: Download all target-tested payload artifacts
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           path: native_build/artifacts
 
@@ -214,12 +279,13 @@ jobs:
       - name: Revalidate the Fat Plugin ZIP
         run: mise exec -- uv run python tools/validate_artifact.py --require-runtimes --flavor fat "dist/OpenCCForSigil_${{ steps.package-version.outputs.version }}.zip"
 
-      - name: Build the five platform ZIPs
+      - name: Build the six platform ZIPs
         shell: bash
         run: |
           for runtime in \
             linux-aarch64-cp314 \
             linux-x86_64-cp314 \
+            linux-x86_64-cp312 \
             macos-arm64-cp314 \
             macos-x86_64-cp314 \
             windows-x86_64-cp314; do
@@ -234,10 +300,15 @@ jobs:
           for runtime in \
             linux-aarch64-cp314 \
             linux-x86_64-cp314 \
+            linux-x86_64-cp312 \
             macos-arm64-cp314 \
             macos-x86_64-cp314 \
             windows-x86_64-cp314; do
-            suffix="${runtime%-cp314}"
+            if [[ "$runtime" == *-cp312 ]]; then
+              suffix="$runtime"
+            else
+              suffix="${runtime%-cp314}"
+            fi
             mise exec -- uv run python tools/validate_artifact.py \
               --flavor platform --runtime "$runtime" \
               "dist/OpenCCForSigil_${PLUGIN_VERSION}_${suffix}.zip"
@@ -257,12 +328,34 @@ jobs:
         run: mise exec -- uv run python tools/release_assets.py --asset-dir dist --version "${{ steps.package-version.outputs.version }}" --write-checksums
 
       - name: Upload all validated release assets
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: OpenCCForSigil-packages-${{ github.sha }}
           path: dist/
           if-no-files-found: error
           retention-days: 14
+
+  attest-release-assets:
+    name: Attest tagged release assets
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: package-smoke
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - name: Download smoke-tested package assets
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: OpenCCForSigil-packages-${{ github.sha }}
+          path: release-artifacts
+
+      - name: Attest all release assets
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: release-artifacts/*
 
   package-smoke:
     name: Smoke ${{ matrix.id }} packages
@@ -274,35 +367,51 @@ jobs:
           - id: linux-aarch64
             runner: ubuntu-22.04-arm
             runtime: linux-aarch64-cp314
+            fat_runtime: linux-aarch64-cp314
             suffix: linux-aarch64
           - id: linux-x86_64
             runner: ubuntu-22.04
             runtime: linux-x86_64-cp314
+            fat_runtime: linux-x86_64-cp314
             suffix: linux-x86_64
+          - id: linux-x86_64-cp312
+            runner: ubuntu-22.04
+            runtime: linux-x86_64-cp312
+            fat_runtime: linux-x86_64-cp314
+            suffix: linux-x86_64-cp312
           - id: macos-arm64
             runner: macos-15
             runtime: macos-arm64-cp314
+            fat_runtime: macos-arm64-cp314
             suffix: macos-arm64
           - id: macos-x86_64
             runner: macos-15-intel
             runtime: macos-x86_64-cp314
+            fat_runtime: macos-x86_64-cp314
             suffix: macos-x86_64
           - id: windows-x86_64
             runner: windows-2022
             runtime: windows-x86_64-cp314
+            fat_runtime: windows-x86_64-cp314
             suffix: windows-x86_64
     runs-on: ${{ matrix.runner }}
     env:
       PYTHONDONTWRITEBYTECODE: "1"
     steps:
       - name: Check out
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install mise toolchain
-        uses: jdx/mise-action@v4
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4
 
       - name: Install locked Python dependencies
         run: mise exec -- uv sync --locked
+
+      - name: Set up CPython 3.12 for the Linux cp312 package
+        if: matrix.id == 'linux-x86_64-cp312'
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12.10"
 
       - name: Read package version
         id: package-version
@@ -313,7 +422,7 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Download validated packages
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: OpenCCForSigil-packages-${{ github.sha }}
           path: packages
@@ -328,33 +437,50 @@ jobs:
           unzip -q "packages/OpenCCForSigil_${PLUGIN_VERSION}_${PLATFORM_SUFFIX}.zip" -d build/package-smoke/platform
           unzip -q "packages/OpenCCForSigil_${PLUGIN_VERSION}.zip" -d build/package-smoke/fat
 
-      - name: Smoke-test both extracted packages without bytecode caches
+      - name: Smoke-test the Linux cp312 package under CPython 3.12
+        if: matrix.id == 'linux-x86_64-cp312'
+        run: >-
+          python tools/package_smoke.py
+          --plugin-root build/package-smoke/platform/OpenCCForSigil
+          --expected-runtime "${{ matrix.runtime }}"
+
+      - name: Smoke-test the platform package under the release Python
+        if: matrix.id != 'linux-x86_64-cp312'
         shell: bash
         env:
           EXPECTED_RUNTIME: ${{ matrix.runtime }}
         run: |
-          for flavor in platform fat; do
-            mise exec -- uv run python tools/package_smoke.py \
-              --plugin-root "build/package-smoke/${flavor}/OpenCCForSigil" \
-              --expected-runtime "$EXPECTED_RUNTIME"
-          done
+          mise exec -- uv run python tools/package_smoke.py \
+            --plugin-root build/package-smoke/platform/OpenCCForSigil \
+            --expected-runtime "$EXPECTED_RUNTIME"
+
+      - name: Smoke-test the Fat Plugin under CPython 3.14
+        env:
+          EXPECTED_RUNTIME: ${{ matrix.fat_runtime }}
+        run: |
+          mise exec -- uv run python tools/package_smoke.py \
+            --plugin-root build/package-smoke/fat/OpenCCForSigil \
+            --expected-runtime "$EXPECTED_RUNTIME"
 
   publish-release:
     name: Publish tagged GitHub release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: package-smoke
+    needs:
+      - package-smoke
+      - attest-release-assets
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      attestations: read
     # Resolve release operations explicitly against this repository.
     env:
       GH_REPO: ${{ github.repository }}
     steps:
       - name: Check out release notes
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Download all smoke-tested package assets
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: OpenCCForSigil-packages-${{ github.sha }}
           path: release-artifacts
@@ -366,6 +492,17 @@ jobs:
         run: |
           version="${RELEASE_TAG#v}"
           python tools/release_assets.py --asset-dir release-artifacts --version "$version"
+
+      - name: Verify release asset attestations
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for asset in release-artifacts/*.zip release-artifacts/SHA256SUMS.txt; do
+            gh attestation verify "$asset" \
+              --repo "$GH_REPO" \
+              --signer-workflow "$GH_REPO/.github/workflows/ci.yml"
+          done
 
       - name: Create GitHub release
         shell: bash
@@ -384,6 +521,7 @@ jobs:
             "release-artifacts/OpenCCForSigil_${version}_macos-x86_64.zip"
             "release-artifacts/OpenCCForSigil_${version}_windows-x86_64.zip"
             "release-artifacts/OpenCCForSigil_${version}_linux-x86_64.zip"
+            "release-artifacts/OpenCCForSigil_${version}_linux-x86_64-cp312.zip"
             "release-artifacts/OpenCCForSigil_${version}_linux-aarch64.zip"
             "release-artifacts/SHA256SUMS.txt"
           )

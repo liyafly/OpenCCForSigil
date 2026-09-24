@@ -28,8 +28,9 @@ annotations remain V1.1 scope and are not silently enabled by a V1 profile.
 ## Evidence is not interchangeable
 
 Local automated tests and Sigil's bundled macOS Qt construction/action smoke
-checks cover the new workflow. CI separately builds/tests four CPython 3.14
-payloads and validates the final Fat Plugin's hashes and native baselines.
+checks cover the new workflow. CI separately builds/tests six runtime payloads
+(five CPython 3.14/cp314 targets and Linux x86_64/cp312) and validates the Fat
+Plugin and platform package hashes and native baselines.
 Neither proves old-host compatibility or install/apply/save/reopen acceptance
 in Windows, Linux, macOS Intel, and macOS arm64 Sigil.
 

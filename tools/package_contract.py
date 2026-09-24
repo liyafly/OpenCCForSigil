@@ -46,7 +46,12 @@ def package_asset_name(version: str, flavor: str, runtime: str | None = None) ->
         return f"OpenCCForSigil_{version}.zip"
     if flavor != "platform":
         raise ValueError(f"unsupported package flavor: {flavor!r}")
-    if not runtime or not runtime.endswith("-cp314"):
-        raise ValueError("platform package requires a cp314 payload id")
-    suffix = runtime[: -len("-cp314")]
+    if not runtime:
+        raise ValueError("platform package requires a payload id")
+    if runtime.endswith("-cp314"):
+        suffix = runtime[: -len("-cp314")]
+    elif runtime == "linux-x86_64-cp312":
+        suffix = runtime
+    else:
+        raise ValueError(f"unsupported platform payload id: {runtime!r}")
     return f"OpenCCForSigil_{version}_{suffix}.zip"

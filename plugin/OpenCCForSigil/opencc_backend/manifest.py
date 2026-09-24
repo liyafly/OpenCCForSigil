@@ -15,6 +15,14 @@ _SUPPORTED_PLATFORM_ARCHITECTURES = {
     ("macos", "x86_64"),
     ("windows", "x86_64"),
 }
+_SUPPORTED_RUNTIME_IDENTITIES = {
+    ("CPython", 3, 14, "cp314", "linux", "aarch64"),
+    ("CPython", 3, 14, "cp314", "linux", "x86_64"),
+    ("CPython", 3, 14, "cp314", "macos", "arm64"),
+    ("CPython", 3, 14, "cp314", "macos", "x86_64"),
+    ("CPython", 3, 14, "cp314", "windows", "x86_64"),
+    ("CPython", 3, 12, "cp312", "linux", "x86_64"),
+}
 
 
 def _payload_identifier(payload_path: str) -> str:
@@ -254,6 +262,9 @@ class VendorManifest:
             "production_baseline": "3.14.2",
             "development_ci": "3.14.7",
             "patch_participates_in_payload_selection": False,
+            "additional_runtime_identities": [
+                ["CPython", "3.12", "cp312", "linux", "x86_64"],
+            ],
         }
         if python_compatibility != expected_policy:
             raise ManifestError(
@@ -297,14 +308,17 @@ class VendorManifest:
                 reason="unsupported_platform",
                 **error_context,
             )
-        if (
-            runtime.python_implementation != "CPython"
-            or runtime.python_major != 3
-            or runtime.python_minor != 14
-            or runtime.python_abi != "cp314"
-        ):
+        identity = (
+            runtime.python_implementation,
+            runtime.python_major,
+            runtime.python_minor,
+            runtime.python_abi,
+            runtime.os,
+            runtime.architecture,
+        )
+        if identity not in _SUPPORTED_RUNTIME_IDENTITIES:
             raise RuntimeSelectionError(
-                "OpenCCForSigil V1 requires CPython 3.14.x with wheel ABI cp314; "
+                "OpenCCForSigil requires a supported exact CPython runtime; "
                 f"detected {runtime.python_implementation} {runtime.python_version} "
                 f"with ABI {runtime.python_abi}.",
                 reason="python_version",

@@ -48,8 +48,9 @@ remain indivisible even when some members are hidden by a filter.
 
 - OpenCC must be the pinned official `opencc` Python Binding loaded from
   `vendor/opencc/manifest.json`.
-- V1 formally supports CPython 3.14.x with ABI `cp314`; Sigil bundled Python
-  3.14.2 is the production baseline and patch versions are provenance only.
+- The Fat Plugin supports five CPython 3.14.x / `cp314` runtimes. A separate
+  Linux x86_64 package supports CPython 3.12 / `cp312`; Sigil bundled Python
+  3.14.2 remains the primary production baseline.
 - RuntimeSelector verifies the exact CPython major/minor/OS/architecture/ABI
   payload tree before importing `opencc`; the checked-in build host payload is
   macOS arm64/cp314, and 3.14.2 and 3.14.7 select the same payload.
