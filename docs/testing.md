@@ -25,6 +25,8 @@ metadata, bounded diff reconstruction, thread ownership/cancellation, XML/NCX
 metadata whitelists, grouped language decisions, rules/profile persistence,
 locked outputs, pivot/quotation/punctuation transforms, history privacy, source
 and settings drift, return-to-settings replanning, and commit verification.
+Preview scale coverage includes 300,000-row model counts and bounded dialog
+build, filtering, and bulk acceptance.
 The source-only official CLI corpus includes all 16 configs plus ambiguity,
 TW/HK vocabulary, mixed scripts, and Unicode preservation examples. Frozen
 comparison outputs are explanatory; accepting all must reproduce the selected

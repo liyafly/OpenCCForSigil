@@ -209,7 +209,7 @@ def test_table_model_row_count_scales_to_large_preview_lists():
             return None
 
     entry = (NoDecision(), change)
-    for count in (10_000, 50_000):
+    for count in (10_000, 300_000):
         entries = (entry,) * count
         model_type = _create_preview_table_model(
             _FakeQt, entries, {"chapter": "Text/chapter.xhtml"})
