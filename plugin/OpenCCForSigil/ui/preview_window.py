@@ -1907,6 +1907,7 @@ class _ScopeDialog:
         self.nav_id = nav_id
         self._manual_selection_ids = set(initial_ids)
         self._single_selected_id = next(iter(initial_ids), None)
+        self._recovery_notices = tuple(recovery_notices)
         self._updating_items = False
         self.checkpoint_notice_shown = bool(checkpoint_notice_enabled)
         self._hide_checkpoint_notice_callback = hide_checkpoint_notice
@@ -1916,8 +1917,11 @@ class _ScopeDialog:
         self.dialog.resize(700, 560)
         layout = qt_widgets.QVBoxLayout(self.dialog)
         self.recovery_notice_label = None
-        if recovery_notices:
-            notice_lines = [_recovery_notice_text(kind, value, translator) for kind, value in recovery_notices]
+        if self._recovery_notices:
+            notice_lines = [
+                _recovery_notice_text(kind, value, translator)
+                for kind, value in self._recovery_notices
+            ]
             self.recovery_notice_label = qt_widgets.QLabel("\n".join(notice_lines))
             self.recovery_notice_label.setWordWrap(True)
             layout.addWidget(self.recovery_notice_label)
@@ -1993,11 +1997,8 @@ class _ScopeDialog:
         self.clear_visible.clicked.connect(lambda: self._set_visible(False))
 
         initial = set(initial_ids)
-        navigation_suffix = self._translator.text("scope.navigation_suffix")
         for item in inventory:
-            label = item.href
-            if item.file_id == self.nav_id:
-                label += " " + navigation_suffix
+            label = self._scope_item_label(item)
             row = qt_widgets.QListWidgetItem(label)
             row.setData(qt_widgets.Qt.UserRole, item.file_id)
             row.setFlags(row.flags() | qt_widgets.Qt.ItemIsUserCheckable)
@@ -2056,6 +2057,14 @@ class _ScopeDialog:
         self._translator.set_language(code)
         self.dialog.setWindowTitle(self._translator.text("scope.title"))
         self.language_label.setText(self._translator.text("language.label"))
+        self.guide_label.setText(self._translator.text("scope.selection_guide"))
+        for row, item in enumerate(self._inventory):
+            self.list_widget.item(row).setText(self._scope_item_label(item))
+        if self.recovery_notice_label is not None and self.recovery_notice_label.isVisible():
+            self.recovery_notice_label.setText("\n".join(
+                _recovery_notice_text(kind, value, self._translator)
+                for kind, value in self._recovery_notices
+            ))
         self.single_radio.setText(self._translator.text("scope.single"))
         self.selected_radio.setText(self._translator.text("scope.selected"))
         self.spine_radio.setText(self._translator.text("scope.spine"))
@@ -2074,6 +2083,12 @@ class _ScopeDialog:
         self.analyze_button.setText(self._translator.text("scope.analyze"))
         self._refresh_count()
         self._update_analyze_enabled()
+
+    def _scope_item_label(self, item: TextFile) -> str:
+        label = item.href
+        if item.file_id == self.nav_id:
+            label += " " + self._translator.text("scope.navigation_suffix")
+        return label
 
     def _checkpoint_notice_preference_changed(self, checked: bool) -> None:
         if not checked or self._checkpoint_notice_hidden:

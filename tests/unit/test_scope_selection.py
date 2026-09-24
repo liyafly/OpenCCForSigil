@@ -195,3 +195,29 @@ def test_scope_filter_enter_focuses_first_visible_row_without_accepting():
             dialog.analyze_button,
         )
     )
+
+
+def test_scope_language_change_retranslates_guide_navigation_and_recovery_notice():
+    translator = Translator("zh-Hans")
+    inventory = (TextFile("chapter", "Text/chapter.xhtml"),
+                 TextFile("nav", "Text/nav.xhtml"))
+    dialog = _ScopeDialog(
+        make_with_table(),
+        inventory,
+        (),
+        "zh-Hans",
+        translator,
+        nav_id="nav",
+        recovery_notices=(("preferences_corrupt", "preferences.json"),),
+    )
+    assert "导航" in dialog.list_widget.item(1).text()
+    assert "损坏" in dialog.recovery_notice_label.text()
+
+    dialog.language_combo.setCurrentIndex(dialog.language_combo.findData("en"))
+
+    english = Translator("en")
+    assert dialog.guide_label.text() == english.text("scope.selection_guide")
+    assert dialog.list_widget.item(1).text() == (
+        "Text/nav.xhtml " + english.text("scope.navigation_suffix"))
+    assert dialog.recovery_notice_label.text() == english.text(
+        "recovery.preferences_corrupt", value="preferences.json")
