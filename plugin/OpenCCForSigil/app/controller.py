@@ -350,7 +350,7 @@ class Controller:
                 )
                 try:
                     planned = workflow.plan_in_worker(
-                        OpenCCBackend,
+                        lambda config: OpenCCBackend(config, jieba_probe=jieba_probe),
                         progress=progress.update,
                         cancelled=progress.cancelled,
                     )

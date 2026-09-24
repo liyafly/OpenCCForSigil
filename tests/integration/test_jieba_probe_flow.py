@@ -146,6 +146,66 @@ def test_probe_survives_settings_loop_and_preserves_jieba_choice(monkeypatch, tm
     assert book.writes == []
 
 
+def test_probe_is_shared_across_scope_return_settings_and_preview(monkeypatch, tmp_path):
+    from opencc_backend.backend import OpenCCBackend
+
+    constructed = []
+    original_init = OpenCCBackend.__init__
+
+    def record_init(self, config, selector=None, *, jieba_probe=None):
+        original_init(self, config, selector, jieba_probe=jieba_probe)
+        constructed.append((config, jieba_probe, self.jieba_probe))
+
+    monkeypatch.setattr(OpenCCBackend, "__init__", record_init)
+
+    class ChangingBook(Book):
+        def readfile(self, _file_id):
+            return "<p>漢字</p>"
+
+    scope_calls = []
+
+    def choose_scope(_adapter, initial_language, **_kwargs):
+        scope_calls.append(True)
+        return ScopeOutcome(
+            True, TargetSelection(Scope.SINGLE, ("a",)), initial_language
+        )
+
+    monkeypatch.setattr("ui.preview_window.choose_scope", choose_scope)
+    settings_calls = []
+
+    def choose_config(_available, *, jieba_probe, **_kwargs):
+        settings_calls.append(jieba_probe)
+        if len(settings_calls) == 1:
+            return ConfigOutcome("back_to_scope")
+        return ConfigOutcome("continue", ConfigurationChoice("t2s", {}))
+
+    monkeypatch.setattr("ui.preview_window.choose_conversion_config", choose_config)
+    previews = []
+
+    def show_preview(*_args, **_kwargs):
+        previews.append(True)
+        return PreviewOutcome(False, ())
+
+    monkeypatch.setattr("ui.preview_window.show_preview", show_preview)
+    monkeypatch.setattr(
+        "ui.preview_window.create_progress_reporter",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            update=lambda *_values: None, cancelled=lambda: False, close=lambda: None
+        ),
+    )
+
+    assert Controller(ChangingBook(), data_dir=tmp_path).run() == 1
+
+    assert len(scope_calls) == 2
+    assert len(settings_calls) == 2
+    assert previews == [True]
+    assert len(constructed) >= 3
+    session_probe = constructed[0][2]
+    assert settings_calls == [session_probe, session_probe]
+    assert all(actual_probe is session_probe for _config, _passed_probe, actual_probe in constructed)
+    assert all(passed_probe is session_probe for _config, passed_probe, _actual in constructed[1:])
+
+
 def test_cancel_before_text_ui_does_not_wait_for_daemon_probe(monkeypatch, tmp_path):
     started = Event()
     finished = Event()
