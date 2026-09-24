@@ -1,5 +1,7 @@
 """Structural and planned-span verification boundary."""
 
+from bisect import bisect_right
+
 from core.models import ConversionPlan, StagedFile, VerificationResult
 from core.staging import StagingError, apply_changes, source_sha256
 from document.tokenizer import TokenizedDocument, TokenizerOptions, tokenize_xhtml
@@ -80,12 +82,17 @@ def _verify_plan_boundaries(
     diagnostics = []
     allowed_spans = set(plan.allowed_spans)
     changed_spans = {change.span for change in plan.changes}
+    target_ranges = sorted(
+        (target.source_start, target.source_end) for target in original_doc.targets
+    )
+    target_starts = [start for start, _end in target_ranges]
     for change in plan.changes:
         span = change.span
-        if not any(
-            target.source_start <= span.start and span.end <= target.source_end
-            for target in original_doc.targets
-        ):
+        target_index = bisect_right(target_starts, span.start) - 1
+        in_target = (
+            target_index >= 0 and target_ranges[target_index][1] >= span.end
+        )
+        if not in_target:
             diagnostics.append(
                 f"UNPLANNED_CHANGE:{file_id} span {span.start}:{span.end} "
                 "is outside every conversion target"
