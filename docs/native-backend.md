@@ -26,6 +26,15 @@ wheel/payload manifest, deterministic tree hash, exact runtime selector,
 import-origin boundary, and a verified macOS arm64 / cp314 payload. A missing
 payload entry is an error, not a reason to use a system OpenCC or to run pip.
 
+Within one process, the runtime selector caches a verified payload-tree digest
+by absolute root and the sorted `(relative path, size, mtime_ns)` signature of
+its files. The first check hashes the full tree; loader checks reuse that digest
+while the signature is unchanged, and a size or modification-time change causes
+a fresh hash. This saves repeated reads of the 24 MB payload. It assumes payload
+files do not change bytes while preserving both size and modification time.
+Manifest-listed native plugin files still receive their individual SHA-256
+checks on each backend selection.
+
 Additional Fat Plugin payloads must be added only after official wheel hash
 validation, clean-process import/origin checks on the target runtime,
 config-load smoke tests, and canonical CLI differential tests have passed. The

@@ -286,7 +286,7 @@ print(json.dumps({'same_package': first is second,
     }
 
 
-def test_import_verification_counts_cold_and_hot_paths(tmp_path: Path):
+def test_import_tree_hash_counts_cold_and_cached_paths(tmp_path: Path):
     manifest_path, payload_root = _copy_selected_payload(tmp_path)
     result = _run_import_subprocess(
         manifest_path,
@@ -314,7 +314,7 @@ print(json.dumps({'cold': cold, 'hot': len(calls) - cold}, ensure_ascii=True))
     )
 
     assert result.returncode == 0, result.stderr
-    assert json.loads(result.stdout) == {"cold": 5, "hot": 1}
+    assert json.loads(result.stdout) == {"cold": 1, "hot": 0}
 
 
 def test_delayed_import_rechecks_tampered_source_after_success(tmp_path: Path):
@@ -397,7 +397,7 @@ print(json.dumps({'modules_after_failure': after_failure,
     assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout) == {
         "modules_after_failure": [],
-        "total_hashes": 11,
+        "total_hashes": 1,
     }
 
 

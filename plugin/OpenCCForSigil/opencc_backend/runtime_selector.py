@@ -13,16 +13,52 @@ import platform
 import re
 import sys
 import sysconfig
+from threading import RLock
 from types import ModuleType
 from typing import Callable, Optional, Tuple
 import weakref
 
+from app.errors import DataIntegrityError
 from opencc_backend.errors import ImportOriginError, PayloadIntegrityError
-from opencc_backend.integrity import verify_sha256, verify_tree_sha256
+from opencc_backend.integrity import _files, verify_sha256, verify_tree_sha256
 from opencc_backend.manifest import PayloadRecord, RuntimeKey, VendorManifest
 
 
 _VERIFIED_MODULES: weakref.WeakKeyDictionary[ModuleType, Path] = weakref.WeakKeyDictionary()
+_PAYLOAD_TREE_DIGESTS: dict[tuple[Path, tuple[tuple[str, int, int], ...]], str] = {}
+_PAYLOAD_TREE_DIGESTS_LOCK = RLock()
+
+
+def _verify_payload_tree(root: Path, expected: str) -> str:
+    """Verify one payload tree and reuse its digest while file metadata is stable."""
+
+    root = Path(root)
+    if not root.is_dir() or not expected or len(expected) != 64:
+        return verify_tree_sha256(root, expected)
+
+    root = root.resolve()
+    files = sorted(_files(root), key=lambda item: item.relative_to(root).as_posix())
+    signature_items = []
+    for path in files:
+        stat = path.stat()
+        signature_items.append(
+            (path.relative_to(root).as_posix(), stat.st_size, stat.st_mtime_ns)
+        )
+    signature = tuple(signature_items)
+    key = (root, signature)
+    with _PAYLOAD_TREE_DIGESTS_LOCK:
+        actual = _PAYLOAD_TREE_DIGESTS.get(key)
+        if actual is None:
+            actual = verify_tree_sha256(root, expected)
+            for old_key in tuple(_PAYLOAD_TREE_DIGESTS):
+                if old_key[0] == root and old_key != key:
+                    del _PAYLOAD_TREE_DIGESTS[old_key]
+            _PAYLOAD_TREE_DIGESTS[key] = actual
+        elif actual.lower() != expected.lower():
+            raise DataIntegrityError(
+                f"payload SHA-256 mismatch for {root}: expected {expected}, got {actual}"
+            )
+    return actual
 
 
 @dataclass(frozen=True)
@@ -99,7 +135,7 @@ class RuntimeSelector:
         root = self.manifest.payload_root(payload)
         if not root.is_dir():
             raise PayloadIntegrityError(f"selected OpenCC payload is missing: {root}")
-        verify_tree_sha256(root, payload.payload_sha256)
+        _verify_payload_tree(root, payload.payload_sha256)
         self._verify_native_plugins(payload, root)
         return runtime, payload, root
 
@@ -453,7 +489,7 @@ class _PayloadImportFinder(importlib_abc.MetaPathFinder):
         self.payload_sha256 = payload_sha256
 
     def _verify_payload(self) -> None:
-        verify_tree_sha256(self.payload_root, self.payload_sha256)
+        _verify_payload_tree(self.payload_root, self.payload_sha256)
 
     def find_spec(
         self,
