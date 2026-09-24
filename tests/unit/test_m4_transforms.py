@@ -1,6 +1,7 @@
 import pytest
 import unicodedata
 
+from core import classifier as classifier_module
 from core.classifier import classify_conversion
 from core.diagnostics import diagnose_mixed_script
 from core.transformation import apply_force_pivot
@@ -110,3 +111,34 @@ def test_comparative_classification_preserves_frozen_final_target():
 
     assert result.final == "軟件"
     assert result.changes[0].category == "character"
+
+
+def test_s2twp_equal_length_outputs_use_only_one_alignment(monkeypatch):
+    calls = []
+    original = classifier_module.bounded_opcodes
+
+    def counted(source, target):
+        calls.append((source, target))
+        return original(source, target)
+
+    monkeypatch.setattr(classifier_module, "bounded_opcodes", counted)
+    result = classify_conversion("软件", "s2twp", _Official())
+
+    assert result.changes[0].category == "regional"
+    assert len(calls) <= 1
+
+
+def test_classifier_shares_alignment_for_identical_output_strings(monkeypatch):
+    calls = []
+    original = classifier_module.bounded_opcodes
+
+    def counted(source, target):
+        calls.append((source, target))
+        return original(source, target)
+
+    monkeypatch.setattr(classifier_module, "bounded_opcodes", counted)
+    result = classify_conversion("甲乙", "s2twp", lambda _config, text: "X" + text)
+
+    assert result.final == "X甲乙"
+    assert len(result.changes) == 1
+    assert calls == [("甲乙", "X甲乙")]

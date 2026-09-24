@@ -67,11 +67,14 @@ def classify_conversion(
     selected = final if final is not None else output_map.get(config)
     if selected is None:
         selected = _invoke_official(official_convert, config, source)
-    alignments = {
-        name: bounded_opcodes(source, output)
-        for name, output in outputs
-    }
-    final_alignment = bounded_opcodes(source, selected)
+    alignment_cache = {}
+
+    def alignment(output: str):
+        if output not in alignment_cache:
+            alignment_cache[output] = bounded_opcodes(source, output)
+        return alignment_cache[output]
+
+    final_alignment = alignment(selected)
 
     changes: list[ClassifiedChange] = []
     for tag, i1, i2, j1, j2 in final_alignment:
@@ -84,7 +87,7 @@ def classify_conversion(
             source,
             selected,
             output_map,
-            alignments,
+            alignment,
             target_part,
             i1,
             i2,
@@ -131,7 +134,7 @@ def _classify_change(
     source: str,
     final: str,
     outputs: dict[str, str],
-    alignments: dict[str, tuple[tuple[str, int, int, int, int], ...]],
+    alignment: Callable[[str], tuple[tuple[str, int, int, int, int], ...]],
     target_part: str,
     source_start: int,
     source_end: int,
@@ -140,7 +143,8 @@ def _classify_change(
 ) -> tuple[str, str | None, str]:
     if config in {"s2tw", "s2hk"} and "s2t" in outputs:
         start, end, stable = _project_target(source, outputs["s2t"], source_start,
-                                            source_end, alignments["s2t"])
+                                            source_end, _alignment_if_needed(
+                                                source, outputs["s2t"], alignment))
         if not stable or target_end - target_start != source_end - source_start:
             return "phrase", None, "low"
         if final[target_start:target_end] != outputs["s2t"][start:end]:
@@ -151,7 +155,8 @@ def _classify_change(
         base_output = outputs[base]
         final_piece = final[target_start:target_end]
         base_start, base_end, base_stable = _project_target(
-            source, base_output, source_start, source_end, alignments[base]
+            source, base_output, source_start, source_end,
+            _alignment_if_needed(source, base_output, alignment),
         )
         if base_stable:
             base_piece = base_output[base_start:base_end]
@@ -170,7 +175,7 @@ def _classify_change(
                     generic_output,
                     source_start,
                     source_end,
-                    alignments[generic],
+                    _alignment_if_needed(source, generic_output, alignment),
                 )
                 if generic_stable:
                     generic_piece = generic_output[generic_start:generic_end]
@@ -187,6 +192,10 @@ def _classify_change(
 
     category = "character" if max(source_end - source_start, len(target_part)) == 1 else "phrase"
     return category, None, "low" if not outputs else "high"
+
+
+def _alignment_if_needed(source: str, output: str, alignment):
+    return alignment(output) if len(source) != len(output) else None
 
 
 def _confidence(source: str, target: str, final: str, comparison: str) -> str:
