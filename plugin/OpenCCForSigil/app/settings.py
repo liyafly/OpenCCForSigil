@@ -602,7 +602,7 @@ def tokenizer_policy(profile):
     from document.tokenizer import TokenizerOptions
     protected = set(profile.protected_elements) | {"script", "style"}
     for names, enabled in ((("code", "pre"), profile.convert_code_pre),
-                           (("rt", "rp"), profile.convert_ruby_rt)):
+                           (("rt", "rp", "rtc"), profile.convert_ruby_rt)):
         if enabled:
             protected.difference_update(names)
         else:

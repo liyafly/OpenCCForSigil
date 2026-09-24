@@ -82,10 +82,19 @@ def test_ncx_keeps_entity_doctype_paths_comments_and_source_offsets():
               '<navMap><navPoint id="汉字" playOrder="1"><navLabel><text><![CDATA[汉字]]>'
               '</text></navLabel><content src="汉字.xhtml#软件"/></navPoint></navMap></ncx>')
     document = tokenize_xml(source, document_kind="ncx")
-    assert [target.source_text for target in document.targets] == ["汉字", "软件", "汉字"]
+    assert [target.source_text for target in document.targets] == ["汉字", "软件"]
     for target in document.targets:
         assert source[target.source_start:target.source_end] == target.source_text
     assert document.tags[0].name == "ncx"
+
+
+def test_ncx_cdata_text_is_not_a_conversion_target():
+    document = tokenize_xml(
+        "<ncx><docTitle><text>前<![CDATA[汉字]]>后</text></docTitle></ncx>",
+        document_kind="ncx",
+    )
+
+    assert [target.source_text for target in document.targets] == ["前", "后"]
 
 
 def test_metadata_whitelist_resolves_only_author_refinements_and_exact_namespaces():

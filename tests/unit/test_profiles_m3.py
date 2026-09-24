@@ -112,3 +112,12 @@ def test_protected_elements_survive_settings_policy_and_scripts_stay_protected()
     document = tokenize_xhtml('<h1>标题</h1><script>脚本</script><code>示例</code>',
                               tokenizer_policy(profile))
     assert [target.source_text for target in document.targets] == ["示例"]
+
+
+def test_ruby_rtc_is_protected_by_the_profile_tokenizer_policy():
+    from app.settings import tokenizer_policy
+    from document.tokenizer import tokenize_xhtml
+
+    document = tokenize_xhtml("<ruby>汉<rtc>ㄏㄢˋ</rtc></ruby>", tokenizer_policy(Profile()))
+
+    assert [target.source_text for target in document.targets] == ["汉"]

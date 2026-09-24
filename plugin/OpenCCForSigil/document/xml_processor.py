@@ -54,6 +54,7 @@ def tokenize_xml(
     nodes: list[_Node] = []
     texts: list[tuple[_Node, int, int]] = []
     tags = []
+    in_cdata = False
 
     def position() -> int:
         return bisect_left(offsets, parser.CurrentByteIndex)
@@ -83,8 +84,16 @@ def tokenize_xml(
             tags.append(tag)
         stack.pop()
 
+    def start_cdata():
+        nonlocal in_cdata
+        in_cdata = True
+
+    def end_cdata():
+        nonlocal in_cdata
+        in_cdata = False
+
     def text(value):
-        if not stack or not value:
+        if in_cdata or not stack or not value:
             return
         begin = position()
         # Entity callbacks contain decoded values, not writable source text.
@@ -107,6 +116,8 @@ def tokenize_xml(
 
     parser.StartElementHandler = start
     parser.EndElementHandler = end
+    parser.StartCdataSectionHandler = start_cdata
+    parser.EndCdataSectionHandler = end_cdata
     parser.CharacterDataHandler = text
     parser.EntityDeclHandler = reject_entity
     parser.ExternalEntityRefHandler = lambda *_args: 1

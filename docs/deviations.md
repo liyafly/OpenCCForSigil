@@ -14,6 +14,7 @@ annotations remain V1.1 scope and are not silently enabled by a V1 profile.
   Original entity spellings and bytes outside planned patches are preserved.
 - Language proposals update existing Chinese values. Missing language values
   are not synthesized; non-Chinese and explicit non-Han scripts are preserved.
+- CDATA content is excluded from conversion targets in both XHTML and NCX.
 - A loaded profile never widens the target set already confirmed in the scope
   picker. Scope selection remains explicit on every invocation.
 - Native conversion cannot be forcibly interrupted mid-call. Worker cancellation
