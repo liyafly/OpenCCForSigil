@@ -567,6 +567,7 @@ def show_error(
     ensure_application(qt_widgets, language=translator.language)
     dialog = qt_widgets.QDialog()
     dialog.setWindowTitle(translator.text("error.title"))
+    dialog.setMinimumWidth(420)
     layout = qt_widgets.QVBoxLayout(dialog)
     message_key = {
         "VERIFY_FAILED": "error.verify_failed",
@@ -576,7 +577,15 @@ def show_error(
     }.get(kind, "error.unexpected")
     message = qt_widgets.QLabel(summary if summary is not None else translator.text(message_key))
     message.setWordWrap(True)
-    layout.addWidget(message)
+    message_row = qt_widgets.QHBoxLayout()
+    icon_label = qt_widgets.QLabel()
+    style_type = getattr(qt_widgets.QStyle, "StandardPixmap", qt_widgets.QStyle)
+    warning_type = getattr(style_type, "SP_MessageBoxWarning")
+    warning_icon = dialog.style().standardIcon(warning_type)
+    icon_label.setPixmap(warning_icon.pixmap(24, 24))
+    message_row.addWidget(icon_label)
+    message_row.addWidget(message, 1)
+    layout.addLayout(message_row)
     write_key = "error.no_files_written" if not files_written else "error.some_files_written"
     write_status = qt_widgets.QLabel(
         translator.text(write_key, count=max(int(files_written), 0)))

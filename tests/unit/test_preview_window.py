@@ -534,6 +534,10 @@ def test_error_dialog_uses_close_as_default_not_details(monkeypatch):
     assert copy_button.autoDefault() is False
     assert close_button.autoDefault() is False
     assert close_button.isDefault()
+    assert dialog.minimumWidth() == 420
+    icon = dialog._layout.children[0].children[0]
+    assert any(name == "setPixmap" for name, _args in icon.calls)
+    assert dialog.style().requested_icon == qt.QStyle.SP_MessageBoxWarning
 
 
 def test_preview_export_failure_is_shown_to_the_user(monkeypatch):

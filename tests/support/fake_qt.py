@@ -38,6 +38,23 @@ class Signal:
 LOG = []
 
 
+class FakeIcon:
+    def __init__(self, standard_icon):
+        self.standard_icon = standard_icon
+
+    def pixmap(self, width, height):
+        return (self.standard_icon, width, height)
+
+
+class FakeStyle:
+    def __init__(self):
+        self.requested_icon = None
+
+    def standardIcon(self, standard_icon):
+        self.requested_icon = standard_icon
+        return FakeIcon(standard_icon)
+
+
 class Base:
     _signals = ()
 
@@ -46,6 +63,8 @@ class Base:
         self._visible = True
         self._enabled = True
         self._maximum_height = 16777215
+        self._minimum_width = 0
+        self._style = FakeStyle()
         self._text = ""
         self._tooltip = ""
         self._plain_text = ""
@@ -113,6 +132,15 @@ class Base:
 
     def setEnabled(self, v):
         self._enabled = bool(v)
+
+    def setMinimumWidth(self, value):
+        self._minimum_width = int(value)
+
+    def minimumWidth(self):
+        return self._minimum_width
+
+    def style(self):
+        return self._style
 
     def setMaximumHeight(self, value):
         self._maximum_height = int(value)
@@ -653,6 +681,10 @@ def make():
     qt.QTableWidgetItem = type("QTableWidgetItem", (TableItem,), {})
     qt.QListWidgetItem = ListItem
     qt.Qt = Qt
+    qt.QStyle = SimpleNamespace(
+        SP_MessageBoxWarning=1,
+        StandardPixmap=SimpleNamespace(SP_MessageBoxWarning=1),
+    )
     qt.QKeySequence = lambda s: s
     qt.QApplication = SimpleNamespace(
         instance=lambda: object(),
