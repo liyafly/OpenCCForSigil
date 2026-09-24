@@ -157,7 +157,30 @@ def run_python_binding(payload_root: Path, cases: Iterable[Mapping[str, str]]) -
     return _convert_cases(module, cases)
 
 
-def compare(cli: Path, payload_root: Path, cases: list[dict[str, str]]) -> list[dict[str, object]]:
+def write_output_json(
+    output_path: Path,
+    cases: list[dict[str, str]],
+    outputs: list[str],
+) -> None:
+    if len(cases) != len(outputs):
+        raise ValueError("Jieba cases and outputs must have equal lengths")
+    records = [
+        {"config": case["config"], "input": case["source"], "output": output}
+        for case, output in zip(cases, outputs, strict=True)
+    ]
+    records.sort(key=lambda item: (item["input"], item["config"]))
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(
+        json.dumps(records, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def compare(
+    cli: Path,
+    payload_root: Path,
+    cases: list[dict[str, str]],
+    *,
+    output_json: Path | None = None,
+) -> list[dict[str, object]]:
     config_root = _configure_plugin_environment(payload_root)
     python_outputs = run_python_binding(payload_root, cases)
     differences: list[dict[str, object]] = []
@@ -172,6 +195,8 @@ def compare(cli: Path, payload_root: Path, cases: list[dict[str, str]]) -> list[
                     "cli_output": cli_output,
                 }
             )
+    if output_json is not None:
+        write_output_json(output_json, cases, python_outputs)
     return differences
 
 
@@ -186,13 +211,17 @@ def main() -> int:
     parser.add_argument("--cli", type=Path, help="matching official OpenCC CLI executable")
     parser.add_argument("--corpus", type=Path, required=True, help="source-only Jieba JSONL corpus")
     parser.add_argument("--payload-root", type=Path, help="exact vendored payload")
+    parser.add_argument(
+        "--output-json", type=Path,
+        help="write deterministic per-case Python Binding outputs as JSON",
+    )
     args = parser.parse_args()
     cases = load_cases(args.corpus)
     payload_root = _resolve_payload(args.payload_root)
     cli = args.cli or _default_cli(payload_root)
     if not cli.is_file():
         raise SystemExit(f"official CLI is missing: {cli}")
-    differences = compare(cli, payload_root, cases)
+    differences = compare(cli, payload_root, cases, output_json=args.output_json)
     if differences:
         print(
             json.dumps(

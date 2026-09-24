@@ -121,7 +121,18 @@ jobs:
         run: mise exec -- uv run python tools/differential_test.py --corpus tests/fixtures/opencc_smoke.jsonl
 
       - name: Run official native Jieba CLI/Python Binding differential corpus
-        run: mise exec -- uv run python tools/differential_jieba_test.py --corpus tests/fixtures/opencc_jieba_smoke.jsonl
+        run: >-
+          mise exec -- uv run python tools/differential_jieba_test.py
+          --corpus tests/fixtures/opencc_jieba_smoke.jsonl
+          --output-json native_build/artifacts/jieba-outputs/${{ matrix.id }}.json
+
+      - name: Upload per-platform native Jieba outputs
+        uses: actions/upload-artifact@v7
+        with:
+          name: jieba-outputs-${{ matrix.id }}
+          path: native_build/artifacts/jieba-outputs/${{ matrix.id }}.json
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Export the target-tested payload
         run: mise exec -- uv run python tools/export_verified_payload.py --output native_build/artifacts/verified-payload --full-output native_build/artifacts/full-payload
@@ -139,9 +150,28 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  jieba-consistency:
+    name: Compare Jieba output across platforms
+    needs: build-payload
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+
+      - name: Download per-platform Jieba outputs
+        uses: actions/download-artifact@v8
+        with:
+          pattern: jieba-outputs-*
+          path: build/jieba-output-artifacts
+
+      - name: Require identical Jieba output on all platforms
+        run: python3 tools/compare_jieba_outputs.py --input-dir build/jieba-output-artifacts
+
   build-packages:
     name: Assemble and validate all Plugin packages
-    needs: build-payload
+    needs:
+      - build-payload
+      - jieba-consistency
     runs-on: ubuntu-latest
     steps:
       - name: Check out
