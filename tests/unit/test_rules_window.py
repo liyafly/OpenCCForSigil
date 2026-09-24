@@ -424,6 +424,37 @@ def test_import_reassigns_ids_colliding_with_any_saved_ruleset(tmp_path):
     assert reviews[0].id_reassigned_count == 1
 
 
+def test_export_confirms_before_writing_a_lossy_format(monkeypatch, tmp_path):
+    rule = Rule(
+        id="disabled", source="术语", target="专名", direction="s2t", enabled=False
+    )
+    destination = tmp_path / "rules.tsv"
+    manager = object.__new__(RuleManagerDialog)
+    manager._qt = SimpleNamespace(
+        QFileDialog=SimpleNamespace(
+            getSaveFileName=lambda *_args: (str(destination), "TSV")
+        ),
+    )
+    manager._labels = {"export": "Export", "title": "Rules"}
+    manager._translator = Translator("en")
+    manager.dialog = object()
+    manager.rules = [rule]
+    prompts = []
+    monkeypatch.setattr(
+        rules_window,
+        "ask_confirmation",
+        lambda _qt, _parent, _title, message, _translator: (
+            prompts.append(message), True
+        )[1],
+    )
+
+    manager._export()
+
+    assert len(prompts) == 1
+    assert "enabled state, rule type, or priority" in prompts[0]
+    assert destination.read_text(encoding="utf-8").startswith("direction\tsource\ttarget\tcomment")
+
+
 def test_dictionary_inspection_applies_profile_rules_and_comparison_configs():
     rule = Rule(id="profile-rule", source="术语", target="专名", direction="s2twp",
                 scope="profile", profile_id="current-profile")

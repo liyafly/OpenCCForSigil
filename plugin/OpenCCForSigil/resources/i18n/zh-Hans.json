@@ -456,6 +456,8 @@
   "rules.import_filter": "规则文件 (*.json *.tsv *.csv *.txt);;所有文件 (*)",
   "rules.export_default_filename": "rules.json",
   "rules.export_filter": "JSON 文件 (*.json);;TSV 文件 (*.tsv);;CSV 文件 (*.csv);;OpenCC 文本 (*.txt)",
+  "rules.export_lossy_warning": "这种格式不保存规则的启用状态、类型和优先级。需要完整备份请选 JSON。是否继续导出？",
+  "rules.export_txt_skipped": "TXT 导出将跳过目标含空白字符的 {count} 条规则。",
   "settings.export_filter": "Markdown 文档 (*.md);;JSON 文件 (*.json)",
   "settings.preview_not_committed": "预览（未提交）"
 }

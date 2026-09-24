@@ -22,7 +22,7 @@ from ui.i18n import (
     rule_validation_message,
     show_error_details,
 )
-from ui.qt import ensure_application, exec_dialog, load_qt
+from ui.qt import ask_confirmation, ensure_application, exec_dialog, load_qt
 from ui.window_state import restore_window_size, save_window_size
 
 
@@ -979,7 +979,7 @@ class RuleManagerDialog:
         return bool(state["accepted"])
 
     def _export(self) -> None:
-        from rules.exporters import export_rules
+        from rules.exporters import export_rules, export_warnings
 
         path, _ = self._qt.QFileDialog.getSaveFileName(
             self.dialog,
@@ -990,6 +990,25 @@ class RuleManagerDialog:
         if not path:
             return
         suffix = path.rsplit(".", 1)[-1].lower() if "." in path else "json"
+        try:
+            lossy, skipped_txt = export_warnings(self.rules, format=suffix)
+        except Exception as exc:
+            self._show_exception(exc)
+            return
+        warnings = []
+        if lossy:
+            warnings.append(self._translator.text("rules.export_lossy_warning"))
+        if skipped_txt:
+            warnings.append(self._translator.text(
+                "rules.export_txt_skipped", count=skipped_txt))
+        if warnings and not ask_confirmation(
+            self._qt,
+            self.dialog,
+            self._labels["title"],
+            "\n".join(warnings),
+            self._translator,
+        ):
+            return
         try:
             export_rules(self.rules, path, format=suffix)
         except Exception as exc:

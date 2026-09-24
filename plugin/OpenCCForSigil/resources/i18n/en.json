@@ -456,6 +456,8 @@
   "rules.import_filter": "Rules (*.json *.tsv *.csv *.txt);;All files (*)",
   "rules.export_default_filename": "rules.json",
   "rules.export_filter": "JSON (*.json);;TSV (*.tsv);;CSV (*.csv);;OpenCC TXT (*.txt)",
+  "rules.export_lossy_warning": "This format does not preserve enabled state, rule type, or priority. Choose JSON for a complete backup. Continue?",
+  "rules.export_txt_skipped": "TXT export will skip {count} rule(s) whose target contains whitespace.",
   "settings.export_filter": "Markdown (*.md);;JSON (*.json)",
   "settings.preview_not_committed": "preview (not committed)"
 }

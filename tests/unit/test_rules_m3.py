@@ -12,7 +12,7 @@ from rules.conflicts import (
     validate_no_blocking_conflicts,
 )
 from rules.engine import convert_with_overlay, lock_spans
-from rules.exporters import export_rules
+from rules.exporters import export_rules, export_warnings
 from rules.importers import import_rules, reassign_colliding_ids
 from rules.models import Rule, RuleSnapshot
 from rules.store import RuleSet, RuleStore
@@ -215,3 +215,23 @@ def test_json_import_keeps_ids_when_importing_into_empty_store(tmp_path):
     imported = import_rules(export_rules((original,), format="json"), format="json")
 
     assert reassign_colliding_ids(imported.rules, set()) == imported.rules
+
+
+def test_opencc_txt_export_skips_targets_with_whitespace():
+    rules = (
+        Rule(direction="s2t", source="Apple", target="Apple Inc"),
+        Rule(direction="s2t", source="软件", target="軟體"),
+    )
+
+    assert export_warnings(rules, format="txt") == (False, 1)
+    assert export_rules(rules, format="txt") == "软件\t軟體\n"
+
+
+def test_delimited_export_reports_lossy_rule_semantics():
+    rules = (
+        Rule(direction="s2t", source="禁用", target="disabled", enabled=False),
+        Rule(direction="s2t", type="protect", source="保护", target="保护"),
+        Rule(direction="s2t", source="priority", target="priority", priority=10),
+    )
+
+    assert export_warnings(rules, format="tsv") == (True, 0)
