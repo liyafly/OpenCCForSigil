@@ -46,6 +46,7 @@ class TokenizerOptions:
     protected_attributes: Tuple[str, ...] = DEFAULT_PROTECTED_ATTRIBUTES
     svg_text: bool = False
     mathml: bool = False
+    skip_foreign_lang: bool = True
     decode_numeric_cjk_refs: bool = False
     document_kind: str = "xhtml"
     context_radius: int = 32
@@ -57,6 +58,7 @@ class TokenizerOptions:
             protected_attributes=tuple(name.lower() for name in self.protected_attributes),
             svg_text=self.svg_text,
             mathml=self.mathml,
+            skip_foreign_lang=self.skip_foreign_lang,
             decode_numeric_cjk_refs=self.decode_numeric_cjk_refs,
             document_kind=self.document_kind,
             context_radius=max(0, self.context_radius),
@@ -138,6 +140,7 @@ def tokenize_xhtml(source: str, options: Optional[TokenizerOptions] = None) -> T
     targets = []
     tags = []
     stack = []
+    language_stack: list[Optional[str]] = []
     target_ordinal = 0
     cursor = 0
 
@@ -154,7 +157,9 @@ def tokenize_xhtml(source: str, options: Optional[TokenizerOptions] = None) -> T
             text_end = source.find("<", cursor)
             if text_end < 0:
                 text_end = len(source)
-            if not _is_protected(stack, policy):
+            if not _is_protected(stack, policy) and not _is_foreign_language(
+                language_stack, policy
+            ):
                 for start, end, numeric_reference in _split_text_boundaries(
                     source,
                     cursor,
@@ -229,8 +234,12 @@ def tokenize_xhtml(source: str, options: Optional[TokenizerOptions] = None) -> T
                             )
             if not tag.self_closing and tag.name not in VOID_ELEMENTS:
                 stack.append(tag.name)
+                inherited_language = language_stack[-1] if language_stack else None
+                language_stack.append(
+                    _language_for_tag(source, tag.attributes, inherited_language)
+                )
         else:
-            _pop_stack(stack, tag.name)
+            _pop_element_stacks(stack, language_stack, tag.name)
         cursor = tag_end
 
     return TokenizedDocument(source=source, targets=tuple(targets), tags=tuple(tags))
@@ -292,6 +301,32 @@ def _element_is_writable(name: str, stack: Sequence[str], options: TokenizerOpti
     if local_name == "math" and not options.mathml:
         return False
     return not _is_protected(stack, options)
+
+
+def _is_foreign_language(
+    language_stack: Sequence[Optional[str]], options: TokenizerOptions
+) -> bool:
+    if not options.skip_foreign_lang or not language_stack:
+        return False
+    language = language_stack[-1]
+    return bool(language) and not language.casefold().startswith("zh")
+
+
+def _language_for_tag(
+    source: str,
+    attributes: Sequence[AttributeSpan],
+    inherited_language: Optional[str],
+) -> Optional[str]:
+    values = {
+        attribute.name: source[attribute.value_start : attribute.value_end].strip()
+        for attribute in attributes
+        if attribute.name in {"lang", "xml:lang"}
+    }
+    if "xml:lang" in values:
+        return values["xml:lang"]
+    if "lang" in values:
+        return values["lang"]
+    return inherited_language
 
 
 def _local_name(name: str) -> str:
@@ -445,10 +480,13 @@ def _parse_attributes(source: str, start: int, end: int) -> list[AttributeSpan]:
     return attributes
 
 
-def _pop_stack(stack: list[str], name: str) -> None:
+def _pop_element_stacks(
+    stack: list[str], language_stack: list[Optional[str]], name: str
+) -> None:
     for index in range(len(stack) - 1, -1, -1):
         if stack[index] == name:
             del stack[index:]
+            del language_stack[index:]
             return
 
 

@@ -36,6 +36,45 @@ def test_tokenizer_unicode_i_preserves_offsets_after_raw_text_tags():
         assert not any("漢字" in text or "p{}" in text for text in texts)
 
 
+@pytest.mark.parametrize("attribute", ('lang="ja"', 'lang="en"', 'xml:lang="ko"'))
+def test_foreign_language_text_is_not_a_conversion_target(attribute):
+    document = tokenize_xhtml(f'<span {attribute}>国会図書館の桜</span>')
+
+    assert document.targets == ()
+
+
+@pytest.mark.parametrize(
+    "source",
+    (
+        '<span lang="zh-Hans">汉字</span>',
+        '<span lang="zh">汉字</span>',
+        '<span>汉字</span>',
+    ),
+)
+def test_chinese_or_unspecified_language_text_remains_a_target(source):
+    document = tokenize_xhtml(source)
+
+    assert [target.source_text for target in document.targets] == ["汉字"]
+
+
+def test_language_scope_inherits_and_restores_after_nested_elements():
+    source = (
+        '<span lang="ja"><em>日本語汉字</em><strong lang="zh-Hans">汉字</strong>'
+        '<i>日本語汉字</i></span><p>正文汉字</p>'
+    )
+    document = tokenize_xhtml(source)
+
+    assert [target.source_text for target in document.targets] == ["汉字", "正文汉字"]
+
+
+def test_foreign_language_filter_can_be_disabled_by_tokenizer_policy():
+    document = tokenize_xhtml(
+        '<span lang="ja">汉字</span>', options=TokenizerOptions(skip_foreign_lang=False)
+    )
+
+    assert [target.source_text for target in document.targets] == ["汉字"]
+
+
 def test_ncx_keeps_entity_doctype_paths_comments_and_source_offsets():
     source = ('<?xml version="1.0"?>\r\n<!DOCTYPE ncx SYSTEM "no-network.dtd">'
               '<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/">'
