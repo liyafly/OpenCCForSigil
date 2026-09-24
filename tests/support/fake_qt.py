@@ -674,6 +674,7 @@ class TableView(Base):
         self._sel = SelectionModel()
         self._current = ModelIndex()
         self._model = None
+        self._header = Base()
 
     def setModel(self, m):
         self._model = m
@@ -700,7 +701,7 @@ class TableView(Base):
             self._sel.currentRowChanged.emit(self._current, prev)
 
     def horizontalHeader(self):
-        return Base()
+        return self._header
 
     def selectRow(self, r):
         pass

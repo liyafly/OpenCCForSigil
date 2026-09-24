@@ -112,6 +112,34 @@ def test_preview_dialog_buttons_are_never_default_or_auto_default():
     assert all(not button.default and button.auto_default is False for button in buttons)
 
 
+def test_single_decision_refreshes_only_its_status_cell():
+    dialog, _preview, model = _preview_dialog(change_count=3, current_row=1)
+    ranges = []
+    model.dataChanged.connect(
+        lambda top, bottom: ranges.append(
+            (top.row(), bottom.row(), top.column(), bottom.column())))
+
+    dialog._accept_this()
+
+    assert ranges == [(1, 1, 0, 0)]
+
+
+def test_preview_table_uses_interactive_columns_and_resizes_once():
+    dialog, _preview, _model = _preview_dialog()
+    header = dialog.table_view.horizontalHeader()
+
+    assert [args for name, args in header.calls if name == "setSectionResizeMode"] == [
+        (0, dialog._qt.QHeaderView.Interactive),
+        (1, dialog._qt.QHeaderView.Interactive),
+        (4, dialog._qt.QHeaderView.Interactive),
+        (5, dialog._qt.QHeaderView.Interactive),
+        (2, dialog._qt.QHeaderView.Stretch),
+        (3, dialog._qt.QHeaderView.Stretch),
+    ]
+    assert ("setResizeContentsPrecision", (50,)) in header.calls
+    assert dialog.table_view.calls.count(("resizeColumnsToContents", ())) == 1
+
+
 def test_preview_dialog_single_decisions_update_only_selected_row_and_summary():
     dialog, preview, _model = _preview_dialog()
 
@@ -216,13 +244,13 @@ def test_apply_status_has_pending_ready_and_no_change_states_in_both_chinese_and
         assert dialog.apply_button.toolTip() == dialog._translator.text("preview.incomplete")
         assert "2" in dialog.apply_status_label.text()
 
-        preview.accept_all(overwrite=True)
+        dialog._accept_all()
         dialog._update_summary()
         assert dialog.apply_status_label.text() == dialog._translator.text(
             "preview.apply_status_ready")
         assert "2" in dialog.apply_button.text()
 
-        preview.reject_all(overwrite=True)
+        dialog._reject_all()
         dialog._update_summary()
         assert dialog.apply_button.text() == dialog._translator.text(
             "preview.apply_no_changes")
@@ -287,7 +315,7 @@ def test_filtered_group_decision_reaches_hidden_language_metadata_entries():
     dialog = _table_dialog(
         tuple((preview, change) for preview in (first, second) for change in preview.changes),
         (first, second), current_row=0, file_id="chapter.xhtml")
-    dialog._refresh = lambda: None
+    dialog._refresh = lambda **_kwargs: None
     dialog._decide_filtered(True)
 
     assert first.decision("language-visible").value == "accept_this"

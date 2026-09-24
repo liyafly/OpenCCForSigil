@@ -639,21 +639,12 @@ def format_change_row(change, href_by_id, translator) -> Tuple[str, ...]:
 class _PreviewTableData:
     """Qt-independent row formatting and filtering boundary for preview UI."""
 
-    def __init__(self, entries, href_by_id, translator, group_stats=None):
+    def __init__(self, entries, href_by_id, translator, group_stats=None, display_cache=None):
         self.entries = tuple(entries)
         self.href_by_id = href_by_id
         self.translator = translator
         self.group_stats = group_stats or {}
-        self.display_rows = []
-        self.statuses = []
-        for preview, change in self.entries:
-            values = list(format_change_row(change, self.href_by_id, self.translator))
-            if change.group_id and change.group_id in self.group_stats:
-                count, files = self.group_stats[change.group_id]
-                values[3] += " — " + self.translator.text(
-                    "preview.group_row_marker", count=count, files=files)
-            self.display_rows.append(tuple(values))
-            self.statuses.append(self._status(preview, change))
+        self.display_cache = display_cache if display_cache is not None else {}
 
     def _status(self, preview, change):
         decision = preview.decision(change.change_id)
@@ -663,15 +654,25 @@ class _PreviewTableData:
             return self.translator.text("preview.status.accepted")
         return self.translator.text("preview.status.skipped")
 
-    def refresh_statuses(self) -> None:
-        for row, (preview, change) in enumerate(self.entries):
-            self.statuses[row] = self._status(preview, change)
+    def _format(self, row: int) -> Tuple[str, ...]:
+        _preview, change = self.entries[row]
+        values = list(format_change_row(change, self.href_by_id, self.translator))
+        if change.group_id and change.group_id in self.group_stats:
+            count, files = self.group_stats[change.group_id]
+            values[3] += " — " + self.translator.text(
+                "preview.group_row_marker", count=count, files=files)
+        return tuple(values)
 
     def row_count(self) -> int:
         return len(self.entries)
 
     def row_values(self, row: int) -> Tuple[str, ...]:
-        return (self.statuses[row], *self.display_rows[row])
+        preview, change = self.entries[row]
+        values = self.display_cache.get(change.change_id)
+        if values is None:
+            values = self._format(row)
+            self.display_cache[change.change_id] = values
+        return (self._status(preview, change), *values)
 
 
 def _create_preview_table_model(
@@ -685,11 +686,13 @@ def _create_preview_table_model(
     qt = getattr(qt_widgets, "Qt", None)
     gui = getattr(qt_widgets, "QtGui", None)
     headers = tuple(translator.text(f"preview.column.{name}") for name in _PREVIEW_COLUMNS)
+    display_cache = {}
 
     class PreviewTableModel(qabstract_model):
         def __init__(self, parent=None):
             super().__init__(parent)
-            self.rows = _PreviewTableData(entries, href_by_id, translator, group_stats)
+            self.rows = _PreviewTableData(
+                entries, href_by_id, translator, group_stats, display_cache)
 
         def rowCount(self, parent=None):
             if parent is not None and parent.isValid():
@@ -731,17 +734,26 @@ def _create_preview_table_model(
             return headers[section] if orientation == horizontal and 0 <= section < len(headers) else None
 
         def set_entries(self, next_entries):
+            if self.rows.entries is next_entries:
+                return
             self.beginResetModel()
             self.rows = _PreviewTableData(
-                next_entries, href_by_id, translator, group_stats)
+                next_entries, href_by_id, translator, group_stats, display_cache)
             self.endResetModel()
 
-        def refresh(self):
-            self.rows.refresh_statuses()
-            if self.rowCount() and self.columnCount():
-                top_left = self.index(0, 0)
-                bottom_right = self.index(self.rowCount() - 1, self.columnCount() - 1)
-                self.dataChanged.emit(top_left, bottom_right)
+        def refresh(self, rows=None):
+            if not self.rowCount() or not self.columnCount():
+                return
+            if rows is None:
+                rows = (None,)
+            else:
+                rows = tuple(dict.fromkeys(row for row in rows if 0 <= row < self.rowCount()))
+            if rows == (None,):
+                self.dataChanged.emit(
+                    self.index(0, 0), self.index(self.rowCount() - 1, 0))
+            else:
+                for row in rows:
+                    self.dataChanged.emit(self.index(row, 0), self.index(row, 0))
 
     return PreviewTableModel
 
@@ -774,15 +786,21 @@ class _PreviewDialog:
             item.source.file_id: index for index, item in enumerate(self._planned)
         }
         group_entries = {}
+        groups_by_file = {}
         for _preview, change in self._entries:
             if change.group_id:
                 count, files = group_entries.get(change.group_id, (0, set()))
                 files.add(change.file_id)
                 group_entries[change.group_id] = (count + 1, files)
+                groups_by_file.setdefault(change.file_id, set()).add(change.group_id)
+        self._group_ids_by_file = {
+            file_id: frozenset(group_ids) for file_id, group_ids in groups_by_file.items()
+        }
         self._group_stats = {
             group_id: (count, len(files))
             for group_id, (count, files) in group_entries.items()
         }
+        self._recompute_counts()
         self._last_group_feedback = ""
         self._visible_entries_cache = self._entries
         self.applied = False
@@ -824,13 +842,7 @@ class _PreviewDialog:
         self.file_filter = qt.QComboBox()
         self.category_filter = qt.QComboBox()
         self.risk_filter = qt.QComboBox()
-        file_counts = {}
-        for preview, change in self._entries:
-            total, pending = file_counts.get(change.file_id, (0, 0))
-            file_counts[change.file_id] = (
-                total + 1,
-                pending + (preview.decision(change.change_id) is None),
-            )
+        file_counts = self._file_filter_counts
         ordered_ids = sorted(
             file_counts,
             key=lambda file_id: (
@@ -877,7 +889,7 @@ class _PreviewDialog:
                               risk_values, self._translator)
         for widget in (self.file_filter, self.category_filter, self.risk_filter):
             filter_row.addWidget(widget)
-            widget.currentIndexChanged.connect(self._refresh)
+            widget.currentIndexChanged.connect(lambda *_args: self._refresh())
         layout.addLayout(filter_row)
 
         self.table_view = qt.QTableView()
@@ -890,16 +902,22 @@ class _PreviewDialog:
         self.table_view.selectionModel().currentRowChanged.connect(
             lambda current, _previous: self._show_current(current.row()))
         header = self.table_view.horizontalHeader()
-        resize_to_contents = _enum_value(qt.QHeaderView, "ResizeToContents")
+        interactive = _enum_value(qt.QHeaderView, "Interactive")
         stretch = _enum_value(qt.QHeaderView, "Stretch")
-        if resize_to_contents is not None and stretch is not None:
+        if interactive is not None and stretch is not None:
             for column in (0, 1, 4, 5):
-                header.setSectionResizeMode(column, resize_to_contents)
+                header.setSectionResizeMode(column, interactive)
             for column in (2, 3):
                 header.setSectionResizeMode(column, stretch)
+        set_precision = getattr(header, "setResizeContentsPrecision", None)
+        if callable(set_precision):
+            set_precision(50)
         header.setStretchLastSection(True)
         self.table_view.setAlternatingRowColors(True)
         layout.addWidget(self.table_view)
+        resize_columns = getattr(self.table_view, "resizeColumnsToContents", None)
+        if callable(resize_columns):
+            resize_columns()
 
         self.show_source_context = qt.QCheckBox(
             self._translator.text("preview.show_source_context"))
@@ -1049,7 +1067,59 @@ class _PreviewDialog:
 
     def _visible_entries(self) -> Tuple[Tuple[PreviewSession, TokenChange], ...]:
         current = self._current_filter()
+        if not any((current.file_id, current.category, current.risk, current.rule_source)):
+            return self._entries
         return tuple((preview, change) for preview, change in self._entries if current.matches(change))
+
+    @staticmethod
+    def _decision_bucket(decision) -> str:
+        if decision is None:
+            return "undecided"
+        return "accepted" if decision.value.startswith("accept") else "rejected"
+
+    def _recompute_counts(self) -> None:
+        entries = getattr(self, "_entries", ())
+        self._totals = {
+            "total": len(entries), "accepted": 0, "rejected": 0, "undecided": 0,
+        }
+        self._file_filter_counts = {}
+        self._accepted_count_by_file = {}
+        for preview, change in entries:
+            bucket = self._decision_bucket(preview.decision(change.change_id))
+            self._totals[bucket] += 1
+            total, pending = self._file_filter_counts.get(change.file_id, (0, 0))
+            self._file_filter_counts[change.file_id] = (
+                total + 1, pending + (bucket == "undecided"),
+            )
+            if bucket == "accepted":
+                self._accepted_count_by_file[change.file_id] = (
+                    self._accepted_count_by_file.get(change.file_id, 0) + 1
+                )
+
+    def _record_decision_change(self, file_id, before, after) -> None:
+        old_bucket = self._decision_bucket(before)
+        new_bucket = self._decision_bucket(after)
+        if old_bucket == new_bucket:
+            return
+        self._totals[old_bucket] -= 1
+        self._totals[new_bucket] += 1
+
+        total, pending = self._file_filter_counts.get(file_id, (0, 0))
+        if old_bucket == "undecided":
+            pending -= 1
+        if new_bucket == "undecided":
+            pending += 1
+        self._file_filter_counts[file_id] = (total, pending)
+
+        accepted = self._accepted_count_by_file.get(file_id, 0)
+        if old_bucket == "accepted":
+            accepted -= 1
+        if new_bucket == "accepted":
+            accepted += 1
+        if accepted:
+            self._accepted_count_by_file[file_id] = accepted
+        else:
+            self._accepted_count_by_file.pop(file_id, None)
 
     def _current_row(self) -> int:
         table = getattr(self, "table_view", None)
@@ -1115,7 +1185,9 @@ class _PreviewDialog:
                 rows.append(f"{href}: {location}")
         return tuple(rows)
 
-    def _refresh(self) -> None:
+    def _refresh(self, *_args, recalculate_counts=False, refresh_statuses=False) -> None:
+        if recalculate_counts:
+            self._recompute_counts()
         selected_change_id = self._selected_change_id()
         visible_entries = self._visible_entries()
         self._visible_entries_cache = visible_entries
@@ -1125,7 +1197,10 @@ class _PreviewDialog:
             0 if visible_entries else -1,
         )
         if getattr(self, "table_model", None) is not None:
+            prior_entries = self.table_model.rows.entries
             self.table_model.set_entries(visible_entries)
+            if refresh_statuses and prior_entries is visible_entries:
+                self.table_model.refresh()
             self._set_current_row(row)
         if visible_entries:
             self._show_current(row)
@@ -1135,10 +1210,9 @@ class _PreviewDialog:
         self._update_summary()
 
     def _update_summary(self) -> None:
-        totals = {"total": 0, "accepted": 0, "rejected": 0, "undecided": 0}
-        for preview in self._previews:
-            for key, value in preview.summary().items():
-                totals[key] += value
+        if not hasattr(self, "_totals"):
+            self._recompute_counts()
+        totals = self._totals
         summary = self._translator.text("preview.summary", files=len(self._previews), **totals)
         diagnostics = self._diagnostics_for_file()
         if diagnostics:
@@ -1152,7 +1226,7 @@ class _PreviewDialog:
             summary += "\n" + group_feedback
         self.summary.setText(summary)
         self._refresh_file_filter_counts()
-        has_current = bool(self._visible_entries())
+        has_current = bool(getattr(self, "_visible_entries_cache", ()))
         for name in (
             "accept_this_button",
             "reject_this_button",
@@ -1173,13 +1247,7 @@ class _PreviewDialog:
             button = getattr(self, name, None)
             if button is not None:
                 button.setEnabled(has_entries)
-        accepted_files = {
-            change.file_id
-            for preview in self._previews
-            for change in preview.changes
-            if (decision := preview.decision(change.change_id)) is not None
-            and decision.value.startswith("accept")
-        }
+        accepted_files = self._accepted_count_by_file
         complete = totals["undecided"] == 0
         accepted_count = totals["accepted"]
         if not complete:
@@ -1209,13 +1277,9 @@ class _PreviewDialog:
         combo = getattr(self, "file_filter", None)
         if combo is None or not callable(getattr(combo, "setItemText", None)):
             return
-        file_counts = {}
-        for preview, change in self._entries:
-            total, pending = file_counts.get(change.file_id, (0, 0))
-            file_counts[change.file_id] = (
-                total + 1,
-                pending + (preview.decision(change.change_id) is None),
-            )
+        if not hasattr(self, "_file_filter_counts"):
+            self._recompute_counts()
+        file_counts = self._file_filter_counts
         selected = combo.currentData()
         previous_blocked = combo.blockSignals(True) if callable(
             getattr(combo, "blockSignals", None)) else False
@@ -1315,11 +1379,15 @@ class _PreviewDialog:
                 "preview.group_accepted" if accepted else "preview.group_skipped")
             self._last_group_feedback = self._translator.text(
                 feedback_key, count=count)
-            self._refresh()
+            self._refresh(recalculate_counts=True, refresh_statuses=True)
         else:
             self._last_group_feedback = ""
+            row = self._current_row()
+            before = preview.decision(change.change_id)
             (preview.accept_this if accepted else preview.reject_this)(change.change_id)
-            self._refresh_current()
+            after = preview.decision(change.change_id)
+            self._record_decision_change(change.file_id, before, after)
+            self._refresh_current(rows=(row,))
         self._select_next_undecided(change.change_id)
 
     def _select_next_undecided(self, current_change_id=None, *, direction: int = 1) -> None:
@@ -1356,6 +1424,8 @@ class _PreviewDialog:
         return count
 
     def _groups_for_file(self, file_id):
+        if hasattr(self, "_group_ids_by_file"):
+            return self._group_ids_by_file.get(file_id, frozenset())
         return {
             change.group_id
             for _preview, change in self._entries
@@ -1386,7 +1456,7 @@ class _PreviewDialog:
             self._last_group_feedback = self._translator.text(feedback_key, count=count)
         else:
             self._last_group_feedback = ""
-        self._refresh()
+        self._refresh(recalculate_counts=True, refresh_statuses=True)
 
     def _decide_filtered(self, accepted: bool) -> None:
         visible_entries = self._visible_entries()
@@ -1402,9 +1472,9 @@ class _PreviewDialog:
                 feedback_key, count=group_count)
         else:
             self._last_group_feedback = ""
-        self._refresh()
+        self._refresh(recalculate_counts=True, refresh_statuses=True)
 
-    def _refresh_current(self) -> None:
+    def _refresh_current(self, *, rows=()) -> None:
         row = self._current_row()
         visible_entries = getattr(self, "_visible_entries_cache", None)
         if visible_entries is None:
@@ -1412,8 +1482,8 @@ class _PreviewDialog:
         if row < 0 or row >= len(visible_entries):
             self._update_summary()
             return
-        if getattr(self, "table_model", None) is not None:
-            self.table_model.refresh()
+        if rows and getattr(self, "table_model", None) is not None:
+            self.table_model.refresh(rows=rows)
         self._show_current(row)
         self._update_summary()
 
@@ -1426,7 +1496,7 @@ class _PreviewDialog:
         for change in preview.changes:
             if not change.group_id:
                 preview.accept_this(change.change_id)
-        self._refresh()
+        self._refresh(recalculate_counts=True, refresh_statuses=True)
 
     def _reject_file(self) -> None:
         entry = self._current_entry()
@@ -1437,19 +1507,19 @@ class _PreviewDialog:
         for change in preview.changes:
             if not change.group_id:
                 preview.reject_this(change.change_id)
-        self._refresh()
+        self._refresh(recalculate_counts=True, refresh_statuses=True)
 
     def _accept_all(self) -> None:
         self._last_group_feedback = ""
         for preview in self._previews:
             preview.accept_all(overwrite=True)
-        self._refresh()
+        self._refresh(recalculate_counts=True, refresh_statuses=True)
 
     def _reject_all(self) -> None:
         self._last_group_feedback = ""
         for preview in self._previews:
             preview.reject_all(overwrite=True)
-        self._refresh()
+        self._refresh(recalculate_counts=True, refresh_statuses=True)
 
     def _back_to_settings(self) -> None:
         if self.applied:

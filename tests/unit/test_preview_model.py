@@ -1,3 +1,4 @@
+import random
 import time
 from types import SimpleNamespace
 
@@ -131,23 +132,63 @@ def test_preview_table_data_formats_each_row_once_and_only_refreshes_status(monk
 
     monkeypatch.setattr(preview_window, "format_change_row", count_format)
     rows = _PreviewTableData(
-        tuple((preview, change) for change in changes), {}, Translator("en"))
+        tuple((preview, change) for change in changes), {}, Translator("en"),
+        display_cache={},
+    )
 
-    assert calls == ["first", "second"]
+    assert calls == []
+    rows.row_values(0)
+    assert calls == ["first"]
     for _ in range(20):
         rows.row_values(0)
         rows.row_values(1)
     assert calls == ["first", "second"]
 
     preview.accept_this("first")
-    rows.refresh_statuses()
     assert rows.row_values(0)[0] == "Accepted"
     assert calls == ["first", "second"]
 
 
-def test_fifty_thousand_preview_build_filter_and_accept_all_stay_bounded():
+def test_lazy_row_cache_survives_filters_and_single_decisions(monkeypatch):
+    changes = tuple(
+        _change(
+            change_id=f"change-{index}",
+            category="character" if index % 2 else "phrase",
+        )
+        for index in range(5_000)
+    )
+    preview = PreviewSession(ConversionPlan(source_sha256="", changes=changes))
+    calls = []
+    original = preview_window.format_change_row
+
+    def count_format(*args):
+        calls.append(args[0].change_id)
+        return original(*args)
+
+    monkeypatch.setattr(preview_window, "format_change_row", count_format)
+    planned = (SimpleNamespace(
+        source=SimpleNamespace(file_id="chapter", href="Text/chapter.xhtml",
+                               document_kind="xhtml"),
+        plan=preview.plan,
+    ),)
+    dialog = _PreviewDialog(
+        make_with_table(), planned, (preview,), Translator("en"), None)
+    model = dialog.table_model
+    assert len(calls) <= len(dialog._visible_entries_cache)
+
+    model.data(model.index(0, 1), dialog._qt.Qt.DisplayRole)
+    first_id = changes[0].change_id
+    assert calls.count(first_id) == 1
+    dialog.category_filter.setCurrentIndex(dialog.category_filter.findData("character"))
+    dialog.category_filter.setCurrentIndex(dialog.category_filter.findData(None))
+    model.data(model.index(0, 1), dialog._qt.Qt.DisplayRole)
+
+    assert calls.count(first_id) == 1
+
+
+def test_three_hundred_thousand_preview_build_filter_and_accept_all_stay_bounded():
     grouped = {}
-    for index in range(50_000):
+    for index in range(300_000):
         file_id = f"chapter-{index % 100}.xhtml"
         grouped.setdefault(file_id, []).append(_change(
             change_id=f"change-{index}", file_id=file_id,
@@ -170,14 +211,54 @@ def test_fifty_thousand_preview_build_filter_and_accept_all_stay_bounded():
     build_seconds = time.perf_counter() - started
 
     started = time.perf_counter()
+    dialog._accept_this()
+    single_decision_seconds = time.perf_counter() - started
+
+    started = time.perf_counter()
     dialog.category_filter.setCurrentIndex(dialog.category_filter.findData("phrase"))
     filter_seconds = time.perf_counter() - started
-    assert len(dialog._visible_entries_cache) == 25_000
+    assert len(dialog._visible_entries_cache) == 150_000
 
     started = time.perf_counter()
     dialog._accept_all()
     accept_all_seconds = time.perf_counter() - started
 
     assert build_seconds < 2.0
+    assert single_decision_seconds < 0.05
     assert filter_seconds < 1.0
     assert accept_all_seconds < 1.0
+
+
+def test_incremental_totals_match_full_recount_after_random_single_decisions():
+    rng = random.Random(60224)
+    changes = tuple(
+        _change(change_id=f"change-{index}", file_id=f"chapter-{index % 4}")
+        for index in range(100)
+    )
+    preview = PreviewSession(ConversionPlan(source_sha256="", changes=changes))
+    planned = (SimpleNamespace(
+        source=SimpleNamespace(file_id="chapter-0", href="Text/chapter-0.xhtml",
+                               document_kind="xhtml"),
+        plan=preview.plan,
+    ),)
+    dialog = _PreviewDialog(
+        make_with_table(), planned, (preview,), Translator("en"), None)
+
+    for _ in range(100):
+        index = rng.randrange(len(changes))
+        dialog._set_current_row(index)
+        dialog._decide_entry((preview, changes[index]), bool(rng.randrange(2)))
+
+    assert dialog._totals == preview.summary()
+    expected_files = {}
+    accepted_by_file = {}
+    for change in changes:
+        decision = preview.decision(change.change_id)
+        total, pending = expected_files.get(change.file_id, (0, 0))
+        expected_files[change.file_id] = (
+            total + 1, pending + (decision is None),
+        )
+        if decision is not None and decision.value.startswith("accept"):
+            accepted_by_file[change.file_id] = accepted_by_file.get(change.file_id, 0) + 1
+    assert dialog._file_filter_counts == expected_files
+    assert dialog._accepted_count_by_file == accepted_by_file
