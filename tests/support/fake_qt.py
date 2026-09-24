@@ -55,6 +55,27 @@ class FakeStyle:
         return FakeIcon(standard_icon)
 
 
+class FakeColor:
+    def __init__(self, name="#f5f5f5"):
+        self._name = name
+
+    def name(self):
+        return self._name
+
+
+class FakePalette:
+    AlternateBase = 6
+    Base = 7
+    ColorRole = SimpleNamespace(AlternateBase=6, Base=7)
+
+    def __init__(self):
+        self.requested_roles = []
+
+    def color(self, role):
+        self.requested_roles.append(role)
+        return FakeColor()
+
+
 class FakeSize:
     def __init__(self, width, height):
         self._width = width
@@ -159,6 +180,15 @@ class Base:
 
     def style(self):
         return self._style
+
+    def palette(self):
+        return self.__dict__.setdefault("_palette", FakePalette())
+
+    def setStyleSheet(self, value):
+        self._style_sheet = str(value)
+
+    def styleSheet(self):
+        return self.__dict__.get("_style_sheet", "")
 
     def setMinimumHeight(self, value):
         self._minimum_height = int(value)
@@ -713,6 +743,7 @@ class Qt:
     RightArrow = 4
     AscendingOrder = 0
     DescendingOrder = 1
+    ElideMiddle = 2
 
 
 def make():
@@ -758,7 +789,11 @@ def make():
     qt.Qt = Qt
     qt.QStyle = SimpleNamespace(
         SP_MessageBoxWarning=1,
-        StandardPixmap=SimpleNamespace(SP_MessageBoxWarning=1),
+        SP_MessageBoxInformation=2,
+        StandardPixmap=SimpleNamespace(
+            SP_MessageBoxWarning=1,
+            SP_MessageBoxInformation=2,
+        ),
     )
     qt.QKeySequence = lambda s: s
     qt.QApplication = SimpleNamespace(
@@ -777,6 +812,7 @@ def make():
         QFont=type("QFont", (Base,), {}),
         QShortcut=qt.QShortcut,
         QKeySequence=qt.QKeySequence,
+        QPalette=FakePalette,
     )
     qt.QTimer = Timer
     qt.QtCore = SimpleNamespace(QTimer=qt.QTimer, QObject=Base)

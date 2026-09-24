@@ -2126,6 +2126,59 @@ class _ConversionConfigDialog:
         self.dialog.reject()
 
 
+def _information_icon_label(qt_widgets: Any, parent: Any, translator: Translator) -> Any:
+    label = qt_widgets.QLabel()
+    set_accessible_name = getattr(label, "setAccessibleName", None)
+    if callable(set_accessible_name):
+        set_accessible_name(translator.text("a11y.scope.information"))
+    style_type = getattr(qt_widgets, "QStyle", None)
+    pixmap_type = getattr(style_type, "StandardPixmap", style_type)
+    information_type = getattr(pixmap_type, "SP_MessageBoxInformation", None)
+    style_getter = getattr(parent, "style", None)
+    style = style_getter() if callable(style_getter) else None
+    standard_icon = getattr(style, "standardIcon", None)
+    if information_type is not None and callable(standard_icon):
+        icon = standard_icon(information_type)
+        pixmap = getattr(icon, "pixmap", None)
+        set_pixmap = getattr(label, "setPixmap", None)
+        if callable(pixmap) and callable(set_pixmap):
+            set_pixmap(pixmap(20, 20))
+            return label
+    set_text = getattr(label, "setText", None)
+    if callable(set_text):
+        set_text("ℹ")
+    return label
+
+
+def _set_scope_banner_surface(banner: Any, qt_widgets: Any) -> None:
+    object_name = "openccForSigilScopeNoticeBanner"
+    set_object_name = getattr(banner, "setObjectName", None)
+    if callable(set_object_name):
+        set_object_name(object_name)
+    palette_getter = getattr(banner, "palette", None)
+    palette = palette_getter() if callable(palette_getter) else None
+    gui = getattr(qt_widgets, "QtGui", None)
+    palette_type = getattr(gui, "QPalette", None)
+    role = _enum_value(palette_type, "AlternateBase")
+    if role is None:
+        role = _enum_value(palette_type, "Base")
+    color_getter = getattr(palette, "color", None)
+    if role is None or not callable(color_getter):
+        return
+    try:
+        color = color_getter(role)
+    except (TypeError, ValueError):
+        return
+    name_getter = getattr(color, "name", None)
+    color_name = name_getter() if callable(name_getter) else None
+    if not isinstance(color_name, str) or not color_name:
+        return
+    set_style_sheet = getattr(banner, "setStyleSheet", None)
+    if callable(set_style_sheet):
+        set_style_sheet(
+            f"QWidget#{object_name} {{ background-color: {color_name}; }}")
+
+
 class _ScopeDialog:
     """Qt view for selecting targets; all content reads happen after it closes."""
 
@@ -2169,14 +2222,23 @@ class _ScopeDialog:
             self.dialog, self._ui_preferences, "scope_dialog_size", (700, 560))
         layout = qt_widgets.QVBoxLayout(self.dialog)
         self.recovery_notice_label = None
+        self.recovery_notice_banner = None
+        self.recovery_notice_icon_label = None
         if self._recovery_notices:
             notice_lines = [
                 _recovery_notice_text(kind, value, translator)
                 for kind, value in self._recovery_notices
             ]
+            self.recovery_notice_banner = qt_widgets.QWidget()
+            recovery_layout = qt_widgets.QHBoxLayout(self.recovery_notice_banner)
+            self.recovery_notice_icon_label = _information_icon_label(
+                qt_widgets, self.recovery_notice_banner, translator)
+            recovery_layout.addWidget(self.recovery_notice_icon_label)
             self.recovery_notice_label = qt_widgets.QLabel("\n".join(notice_lines))
             self.recovery_notice_label.setWordWrap(True)
-            layout.addWidget(self.recovery_notice_label)
+            recovery_layout.addWidget(self.recovery_notice_label, 1)
+            _set_scope_banner_surface(self.recovery_notice_banner, qt_widgets)
+            layout.addWidget(self.recovery_notice_banner)
         self._build_checkpoint_banner(
             qt_widgets, layout, translator, checkpoint_notice_enabled)
 
@@ -2217,6 +2279,9 @@ class _ScopeDialog:
         layout.addWidget(self.guide_label)
         self.list_widget = qt_widgets.QListWidget()
         self.list_widget.setAccessibleName(translator.text("a11y.scope.file_list"))
+        elide_middle = _enum_value(qt_widgets.Qt, "ElideMiddle")
+        if elide_middle is not None:
+            self.list_widget.setTextElideMode(elide_middle)
         layout.addWidget(self.list_widget)
         action_row = qt_widgets.QHBoxLayout()
         self.select_visible = qt_widgets.QPushButton(translator.text("scope.select_visible"))
@@ -2256,6 +2321,7 @@ class _ScopeDialog:
         for item in inventory:
             label = self._scope_item_label(item)
             row = qt_widgets.QListWidgetItem(label)
+            row.setToolTip(item.href)
             row.setData(qt_widgets.Qt.UserRole, item.file_id)
             row.setFlags(row.flags() | qt_widgets.Qt.ItemIsUserCheckable)
             row.setCheckState(
@@ -2323,6 +2389,10 @@ class _ScopeDialog:
                 _recovery_notice_text(kind, value, self._translator)
                 for kind, value in self._recovery_notices
             ))
+            set_accessible_name = getattr(
+                self.recovery_notice_icon_label, "setAccessibleName", None)
+            if callable(set_accessible_name):
+                set_accessible_name(self._translator.text("a11y.scope.information"))
         self.single_radio.setText(self._translator.text("scope.single"))
         self.selected_radio.setText(self._translator.text("scope.selected"))
         self.spine_radio.setText(self._translator.text("scope.spine"))
@@ -2339,8 +2409,16 @@ class _ScopeDialog:
                 self._translator.text("scope.checkpoint_hide"))
             self.checkpoint_close_button.setToolTip(
                 self._translator.text("scope.checkpoint_close"))
-            self.checkpoint_close_button.setAccessibleName(
-                self._translator.text("a11y.banner.dismiss_checkpoint"))
+            set_accessible_name = getattr(
+                self.checkpoint_close_button, "setAccessibleName", None)
+            if callable(set_accessible_name):
+                set_accessible_name(
+                    self._translator.text("a11y.banner.dismiss_checkpoint"))
+            set_icon_accessible_name = getattr(
+                self.checkpoint_icon_label, "setAccessibleName", None)
+            if callable(set_icon_accessible_name):
+                set_icon_accessible_name(
+                    self._translator.text("a11y.scope.information"))
         self.cancel_button.setText(self._translator.text("common.cancel"))
         self.analyze_button.setText(self._translator.text("scope.analyze"))
         self._refresh_count()
@@ -2367,6 +2445,9 @@ class _ScopeDialog:
             return
         self.checkpoint_banner = qt_widgets.QWidget()
         checkpoint_layout = qt_widgets.QHBoxLayout(self.checkpoint_banner)
+        self.checkpoint_icon_label = _information_icon_label(
+            qt_widgets, self.checkpoint_banner, translator)
+        checkpoint_layout.addWidget(self.checkpoint_icon_label)
         self.checkpoint_notice_label = qt_widgets.QLabel(
             translator.text("scope.checkpoint_notice"))
         self.checkpoint_notice_label.setWordWrap(True)
@@ -2377,6 +2458,12 @@ class _ScopeDialog:
             self._checkpoint_notice_preference_changed)
         checkpoint_layout.addWidget(self.checkpoint_hide_checkbox)
         self.checkpoint_close_button = qt_widgets.QPushButton("×")
+        set_fixed_width = getattr(self.checkpoint_close_button, "setFixedWidth", None)
+        if callable(set_fixed_width):
+            set_fixed_width(24)
+        set_flat = getattr(self.checkpoint_close_button, "setFlat", None)
+        if callable(set_flat):
+            set_flat(True)
         set_auto_default = getattr(self.checkpoint_close_button, "setAutoDefault", None)
         if callable(set_auto_default):
             set_auto_default(False)
@@ -2387,6 +2474,7 @@ class _ScopeDialog:
             set_accessible_name(translator.text("a11y.banner.dismiss_checkpoint"))
         self.checkpoint_close_button.clicked.connect(self.checkpoint_banner.hide)
         checkpoint_layout.addWidget(self.checkpoint_close_button)
+        _set_scope_banner_surface(self.checkpoint_banner, qt_widgets)
         layout.addWidget(self.checkpoint_banner)
 
     def _checked_ids(self) -> Tuple[str, ...]:

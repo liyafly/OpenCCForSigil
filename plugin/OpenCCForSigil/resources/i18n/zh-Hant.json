@@ -433,6 +433,7 @@
   "a11y.scope.language": "介面語言",
   "a11y.scope.filter_files": "篩選檔案",
   "a11y.scope.file_list": "待轉換檔案",
+  "a11y.scope.information": "資訊提示",
   "a11y.banner.dismiss_checkpoint": "關閉檢查點提醒",
   "a11y.rules.table": "規則清單",
   "settings.profile_duplicate": "已存在同名設定檔。",

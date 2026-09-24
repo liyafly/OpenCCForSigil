@@ -433,6 +433,7 @@
   "a11y.scope.language": "界面语言",
   "a11y.scope.filter_files": "筛选文件",
   "a11y.scope.file_list": "待转换文件",
+  "a11y.scope.information": "信息提示",
   "a11y.banner.dismiss_checkpoint": "关闭检查点提醒",
   "a11y.rules.table": "规则列表",
   "settings.profile_duplicate": "已存在同名方案。",

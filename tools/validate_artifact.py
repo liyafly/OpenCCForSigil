@@ -168,6 +168,7 @@ _I18N_REQUIRED_KEYS = frozenset(
         "result.back_to_scope",
         "result.invalid_sources",
         "error.no_config",
+        "a11y.scope.information",
         "error.ui_unavailable",
         "error.scope_exactly_one",
         "language.label",

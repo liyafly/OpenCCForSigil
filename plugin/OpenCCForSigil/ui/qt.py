@@ -139,7 +139,7 @@ def enum_value(namespace: Any, name: str) -> Any:
     for enum_name in (
         "WindowType", "Key", "ItemDataRole", "Orientation", "SelectionBehavior",
         "SelectionMode", "ResizeMode", "SizeAdjustPolicy", "ColorRole", "ShortcutContext",
-        "ToolButtonPopupMode",
+        "TextElideMode", "ToolButtonPopupMode",
         "ToolButtonStyle", "ArrowType", "ButtonRole",
     ):
         enum = getattr(namespace, enum_name, None)

@@ -235,6 +235,39 @@ def test_scope_language_change_retranslates_guide_navigation_and_recovery_notice
         "recovery.preferences_corrupt", value="preferences.json")
 
 
+def test_scope_list_middle_elides_and_keeps_complete_path_in_tooltip():
+    qt = make_with_table()
+    inventory = (TextFile("nav", "Text/very/long/navigation/path/nav.xhtml"),)
+    dialog = _ScopeDialog(
+        qt, inventory, (), "en", Translator("en"), nav_id="nav")
+
+    assert ("setTextElideMode", (qt.Qt.ElideMiddle,)) in dialog.list_widget.calls
+    assert dialog.list_widget.item(0).toolTip() == inventory[0].href
+    assert dialog.list_widget.item(0).text().endswith(
+        Translator("en").text("scope.navigation_suffix"))
+
+
+def test_scope_notice_banners_use_information_icons_and_palette_surface():
+    qt = make_with_table()
+    dialog = _ScopeDialog(
+        qt,
+        (TextFile("chapter", "Text/chapter.xhtml"),),
+        (),
+        "en",
+        Translator("en"),
+        recovery_notices=(("preferences_corrupt", "preferences.json"),),
+        checkpoint_notice_enabled=True,
+    )
+
+    for banner in (dialog.recovery_notice_banner, dialog.checkpoint_banner):
+        assert "#f5f5f5" in banner.styleSheet()
+        assert banner.palette().requested_roles == [qt.QtGui.QPalette.AlternateBase]
+        assert banner.style().requested_icon == qt.QStyle.SP_MessageBoxInformation
+
+    assert ("setFixedWidth", (24,)) in dialog.checkpoint_close_button.calls
+    assert ("setFlat", (True,)) in dialog.checkpoint_close_button.calls
+
+
 def test_single_file_count_remains_visible_when_filter_hides_selected_item():
     dialog = _ScopeDialog(
         make_with_table(), FILES, ("a",), "en", Translator("en"),

@@ -433,6 +433,7 @@
   "a11y.scope.language": "Interface language",
   "a11y.scope.filter_files": "Filter files",
   "a11y.scope.file_list": "Files to convert",
+  "a11y.scope.information": "Information",
   "a11y.banner.dismiss_checkpoint": "Dismiss checkpoint reminder",
   "a11y.rules.table": "Rules",
   "settings.profile_duplicate": "A profile with this name already exists.",

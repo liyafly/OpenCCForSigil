@@ -79,7 +79,7 @@ def test_checkpoint_banner_visibility_and_hide_preference_callback():
     visible_layout = _Layout()
     dialog._build_checkpoint_banner(_Qt, visible_layout, _Translator(), True)
     assert dialog.checkpoint_banner.visible
-    assert dialog.checkpoint_notice_label is visible_layout.widgets[0].layout.widgets[0]
+    assert dialog.checkpoint_notice_label is visible_layout.widgets[0].layout.widgets[1]
 
     dialog._checkpoint_notice_preference_changed(False)
     dialog._checkpoint_notice_preference_changed(True)
