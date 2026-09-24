@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import fields, replace
 from typing import Any, Iterable
 from uuid import uuid4
 
@@ -25,6 +25,93 @@ from ui.qt import ask_confirmation, ensure_application, exec_dialog, load_qt
 
 def _labels(translator: Any) -> CatalogView:
     return CatalogView(translator or Translator("en"), "profile")
+
+
+_PROFILE_SUMMARY_KEYS = {
+    "conversion": "profile.conversion",
+    "segmentation": "profile.segmentation",
+    "scope": "profile.scope",
+    "convert_nav": "options.include_nav",
+    "convert_ncx": "options.include_ncx",
+    "convert_metadata": "options.include_metadata",
+    "convert_alt": "options.convert_alt",
+    "convert_title": "options.convert_title",
+    "convert_aria_label": "options.convert_aria_label",
+    "convert_svg_text": "profile.convert_svg_text",
+    "convert_ruby_rt": "options.convert_ruby_rt",
+    "convert_code_pre": "options.convert_code_pre",
+    "decode_numeric_cjk_refs": "options.decode_numeric_cjk_refs",
+    "quotation_mode": "options.quotation_mode",
+    "punctuation_mode": "options.punctuation_mode",
+    "language_metadata": "options.language_metadata",
+    "language_preset": "options.language_preset",
+    "language_region": "options.language_region",
+    "ruleset_ids": "profile.rules",
+    "preview_required": "profile.preview_required",
+    "attributes": "profile.attributes",
+    "protected_elements": "profile.protected_elements",
+    "mathml": "profile.mathml",
+    "numeric_cjk_char_refs": "profile.numeric_cjk_char_refs",
+    "tofu_policy": "profile.tofu_policy",
+    "regex_rules": "profile.regex_rules",
+    "force_pivot": "options.force_pivot",
+    "pivot_chain": "options.pivot_chain",
+    "review_annotations": "profile.review_annotations",
+    "checkpoint_notice": "profile.checkpoint_notice",
+}
+
+_PROFILE_SUMMARY_NON_OPTIONS = {"schema_version", "id", "name", "extras"}
+
+
+def _profile_summary_value(profile: Profile, name: str, translator: Translator) -> str:
+    value = getattr(profile, name)
+    if isinstance(value, bool):
+        return translator.text("profile.enabled" if value else "profile.disabled")
+    if name == "conversion":
+        return configuration_label(translator, value)
+    if name == "segmentation":
+        key = "profile.segmentation.jieba" if value == "jieba" else "profile.segmentation.mmseg"
+        return translator.text(key)
+    if name == "scope":
+        scope_value = {"all_xhtml": "all"}.get(value, value)
+        return translator.text(f"scope.{scope_value}")
+    if name in {"quotation_mode", "punctuation_mode", "language_metadata", "language_preset"}:
+        return translator.text(f"options.{value}")
+    if name == "language_region":
+        regions = {"": "no_region", "auto": "no_region", "zhTW": "zh-TW", "zhHK": "zh-HK"}
+        key = f"options.{regions.get(value, value)}"
+        return translator.text(key)
+    if name == "pivot_chain":
+        return ", ".join(configuration_label(translator, item) for item in value) or translator.text(
+            "profile.no_value"
+        )
+    if name == "attributes":
+        labels = {
+            "alt": "options.convert_alt",
+            "title": "options.convert_title",
+            "aria-label": "options.convert_aria_label",
+        }
+        return ", ".join(translator.text(labels.get(item, item)) for item in value) or translator.text(
+            "profile.no_value"
+        )
+    if name == "protected_elements":
+        labels = []
+        for item in value:
+            key = f"profile.element.{item}"
+            label = translator.text(key)
+            labels.append(item if label == key else label)
+        return ", ".join(labels) or translator.text("profile.no_value")
+    if name == "ruleset_ids":
+        return ", ".join(value) or translator.text("profile.no_value")
+    if name == "tofu_policy":
+        key = f"profile.tofu_policy.{value}"
+        label = translator.text(key)
+        return str(value) if label == key else label
+    if name == "numeric_cjk_char_refs":
+        key = f"options.{value}"
+        label = translator.text(key)
+        return str(value) if label == key else label
+    return str(value)
 
 
 def show_profile_window(
@@ -119,6 +206,9 @@ class ProfileManagerDialog:
         right.addWidget(self.summary, 1)
         self.rules_group = qt.QGroupBox(self._labels["rules"])
         self.rules_layout = qt.QVBoxLayout(self.rules_group)
+        self.ruleset_note = qt.QLabel(self._translator.text("profile.rulesets_session_only"))
+        self.ruleset_note.setWordWrap(True)
+        self.rules_layout.addWidget(self.ruleset_note)
         self.rules_checks = {}
         for identifier in self._available_rulesets:
             check = qt.QCheckBox(identifier, self.rules_group)
@@ -152,7 +242,9 @@ class ProfileManagerDialog:
         selected_row = -1
         role = getattr(self._qt.Qt, "UserRole", 32)
         for row, profile in enumerate(self._profiles):
-            item = self._qt.QListWidgetItem(profile_display_name(profile, self._translator))
+            display_name = profile_display_name(profile, self._translator)
+            item = self._qt.QListWidgetItem(display_name)
+            item.setToolTip(display_name)
             item.setData(role, profile.id)
             self.profile_list.addItem(item)
             if profile.id == self._selected_id:
@@ -182,27 +274,17 @@ class ProfileManagerDialog:
             else self._labels["unavailable"] if unavailable else ""
         )
         status = self._translator.text("profile.status", status=status_label) if status_label else ""
-        options = ", ".join(
-            self._translator.text(
-                "profile.summary_option",
-                label=self._translator.text(label_key),
-                value=self._translator.text(
-                    "profile.enabled" if getattr(profile, field) else "profile.disabled"),
-            )
-            for label_key, field in (
-                ("options.include_nav", "convert_nav"),
-                ("options.include_ncx", "convert_ncx"),
-                ("options.include_metadata", "convert_metadata"),
-                ("options.convert_alt", "convert_alt"),
-                ("options.convert_title", "convert_title"),
-            )
-        )
-        values = (
-            f"{self._labels['conversion']}: {configuration_label(self._translator, conversion)}{status}",
-            f"{self._labels['options']}: {options}",
-            f"{self._labels['rules']}: {', '.join(profile.ruleset_ids) or '—'}",
-        )
-        self.summary.setPlainText("\n".join(values))
+        options = []
+        for profile_field in fields(profile):
+            name = profile_field.name
+            if name in _PROFILE_SUMMARY_NON_OPTIONS:
+                continue
+            label = self._translator.text(_PROFILE_SUMMARY_KEYS[name])
+            value = _profile_summary_value(profile, name, self._translator)
+            if name == "conversion":
+                value += status
+            options.append(self._translator.text("profile.summary_option", label=label, value=value))
+        self.summary.setPlainText("\n".join(options))
         for identifier, check in self.rules_checks.items():
             check.setChecked(identifier in profile.ruleset_ids)
         self.use_button.setEnabled(True)

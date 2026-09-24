@@ -1,3 +1,4 @@
+from dataclasses import fields
 from types import SimpleNamespace
 
 from app.profiles import Profile, ProfileStore
@@ -6,7 +7,7 @@ from sigil.storage import UserDataStore
 from tests.support.fake_qt import make as make_fake_qt
 from ui.i18n import CatalogView, Translator
 from ui import profile_window
-from ui.profile_window import ProfileManagerDialog
+from ui.profile_window import ProfileManagerDialog, _PROFILE_SUMMARY_KEYS
 from ui.run_options import RunOptionsPanel
 
 
@@ -219,7 +220,31 @@ def test_profile_summary_uses_localized_direction_and_option_labels(tmp_path):
     assert "s2twp" not in manager.summary_text
     assert "包含所选 XHTML 中的 NAV 目录" in manager.summary_text
     assert "启用" in manager.summary_text
-    assert "metadata" not in manager.summary_text
+    assert Translator("zh-Hans").text("options.include_metadata") in manager.summary_text
+
+
+def test_profile_summary_shows_quotation_mode_and_lists_full_profile_name():
+    first = Profile(id="first", name="A deliberately long profile name",
+                    conversion="s2t", quotation_mode="keep")
+    second = Profile(id="second", name="Second", conversion="s2t",
+                     quotation_mode="curly")
+    translator = Translator("en")
+    first_manager = ProfileManagerDialog(make_fake_qt(), (first,), translator=translator)
+    second_manager = ProfileManagerDialog(make_fake_qt(), (second,), translator=translator)
+
+    assert first_manager.summary.toPlainText() != second_manager.summary.toPlainText()
+    assert translator.text("options.quotation_mode") in first_manager.summary.toPlainText()
+    summary = first_manager.summary.toPlainText()
+    option_fields = {field.name for field in fields(Profile)} - {
+        "schema_version", "id", "name", "extras",
+    }
+    assert set(_PROFILE_SUMMARY_KEYS) == option_fields
+    assert len(summary.splitlines()) == len(option_fields)
+    assert all(translator.text(key) in summary for key in _PROFILE_SUMMARY_KEYS.values())
+    assert first_manager.profile_list.item(0).toolTip() == first.name
+    assert first_manager.ruleset_note.text() == translator.text(
+        "profile.rulesets_session_only"
+    )
 
 
 def test_profile_summary_marks_unavailable_jieba_without_rewriting_it(tmp_path):

@@ -452,6 +452,7 @@ class ListItem:
         self._data = {}
         self._flags = 1 | 32 | 16
         self._hidden = False
+        self._tooltip = ""
         self.list = None
 
     def text(self):
@@ -487,7 +488,10 @@ class ListItem:
         return self._hidden
 
     def setToolTip(self, t):
-        pass
+        self._tooltip = t
+
+    def toolTip(self):
+        return self._tooltip
 
 
 class ListWidget(Base):
