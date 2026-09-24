@@ -609,6 +609,7 @@ def tokenizer_policy(profile):
             protected.update(names)
     return TokenizerOptions(
         decode_numeric_cjk_refs=profile.decode_numeric_cjk_refs,
+        mathml=profile.mathml,
         protected_elements=tuple(sorted(protected)),
         convert_attributes=tuple(name for name, enabled in (
             ("alt", profile.convert_alt), ("title", profile.convert_title),

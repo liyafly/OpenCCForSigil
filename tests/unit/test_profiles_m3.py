@@ -121,3 +121,15 @@ def test_ruby_rtc_is_protected_by_the_profile_tokenizer_policy():
     document = tokenize_xhtml("<ruby>汉<rtc>ㄏㄢˋ</rtc></ruby>", tokenizer_policy(Profile()))
 
     assert [target.source_text for target in document.targets] == ["汉"]
+
+
+def test_profile_mathml_setting_controls_mathml_text_targets():
+    from app.settings import tokenizer_policy
+    from document.tokenizer import tokenize_xhtml
+
+    source = "<math><mtext>汉字</mtext></math>"
+    disabled = tokenize_xhtml(source, tokenizer_policy(Profile(mathml=False)))
+    enabled = tokenize_xhtml(source, tokenizer_policy(Profile(mathml=True)))
+
+    assert disabled.targets == ()
+    assert [target.source_text for target in enabled.targets] == ["汉字"]
