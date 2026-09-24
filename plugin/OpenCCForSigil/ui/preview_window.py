@@ -1373,7 +1373,7 @@ class _PreviewDialog:
             status_key = "preview.apply_status_pending"
             status_values = {"count": totals["undecided"]}
         elif accepted_count:
-            apply_key = "preview.apply_accepted_one" if len(accepted_files) == 1 else "preview.apply_accepted_many"
+            apply_key = "preview.apply_decisions_one" if len(accepted_files) == 1 else "preview.apply_decisions_many"
             self.apply_button.setText(self._translator.text(
                 apply_key, changes=accepted_count,
                 files=len(accepted_files)))

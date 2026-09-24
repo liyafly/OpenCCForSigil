@@ -77,6 +77,18 @@ def test_supported_catalogs_have_same_keys_and_render_placeholders():
         assert "a.xhtml" in progress
 
 
+def test_traditional_chinese_separates_accepting_changes_from_applying_them():
+    catalog = load_catalogs()["zh-Hant"]
+
+    assert all(
+        "套用" not in value
+        for key, value in catalog.items()
+        if "accept" in key
+    )
+    assert "已寫入" in catalog["result.row.written"]
+    assert "套用" in catalog["preview.apply"]
+
+
 def test_locale_mapping_and_preference_precedence():
     assert normalize_language("zh_TW") == "zh-Hant"
     assert normalize_language("zh-CN") == "zh-Hans"

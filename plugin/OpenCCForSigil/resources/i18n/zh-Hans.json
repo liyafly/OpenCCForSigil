@@ -414,7 +414,7 @@
   "language.name.zh-Hant": "繁体中文",
   "common.yes": "是",
   "common.no": "否",
-  "preview.apply_accepted": "应用 {files} 个文件中的 {changes} 项变更",
+  "preview.apply_decisions": "应用 {files} 个文件中的 {changes} 项变更",
   "preview.apply_no_changes": "完成（无变更）",
   "preview.apply_status_pending": "剩余 {count} 项待决定",
   "preview.apply_status_ready": "已完成决定，可以应用。",
@@ -433,8 +433,8 @@
   "rules.confidence.high": "高",
   "rules.confidence.medium": "中",
   "rules.confidence.low": "低",
-  "preview.apply_accepted_one": "应用 {files} 个文件中的 {changes} 项变更",
-  "preview.apply_accepted_many": "应用 {files} 个文件中的 {changes} 项变更",
+  "preview.apply_decisions_one": "应用 {files} 个文件中的 {changes} 项变更",
+  "preview.apply_decisions_many": "应用 {files} 个文件中的 {changes} 项变更",
   "rules.matched_user_rules": "用户规则：{rules}",
   "config.jieba_combination": "{config}（{segmentation}）"
 }
