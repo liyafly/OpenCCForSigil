@@ -295,6 +295,7 @@
   "preview.diagnostics": "計畫診斷：{details}",
   "preview.invalid_source_location": "第 {line} 行第 {column} 列",
   "preview.skipped_sources": "已略過的不合法 XHTML 檔案：\n{files}",
+  "preview.skipped_sources_more": "還有 {count} 個",
   "preview.diagnostic_detail": "診斷：{details}",
   "preview.export": "匯出報告",
   "preview.export_failed": "無法匯出預覽報告：{reason}",

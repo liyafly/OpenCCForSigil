@@ -26,7 +26,10 @@ class _FakeDialog:
         self.reject_calls += 1
 
 
-def _preview_dialog(change_count: int = 3, current_row: int = 1):
+def _preview_dialog(
+    change_count: int = 3, current_row: int = 1, *, ui_preferences=None,
+    preserve_dialog=False,
+):
     changes = tuple(
         TokenChange(
             source=source,
@@ -49,11 +52,94 @@ def _preview_dialog(change_count: int = 3, current_row: int = 1):
         plan=preview.plan,
     ),)
     qt = make_with_table()
-    dialog = _PreviewDialog(qt, planned, (preview,), Translator("en"), None)
-    dialog.dialog = _FakeDialog()
+    dialog = _PreviewDialog(
+        qt, planned, (preview,), Translator("en"), None,
+        ui_preferences=ui_preferences,
+    )
+    if not preserve_dialog:
+        dialog.dialog = _FakeDialog()
     if current_row >= 0:
         dialog._set_current_row(current_row)
     return dialog, preview, dialog.table_model
+
+
+def test_preview_window_splitter_and_size_preferences_restore():
+    dialog, _preview, _model = _preview_dialog(
+        ui_preferences={
+            "preview_dialog_size": [1000, 700],
+            "preview_splitter_sizes": [600, 200],
+        },
+        preserve_dialog=True,
+    )
+
+    assert (dialog.dialog.width(), dialog.dialog.height()) == (1000, 700)
+    assert dialog.splitter.widgets[0] is dialog.table_view
+    assert dialog.splitter.stretch_factors == {0: 3, 1: 1}
+    assert dialog.splitter.sizes() == [600, 200]
+    assert dialog.detail.minimumHeight() == 80
+
+
+def test_preview_window_saves_size_and_splitter_preferences(monkeypatch):
+    change = TokenChange(
+        source="甲", target="乙", span=SourceSpan(0, 1), rule_source="rule",
+        change_id="persist", file_id="chapter.xhtml",
+    )
+    planned = (SimpleNamespace(
+        source=SimpleNamespace(
+            file_id="chapter.xhtml", href="Text/chapter.xhtml", document_kind="xhtml"),
+        plan=ConversionPlan(source_sha256="", file_id="chapter.xhtml", changes=(change,)),
+    ),)
+    qt = make_with_table()
+    saved = {}
+    monkeypatch.setattr(preview_window, "_load_ui_qt", lambda _translator: qt)
+    monkeypatch.setattr(preview_window, "ensure_application", lambda *_args, **_kwargs: None)
+
+    def execute(dialog):
+        dialog.resize(1010, 710)
+        splitter = next(
+            child for child in dialog._layout.children
+            if isinstance(child, qt.QSplitter)
+        )
+        splitter.setSizes([620, 210])
+
+    monkeypatch.setattr(preview_window, "exec_dialog", execute)
+    preview_window.show_preview(
+        planned,
+        translator=Translator("en"),
+        ui_preferences={"language": "en"},
+        save_ui_preferences=lambda values: saved.update(values),
+    )
+
+    assert saved["preview_dialog_size"] == [1010, 710]
+    assert saved["preview_splitter_sizes"] == [620, 210]
+
+
+def test_skipped_source_summary_truncates_display_but_keeps_complete_tooltip():
+    planned = tuple(
+        SimpleNamespace(
+            source=SimpleNamespace(
+                file_id=f"bad-{index}", href=f"Text/bad-{index}.xhtml",
+                document_kind="xhtml",
+            ),
+            plan=ConversionPlan(
+                source_sha256="",
+                file_id=f"bad-{index}",
+                diagnostics=(Diagnostic("SOURCE_INVALID_XHTML", "invalid", line=index, column=1),),
+            ),
+        )
+        for index in range(1, 6)
+    )
+    previews = tuple(PreviewSession(item.plan) for item in planned)
+    dialog = _PreviewDialog(
+        make_with_table(), planned, previews, Translator("en"), None
+    )
+
+    visible = dialog.summary.text()
+    assert "bad-1.xhtml" in visible and "bad-2.xhtml" in visible and "bad-3.xhtml" in visible
+    assert "bad-4.xhtml" not in visible and "bad-5.xhtml" not in visible
+    assert "2 more" in visible
+    assert "bad-4.xhtml" in dialog.summary.toolTip()
+    assert "bad-5.xhtml" in dialog.summary.toolTip()
 
 
 def _table_dialog(entries, previews, *, current_row=0, category="all", file_id=None,

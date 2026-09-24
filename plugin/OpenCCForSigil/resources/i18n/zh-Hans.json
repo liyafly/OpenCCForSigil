@@ -295,6 +295,7 @@
   "preview.diagnostics": "计划诊断：{details}",
   "preview.invalid_source_location": "第 {line} 行第 {column} 列",
   "preview.skipped_sources": "已跳过的不合法 XHTML 文件：\n{files}",
+  "preview.skipped_sources_more": "等 {count} 个",
   "preview.diagnostic_detail": "诊断：{details}",
   "preview.export": "导出报告",
   "preview.export_failed": "无法导出预览报告：{reason}",

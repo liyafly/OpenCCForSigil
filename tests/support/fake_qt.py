@@ -55,6 +55,18 @@ class FakeStyle:
         return FakeIcon(standard_icon)
 
 
+class FakeSize:
+    def __init__(self, width, height):
+        self._width = width
+        self._height = height
+
+    def width(self):
+        return self._width
+
+    def height(self):
+        return self._height
+
+
 class Base:
     _signals = ()
 
@@ -64,6 +76,9 @@ class Base:
         self._enabled = True
         self._maximum_height = 16777215
         self._minimum_width = 0
+        self._minimum_height = 0
+        self._width = 0
+        self._height = 0
         self._style = FakeStyle()
         self._text = ""
         self._tooltip = ""
@@ -143,6 +158,25 @@ class Base:
 
     def style(self):
         return self._style
+
+    def setMinimumHeight(self, value):
+        self._minimum_height = int(value)
+
+    def minimumHeight(self):
+        return self._minimum_height
+
+    def resize(self, width, height):
+        self._width = int(width)
+        self._height = int(height)
+
+    def width(self):
+        return self._width
+
+    def height(self):
+        return self._height
+
+    def size(self):
+        return FakeSize(self._width, self._height)
 
     def setMaximumHeight(self, value):
         self._maximum_height = int(value)
@@ -627,6 +661,26 @@ class TableItem(Base):
         return self._text if role == Qt.DisplayRole else None
 
 
+class Splitter(Base):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.widgets = []
+        self.stretch_factors = {}
+        self._sizes = [0, 0]
+
+    def addWidget(self, widget):
+        self.widgets.append(widget)
+
+    def setStretchFactor(self, index, factor):
+        self.stretch_factors[int(index)] = int(factor)
+
+    def setSizes(self, sizes):
+        self._sizes = [int(value) for value in sizes]
+
+    def sizes(self):
+        return list(self._sizes)
+
+
 class Qt:
     UserRole = 256
     CheckStateRole = 10
@@ -668,7 +722,6 @@ def make():
         "QTableView",
         "QTableWidget",
         "QToolButton",
-        "QSplitter",
         "QFrame",
         "QProgressDialog",
         "QListView",
@@ -693,6 +746,7 @@ def make():
     qt.QListWidget = type("QListWidget", (ListWidget,), {})
     qt.QTableWidget = type("QTableWidget", (TableWidget,), {})
     qt.QTableWidgetItem = type("QTableWidgetItem", (TableItem,), {})
+    qt.QSplitter = type("QSplitter", (Splitter,), {})
     qt.QListWidgetItem = ListItem
     qt.Qt = Qt
     qt.QStyle = SimpleNamespace(

@@ -428,7 +428,7 @@ def _ordered_scope_inventory(
 
 def show_preview(
     planned: Sequence[PlannedDocument], *, translator: Translator | None = None,
-    services: Any = None,
+    services: Any = None, ui_preferences=None, save_ui_preferences=None,
 ) -> PreviewOutcome:
     """Show a preview and return the sessions containing user decisions."""
 
@@ -436,8 +436,28 @@ def show_preview(
     qt_widgets = _load_ui_qt(translator)
     previews = tuple(PreviewSession(item.plan) for item in planned)
     ensure_application(qt_widgets, language=translator.language)
-    dialog = _PreviewDialog(qt_widgets, planned, previews, translator, services)
+    dialog = _PreviewDialog(
+        qt_widgets, planned, previews, translator, services,
+        ui_preferences=ui_preferences,
+    )
     exec_dialog(dialog.dialog)
+    if callable(save_ui_preferences):
+        state = dict(ui_preferences or {})
+        size = dialog.dialog.size()
+        width = getattr(size, "width", None)
+        height = getattr(size, "height", None)
+        if callable(width) and callable(height) and width() > 0 and height() > 0:
+            state["preview_dialog_size"] = [int(width()), int(height())]
+        splitter_sizes = dialog.splitter.sizes()
+        if (
+            isinstance(splitter_sizes, (tuple, list))
+            and len(splitter_sizes) == 2
+            and all(isinstance(item, int) and not isinstance(item, bool) and item >= 0
+                    for item in splitter_sizes)
+            and any(splitter_sizes)
+        ):
+            state["preview_splitter_sizes"] = [int(item) for item in splitter_sizes]
+        save_ui_preferences(state)
     return PreviewOutcome(
         accepted=dialog.applied,
         previews=previews,
@@ -872,11 +892,12 @@ def _create_preview_table_model(
 class _PreviewDialog:
     def __init__(
         self, qt_widgets: Any, planned, previews: Tuple[PreviewSession, ...],
-        translator: Translator, services: Any = None,
+        translator: Translator, services: Any = None, *, ui_preferences=None,
     ) -> None:
         self._qt = qt_widgets
         self._translator = translator
         self._services = services
+        self._ui_preferences = dict(ui_preferences or {})
         self._planned = planned
         self._previews = previews
         # Plans are immutable, so the preview rows never change identity.  A
@@ -921,7 +942,16 @@ class _PreviewDialog:
 
         self.dialog = _guarded_preview_dialog(qt_widgets, self._guard_reject)
         self.dialog.setWindowTitle(self._translator.text("preview.title"))
-        self.dialog.resize(900, 620)
+        size = self._ui_preferences.get("preview_dialog_size")
+        if (
+            isinstance(size, (tuple, list))
+            and len(size) == 2
+            and all(isinstance(item, int) and not isinstance(item, bool) and item > 0
+                    for item in size)
+        ):
+            self.dialog.resize(int(size[0]), int(size[1]))
+        else:
+            self.dialog.resize(900, 620)
         self._build()
         self._refresh()
         self.table_view.setFocus()
@@ -1042,7 +1072,6 @@ class _PreviewDialog:
         self.table_view.setAlternatingRowColors(True)
         self.table_view.setAccessibleName(
             self._translator.text("a11y.preview.changes_table"))
-        layout.addWidget(self.table_view)
         resize_columns = getattr(self.table_view, "resizeColumnsToContents", None)
         if callable(resize_columns):
             resize_columns()
@@ -1050,12 +1079,30 @@ class _PreviewDialog:
         self.show_source_context = qt.QCheckBox(
             self._translator.text("preview.show_source_context"))
         self.show_source_context.toggled.connect(self._refresh_current)
-        layout.addWidget(self.show_source_context)
+        self.detail_panel = qt.QWidget()
+        detail_layout = qt.QVBoxLayout(self.detail_panel)
+        detail_layout.addWidget(self.show_source_context)
 
         self.detail = qt.QPlainTextEdit()
         self.detail.setReadOnly(True)
-        self.detail.setMinimumHeight(180)
-        layout.addWidget(self.detail)
+        self.detail.setMinimumHeight(80)
+        detail_layout.addWidget(self.detail)
+
+        self.splitter = qt.QSplitter(_enum_value(qt.Qt, "Vertical"))
+        self.splitter.addWidget(self.table_view)
+        self.splitter.addWidget(self.detail_panel)
+        self.splitter.setStretchFactor(0, 3)
+        self.splitter.setStretchFactor(1, 1)
+        saved_splitter_sizes = self._ui_preferences.get("preview_splitter_sizes")
+        if (
+            isinstance(saved_splitter_sizes, (tuple, list))
+            and len(saved_splitter_sizes) == 2
+            and all(isinstance(item, int) and not isinstance(item, bool) and item >= 0
+                    for item in saved_splitter_sizes)
+            and any(saved_splitter_sizes)
+        ):
+            self.splitter.setSizes([int(item) for item in saved_splitter_sizes])
+        layout.addWidget(self.splitter, 1)
 
         buttons = qt.QHBoxLayout()
         self.accept_this_button = qt.QPushButton(self._translator.text("preview.accept_this"))
@@ -1365,8 +1412,21 @@ class _PreviewDialog:
             summary += "\n" + self._translator.text("preview.diagnostics", details="; ".join(diagnostics))
         skipped_sources = self._skipped_source_details()
         if skipped_sources:
+            visible_sources = skipped_sources
+            if len(skipped_sources) > 3:
+                visible_sources = (
+                    *skipped_sources[:3],
+                    self._translator.text(
+                        "preview.skipped_sources_more", count=len(skipped_sources) - 3),
+                )
+                self.summary.setToolTip(self._translator.text(
+                    "preview.skipped_sources", files="\n".join(skipped_sources)))
+            else:
+                self.summary.setToolTip("")
             summary += "\n" + self._translator.text(
-                "preview.skipped_sources", files="\n".join(skipped_sources))
+                "preview.skipped_sources", files="\n".join(visible_sources))
+        else:
+            self.summary.setToolTip("")
         group_feedback = getattr(self, "_last_group_feedback", "")
         if group_feedback:
             summary += "\n" + group_feedback

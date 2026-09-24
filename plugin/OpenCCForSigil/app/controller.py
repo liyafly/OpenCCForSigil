@@ -410,7 +410,13 @@ class Controller:
                     return 0
 
                 self.session.transition(SessionState.PREVIEWING)
-                preview = show_preview(planned, translator=translator, services=settings)
+                preview = show_preview(
+                    planned,
+                    translator=translator,
+                    services=settings,
+                    ui_preferences=ui_preferences,
+                    save_ui_preferences=save_run_ui_preferences,
+                )
                 if getattr(preview, "back_to_settings", False):
                     default_config = selected_config
                     settings.bind_run(active_profile, backend)
