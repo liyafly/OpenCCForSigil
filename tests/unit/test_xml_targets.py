@@ -106,6 +106,19 @@ def test_prefixed_svg_text_is_writable_when_enabled():
     assert "图形" in [target.source_text for target in document.targets]
 
 
+@pytest.mark.parametrize(
+    "source",
+    (
+        '<script><![CDATA[var html = "</script> 汉字";]]></script><p>汉字</p>',
+        '<style><!-- </style> 汉字 --></style><p>汉字</p>',
+    ),
+)
+def test_raw_text_closing_tags_inside_cdata_or_comments_are_ignored(source):
+    document = tokenize_xhtml(source)
+
+    assert [target.source_text for target in document.targets] == ["汉字"]
+
+
 def test_language_modes_do_not_assign_generic_traditional_to_taiwan():
     assert target_language('s2t', 'suggest', 'legacy') is None
     with pytest.raises(ValueError, match='explicit'):

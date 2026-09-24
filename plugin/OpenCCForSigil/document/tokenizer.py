@@ -302,8 +302,33 @@ def _find_closing_tag(source: str, start: int, name: str) -> int:
     if pattern is None:
         pattern = re.compile("</" + re.escape(name), re.IGNORECASE)
         _CLOSING_TAG_PATTERNS[name] = pattern
-    match = pattern.search(source, start)
-    return match.start() if match else -1
+    cursor = start
+    while cursor < len(source):
+        cdata_start = source.find("<![CDATA[", cursor)
+        comment_start = source.find("<!--", cursor)
+        closing = pattern.search(source, cursor)
+        candidates = [
+            (position, kind)
+            for position, kind in (
+                (cdata_start, "cdata"),
+                (comment_start, "comment"),
+                (closing.start() if closing else -1, "closing"),
+            )
+            if position >= 0
+        ]
+        if not candidates:
+            return -1
+        position, kind = min(candidates)
+        if kind == "closing":
+            return position
+        terminator, offset = (
+            ("]]>", 9) if kind == "cdata" else ("-->", 4)
+        )
+        end = source.find(terminator, position + offset)
+        if end < 0:
+            return -1
+        cursor = end + len(terminator)
+    return -1
 
 
 def _is_closing_tag_at(source: str, start: int, name: str) -> bool:
