@@ -325,7 +325,7 @@ class OpenCCBackend:
                 )
                 checks["native_jieba_smoke"] = self.probe_jieba()
                 if not checks["native_jieba_smoke"]:
-                    error = self._jieba_error
+                    error = self.jieba_error
         except Exception as exc:
             error = f"self-test failed: {exc}"
             checks["config"] = False

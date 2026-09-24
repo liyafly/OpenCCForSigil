@@ -53,7 +53,11 @@ def test_failed_optional_probe_removes_only_jieba_and_is_cached(tmp_path):
     assert "newer operating system" in backend.jieba_error
     assert not backend.jieba_available()
     assert backend.self_test(include_optional=False).passed
-    assert not backend.self_test().passed
+    result = backend.self_test()
+    assert not result.passed
+    assert result.checks["config"] is True
+    assert result.checks["s2t_smoke"] is True
+    assert "_jieba_error" not in (result.error or "")
 
 
 def test_successful_probe_checks_every_advertised_jieba_config(tmp_path):
