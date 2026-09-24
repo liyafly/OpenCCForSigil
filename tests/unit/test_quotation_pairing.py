@@ -112,6 +112,14 @@ def test_mixed_opencc_and_quote_opcode_keeps_opencc_attribution():
         "OpenCC conversion; includes QuotationTransform")
 
 
+def test_unbalanced_mixed_quote_and_chinese_change_is_reviewed():
+    _book, _workflow, planned = _plan('<p>"后"乙"</p>')
+    mixed_changes = [change for change in planned[0].plan.changes if "「後" in change.target]
+
+    assert mixed_changes
+    assert all(change.risk == "REVIEW" for change in mixed_changes)
+
+
 def test_quote_entities_advance_pairing_without_changing_entity_text():
     source = '<p>&#34;甲"</p>'
     _book, workflow, planned = _plan(source)

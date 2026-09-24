@@ -148,7 +148,10 @@ def build_conversion_plan(
                 risk_override="HIGH" if document_kind == "metadata" else None,
             )
             changes.append(change)
-            if block_index is not None and change.category == "quotation":
+            if block_index is not None and (
+                change.category == "quotation"
+                or "includes QuotationTransform" in (change.attribution_method or "")
+            ):
                 block_quote_change_ids.setdefault(block_index, []).append(change.change_id)
 
     for index, cursor in block_quote_cursors.items():
