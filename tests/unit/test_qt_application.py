@@ -26,8 +26,8 @@ def test_ensure_application_prefers_sigil_plugin_application(monkeypatch):
     calls = []
     plugin_utils = ModuleType("plugin_utils")
 
-    def plugin_application(args, *, bk):
-        calls.append((args, bk))
+    def plugin_application(args, **kwargs):
+        calls.append((args, kwargs))
         return object()
 
     plugin_utils.PluginApplication = plugin_application
@@ -37,7 +37,7 @@ def test_ensure_application_prefers_sigil_plugin_application(monkeypatch):
     application = qt_helpers.ensure_application(
         SimpleNamespace(QApplication=_FakeApplication))
 
-    assert calls == [(sys.argv, book)]
+    assert calls == [(sys.argv, {"bk": book, "match_dark_palette": True})]
     assert application is qt_helpers._application
     assert _FakeApplication.created_with is None
 

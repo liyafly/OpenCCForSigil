@@ -47,7 +47,8 @@ def ensure_application(qt_widgets: Any) -> Any:
             try:
                 from plugin_utils import PluginApplication
 
-                application = PluginApplication(sys.argv, bk=_host_bk)
+                application = PluginApplication(
+                    sys.argv, bk=_host_bk, match_dark_palette=True)
             except Exception:  # noqa: BLE001 - older Sigil or no plugin_utils
                 application = None
         if application is None:
