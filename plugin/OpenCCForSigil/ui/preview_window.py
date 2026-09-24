@@ -1424,14 +1424,23 @@ class _PreviewDialog:
     def _refresh(self, *_args, recalculate_counts=False, refresh_statuses=False) -> None:
         if recalculate_counts:
             self._recompute_counts()
-        selected_change_id = self._selected_change_id()
-        visible_entries = self._visible_entries()
+        cached_entries = getattr(self, "_visible_entries_cache", None)
+        if refresh_statuses and cached_entries is not None:
+            # Decisions change row status, not which rows match the filters.
+            # Keep the tuple/model identity and avoid rescanning large books.
+            visible_entries = cached_entries
+            row = self._current_row()
+            if row < 0 and visible_entries:
+                row = 0
+        else:
+            selected_change_id = self._selected_change_id()
+            visible_entries = self._visible_entries()
+            row = next(
+                (index for index, (_preview, change) in enumerate(visible_entries)
+                 if change.change_id == selected_change_id),
+                0 if visible_entries else -1,
+            )
         self._visible_entries_cache = visible_entries
-        row = next(
-            (index for index, (_preview, change) in enumerate(visible_entries)
-             if change.change_id == selected_change_id),
-            0 if visible_entries else -1,
-        )
         if getattr(self, "table_model", None) is not None:
             prior_entries = self.table_model.rows.entries
             self.table_model.set_entries(visible_entries)
@@ -1778,13 +1787,35 @@ class _PreviewDialog:
         self._last_group_feedback = ""
         for preview in self._previews:
             preview.accept_all(overwrite=True)
-        self._refresh(recalculate_counts=True, refresh_statuses=True)
+        self._set_all_decision_counts("accepted")
+        self._refresh(refresh_statuses=True)
 
     def _reject_all(self) -> None:
         self._last_group_feedback = ""
         for preview in self._previews:
             preview.reject_all(overwrite=True)
-        self._refresh(recalculate_counts=True, refresh_statuses=True)
+        self._set_all_decision_counts("rejected")
+        self._refresh(refresh_statuses=True)
+
+    def _set_all_decision_counts(self, bucket: str) -> None:
+        total = len(self._entries)
+        file_totals = {
+            file_id: file_total
+            for file_id, (file_total, _pending) in self._file_filter_counts.items()
+        }
+        self._totals = {
+            "total": total,
+            "accepted": total if bucket == "accepted" else 0,
+            "rejected": total if bucket == "rejected" else 0,
+            "undecided": 0,
+        }
+        self._file_filter_counts = {
+            file_id: (file_total, 0)
+            for file_id, file_total in file_totals.items()
+        }
+        self._accepted_count_by_file = (
+            file_totals if bucket == "accepted" else {}
+        )
 
     def _back_to_settings(self) -> None:
         if self.applied:

@@ -159,14 +159,15 @@ class PreviewSession:
         *,
         overwrite: bool = False,
     ) -> int:
-        selected = (
-            tuple(change for change in self._changes.values() if scope is None or scope.matches(change))
-            if overwrite
-            else self.undecided(scope)
-        )
-        for change in selected:
+        count = 0
+        for change in self._changes.values():
+            if not overwrite and change.change_id in self._decisions:
+                continue
+            if scope is not None and not scope.matches(change):
+                continue
             self._decisions[change.change_id] = decision
-        return len(selected)
+            count += 1
+        return count
 
     def _require_change(self, change_id: str) -> None:
         if change_id not in self._changes:
