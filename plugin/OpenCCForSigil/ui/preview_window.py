@@ -1011,6 +1011,12 @@ class _PreviewDialog:
                 set_minimum_length(16)
             filter_row.addWidget(widget)
             widget.currentIndexChanged.connect(lambda *_args: self._refresh())
+        for widget, key in (
+            (self.file_filter, "a11y.preview.file_filter"),
+            (self.category_filter, "a11y.preview.category_filter"),
+            (self.risk_filter, "a11y.preview.risk_filter"),
+        ):
+            widget.setAccessibleName(self._translator.text(key))
         layout.addLayout(filter_row)
 
         self.table_view = qt.QTableView()
@@ -1034,6 +1040,8 @@ class _PreviewDialog:
         if callable(set_precision):
             set_precision(50)
         self.table_view.setAlternatingRowColors(True)
+        self.table_view.setAccessibleName(
+            self._translator.text("a11y.preview.changes_table"))
         layout.addWidget(self.table_view)
         resize_columns = getattr(self.table_view, "resizeColumnsToContents", None)
         if callable(resize_columns):
@@ -1052,6 +1060,14 @@ class _PreviewDialog:
         buttons = qt.QHBoxLayout()
         self.accept_this_button = qt.QPushButton(self._translator.text("preview.accept_this"))
         self.reject_this_button = qt.QPushButton(self._translator.text("preview.skip_this"))
+        self.next_undecided_button = qt.QPushButton(
+            self._translator.text("preview.next_undecided"))
+        self.accept_this_button.setToolTip(
+            self._translator.text("preview.shortcut.accept_this"))
+        self.reject_this_button.setToolTip(
+            self._translator.text("preview.shortcut.skip_this"))
+        self.next_undecided_button.setToolTip(
+            self._translator.text("preview.shortcut.next_undecided"))
         self.accept_file_button = qt.QPushButton(self._translator.text("preview.accept_file"))
         self.reject_file_button = qt.QPushButton(self._translator.text("preview.skip_file"))
         self.accept_all_button = qt.QPushButton(self._translator.text("preview.accept_all"))
@@ -1066,7 +1082,8 @@ class _PreviewDialog:
         self.back_settings_button = qt.QPushButton(self._translator.text("preview.back_settings"))
         self.cancel_button = qt.QPushButton(self._translator.text("common.cancel"))
         for button in (self.accept_this_button, self.reject_this_button,
-                       self.accept_file_button, self.reject_file_button,
+                       self.next_undecided_button, self.accept_file_button,
+                       self.reject_file_button,
                        self.accept_filter_button, self.reject_filter_button):
             buttons.addWidget(button)
         layout.addLayout(buttons)
@@ -1085,6 +1102,7 @@ class _PreviewDialog:
 
         self.accept_this_button.clicked.connect(self._accept_this)
         self.reject_this_button.clicked.connect(self._reject_this)
+        self.next_undecided_button.clicked.connect(self._next_undecided)
         self.accept_file_button.clicked.connect(self._accept_file)
         self.reject_file_button.clicked.connect(self._reject_file)
         self.accept_all_button.clicked.connect(self._accept_all)
@@ -1113,8 +1131,9 @@ class _PreviewDialog:
             buttons = tuple(
                 getattr(self, name, None)
                 for name in (
-                    "accept_this_button", "reject_this_button", "accept_file_button",
-                    "reject_file_button", "accept_all_button", "reject_all_button",
+                    "accept_this_button", "reject_this_button", "next_undecided_button",
+                    "accept_file_button", "reject_file_button", "accept_all_button",
+                    "reject_all_button",
                     "accept_filter_button", "reject_filter_button", "export_button",
                     "apply_button", "back_settings_button", "cancel_button",
                 )
@@ -1357,6 +1376,7 @@ class _PreviewDialog:
         for name in (
             "accept_this_button",
             "reject_this_button",
+            "next_undecided_button",
             "accept_file_button",
             "reject_file_button",
             "accept_filter_button",
@@ -1394,7 +1414,10 @@ class _PreviewDialog:
             status_values = {}
         status_label = getattr(self, "apply_status_label", None)
         if status_label is not None:
-            status_label.setText(self._translator.text(status_key, **status_values))
+            status_label.setText(
+                self._translator.text(status_key, **status_values)
+                + "\n" + self._translator.text("preview.shortcut_hint")
+            )
         self.apply_button.setEnabled(complete)
         set_tooltip = getattr(self.apply_button, "setToolTip", None)
         if callable(set_tooltip):
@@ -1772,8 +1795,11 @@ class _ConversionConfigDialog:
         label.setWordWrap(True)
         layout.addWidget(label)
 
-        layout.addWidget(qt_widgets.QLabel(self._translator.text("config.direction")))
+        self.direction_label = qt_widgets.QLabel(
+            self._translator.text("config.direction"))
+        layout.addWidget(self.direction_label)
         self.combo = qt_widgets.QComboBox()
+        self.direction_label.setBuddy(self.combo)
         config_groups = (
             ("general", ("s2t", "t2s")),
             ("regional", ("s2tw", "s2twp", "s2hk", "s2hkp", "tw2s", "tw2sp",
@@ -2042,6 +2068,8 @@ class _ScopeDialog:
         self.language_label = qt_widgets.QLabel(translator.text("language.label"))
         language_row.addWidget(self.language_label)
         self.language_combo = qt_widgets.QComboBox()
+        self.language_label.setBuddy(self.language_combo)
+        self.language_label.setAccessibleName(translator.text("a11y.scope.language"))
         for code in SUPPORTED_LANGUAGES:
             self.language_combo.addItem(self._translator.text(f"language.name.{code}"), code)
         self.language_combo.setCurrentIndex(max(0, self.language_combo.findData(language)))
@@ -2063,6 +2091,7 @@ class _ScopeDialog:
 
         self.filter_edit = qt_widgets.QLineEdit()
         self.filter_edit.setPlaceholderText(translator.text("scope.filter"))
+        self.filter_edit.setAccessibleName(translator.text("a11y.scope.filter_files"))
         self.filter_edit.textChanged.connect(self._refresh_list)
         self.filter_edit.returnPressed.connect(self._focus_first_visible_item)
         layout.addWidget(self.filter_edit)
@@ -2071,6 +2100,7 @@ class _ScopeDialog:
         self.guide_label.setVisible(not bool(initial_ids))
         layout.addWidget(self.guide_label)
         self.list_widget = qt_widgets.QListWidget()
+        self.list_widget.setAccessibleName(translator.text("a11y.scope.file_list"))
         layout.addWidget(self.list_widget)
         action_row = qt_widgets.QHBoxLayout()
         self.select_visible = qt_widgets.QPushButton(translator.text("scope.select_visible"))
@@ -2167,6 +2197,7 @@ class _ScopeDialog:
         self._translator.set_language(code)
         self.dialog.setWindowTitle(self._translator.text("scope.title"))
         self.language_label.setText(self._translator.text("language.label"))
+        self.language_label.setAccessibleName(self._translator.text("a11y.scope.language"))
         self.guide_label.setText(self._translator.text("scope.selection_guide"))
         for row, item in enumerate(self._inventory):
             self.list_widget.item(row).setText(self._scope_item_label(item))
@@ -2180,6 +2211,8 @@ class _ScopeDialog:
         self.spine_radio.setText(self._translator.text("scope.spine"))
         self.all_radio.setText(self._translator.text("scope.all"))
         self.filter_edit.setPlaceholderText(self._translator.text("scope.filter"))
+        self.filter_edit.setAccessibleName(self._translator.text("a11y.scope.filter_files"))
+        self.list_widget.setAccessibleName(self._translator.text("a11y.scope.file_list"))
         self.select_visible.setText(self._translator.text("scope.select_visible"))
         self.clear_visible.setText(self._translator.text("scope.clear_visible"))
         if self.checkpoint_banner is not None:
@@ -2189,6 +2222,8 @@ class _ScopeDialog:
                 self._translator.text("scope.checkpoint_hide"))
             self.checkpoint_close_button.setToolTip(
                 self._translator.text("scope.checkpoint_close"))
+            self.checkpoint_close_button.setAccessibleName(
+                self._translator.text("a11y.banner.dismiss_checkpoint"))
         self.cancel_button.setText(self._translator.text("common.cancel"))
         self.analyze_button.setText(self._translator.text("scope.analyze"))
         self._refresh_count()
@@ -2230,6 +2265,9 @@ class _ScopeDialog:
             set_auto_default(False)
         self.checkpoint_close_button.setToolTip(
             translator.text("scope.checkpoint_close"))
+        set_accessible_name = getattr(self.checkpoint_close_button, "setAccessibleName", None)
+        if callable(set_accessible_name):
+            set_accessible_name(translator.text("a11y.banner.dismiss_checkpoint"))
         self.checkpoint_close_button.clicked.connect(self.checkpoint_banner.hide)
         checkpoint_layout.addWidget(self.checkpoint_close_button)
         layout.addWidget(self.checkpoint_banner)

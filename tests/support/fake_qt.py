@@ -67,6 +67,8 @@ class Base:
         self._style = FakeStyle()
         self._text = ""
         self._tooltip = ""
+        self._accessible_name = ""
+        self._buddy = None
         self._plain_text = ""
         self.calls = []
         self.args = args
@@ -162,6 +164,18 @@ class Base:
 
     def toolTip(self):
         return self._tooltip
+
+    def setAccessibleName(self, name):
+        self._accessible_name = str(name)
+
+    def accessibleName(self):
+        return self._accessible_name
+
+    def setBuddy(self, widget):
+        self._buddy = widget
+
+    def buddy(self):
+        return self._buddy
 
     def setPlainText(self, value):
         self._plain_text = str(value)

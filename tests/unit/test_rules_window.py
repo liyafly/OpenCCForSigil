@@ -272,6 +272,15 @@ def test_rule_conflicts_have_a_bounded_section_and_test_box_starts_collapsed():
     assert not manager.test_box.isChecked()
 
 
+def test_rules_editor_labels_are_buddied_and_table_has_accessible_name():
+    manager = RuleManagerDialog(make_with_table(), (), translator=Translator("en"))
+
+    children = manager.editor_form.children
+    assert len(children) == 12
+    assert all(children[index].buddy() is children[index + 1] for index in range(0, 12, 2))
+    assert manager.table.accessibleName()
+
+
 def test_rules_window_minimum_height_fits_common_screen():
     manager = RuleManagerDialog(make_with_table(), (), translator=Translator("en"))
     hint = manager.dialog.minimumSizeHint()

@@ -51,6 +51,7 @@ class RunOptionsPanel:
         self._updating = False
         self.checks = {}
         self.combos = {}
+        self.combo_labels = {}
         self.profile_label = qt.QLabel()
         self.ruleset_label = qt.QLabel()
         size_policy = getattr(qt.QSizePolicy, "Policy", qt.QSizePolicy)
@@ -174,7 +175,10 @@ class RunOptionsPanel:
             combo.setCurrentIndex(max(0, index))
         self.combos[name] = combo
         if hasattr(layout, "addRow"):
-            layout.addRow(self._tr.text("options." + name), combo)
+            label = self._qt.QLabel(self._tr.text("options." + name))
+            label.setBuddy(combo)
+            self.combo_labels[name] = label
+            layout.addRow(label, combo)
         else:
             layout.addWidget(combo)
         return combo

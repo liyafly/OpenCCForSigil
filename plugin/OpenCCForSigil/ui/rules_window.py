@@ -360,6 +360,7 @@ class RuleManagerDialog:
                 for key in ("type", "direction", "source", "target", "scope", "priority")
             ]
         )
+        self.table.setAccessibleName(self._translator.text("a11y.rules.table"))
         _configure_rule_table(self.table, qt)
         layout.addWidget(self.table)
         self.conflict_list = qt.QListWidget()
@@ -399,8 +400,11 @@ class RuleManagerDialog:
             ("priority", self.priority_edit),
         )
         for row, (key, widget) in enumerate(controls):
-            form.addWidget(qt.QLabel(self._labels[key]), row // 3, (row % 3) * 2)
+            label = qt.QLabel(self._labels[key])
+            label.setBuddy(widget)
+            form.addWidget(label, row // 3, (row % 3) * 2)
             form.addWidget(widget, row // 3, (row % 3) * 2 + 1)
+        self.editor_form = form
         layout.addLayout(form)
         editor_box = qt.QGroupBox(self._labels["editor_group"])
         buttons = qt.QHBoxLayout(editor_box)

@@ -175,6 +175,14 @@ def test_reject_stops_jieba_probe_timer():
     assert not dialog._probe_timer.isActive()
 
 
+def test_conversion_direction_label_is_buddied_to_its_combo():
+    dialog = _ConversionConfigDialog(
+        fake_qt.make(), ("s2t", "t2s"), "s2t", {}, translator=Translator()
+    )
+
+    assert dialog.direction_label.buddy() is dialog.combo
+
+
 def test_jieba_details_is_hidden_without_error_and_visible_after_failure():
     dialog = _full_dialog(Probe("available"))
     assert not dialog.jieba_details_button.isVisible()

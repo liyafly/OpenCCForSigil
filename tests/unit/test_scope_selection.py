@@ -197,6 +197,18 @@ def test_scope_filter_enter_focuses_first_visible_row_without_accepting():
     )
 
 
+def test_scope_labels_are_buddied_and_filter_list_have_accessible_names():
+    dialog = _ScopeDialog(
+        make_with_table(), FILES, (), "en", Translator("en"),
+        checkpoint_notice_enabled=True,
+    )
+
+    assert dialog.language_label.buddy() is dialog.language_combo
+    assert dialog.filter_edit.accessibleName()
+    assert dialog.list_widget.accessibleName()
+    assert dialog.checkpoint_close_button.accessibleName()
+
+
 def test_scope_language_change_retranslates_guide_navigation_and_recovery_notice():
     translator = Translator("zh-Hans")
     inventory = (TextFile("chapter", "Text/chapter.xhtml"),

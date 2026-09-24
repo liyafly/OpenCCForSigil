@@ -107,10 +107,30 @@ def test_preview_dialog_buttons_are_never_default_or_auto_default():
         dialog.accept_file_button, dialog.reject_file_button,
         dialog.accept_all_button, dialog.reject_all_button,
         dialog.accept_filter_button, dialog.reject_filter_button,
+        dialog.next_undecided_button,
         dialog.export_button, dialog.apply_button,
         dialog.back_settings_button, dialog.cancel_button,
     )
     assert all(not button.default and button.auto_default is False for button in buttons)
+
+
+def test_preview_shortcut_tooltips_status_hint_and_accessible_names():
+    dialog, _preview, _model = _preview_dialog(current_row=0)
+
+    assert "(A)" in dialog.accept_this_button.toolTip()
+    assert "(S)" in dialog.reject_this_button.toolTip()
+    assert "(N)" in dialog.next_undecided_button.toolTip()
+    assert "A accept" in dialog.apply_status_label.text()
+    for widget in (
+        dialog.file_filter,
+        dialog.category_filter,
+        dialog.risk_filter,
+        dialog.table_view,
+    ):
+        assert widget.accessibleName()
+
+    dialog.next_undecided_button.click()
+    assert dialog._current_row() == 1
 
 
 def test_preview_dialog_focuses_change_table_on_open():
@@ -166,7 +186,9 @@ def test_preview_dialog_single_decisions_update_only_selected_row_and_summary():
     assert _display(dialog, 0, 0) == "Pending"
     assert "Accepted: 1" in dialog.summary.text()
     assert "Undecided: 2" in dialog.summary.text()
-    assert "Remaining: 2" == dialog.apply_status_label.text()
+    assert dialog.apply_status_label.text() == (
+        "Remaining: 2\n" + dialog._translator.text("preview.shortcut_hint")
+    )
     assert "己" in dialog.detail.toPlainText()
     assert dialog.apply_button.isEnabled() is False
 
@@ -178,7 +200,9 @@ def test_preview_dialog_single_decisions_update_only_selected_row_and_summary():
     assert "Undecided: 1" in dialog.summary.text()
     assert "乙" in dialog.detail.toPlainText()
     dialog._accept_this()
-    assert dialog.apply_status_label.text() == "Ready to apply."
+    assert dialog.apply_status_label.text() == (
+        "Ready to apply.\n" + dialog._translator.text("preview.shortcut_hint")
+    )
     assert dialog.apply_button.text() == "Apply 2 changes to 1 file"
 
 
@@ -263,16 +287,20 @@ def test_apply_status_has_pending_ready_and_no_change_states_in_both_chinese_and
 
         dialog._accept_all()
         dialog._update_summary()
-        assert dialog.apply_status_label.text() == dialog._translator.text(
-            "preview.apply_status_ready")
+        assert dialog.apply_status_label.text() == (
+            dialog._translator.text("preview.apply_status_ready") + "\n"
+            + dialog._translator.text("preview.shortcut_hint")
+        )
         assert "2" in dialog.apply_button.text()
 
         dialog._reject_all()
         dialog._update_summary()
         assert dialog.apply_button.text() == dialog._translator.text(
             "preview.apply_no_changes")
-        assert dialog.apply_status_label.text() == dialog._translator.text(
-            "preview.apply_status_none")
+        assert dialog.apply_status_label.text() == (
+            dialog._translator.text("preview.apply_status_none") + "\n"
+            + dialog._translator.text("preview.shortcut_hint")
+        )
 
 
 def test_preview_decoding_is_display_only_and_group_feedback_clears_on_normal_action():

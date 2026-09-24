@@ -208,6 +208,16 @@ def test_changed_quotation_option_marks_profile_as_modified(tmp_path):
     assert Translator("en").text("options.profile_modified") in panel.profile_label.text()
 
 
+def test_run_option_combo_labels_are_buddied_to_controls(tmp_path):
+    _settings, panel = _profile_options_fixture(tmp_path)
+
+    assert panel.combo_labels
+    assert all(
+        panel.combo_labels[name].buddy() is control
+        for name, control in panel.combos.items()
+    )
+
+
 def test_profile_summary_uses_localized_direction_and_option_labels(tmp_path):
     profile = Profile(id="profile-a", name="A", conversion="s2twp")
     manager = _manager((profile,), ProfileStore(tmp_path))
