@@ -40,6 +40,17 @@ class RuleWindowResult:
     renamed: tuple[tuple[str, str], ...] = ()
 
 
+def _guarded_rule_dialog(qt_widgets, guard):
+    base_dialog = qt_widgets.QDialog
+
+    class GuardedRuleDialog(base_dialog):
+        def reject(self):
+            if guard():
+                super().reject()
+
+    return GuardedRuleDialog()
+
+
 def review_import(
     existing: Iterable[Rule], imported: ImportResult, *, id_reassigned_count: int = 0
 ) -> RuleImportReview:
@@ -297,6 +308,7 @@ class RuleManagerDialog:
         self._ruleset_id = selected
         self._renamed: list[tuple[str, str]] = []
         self.rules = list(self._rulesets[selected].rules)
+        self._initial_ruleset_snapshot = self._ruleset_snapshot()
         self.result: RuleWindowResult | None = None
         self._official_convert = official_convert
         self._config = config
@@ -307,7 +319,7 @@ class RuleManagerDialog:
         self._storage_errors = tuple(storage_errors)
         self._jieba_pending = bool(jieba_pending)
         self.accepted = False
-        self.dialog = qt_widgets.QDialog()
+        self.dialog = _guarded_rule_dialog(qt_widgets, self._guard_reject)
         self.dialog.setWindowTitle(self._labels["title"])
         self.dialog.resize(840, 540)
         self._build()
@@ -463,6 +475,34 @@ class RuleManagerDialog:
             current = self._rulesets[self._ruleset_id]
             self._rulesets[self._ruleset_id] = RuleSet(
                 current.id, tuple(self.rules), current.name)
+
+    def _ruleset_snapshot(self):
+        self._stash_ruleset()
+        return tuple(
+            (identifier, ruleset.name, tuple(ruleset.rules))
+            for identifier, ruleset in sorted(self._rulesets.items())
+        )
+
+    def _guard_reject(self) -> bool:
+        if self._ruleset_snapshot() == self._initial_ruleset_snapshot:
+            return True
+        return self._confirm_discard_rules()
+
+    def _confirm_discard_rules(self) -> bool:
+        message_box = getattr(self._qt, "QMessageBox", None)
+        if not callable(message_box):
+            return False
+        box = message_box(self.dialog)
+        box.setWindowTitle(self._translator.text("rules.discard_title"))
+        box.setText(self._translator.text("rules.discard_message"))
+        discard = box.addButton(
+            self._translator.text("rules.discard_confirm"), message_box.AcceptRole)
+        back = box.addButton(
+            self._translator.text("rules.discard_back"), message_box.RejectRole)
+        box.setDefaultButton(back)
+        box.setEscapeButton(back)
+        exec_dialog(box)
+        return box.clickedButton() is discard
 
     def _ruleset_changed(self, *_args) -> None:
         identifier = self.ruleset_combo.currentData()

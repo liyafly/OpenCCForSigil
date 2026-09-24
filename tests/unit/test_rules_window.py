@@ -215,6 +215,32 @@ def test_enter_in_rule_editor_submits_without_opening_ruleset_prompt():
     )
 
 
+def test_reject_confirms_unsaved_rules_and_returning_keeps_window_open():
+    manager = RuleManagerDialog(make_with_table(), (), translator=Translator("en"))
+    manager.source_edit.setText("术语")
+    manager.target_edit.setText("新词")
+    manager._add()
+    confirm_calls = []
+    manager._confirm_discard_rules = lambda: confirm_calls.append(True) or False
+
+    manager.dialog.reject()
+
+    assert confirm_calls == [True]
+    assert manager.dialog.result is None
+    assert manager.dialog.isVisible()
+
+
+def test_reject_without_rule_changes_does_not_prompt():
+    manager = RuleManagerDialog(make_with_table(), (), translator=Translator("en"))
+    confirm_calls = []
+    manager._confirm_discard_rules = lambda: confirm_calls.append(True) or True
+
+    manager.dialog.reject()
+
+    assert confirm_calls == []
+    assert manager.dialog.result == 0
+
+
 def test_direction_default_is_selected_from_current_config():
     class DirectionCombo:
         def __init__(self):
