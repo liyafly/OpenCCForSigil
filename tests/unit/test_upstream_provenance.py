@@ -74,4 +74,4 @@ def test_windows_jieba_build_uses_lf_checkout_and_msvc_ninja_environment():
     upstream_checkout = workflow.index("Check out pinned OpenCC source")
     assert line_endings_step < upstream_checkout
     assert "git config --global core.autocrlf false" in workflow
-    assert "ilammy/msvc-dev-cmd@v1" in workflow
+    assert "ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1" in workflow

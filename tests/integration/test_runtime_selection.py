@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.controller import Controller
+from app.version import PLUGIN_VERSION
 from opencc_backend.errors import RuntimeSelectionError
 
 
@@ -48,7 +49,7 @@ def test_runtime_selection_error_shows_one_localized_dialog_without_reading_book
     assert result == 2
     assert len(calls) == 1
     assert book.read_calls == 0
-    assert "OpenCCForSigil_0.1.0_macos-x86_64.zip" in calls[0]["summary"]
+    assert f"OpenCCForSigil_{PLUGIN_VERSION}_macos-x86_64.zip" in calls[0]["summary"]
     assert "转换已停止" not in calls[0]["summary"]
     assert "此安装包适用于" in calls[0]["summary"]
 
