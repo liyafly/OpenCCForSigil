@@ -56,7 +56,7 @@
 **为什么**：ARM64 job、cp312 job、打包 job 和六个 runtime 的冒烟测试需要在当前发布候选提交上完整运行。
 
 **步骤**：
-1. 在 GitHub 的 Actions 页面，对 `main` 手动触发（workflow_dispatch）`.github/workflows/ci.yml`。
+1. 在最终候选 `main` SHA 上运行完整 `.github/workflows/ci.yml`。可以使用该 SHA 的 push run，也可在 GitHub Actions 对 `main` 手动触发（workflow_dispatch）。
 2. 逐项确认并记录：
    - `ubuntu-22.04-arm` runner 可用，job 通过；
    - Windows job 生成了 merged Jieba 数据，哈希与 `native_build/payload-lock.json` 的 `jieba_resources` 一致；
@@ -79,6 +79,24 @@
   | `OpenCCForSigil_0.1.0_macos-x86_64.zip` | 5,473,616 | 5.47 | 平台包 ≤ 7 MB，通过 |
   | `OpenCCForSigil_0.1.0_windows-x86_64.zip` | 5,573,003 | 5.57 | 平台包 ≤ 7 MB，通过 |
   | `OpenCCForSigil_0.1.0.zip` | 27,273,373 | 27.27 | 第一阶段 Fat 包 ≤ 30 MB，通过；第三阶段 ≤ 12 MB 目标尚未达到 |
+
+**v0.2.0 E-01 运行记录（2026-09-24）**：
+- 首次发布候选 run [#36012262476](https://github.com/liyafly/OpenCCForSigil/actions/runs/36012262476) 在 Windows Fat smoke 失败：该多行 Bash 命令在 Windows runner 上被 PowerShell 解析。为该步骤显式指定 Bash 后，修复提交 `a2696a52a412e9d2be1f065a8dc61834e3d4388e` 重新通过。
+- [main CI run #36013930134](https://github.com/liyafly/OpenCCForSigil/actions/runs/36013930134)（push，SHA `a2696a52a412e9d2be1f065a8dc61834e3d4388e`）：六个原生 payload job、跨平台 Jieba 输出比较、组包及六个 runtime package smoke 全部通过。
+- 从该 run 下载 `OpenCCForSigil-packages-a2696a52a412e9d2be1f065a8dc61834e3d4388e` artifact。`tools/release_assets.py --version 0.2.0` 验证八个资产合同；`sha256sum -c SHA256SUMS.txt` 对七个 ZIP 全部返回 `OK`。
+- 实际 ZIP 大小（十进制 MB）：
+
+  | 资产 | 字节 | MB | 预算结果 |
+  | --- | ---: | ---: | --- |
+  | `OpenCCForSigil_0.2.0_linux-aarch64.zip` | 5,802,232 | 5.80 | 平台包 ≤ 7 MB，通过 |
+  | `OpenCCForSigil_0.2.0_linux-x86_64-cp312.zip` | 5,853,636 | 5.85 | 平台包 ≤ 7 MB，通过 |
+  | `OpenCCForSigil_0.2.0_linux-x86_64.zip` | 5,853,658 | 5.85 | 平台包 ≤ 7 MB，通过 |
+  | `OpenCCForSigil_0.2.0_macos-arm64.zip` | 5,427,793 | 5.43 | 平台包 ≤ 7 MB，通过 |
+  | `OpenCCForSigil_0.2.0_macos-x86_64.zip` | 5,475,387 | 5.48 | 平台包 ≤ 7 MB，通过 |
+  | `OpenCCForSigil_0.2.0_windows-x86_64.zip` | 5,574,769 | 5.57 | 平台包 ≤ 7 MB，通过 |
+  | `OpenCCForSigil_0.2.0.zip` | 27,275,147 | 27.28 | Fat 包 ≤ 30 MB，通过；共享数据 12 MB 优化按要求跳过 |
+
+- [v0.2.0 tag run #36015654873](https://github.com/liyafly/OpenCCForSigil/actions/runs/36015654873) 使用相同源码 SHA，六个平台 smoke、`attest-release-assets` 和 `publish-release` 全部通过。GitHub Release [v0.2.0](https://github.com/liyafly/OpenCCForSigil/releases/tag/v0.2.0) 有七个 ZIP 与校验清单；下载后 `tools/release_assets.py`、SHA-256 和八个文件的 `gh attestation verify` 均通过。校验清单 SHA-256：`3543bef74d9770a17b7ed60946ddb33664e0a2df93fdee3ec3a927cd9632800e`。
 
 **失败时**：记录失败的 job 名称和日志片段，作为新条目加到这份文档第 3 节末尾，不要为了让 CI 通过而放宽检查。
 
