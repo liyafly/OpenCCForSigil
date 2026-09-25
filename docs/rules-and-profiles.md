@@ -16,6 +16,13 @@ direction. Book rules use a hashed metadata identifier, falling back to the
 saved EPUB path; an unsaved book without an identifier cannot own book rules.
 They are never embedded into the EPUB.
 
+The `tw2sp` workflow includes a narrow built-in protection for the author
+credit marker `◎【著】`, also when Jieba segmentation is enabled. This keeps
+the credit label intact without preventing ordinary text such as `慰藉著`
+from becoming `慰藉着`. The rule manager displays a short guide; the installable
+ZIP includes `OpenCCForSigil/resources/rule-guide.md` with field-by-field
+examples for adding and testing other exact/protect rules.
+
 Protection wins first, followed by book, global, and profile scope; within a
 tier, longest matches win, then priority and stable rule ID. Conflicting
 same-source targets at the same precedence block planning. Owners of separate

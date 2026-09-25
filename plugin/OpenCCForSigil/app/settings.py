@@ -8,6 +8,7 @@ from uuid import uuid4
 
 from app.profiles import Profile, ProfileFutureSchemaError, ProfileStore
 from core.models import RuleSnapshot
+from rules.builtin import with_builtin_rules
 from rules.store import RuleSet, RuleSetFutureSchemaError, RuleStore
 from opencc_backend.configs import comparison_configs
 from ui.i18n import Translator, plugin_window_title, profile_display_name, show_error_details
@@ -396,6 +397,7 @@ class RunSettings:
                     self._add_recovery_notice(("rulesets_recovered", backup_name))
                 self._pending_missing_rulesets = tuple(dict.fromkeys(
                     (*self._pending_missing_rulesets, identifier)))
+        rules = list(with_builtin_rules(rules, config=profile.conversion))
         from rules.models import RuleSnapshot as Snapshot
         from rules.conflicts import validate_no_blocking_conflicts
         validate_no_blocking_conflicts(rules)

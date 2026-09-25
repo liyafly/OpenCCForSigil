@@ -74,6 +74,8 @@ def _read_member(source: Path, name: str) -> object:
 @pytest.mark.parametrize(
     "missing_member",
     [
+        "OpenCCForSigil/README.md",
+        "OpenCCForSigil/resources/rule-guide.md",
         "OpenCCForSigil/resources/defaults/conservative.json",
         "OpenCCForSigil/resources/i18n/en.json",
         "OpenCCForSigil/resources/i18n/zh-Hans.json",
@@ -145,6 +147,8 @@ def test_validator_rejects_i18n_placeholder_mismatch(artifact: Path, tmp_path: P
         "language.name.en",
         "options.region_required",
         "rules.validation.row_field",
+        "rules.help",
+        "rules.matched_rules",
         "common.label_separator",
         "preview.file_count_one",
         "preview.file_count_many",

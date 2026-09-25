@@ -138,6 +138,7 @@ def test_ui_strings_live_in_the_three_catalogs_and_cover_configs_and_diagnostics
             "rules.validation.row",
             "rules.validation.field",
             "rules.validation.generic",
+            "rules.help",
             "options.region_required",
             "profile.config_unavailable",
             "options.force_pivot_mismatch",

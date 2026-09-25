@@ -4,6 +4,8 @@ from types import SimpleNamespace
 from app.controller import Controller
 from app.settings import RunSettings
 from app.profiles import Profile, ProfileStore
+from core.models import RuleSnapshot as ConversionRuleSnapshot
+from rules.engine import convert_with_overlay
 from core.preview import PreviewSession
 from rules.models import Rule
 from rules.store import RuleSet, RuleStore
@@ -35,6 +37,30 @@ def test_unsaved_default_profile_restores_existing_rulesets_from_run_options(tmp
     assert [rule.id for rule in frozen.rules] == ["custom"]
     assert settings.take_missing_rulesets_notice() == ("deleted",)
     assert settings.take_missing_rulesets_notice() == ()
+
+
+def test_builtin_tw2sp_protection_preserves_only_the_author_credit_marker(tmp_path):
+    settings = RunSettings(
+        Storage(tmp_path), SimpleNamespace(), {},
+        language="en", session_id="test-session",
+    )
+    snapshot = settings.freeze_rules(Profile(id="test", conversion="tw2sp_jieba"))
+    assert isinstance(snapshot, ConversionRuleSnapshot)
+
+    def official_convert(text):
+        return text.replace("威爾", "威尔").replace("著", "着")
+
+    credit = "安迪·威爾（Andy Weir）◎【著】"
+    converted = convert_with_overlay(
+        credit, official_convert, config="tw2sp_jieba", snapshot=snapshot,
+    )
+    assert converted.final == "安迪·威尔（Andy Weir）◎【著】"
+
+    ordinary = convert_with_overlay(
+        "奶茶店慰藉著旅者的味蕾", official_convert,
+        config="tw2sp_jieba", snapshot=snapshot,
+    )
+    assert ordinary.final == "奶茶店慰藉着旅者的味蕾"
 
 
 def test_saved_profile_ruleset_ids_win_over_old_run_options(tmp_path):

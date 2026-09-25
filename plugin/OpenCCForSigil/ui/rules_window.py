@@ -8,6 +8,7 @@ from typing import Any, Callable, Iterable
 
 from rules.conflicts import find_conflicts
 from rules.engine import convert_with_overlay
+from rules.builtin import with_builtin_rules
 from rules.models import Rule, RuleSnapshot
 from rules.precedence import base_direction
 from rules.validators import RuleValidationError, validate_rules
@@ -113,6 +114,7 @@ def inspect_dictionary(
     )
     if snapshot is None:
         snapshot = RuleSnapshot.freeze(())
+    snapshot = RuleSnapshot.freeze(with_builtin_rules(snapshot.rules, config=config))
     result = convert_with_overlay(
         text,
         lambda value: convert_for(config, value, official_convert),
@@ -209,7 +211,7 @@ def show_dictionary_inspector(
         ))
     if inspection.matched_rules:
         lines.append(active_translator.text(
-            "rules.matched_user_rules", rules=", ".join(inspection.matched_rules)))
+            "rules.matched_rules", rules=", ".join(inspection.matched_rules)))
     view.setPlainText("\n".join(lines))
     layout.addWidget(view)
     close = qt.QPushButton(labels["close"])
@@ -382,6 +384,10 @@ class RuleManagerDialog:
         ruleset_row.addWidget(self.new_ruleset_button)
         ruleset_row.addWidget(self.rename_ruleset_button)
         layout.addLayout(ruleset_row)
+
+        self.help_label = qt.QLabel(self._labels["help"])
+        self.help_label.setWordWrap(True)
+        layout.addWidget(self.help_label)
 
         self.table = qt.QTableWidget(0, 6)
         self.table.setHorizontalHeaderLabels(
@@ -767,7 +773,7 @@ class RuleManagerDialog:
                 self.test_input.toPlainText(),
                 lambda value: convert_for(self._config, value, self._official_convert),
                 config=self._config,
-                snapshot=RuleSnapshot.freeze(self.rules),
+                snapshot=RuleSnapshot.freeze(with_builtin_rules(self.rules, config=self._config)),
                 profile_id=self._profile_id,
                 book_fingerprint=self._book_fingerprint,
             )
@@ -809,7 +815,7 @@ class RuleManagerDialog:
                 config=self._config,
                 official_convert=self._official_convert,
                 comparison_configs=self._comparison_configs,
-                snapshot=RuleSnapshot.freeze(self.rules),
+                snapshot=RuleSnapshot.freeze(with_builtin_rules(self.rules, config=self._config)),
                 profile_id=self._profile_id,
                 book_fingerprint=self._book_fingerprint,
                 translator=self._translator,

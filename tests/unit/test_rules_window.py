@@ -261,6 +261,7 @@ def test_rule_table_and_default_ruleset_use_localized_labels():
     assert manager.direction_combo.itemText(any_index) == translator.text("rules.direction_any")
     assert manager.ruleset_combo.itemText(0) == translator.text("rules.default_set_name")
     assert manager.new_ruleset_button.text() == translator.text("rules.new_set")
+    assert manager.help_label.text() == translator.text("rules.help")
 
 
 def test_rule_conflicts_have_a_bounded_section_and_test_box_starts_collapsed():
@@ -504,7 +505,7 @@ def test_dictionary_inspector_localizes_config_classification_and_rule_labels(mo
     assert "regional" not in text
     assert "high" not in text
     assert "'软件'" not in text
-    assert "用户规则：mine" in text
+    assert "命中规则：mine" in text
 
 
 def test_ruleset_id_with_slash_is_rejected_with_localized_error():

@@ -32,7 +32,7 @@ BYVoid/OpenCC official Python Binding (`opencc.OpenCC`); the v1.2 direct
 | Review the optional official native Jieba capability | [`jieba-native-evaluation.md`](jieba-native-evaluation.md) |
 | Configure NCX, metadata, and language proposals | [`extended-document-conversion.md`](extended-document-conversion.md) |
 | Manage profiles, rules, sandbox, and inspector | [`rules-and-profiles.md`](rules-and-profiles.md) |
-| Define or review user rule behavior | [`rule-format.md`](rule-format.md) |
+| Define or review user rule behavior | [`rule-format.md`](rule-format.md); the installable ZIP also includes `OpenCCForSigil/resources/rule-guide.md` |
 | Understand privacy-safe storage and logs | [`privacy.md`](privacy.md) |
 | Run local and release validation | [`testing.md`](testing.md) |
 | Build and publish plugin packages | [`release.md`](release.md) |

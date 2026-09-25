@@ -381,7 +381,8 @@ _I18N_REQUIRED_KEYS = _I18N_REQUIRED_KEYS | frozenset(
         "rules.export_default_filename",
         "rules.export_filter",
         "rules.import_filter",
-        "rules.matched_user_rules",
+        "rules.help",
+        "rules.matched_rules",
         "common.label_separator",
     }
 )
@@ -406,6 +407,8 @@ _I18N_REQUIRED_KEYS = _I18N_REQUIRED_KEYS | frozenset(
 _REQUIRED_MEMBERS = {
     "OpenCCForSigil/plugin.xml",
     "OpenCCForSigil/plugin.py",
+    "OpenCCForSigil/README.md",
+    "OpenCCForSigil/resources/rule-guide.md",
     "OpenCCForSigil/LICENSE",
     "OpenCCForSigil/NOTICE",
     "OpenCCForSigil/resources/defaults/conservative.json",
