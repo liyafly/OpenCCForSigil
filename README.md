@@ -68,7 +68,6 @@ assets actually attached to that release. Every package requires an exact
 supported CPython runtime and ABI.
 
 Current release: [v0.2.2](https://github.com/liyafly/OpenCCForSigil/releases/tag/v0.2.2).
-Sizes below are rounded decimal MB; exact byte counts are in the release notes.
 
 | Asset | Use it when |
 | --- | --- |
