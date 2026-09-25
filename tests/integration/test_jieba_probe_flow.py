@@ -209,6 +209,7 @@ def test_probe_is_shared_across_scope_return_settings_and_preview(monkeypatch, t
 def test_cancel_before_text_ui_does_not_wait_for_daemon_probe(monkeypatch, tmp_path):
     started = Event()
     finished = Event()
+    release_probe = Event()
 
     class SlowProbeBackend:
         config = "s2t"
@@ -226,7 +227,7 @@ def test_cancel_before_text_ui_does_not_wait_for_daemon_probe(monkeypatch, tmp_p
         def start_jieba_probe(self, on_complete=None):
             def wait():
                 started.set()
-                time.sleep(2)
+                release_probe.wait(timeout=5)
                 finished.set()
 
             Thread(target=wait, daemon=True).start()
@@ -235,14 +236,12 @@ def test_cancel_before_text_ui_does_not_wait_for_daemon_probe(monkeypatch, tmp_p
             pass
 
     monkeypatch.setattr("app.controller.OpenCCBackend", SlowProbeBackend)
-    begin = time.perf_counter()
-
-    assert Controller(object(), data_dir=tmp_path).run() == 0
-
-    elapsed = time.perf_counter() - begin
-    assert started.is_set()
-    assert elapsed < 0.5
-    assert not finished.is_set()
+    try:
+        assert Controller(object(), data_dir=tmp_path).run() == 0
+        assert started.wait(timeout=1)
+        assert not finished.is_set()
+    finally:
+        release_probe.set()
 
 
 def test_jieba_probe_constructs_one_config_and_reports_all_configs():
