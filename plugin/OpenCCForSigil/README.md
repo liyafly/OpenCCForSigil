@@ -1,4 +1,4 @@
-# OpenCCForSigil 0.2.1
+# OpenCCForSigil 0.2.2
 
 ## 简体中文
 

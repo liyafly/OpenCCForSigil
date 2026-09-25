@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.2.2 - 2026-09-25
+
+### Fixed
+
+- Preserve unbracketed and commonly spaced `◎著` author-credit markers in
+  `tw2sp` and `tw2sp_jieba`, while continuing to convert ordinary `慰藉著` to
+  `慰藉着`.
+- Explain why a bare `著` cannot be protected globally without changing
+  ordinary prose, with examples in the localized rules page and package guide.
+
+## 0.2.1 - 2026-09-25
+
+### Fixed
+
+- Preserve the bracketed `◎【著】` author-credit marker in `tw2sp` and
+  `tw2sp_jieba`.
+
+### Added
+
+- Add localized rule-writing help to the Rules / sandbox page and a
+  multilingual rule guide to the installable package.
+
 ## 0.2.0 - 2026-09-24
 
 ### Fixed
