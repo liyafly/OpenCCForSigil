@@ -39,28 +39,32 @@ def test_unsaved_default_profile_restores_existing_rulesets_from_run_options(tmp
     assert settings.take_missing_rulesets_notice() == ()
 
 
-def test_builtin_tw2sp_protection_preserves_only_the_author_credit_marker(tmp_path):
+def test_builtin_tw2sp_protection_covers_bracketed_and_unbracketed_credits(tmp_path):
     settings = RunSettings(
         Storage(tmp_path), SimpleNamespace(), {},
         language="en", session_id="test-session",
     )
-    snapshot = settings.freeze_rules(Profile(id="test", conversion="tw2sp_jieba"))
-    assert isinstance(snapshot, ConversionRuleSnapshot)
 
     def official_convert(text):
         return text.replace("威爾", "威尔").replace("著", "着")
 
-    credit = "安迪·威爾（Andy Weir）◎【著】"
-    converted = convert_with_overlay(
-        credit, official_convert, config="tw2sp_jieba", snapshot=snapshot,
-    )
-    assert converted.final == "安迪·威尔（Andy Weir）◎【著】"
+    markers = ("◎【著】", "◎著", "◎ 著", "◎　著")
+    for config in ("tw2sp", "tw2sp_jieba"):
+        snapshot = settings.freeze_rules(Profile(id="test", conversion=config))
+        assert isinstance(snapshot, ConversionRuleSnapshot)
 
-    ordinary = convert_with_overlay(
-        "奶茶店慰藉著旅者的味蕾", official_convert,
-        config="tw2sp_jieba", snapshot=snapshot,
-    )
-    assert ordinary.final == "奶茶店慰藉着旅者的味蕾"
+        for marker in markers:
+            credit = f"安迪·威爾（Andy Weir）{marker}"
+            converted = convert_with_overlay(
+                credit, official_convert, config=config, snapshot=snapshot,
+            )
+            assert converted.final == f"安迪·威尔（Andy Weir）{marker}"
+
+        ordinary = convert_with_overlay(
+            "奶茶店慰藉著旅者的味蕾", official_convert,
+            config=config, snapshot=snapshot,
+        )
+        assert ordinary.final == "奶茶店慰藉着旅者的味蕾"
 
 
 def test_saved_profile_ruleset_ids_win_over_old_run_options(tmp_path):

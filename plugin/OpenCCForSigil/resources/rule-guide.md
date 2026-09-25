@@ -9,18 +9,20 @@
 - **精确**：把每个完整的“源文本”替换为“目标文本”。
 - **保护**：把每个完整的“源文本”原样保留；目标文本留空，程序会按源文本处理。
 
-规则按字面匹配。请把需要保留的完整文字和标点都写进源文本。不要只保护单字“著”：像“慰藉著”这样的普通用法应继续转换为“慰藉着”。
+规则按字面匹配。请把需要保留的完整文字和标点都写进源文本。署名若没有可辨别标记、只剩单字“著”，就无法安全判断它是署名还是正文；不要全局保护单字“著”，否则“慰藉著”也会保留，而不是转换为“慰藉着”。
 
 ### 署名示例
 
-对于 `tw2sp` 和 `tw2sp_jieba`，插件默认保护署名标记 `◎【著】`。人名仍会转换，署名标记保持不变：
+对于 `tw2sp` 和 `tw2sp_jieba`，插件默认保护 `◎【著】`、`◎著`，以及 `◎ 著`、`◎　著` 两种常见空格写法。人名仍会转换，署名标记保持不变：
 
 ```text
 安迪·威爾（Andy Weir）◎【著】
 → 安迪·威尔（Andy Weir）◎【著】
+安迪·威爾（Andy Weir）◎著
+→ 安迪·威尔（Andy Weir）◎著
 ```
 
-此规则已内置，无需重复添加。如果还要在当前书中保护 `【编者】`，添加以下规则：
+这些格式已内置，无需重复添加。若署名不含 `◎` 或其他稳定标记，请不要只保护单字“著”；应使用能唯一识别署名的较长字面文本，并把范围设为“当前书”，再用沙箱检查周围正文。若还要在当前书中保护 `【编者】`，添加以下规则：
 
 | 字段 | 填写内容 |
 | --- | --- |
@@ -51,18 +53,20 @@ V1 规则只支持字面匹配，不支持正则表达式。只读的词典检�
 - **精確**：將每個完整的「來源文字」替換為「目標文字」。
 - **保護**：將每個完整的「來源文字」原樣保留；目標文字留空，程式會以來源文字作為目標。
 
-規則依字面比對。請將需要保留的完整文字和標點都寫進來源文字。不要只保護單字「著」：像「慰藉著」這類一般用法仍應轉換為「慰藉着」。
+規則依字面比對。請將需要保留的完整文字和標點都寫進來源文字。署名若沒有可辨別標記、只剩單字「著」，就無法安全判斷它是署名還是正文；不要全域保護單字「著」，否則「慰藉著」也會保留，而不會轉換為「慰藉着」。
 
 ### 署名範例
 
-對於 `tw2sp` 和 `tw2sp_jieba`，外掛預設會保護署名標記 `◎【著】`。人名仍會轉換，署名標記則保持不變：
+對於 `tw2sp` 和 `tw2sp_jieba`，外掛預設會保護 `◎【著】`、`◎著`，以及 `◎ 著`、`◎　著` 兩種常見空格寫法。人名仍會轉換，署名標記則保持不變：
 
 ```text
 安迪·威爾（Andy Weir）◎【著】
 → 安迪·威尔（Andy Weir）◎【著】
+安迪·威爾（Andy Weir）◎著
+→ 安迪·威尔（Andy Weir）◎著
 ```
 
-此規則已內建，無需重複新增。若要只在目前書籍保護 `【编者】`，可新增以下規則：
+這些格式已內建，無需重複新增。若署名不含 `◎` 或其他穩定標記，請勿只保護單字「著」；應使用能唯一識別署名的較長字面文字，並將範圍設為「目前書籍」，再用沙箱檢查周圍正文。若要只在目前書籍保護 `【编者】`，可新增以下規則：
 
 | 欄位 | 填寫內容 |
 | --- | --- |
@@ -93,18 +97,20 @@ Open **Rules / sandbox** from the conversion settings to add a literal rule. Rul
 - **Exact** replaces each full match of **Source** with **Target**.
 - **Protect** leaves each full match of **Source** unchanged. Leave **Target** blank; the source is used as the target.
 
-Rules match literal text. Include the complete wording and punctuation to preserve. Do not protect `著` alone: ordinary wording such as `慰藉著` should still convert to `慰藉着`.
+Rules match literal text. Include the complete wording and punctuation to preserve. If a credit has no distinguishing marker and only contains `著`, it is ambiguous; do not protect bare `著` globally, because ordinary wording such as `慰藉著` should still convert to `慰藉着`.
 
 ### Author-credit example
 
-OpenCCForSigil protects the exact Taiwan-to-Simplified author-credit marker `◎【著】` by default for both `tw2sp` and `tw2sp_jieba`. The name still converts while the marker stays intact:
+OpenCCForSigil protects `◎【著】`, `◎著`, and the common spaced forms `◎ 著` and `◎　著` by default for both `tw2sp` and `tw2sp_jieba`. The name still converts while the marker stays intact:
 
 ```text
 安迪·威爾（Andy Weir）◎【著】
 → 安迪·威尔（Andy Weir）◎【著】
+安迪·威爾（Andy Weir）◎著
+→ 安迪·威尔（Andy Weir）◎著
 ```
 
-This rule is built in; you do not need to add it. To protect `【编者】` only in the current book, add:
+These forms are built in; you do not need to add them. If the credit has no `◎` or other stable marker, do not protect bare `著`; use a longer literal that uniquely identifies the credit with **Current book** scope, then test nearby prose in the sandbox. To protect `【编者】` only in the current book, add:
 
 | Field | Value |
 | --- | --- |

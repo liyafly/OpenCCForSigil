@@ -18,9 +18,12 @@ Imports report duplicates, invalid records, and blocking conflicts before save.
 
 ## Example: protect an author-credit marker
 
-The built-in `tw2sp` exception protects the literal `◎【著】` marker, including
-when Jieba segmentation is selected. Do not add a global rule for the single
-character `著`: in ordinary text, `慰藉著` should convert to `慰藉着`.
+The built-in `tw2sp` protections cover `◎【著】`, `◎著`, and the common
+spaced forms `◎ 著` and `◎　著`, including when Jieba segmentation is selected.
+If the text has no distinguishing marker and contains only `著`, it cannot be
+protected safely in every context: ordinary text such as `慰藉著` should
+convert to `慰藉着`. Use a longer, book-specific literal only when that full
+text uniquely identifies the credit, and test nearby prose in the sandbox.
 
 To protect a different literal expression, open **Rules / sandbox** and add a
 protect rule. For example, to keep `【编者】` only in one EPUB, use:

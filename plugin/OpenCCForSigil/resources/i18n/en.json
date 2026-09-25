@@ -340,7 +340,7 @@
   "rules.scope_global": "Global",
   "rules.scope_profile": "Current profile",
   "rules.scope_book": "Current book",
-  "rules.help": "Rules: Exact replaces the full source with the target; Protect keeps the full source unchanged (leave Target blank). Built-in example: tw2sp + Protect + ◎【著】 (Global). Custom example: protect 【编者】 in this book with tw2sp + Protect + Source 【编者】 + blank Target + Current book. Test it in the sandbox below.",
+  "rules.help": "Rules: Exact replaces the full source with the target; Protect keeps the full source unchanged (leave Target blank). Built-in author-credit protection covers ◎【著】, ◎著, and common spaced forms for tw2sp, including Jieba. Do not protect bare 著: ordinary 慰藉著 must become 慰藉着. Custom example: protect 【编者】 in this book with tw2sp + Protect + Source 【编者】 + blank Target + Current book. Test it below.",
   "rules.editor_group": "Edit rules",
   "rules.transfer_group": "Import / export",
   "rules.test_group": "Test",

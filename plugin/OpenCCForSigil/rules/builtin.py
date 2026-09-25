@@ -19,7 +19,45 @@ AUTHOR_CREDIT_PROTECTION = Rule(
     comment="Keep this Taiwan-to-Simplified author-credit marker unchanged.",
 )
 
-BUILTIN_RULES = (AUTHOR_CREDIT_PROTECTION,)
+AUTHOR_CREDIT_UNBRACKETED_PROTECTION = Rule(
+    id="builtin-author-credit-tw2sp-unbracketed",
+    type="protect",
+    direction="tw2sp",
+    source="◎著",
+    target="◎著",
+    scope="global",
+    source_note="OpenCCForSigil built-in context protection",
+    comment="Keep the unbracketed Taiwan-to-Simplified author-credit marker unchanged.",
+)
+
+AUTHOR_CREDIT_SPACED_PROTECTIONS = (
+    Rule(
+        id="builtin-author-credit-tw2sp-spaced",
+        type="protect",
+        direction="tw2sp",
+        source="◎ 著",
+        target="◎ 著",
+        scope="global",
+        source_note="OpenCCForSigil built-in context protection",
+        comment="Keep the spaced Taiwan-to-Simplified author-credit marker unchanged.",
+    ),
+    Rule(
+        id="builtin-author-credit-tw2sp-ideographic-spaced",
+        type="protect",
+        direction="tw2sp",
+        source="◎　著",
+        target="◎　著",
+        scope="global",
+        source_note="OpenCCForSigil built-in context protection",
+        comment="Keep the ideographic-space Taiwan-to-Simplified author-credit marker unchanged.",
+    ),
+)
+
+BUILTIN_RULES = (
+    AUTHOR_CREDIT_PROTECTION,
+    AUTHOR_CREDIT_UNBRACKETED_PROTECTION,
+    *AUTHOR_CREDIT_SPACED_PROTECTIONS,
+)
 
 
 def with_builtin_rules(rules: Iterable[Rule], *, config: str) -> tuple[Rule, ...]:
@@ -33,4 +71,10 @@ def with_builtin_rules(rules: Iterable[Rule], *, config: str) -> tuple[Rule, ...
     return (*cleaned_rules, *BUILTIN_RULES)
 
 
-__all__ = ["AUTHOR_CREDIT_PROTECTION", "BUILTIN_RULES", "with_builtin_rules"]
+__all__ = [
+    "AUTHOR_CREDIT_PROTECTION",
+    "AUTHOR_CREDIT_SPACED_PROTECTIONS",
+    "AUTHOR_CREDIT_UNBRACKETED_PROTECTION",
+    "BUILTIN_RULES",
+    "with_builtin_rules",
+]
