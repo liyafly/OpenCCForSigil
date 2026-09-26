@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.2.5 - 2026-09-26
+
+### Added
+
+- Add rule semantic version 2 with separate protect, final wording, pre-replacement,
+  and post-replacement actions, plus literal and regular-expression matching.
+- Bundle a pinned regular-expression engine for all six supported runtime targets,
+  with offline loading, validated replacement templates, and reusable rule templates.
+
+### Changed
+
+- Run sandbox previews and book conversion through the same frozen rules and
+  conversion stages, then map changes back to original XHTML offsets.
+- Apply each replacement stage once, group dependent edits, and keep failed rule
+  analysis from producing a partial writeback plan.
+
+### Fixed
+
+- Bound regex runtime, hit counts, and replacement output, and reject zero-length
+  matches and invalid group references before conversion.
+- Keep signature protection scoped to explicit markers such as `◎著`; ordinary
+  occurrences of `著` continue through OpenCC.
+
 ## 0.2.2 - 2026-09-25
 
 ### Fixed
