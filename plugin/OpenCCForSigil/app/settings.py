@@ -326,7 +326,7 @@ class RunSettings:
                 renamed = result.renamed
             for item in result_sets:
                 old = previous.get(item.id)
-                if old != item and (item.id != "default" or item.rules):
+                if old != item and (item.id != "default" or item.rules or old is not None):
                     self.rules.save(item)
             if renamed:
                 self._replace_ruleset_references(renamed)

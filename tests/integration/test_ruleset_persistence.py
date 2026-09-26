@@ -187,6 +187,44 @@ def test_saved_profile_rejection_keeps_change_session_only(monkeypatch, tmp_path
     assert RuleDialogQt.QMessageBox.information_messages
 
 
+def test_clearing_persisted_default_ruleset_saves_empty_rules(monkeypatch, tmp_path):
+    settings, _profiles = _saved_profile_settings(tmp_path)
+    settings.rules.save(RuleSet("default", (
+        Rule(id="old", source="旧词", target="旧目标", direction="s2t"),
+    )))
+    monkeypatch.setattr(
+        "ui.rules_window.show_rules_window",
+        lambda *_args, **_kwargs: RuleWindowResult("default", (RuleSet("default"),)),
+    )
+
+    settings.edit_rules("s2t", Translator(), RuleDialogQt, object())
+
+    assert settings.rules.load("default").rules == ()
+    reloaded = RunSettings(
+        Storage(tmp_path), SimpleNamespace(book_fingerprint=lambda: "book-hash"),
+        {"profile_id": "saved"}, language="en", session_id="reloaded",
+    )
+    assert reloaded.freeze_rules(reloaded.active).rules == ()
+
+
+def test_clearing_and_disabling_persisted_default_keeps_metadata(monkeypatch, tmp_path):
+    settings, _profiles = _saved_profile_settings(tmp_path)
+    settings.rules.save(RuleSet("default", (
+        Rule(id="old", source="旧词", target="旧目标", direction="s2t"),
+    )))
+    monkeypatch.setattr(
+        "ui.rules_window.show_rules_window",
+        lambda *_args, **_kwargs: RuleWindowResult(
+            "default", (RuleSet("default", enabled=False),)),
+    )
+
+    settings.edit_rules("s2t", Translator(), RuleDialogQt, object())
+
+    saved = settings.rules.load("default")
+    assert saved.rules == ()
+    assert saved.enabled is False
+
+
 def test_renamed_ruleset_id_can_be_reused_without_deleting_the_new_set(
     monkeypatch, tmp_path
 ):
