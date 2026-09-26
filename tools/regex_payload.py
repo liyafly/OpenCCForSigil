@@ -187,7 +187,15 @@ def _extract_wheel(wheel: Path, destination: Path, *, runtime_os: str, architect
     except zipfile.BadZipFile as exc:
         raise ValueError(f"regex wheel is not a valid ZIP archive: {wheel}") from exc
     try:
-        validate_binary_path(extension, runtime_os=runtime_os, architecture=architecture)
+        validate_binary_path(
+            extension,
+            runtime_os=runtime_os,
+            architecture=architecture,
+            # The official regex extension is C, so a pure GLIBC dependency
+            # set is expected. Its manylinux wheel tag plus GLIBC version
+            # requirements establish the Linux compatibility floor.
+            require_glibcxx=runtime_os != "linux",
+        )
     except NativeCompatibilityError as exc:
         raise ValueError(f"regex extension compatibility check failed: {exc}") from exc
     return {

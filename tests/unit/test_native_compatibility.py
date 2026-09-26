@@ -17,25 +17,22 @@ def _macho(*, architecture: str = "arm64", minos: tuple[int, int, int] = (13, 0,
 
 
 def _elf64(
-    *, glibc: str = "2.35", glibcxx: str = "3.4.30", architecture: str = "x86_64"
+    *, glibc: str = "2.35", glibcxx: str | None = "3.4.30", architecture: str = "x86_64"
 ) -> bytes:
-    dynstr = (
-        b"\0libc.so.6\0libstdc++.so.6\0GLIBC_"
-        + glibc.encode()
-        + b"\0GLIBCXX_"
-        + glibcxx.encode()
-        + b"\0"
-    )
+    dynstr = b"\0libc.so.6\0GLIBC_" + glibc.encode() + b"\0"
     libc_offset = dynstr.index(b"libc.so.6")
-    libstdcxx_offset = dynstr.index(b"libstdc++.so.6")
     glibc_offset = dynstr.index(b"GLIBC_")
-    glibcxx_offset = dynstr.index(b"GLIBCXX_")
-    versym = struct.pack("<HHH", 0, 2, 3)
+    version_records = [(libc_offset, 2, glibc_offset)]
+    if glibcxx is not None:
+        dynstr += b"libstdc++.so.6\0GLIBCXX_" + glibcxx.encode() + b"\0"
+        version_records.append((dynstr.index(b"libstdc++.so.6"), 3,
+                                dynstr.index(b"GLIBCXX_")))
+    versym = struct.pack("<" + "H" * (len(version_records) + 1),
+                         *([0] + [record[1] for record in version_records]))
     verneed = b""
-    for index, (library, version_index, version) in enumerate(
-        ((libc_offset, 2, glibc_offset), (libstdcxx_offset, 3, glibcxx_offset))
-    ):
-        verneed += struct.pack("<HHIII", 1, 1, library, 16, 32 if index == 0 else 0)
+    for index, (library, version_index, version) in enumerate(version_records):
+        next_entry = 32 if index + 1 < len(version_records) else 0
+        verneed += struct.pack("<HHIII", 1, 1, library, 16, next_entry)
         verneed += struct.pack("<IHHII", 0, 0, version_index, version, 0)
     sections = [
         (0, 0, 0, 0, 0, 0, 0, 0),
@@ -114,6 +111,18 @@ def test_linux_aarch64_binary_accepts_ubuntu_2204_version_floor():
     validate_binary_bytes(
         _elf64(architecture="aarch64"), runtime_os="linux", architecture="aarch64"
     )
+
+
+def test_linux_c_extension_needs_glibc_but_not_glibcxx():
+    validate_binary_bytes(
+        _elf64(glibc="2.17", glibcxx=None), runtime_os="linux",
+        architecture="x86_64", require_glibcxx=False,
+    )
+    with pytest.raises(NativeCompatibilityError, match="missing GLIBC or GLIBCXX"):
+        validate_binary_bytes(
+            _elf64(glibc="2.17", glibcxx=None), runtime_os="linux",
+            architecture="x86_64",
+        )
 
 
 @pytest.mark.parametrize(

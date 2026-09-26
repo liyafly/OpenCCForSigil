@@ -83,7 +83,10 @@ def _validate_record(export_record, payload_root: Path, wheel_records: dict) -> 
     try:
         validate_binary_path(
             payload_root / extension_paths[0],
-            runtime_os=str(identity[3]), architecture=str(identity[4]))
+            runtime_os=str(identity[3]),
+            architecture=str(identity[4]),
+            require_glibcxx=identity[3] != "linux",
+        )
     except NativeCompatibilityError as exc:
         raise SystemExit(f"regex native compatibility failed: {exc}") from exc
     return identity

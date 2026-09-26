@@ -305,7 +305,7 @@ def _version_names(data: bytes, endian: str, sections: list[_ElfSection]) -> set
     return names
 
 
-def _validate_elf(data: bytes, architecture: str) -> None:
+def _validate_elf(data: bytes, architecture: str, *, require_glibcxx: bool) -> None:
     if len(data) < 16 or data[:4] != b"\x7fELF":
         raise NativeCompatibilityError("unrecognized ELF binary")
     elf_class = data[4]
@@ -336,7 +336,7 @@ def _validate_elf(data: bytes, architecture: str) -> None:
             if match is None:
                 raise NativeCompatibilityError(f"unparseable GLIBCXX version metadata: {name}")
             glibcxx.append(tuple(int(part or 0) for part in match.groups()))
-    if not glibc or not glibcxx:
+    if not glibc or (require_glibcxx and not glibcxx):
         raise NativeCompatibilityError("ELF is missing GLIBC or GLIBCXX version requirements")
     max_glibc = max(glibc)
     if max_glibc > POLICY.linux_glibc_max:
@@ -344,12 +344,13 @@ def _validate_elf(data: bytes, architecture: str) -> None:
             f"ELF GLIBC minimum {_version_text(max_glibc)} exceeds "
             f"the supported {_version_text(POLICY.linux_glibc_max)} baseline"
         )
-    max_glibcxx = max(glibcxx)
-    if max_glibcxx > POLICY.linux_glibcxx_max:
-        raise NativeCompatibilityError(
-            f"ELF GLIBCXX minimum {_version_text(max_glibcxx)} exceeds "
-            f"the supported {_version_text(POLICY.linux_glibcxx_max)} baseline"
-        )
+    if glibcxx:
+        max_glibcxx = max(glibcxx)
+        if max_glibcxx > POLICY.linux_glibcxx_max:
+            raise NativeCompatibilityError(
+                f"ELF GLIBCXX minimum {_version_text(max_glibcxx)} exceeds "
+                f"the supported {_version_text(POLICY.linux_glibcxx_max)} baseline"
+            )
 
 
 def _validate_pe(data: bytes, architecture: str) -> None:
@@ -372,6 +373,7 @@ def validate_binary_bytes(
     runtime_os: str,
     architecture: str,
     label: str = "native plugin",
+    require_glibcxx: bool = True,
 ) -> None:
     """Validate one native Jieba library from bytes, independent of host OS."""
 
@@ -382,7 +384,7 @@ def validate_binary_bytes(
         if runtime_os == "macos":
             _validate_macho(data, architecture)
         elif runtime_os == "linux":
-            _validate_elf(data, architecture)
+            _validate_elf(data, architecture, require_glibcxx=require_glibcxx)
         elif runtime_os == "windows":
             _validate_pe(data, architecture)
         else:
@@ -396,6 +398,7 @@ def validate_binary_path(
     *,
     runtime_os: str,
     architecture: str,
+    require_glibcxx: bool = True,
 ) -> None:
     """Validate a native library on disk."""
 
@@ -408,4 +411,5 @@ def validate_binary_path(
         runtime_os=runtime_os,
         architecture=architecture,
         label=str(path),
+        require_glibcxx=require_glibcxx,
     )
