@@ -48,7 +48,9 @@ def _has_visible_text(value: str) -> bool:
     )
 
 
-def validate_rule(rule: Rule | Mapping[str, Any], *, index: int | None = None) -> Rule:
+def validate_rule(
+    rule: Rule | Mapping[str, Any], *, index: int | None = None, compile_regex: bool = True
+) -> Rule:
     if not isinstance(rule, Rule):
         try:
             rule = Rule.from_dict(rule)
@@ -69,30 +71,26 @@ def validate_rule(rule: Rule | Mapping[str, Any], *, index: int | None = None) -
         raise RuleValidationError(
             f"must be one of {sorted(SUPPORTED_RULE_TYPES)}", field="type", index=index
         )
-    if rule.semantic_version not in {1, 2} or isinstance(rule.semantic_version, bool):
+    if (not isinstance(rule.semantic_version, int)
+            or isinstance(rule.semantic_version, bool)
+            or rule.semantic_version not in {1, 2}):
         raise RuleValidationError(
             "semantic_version must be 1 or 2", field="semantic_version", index=index)
+    if not isinstance(rule.action, str):
+        raise RuleValidationError("action must be a string", field="action", index=index)
     if rule.action not in SUPPORTED_RULE_ACTIONS:
         raise RuleValidationError(
             f"must be one of {sorted(SUPPORTED_RULE_ACTIONS)}", field="action", index=index)
+    if not isinstance(rule.match_type, str):
+        raise RuleValidationError("match_type must be a string", field="match_type", index=index)
     if rule.match_type not in SUPPORTED_MATCH_TYPES:
         raise RuleValidationError(
             f"must be one of {sorted(SUPPORTED_MATCH_TYPES)}", field="match_type", index=index)
+    if not isinstance(rule.stage, str):
+        raise RuleValidationError("stage must be a string", field="stage", index=index)
     if rule.stage not in SUPPORTED_RULE_STAGES:
         raise RuleValidationError(
             f"must be one of {sorted(SUPPORTED_RULE_STAGES)}", field="stage", index=index)
-    if rule.match_type == "regex":
-        raise RuleValidationError(
-            "regular expression matching is not available until the guarded engine is bundled",
-            field="match_type",
-            index=index,
-        )
-    if rule.action == "replace":
-        raise RuleValidationError(
-            "staged replacement is not available until source mapping is enabled",
-            field="action",
-            index=index,
-        )
     if rule.semantic_version == 1 and (
         rule.action not in {"protect", "override"}
         or rule.match_type != "literal"
@@ -155,11 +153,81 @@ def validate_rule(rule: Rule | Mapping[str, Any], *, index: int | None = None) -
     for name in ("source_note", "comment", "profile_id", "book_fingerprint"):
         if not isinstance(getattr(rule, name), str):
             raise RuleValidationError("must be a string", field=name, index=index)
+    if rule.match_type == "regex" and rule.enabled and compile_regex:
+        _validate_regular_expression(rule, index=index)
     return rule
 
 
-def validate_rules(rules: Iterable[Rule | Mapping[str, Any]]) -> tuple[Rule, ...]:
-    normalized = tuple(validate_rule(item, index=index) for index, item in enumerate(rules))
+def _validate_regular_expression(rule: Rule, *, index: int | None) -> None:
+    from .matching import REGEX_MAX_PATTERN_CHARS
+    from .regex_runtime import load_regex_module
+
+    if len(rule.source) > REGEX_MAX_PATTERN_CHARS:
+        raise RuleValidationError(
+            f"regular-expression pattern exceeds {REGEX_MAX_PATTERN_CHARS} characters",
+            field="source", index=index)
+    try:
+        regex = load_regex_module()
+        compiled = regex.compile(rule.source, regex.VERSION1)
+    except Exception as exc:
+        raise RuleValidationError(
+            f"regular expression could not be compiled: {exc}", field="source", index=index
+        ) from exc
+
+    # Catch common zero-width patterns before saving. Runtime matching repeats
+    # this guard for every real hit because no finite sample proves a pattern
+    # can never match an empty range.
+    for sample in ("", "x a 汉 ◎著  " + "a" * 32 + "!"):
+        try:
+            match = compiled.search(sample, timeout=0.01)
+        except TimeoutError as exc:
+            raise RuleValidationError(
+                "regular-expression validation exceeded its time limit",
+                field="source", index=index) from exc
+        if match is not None and match.start() == match.end():
+            raise RuleValidationError(
+                "regular expressions that can match an empty range are not allowed",
+                field="source", index=index)
+
+    if rule.action != "protect":
+        try:
+            scanner = regex._regex_core.Source(rule.target)
+            while scanner.pos < len(rule.target):
+                if scanner.get() == "\\":
+                    regex._regex_core._compile_replacement(scanner, compiled, True)
+        except Exception as exc:
+            raise RuleValidationError(
+                f"invalid regular-expression replacement template: {exc}",
+                field="target", index=index) from exc
+
+
+def validate_rules(
+    rules: Iterable[Rule | Mapping[str, Any]], *, compile_regex: bool = True
+) -> tuple[Rule, ...]:
+    from .matching import REGEX_MAX_RULES
+
+    values = []
+    for index, item in enumerate(rules):
+        try:
+            values.append(validate_rule(item, index=index, compile_regex=False))
+        except RuleValidationError:
+            raise
+        except (TypeError, ValueError) as exc:
+            raise RuleValidationError(str(exc), index=index) from exc
+    values = tuple(values)
+    regex_count = sum(
+        item.enabled and item.match_type == "regex" for item in values
+        if isinstance(item.enabled, bool) and isinstance(item.match_type, str)
+    )
+    if regex_count > REGEX_MAX_RULES:
+        raise RuleValidationError(
+            f"at most {REGEX_MAX_RULES} enabled regular-expression rules are allowed",
+            field="match_type")
+    if compile_regex:
+        for index, rule in enumerate(values):
+            if rule.match_type == "regex" and rule.enabled:
+                _validate_regular_expression(rule, index=index)
+    normalized = values
     by_id = {}
     for rule in normalized:
         if rule.id in by_id and by_id[rule.id] != rule:

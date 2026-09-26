@@ -24,6 +24,7 @@ class OfficialBackendConverter:
     def __init__(self, backend: OpenCCBackend) -> None:
         self.backend = backend
         self._compiled_overlays = {}
+        self._regex_budget = None
 
     def convert(self, text: str, request: ConvertRequest, *, quotation_pairer=None) -> ConvertResult:
         if not isinstance(text, str):
@@ -113,6 +114,7 @@ class OfficialBackendConverter:
 
     def _convert_rules(self, text, request, *, quotation_pairer=None):
         from rules.compiled import CompiledOverlay, lock_spans_compiled
+        from rules.matching import RuleExecutionError, replace_stage
         from transforms.quotations import QuotationPairer
 
         rules_hash = request.rules_snapshot.rules_hash
@@ -130,21 +132,59 @@ class OfficialBackendConverter:
                 book_fingerprint=request.book_fingerprint,
             )
             self._compiled_overlays[cache_key] = (request.rules_snapshot.rules, overlay)
-        spans = lock_spans_compiled(text, overlay)
+        from rules.matching import RegexBudget
+
+        guarded_rules = any(rule.match_type == "regex" or rule.action == "replace"
+                            for rule in overlay.rules)
+        if guarded_rules and self._regex_budget is None:
+            self._regex_budget = RegexBudget()
+        budget = self._regex_budget or RegexBudget()
+        spans = lock_spans_compiled(text, overlay, budget)
         pairer = quotation_pairer or QuotationPairer(request.quotation_mode)
         # Reuse the complete unlocked pipeline while avoiding a second rule pass.
         unlocked = replace(request, rules_snapshot=type(request.rules_snapshot)())
         output, changes, diagnostics = [], [], []
+        regex_patterns = dict(overlay.regex_patterns)
+        pre_rules = tuple(rule for rule in overlay.rules if rule.action == "replace" and rule.stage == "pre")
+        post_rules = tuple(rule for rule in overlay.rules if rule.action == "replace" and rule.stage == "post")
         cursor = 0
         for span in (*spans, None):
             end = span.start if span is not None else len(text)
             if end > cursor:
-                result = self.convert(text[cursor:end], unlocked, quotation_pairer=pairer)
-                output.append(result.target)
-                changes.extend(replace(change, span=SourceSpan(
-                    cursor + change.span.start, cursor + change.span.end))
-                    for change in result.changes)
-                diagnostics.extend(result.diagnostics)
+                segment = text[cursor:end]
+                try:
+                    before_opencc, pre_hits = replace_stage(
+                        segment, pre_rules, regex_patterns, budget)
+                    converted = self.convert(
+                        before_opencc, unlocked, quotation_pairer=pairer)
+                    final_segment, post_hits = replace_stage(
+                        converted.target, post_rules, regex_patterns, budget)
+                except RuleExecutionError:
+                    raise
+                output.append(final_segment)
+                changed_pre_hits = tuple(hit for hit in pre_hits if hit.source != hit.target)
+                changed_post_hits = tuple(hit for hit in post_hits if hit.source != hit.target)
+                if not changed_pre_hits and not changed_post_hits:
+                    changes.extend(replace(change, span=SourceSpan(
+                        cursor + change.span.start, cursor + change.span.end))
+                        for change in converted.changes)
+                    diagnostics.extend(converted.diagnostics)
+                else:
+                    changes.extend(_staged_segment_changes(
+                        segment,
+                        before_opencc,
+                        converted,
+                        final_segment,
+                        cursor,
+                        request.config,
+                        changed_pre_hits,
+                        changed_post_hits,
+                    ))
+                    diagnostics.extend(_map_diagnostics(
+                        converted.diagnostics,
+                        segment,
+                        before_opencc,
+                    ))
             if span is not None:
                 pairer.feed(span.source, mutate=False)
                 output.append(span.target)
@@ -156,6 +196,148 @@ class OfficialBackendConverter:
                         risk="HIGH" if len(span.source) != len(span.target) else "REVIEW"))
                 cursor = span.end
         return ConvertResult(text, "".join(output), tuple(changes), tuple(diagnostics))
+
+
+def _map_generated_span(source: str, generated: str, start: int, end: int) -> tuple[int, int]:
+    """Map one generated-text range back through a bounded source diff."""
+
+    if source == generated:
+        return start, end
+    mapped = []
+    for tag, i1, i2, j1, j2 in bounded_opcodes(source, generated):
+        if tag == "equal":
+            left, right = max(start, j1), min(end, j2)
+            if left < right:
+                mapped.append((i1 + left - j1, i1 + right - j1))
+            continue
+        if j1 == j2:
+            if start <= j1 <= end:
+                mapped.append((i1, i2))
+            continue
+        if start < j2 and j1 < end:
+            mapped.append((i1, i2))
+    if mapped:
+        return min(left for left, _right in mapped), max(right for _left, right in mapped)
+
+    boundary = max(0, min(start, len(generated)))
+    for tag, i1, i2, j1, j2 in bounded_opcodes(source, generated):
+        if tag == "equal" and j1 <= boundary <= j2:
+            point = i1 + boundary - j1
+            return point, point
+        if j1 <= boundary <= j2:
+            return i1, i2
+    return len(source), len(source)
+
+
+def _ranges_intersect(left_start: int, left_end: int, right_start: int, right_end: int) -> bool:
+    if left_start == left_end:
+        return right_start <= left_start <= right_end
+    if right_start == right_end:
+        return left_start <= right_start <= left_end
+    return left_start < right_end and right_start < left_end
+
+
+def _staged_segment_changes(
+    original: str,
+    before_opencc: str,
+    converted: ConvertResult,
+    final: str,
+    source_offset: int,
+    config: str,
+    pre_hits,
+    post_hits,
+) -> list[TokenChange]:
+    """Rebuild final patches against original offsets and retain rule groups."""
+
+    user_hits = []
+    for hit in pre_hits:
+        user_hits.append((hit.rule, hit.start, hit.end))
+    for hit in post_hits:
+        start, end = _map_generated_span(
+            original, converted.target, hit.start, hit.end)
+        user_hits.append((hit.rule, start, end))
+
+    opcodes = bounded_opcodes(original, final)
+    changed = [item for item in opcodes if item[0] != "equal"]
+    parents = list(range(len(user_hits)))
+
+    def find(index):
+        while parents[index] != index:
+            parents[index] = parents[parents[index]]
+            index = parents[index]
+        return index
+
+    def union(left, right):
+        left_root, right_root = find(left), find(right)
+        if left_root != right_root:
+            parents[right_root] = left_root
+
+    patch_hits = []
+    for _tag, i1, i2, _j1, _j2 in changed:
+        related = [index for index, (_rule, start, end) in enumerate(user_hits)
+                   if _ranges_intersect(i1, i2, start, end)]
+        for index in related[1:]:
+            union(related[0], index)
+        patch_hits.append(related)
+
+    component_keys = {}
+    for index, (rule, start, _end) in enumerate(user_hits):
+        component_keys.setdefault(find(index), []).append(f"{rule.id}@{start}")
+    group_ids = {
+        root: "rules:" + "+".join(sorted(values))
+        for root, values in component_keys.items()
+    }
+
+    mapped_conversion = []
+    for item in converted.changes:
+        start, end = _map_generated_span(
+            original, before_opencc, item.span.start, item.span.end)
+        mapped_conversion.append((start, end, item))
+
+    changes = []
+    for opcode, related in zip(changed, patch_hits):
+        _tag, i1, i2, j1, j2 = opcode
+        source_part, target_part = original[i1:i2], final[j1:j2]
+        if related:
+            roots = {find(index) for index in related}
+            root = min(roots, key=lambda value: group_ids.get(value, ""))
+            rules = sorted({user_hits[index][0].id for index in related})
+            rule_source = "UserRule:" + ",".join(rules)
+            group_id = group_ids.get(root, "")
+            category = "user_rule"
+            risk = "HIGH" if len(source_part) != len(target_part) else "REVIEW"
+            attribution_method = "staged rule replacement"
+        else:
+            attribution = next((item for start, end, item in mapped_conversion
+                                if _ranges_intersect(i1, i2, start, end)), None)
+            rule_source = attribution.rule_source if attribution else f"OpenCC:{config}"
+            category = attribution.category if attribution else _change_category(
+                source_part, target_part)
+            risk = attribution.risk if attribution else "LOW"
+            attribution_method = attribution.attribution_method if attribution else None
+            group_id = ""
+        changes.append(TokenChange(
+            source=source_part,
+            target=target_part,
+            span=SourceSpan(source_offset + i1, source_offset + i2),
+            rule_source=rule_source,
+            category=category,
+            risk=risk,
+            attribution_method=attribution_method,
+            group_id=group_id,
+        ))
+    return changes
+
+
+def _map_diagnostics(diagnostics, source: str, generated: str):
+    mapped = []
+    for diagnostic in diagnostics:
+        span = diagnostic.span
+        if span is not None:
+            start, end = _map_generated_span(source, generated, span.start, span.end)
+            diagnostic = replace(diagnostic, span=SourceSpan(start, end))
+        mapped.append(diagnostic)
+    return mapped
 
 
 def _change_category(source: str, target: str) -> str:

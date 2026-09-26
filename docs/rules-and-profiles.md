@@ -5,10 +5,22 @@ settings as a named profile, or open the rule manager. Profiles live in the
 plugin user-data `profiles/` directory and reference separate `rules/` sets.
 Loading a profile does not widen the XHTML selection confirmed earlier.
 
-Exact rules replace literal text. Protect rules keep literal text unchanged.
-Both lock their matched source spans before conversion; their output bypasses
-OpenCC, quotation changes, and punctuation changes. The remaining segments
-use the selected official config. Rule provenance is `UserRule:<id>`.
+Rules separate action, match type, and stage. Legacy `exact` rules still mean
+final wording: the full source match is written directly and bypasses OpenCC,
+quotation, and punctuation changes. `protect` preserves the original match.
+New rules may use plain text or the bundled `regex` VERSION1 engine. Pre-
+replacements run on unlocked original text before OpenCC; post-replacements run
+after OpenCC, quotation, and punctuation processing. A stage matches its input
+once, so replacements do not cascade within that stage. Provenance is
+`UserRule:<id>`.
+
+Regular expressions only match one extracted text fragment or allowed
+attribute value; they do not cross markup or operate on whole XHTML. The plugin
+rejects zero-length matches and bounds pattern size, per-rule and total hits,
+replacement output, and total matching time. A timeout or exceeded limit stops
+the entire analysis before it can produce a partial writeback plan. The rule
+manager includes templates for author-credit protection, marked text,
+contextual replacement, and horizontal whitespace cleanup.
 
 Rules have an explicit standard direction (all 16 are supported) or `*`, and
 global, profile, or book scope. Jieba runs use the corresponding standard rule
@@ -24,10 +36,12 @@ marker is ambiguous and is not protected globally. The rule manager displays a
 short guide; the installable ZIP includes `OpenCCForSigil/resources/rule-guide.md`
 with examples for adding and testing other exact/protect rules.
 
-Protection wins first, followed by book, global, and profile scope; within a
-tier, longest matches win, then priority and stable rule ID. Conflicting
-same-source targets at the same precedence block planning. Owners of separate
-profile/book scopes are independent.
+Protection wins first. V1 retains its book, global, profile ordering; V2 uses
+book, current profile, global, then built-in scope. At the same precedence,
+longer actual matches win before the advanced priority. Conflicting
+same-source targets at the same precedence block planning; ambiguous dynamic
+regex matches with different outputs stop at that text position. Owners of
+separate profile/book scopes are independent.
 
 Import/export supports TSV, CSV, JSON, and OpenCC TXT. TXT import requires an
 explicit direction. Import diagnostics and conflicts are visible before
@@ -37,7 +51,8 @@ input and labels the result as comparative classification, never as an
 internal dictionary-hit trace.
 
 Every plan freezes a rule hash, profile hash, backend provenance, and source
-hash. Editing rule/profile storage after preview blocks commit and requires a
-new analysis. Return to settings discards the old plan and preview decisions.
-Regex rules and other V1.1 features are rejected instead of being silently
-enabled.
+hash. Stage replacements map final changes back to original source offsets;
+changes that depend on one replacement share a preview decision group. Editing
+rule/profile storage after preview blocks commit and requires a new analysis.
+Return to settings discards the old plan and preview decisions. Saved legacy
+rules retain their prior semantics and are not migrated into replacements.

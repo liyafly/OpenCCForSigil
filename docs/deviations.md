@@ -1,9 +1,10 @@
 # Implementation status and acceptance boundaries
 
 The V1 document, rule/profile, transform, preview, and report services are
-connected to the Sigil controller. The former skeleton-only status is obsolete.
-Regex rules, vertical punctuation, SVG/MathML enhancement, and review
-annotations remain V1.1 scope and are not silently enabled by a V1 profile.
+connected to the Sigil controller. Guarded regex rules and pre/post replacement
+stages are implemented in the current release work. Vertical punctuation,
+broader SVG/MathML support, and review annotations remain deferred; saved V1
+rules retain their original meanings.
 
 ## Deliberate implementation choices
 

@@ -144,6 +144,13 @@ def inspect_dictionary(
         text, snapshot, config=config, profile_id=profile_id,
         book_fingerprint=book_fingerprint,
     )
+    matched_ids = tuple(dict.fromkeys(
+        tuple(span.rule.id for span in matched) + tuple(
+            change.rule_source.removeprefix("UserRule:")
+            for change in converted.changes
+            if change.rule_source.startswith("UserRule:")
+        )
+    ))
     from core.classifier import classify_conversion
     classification = classify_conversion(
         text, config, lambda name, value: convert_for(name, value, official_convert))
@@ -152,7 +159,7 @@ def inspect_dictionary(
         config,
         comparisons,
         converted.target,
-        tuple(span.rule.id for span in matched),
+        matched_ids,
         f"OpenCC:{config}/comparative_config_diff",
         classification.changes,
         converted.changes,
@@ -472,6 +479,11 @@ class RuleManagerDialog:
         self.type_combo = qt.QComboBox()
         self.type_combo.addItem(self._labels["exact"], "exact")
         self.type_combo.addItem(self._labels["protect"], "protect")
+        self.type_combo.addItem(self._labels["replace_pre"], "replace_pre")
+        self.type_combo.addItem(self._labels["replace_post"], "replace_post")
+        self.match_type_combo = qt.QComboBox()
+        self.match_type_combo.addItem(self._labels["literal"], "literal")
+        self.match_type_combo.addItem(self._labels["regex"], "regex")
         self.direction_combo = qt.QComboBox()
         for direction in (*self._available_configs, "*"):
             label = (
@@ -494,6 +506,7 @@ class RuleManagerDialog:
         _select_default_direction(self.direction_combo, self._config)
         controls = (
             ("type", self.type_combo),
+            ("match_type", self.match_type_combo),
             ("direction", self.direction_combo),
             ("source", self.source_edit),
             ("target", self.target_edit),
@@ -513,9 +526,12 @@ class RuleManagerDialog:
         self.add_button = qt.QPushButton(self._labels["add"])
         self.update_button = qt.QPushButton(self._labels["update"])
         self.remove_button = qt.QPushButton(self._labels["remove"])
-        for button in (self.add_button, self.update_button, self.remove_button):
+        self.template_button = qt.QPushButton(self._labels["templates"])
+        for button in (self.add_button, self.update_button, self.remove_button,
+                       self.template_button):
             button.setAutoDefault(False)
-        for button in (self.add_button, self.update_button, self.remove_button):
+        for button in (self.add_button, self.update_button, self.remove_button,
+                       self.template_button):
             buttons.addWidget(button)
         layout.addWidget(editor_box)
 
@@ -570,6 +586,7 @@ class RuleManagerDialog:
         self.add_button.clicked.connect(self._add)
         self.update_button.clicked.connect(self._update_selected)
         self.remove_button.clicked.connect(self._remove)
+        self.template_button.clicked.connect(self._fill_template)
         self.test_button.clicked.connect(self._test)
         self.inspect_button.clicked.connect(self._inspect)
         self.import_button.clicked.connect(self._import)
@@ -787,8 +804,14 @@ class RuleManagerDialog:
         for rule in self.rules:
             row = self.table.rowCount()
             self.table.insertRow(row)
+            action_key = (
+                "protect" if rule.action == "protect" else
+                "replace_pre" if rule.action == "replace" and rule.stage == "pre" else
+                "replace_post" if rule.action == "replace" else "exact"
+            )
             values = (
-                self._labels.get(rule.type, rule.type)
+                self._labels.get(action_key, action_key)
+                + " · " + self._labels.get(rule.match_type, rule.match_type)
                 + (" · " + self._labels.get("disabled", "disabled")
                    if not rule.enabled else ""),
                 (
@@ -842,18 +865,29 @@ class RuleManagerDialog:
         self._refresh()
 
     def _rule_from_form(self):
-        rule_type = str(self.type_combo.currentData())
+        editor_action = str(self.type_combo.currentData())
+        match_type = str(self.match_type_combo.currentData())
+        action, stage = {
+            "exact": ("override", "source"),
+            "protect": ("protect", "source"),
+            "replace_pre": ("replace", "pre"),
+            "replace_post": ("replace", "post"),
+        }.get(editor_action, ("override", "source"))
+        rule_type = "protect" if action == "protect" else "exact"
         ruleset = getattr(self, "_rulesets", {}).get(getattr(self, "_ruleset_id", ""))
         semantic_version = ruleset.semantic_version if ruleset is not None else 1
+        if match_type == "regex" or action == "replace":
+            semantic_version = max(2, semantic_version)
         values = {
             "type": rule_type,
-            "action": "protect" if rule_type == "protect" else "override",
-            "match_type": "literal",
-            "stage": "source",
+            "action": action,
+            "match_type": match_type,
+            "stage": stage,
             "semantic_version": semantic_version,
             "direction": str(self.direction_combo.currentData()),
             "source": self.source_edit.text(),
-            "target": self.source_edit.text() if rule_type == "protect" else self.target_edit.text(),
+            "target": (self.source_edit.text() if rule_type == "protect"
+                       else self.target_edit.text()),
             "scope": str(self.scope_combo.currentData()),
             "priority": int(self.priority_edit.value()),
             "enabled": (self.enabled_check.isChecked()
@@ -881,7 +915,13 @@ class RuleManagerDialog:
         if row < 0 or row >= len(self.rules):
             return
         rule = self.rules[row]
-        self.type_combo.setCurrentIndex(self.type_combo.findData(rule.type))
+        editor_action = (
+            "protect" if rule.action == "protect" else
+            "replace_pre" if rule.action == "replace" and rule.stage == "pre" else
+            "replace_post" if rule.action == "replace" else "exact"
+        )
+        self.type_combo.setCurrentIndex(self.type_combo.findData(editor_action))
+        self.match_type_combo.setCurrentIndex(self.match_type_combo.findData(rule.match_type))
         self.direction_combo.setCurrentIndex(self.direction_combo.findData(rule.direction))
         self.source_edit.setText(rule.source)
         self.target_edit.setText(rule.target)
@@ -889,7 +929,7 @@ class RuleManagerDialog:
         self.priority_edit.setValue(rule.priority)
         self.enabled_check.setChecked(rule.enabled)
         self._type_changed()
-        if rule.type == "protect":
+        if rule.action == "protect":
             self.target_edit.clear()
 
     def _type_changed(self, *_args):
@@ -897,6 +937,75 @@ class RuleManagerDialog:
         self.target_edit.setEnabled(not is_protect)
         if is_protect:
             self.target_edit.clear()
+
+    def _fill_template(self) -> None:
+        from rules.templates import (
+            collapse_horizontal_spaces,
+            contextual_replacement,
+            protect_between_markers,
+            signature_protection,
+        )
+
+        names = ("template_signature", "template_markers", "template_context",
+                 "template_spaces")
+        selected, accepted = self._qt.QInputDialog.getItem(
+            self.dialog,
+            plugin_window_title(self._translator, self._labels["templates"]),
+            self._labels["templates"],
+            [self._labels[name] for name in names],
+            0,
+            False,
+        )
+        if not accepted:
+            return
+        selected_index = next((index for index, name in enumerate(names)
+                               if self._labels[name] == str(selected)), -1)
+        if selected_index < 0:
+            return
+
+        def ask_text(label_key):
+            value, ok = self._qt.QInputDialog.getText(
+                self.dialog, self._labels["templates"], self._labels[label_key])
+            return str(value) if ok else None
+
+        try:
+            if selected_index == 0:
+                values = signature_protection()
+            elif selected_index == 1:
+                left, right = ask_text("template_left"), ask_text("template_right")
+                if left is None or right is None:
+                    return
+                values = protect_between_markers(left, right)
+            elif selected_index == 2:
+                before = ask_text("template_before")
+                term = ask_text("template_term")
+                after = ask_text("template_after")
+                replacement = ask_text("template_replacement")
+                if None in (before, term, after, replacement):
+                    return
+                values = contextual_replacement(before, term, after, replacement)
+            else:
+                count, ok = self._qt.QInputDialog.getInt(
+                    self.dialog, self._labels["templates"],
+                    self._labels["template_spaces_count"], 1, 1, 16, 1)
+                if not ok:
+                    return
+                values = collapse_horizontal_spaces(count)
+        except ValueError as exc:
+            self._warn(str(exc))
+            return
+
+        action = values["action"]
+        stage = values["stage"]
+        editor_action = (
+            "protect" if action == "protect" else
+            "replace_pre" if stage == "pre" else "replace_post"
+        )
+        self.type_combo.setCurrentIndex(self.type_combo.findData(editor_action))
+        self.match_type_combo.setCurrentIndex(self.match_type_combo.findData(values["match_type"]))
+        self.source_edit.setText(str(values["source"]))
+        self.target_edit.setText(str(values["target"]))
+        self._type_changed()
 
     def _selection_changed(self):
         self._load_selected()
@@ -934,15 +1043,24 @@ class RuleManagerDialog:
             matched = lock_spans(
                 self.test_input.toPlainText(), snapshot, config=self._config,
                 profile_id=self._profile_id, book_fingerprint=self._book_fingerprint)
+            staged_hits = tuple(
+                change for change in inspection.changes
+                if change.rule_source.startswith("UserRule:")
+            )
             lines = [
                 f"{self._labels['original_label']}: {inspection.input}",
                 f"{self._labels['final_label']}: {inspection.final}",
-                f"{self._labels['hits_label']}: {len(matched)}",
+                f"{self._labels['hits_label']}: {len(matched) + len(staged_hits)}",
             ]
             lines.extend(self._labels["rule_hit"].format(
                 id=span.rule.id, source=span.source, target=span.target,
                 start=span.start, end=span.end) for span in matched)
-            if not matched:
+            lines.extend(self._labels["rule_hit"].format(
+                id=change.rule_source.removeprefix("UserRule:"),
+                source=change.source, target=change.target,
+                start=change.span.start, end=change.span.end,
+            ) for change in staged_hits)
+            if not matched and not staged_hits:
                 lines.append(self._labels["no_hits"])
             self.test_output.setPlainText("\n".join(lines))
         except Exception as exc:

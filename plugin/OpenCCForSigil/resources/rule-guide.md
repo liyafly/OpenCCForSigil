@@ -2,14 +2,20 @@
 
 ## 简体中文
 
-在转换设置中打开“规则 / 沙箱”，可以添加字面规则。规则先于 OpenCC 执行；被保护的文本不会交给 OpenCC 处理，因此其中的汉字、标点和符号都会原样保留。
+在转换设置中打开“规则 / 沙箱”，可以管理规则集并试跑规则。旧规则会保留原来的语义；新规则可选择动作、匹配方式和阶段。
 
-### 两种规则
+### 动作和匹配方式
 
-- **精确**：把每个完整的“源文本”替换为“目标文本”。
-- **保护**：把每个完整的“源文本”原样保留；目标文本留空，程序会按源文本处理。
+- **指定最终写法**：在原文上匹配，完整命中直接使用目标文本，并跳过后续转换。
+- **保护原文**：在原文上匹配，命中部分不交给 OpenCC、引号或标点处理。
+- **转换前替换**：在未锁定的原文上匹配，替换结果继续经过 OpenCC、引号和标点处理。
+- **转换后替换**：在 OpenCC、引号和标点处理后匹配，不再进入 OpenCC。
 
-规则按字面匹配。请把需要保留的完整文字和标点都写进源文本。署名若没有可辨别标记、只剩单字“著”，就无法安全判断它是署名还是正文；不要全局保护单字“著”，否则“慰藉著”也会保留，而不是转换为“慰藉着”。
+“普通文字”会按字面匹配；“正则表达式”使用随插件附带的 `regex` VERSION1 方言。正则只匹配当前提取的文本或允许转换的属性值，不会跨越标签，也不会直接扫描或改写整份 XHTML。替换阶段同一轮只基于阶段输入匹配一次，新生成的文字不会在同阶段再次匹配。
+
+零长度命中会被拒绝。插件限制表达式长度、单条规则命中数、整次分析的命中数、替换输出大小和匹配耗时。超时或越限会中止整次分析，不会生成可写回的部分计划。复杂表达式可从“使用模板”开始，例如署名保护模板只匹配 `◎` 后的署名标记；它不会保护正文里所有单独的“著”。
+
+规则匹配只发生在单个提取文本片段内。`<span>` 等标签分开的文字不会拼接后再匹配。
 
 ### 署名示例
 
@@ -42,18 +48,24 @@
 4. 在沙箱输入有代表性的文本，点击“测试”；同时检查应该保护的文字和周围仍应转换的文字。
 5. 点击“保存”，并确认当前方案包含此规则集。
 
-V1 规则只支持字面匹配，不支持正则表达式。只读的词典检查器用于查看 OpenCC 转换结果，不会修改词典。
+升级后的旧 `exact` 规则仍是“指定最终写法”，旧 `protect` 仍保留原文；它们不会被自动改成前置替换。保存或导入时会检查正则语法与替换模板，分析时只执行当前方向和范围实际生效的规则。只读词典检查器用于查看 OpenCC 转换结果，不会修改词典。
 
 ## 繁體中文
 
-在轉換設定中開啟「規則 / 沙箱」，即可新增字面規則。規則會先於 OpenCC 執行；受保護的文字不會交給 OpenCC 處理，因此其中的漢字、標點和符號都會原樣保留。
+在轉換設定中開啟「規則 / 沙箱」，即可管理規則集並試跑規則。舊規則會保留原有語義；新規則可選擇動作、比對方式和階段。
 
-### 兩種規則
+### 動作和比對方式
 
-- **精確**：將每個完整的「來源文字」替換為「目標文字」。
-- **保護**：將每個完整的「來源文字」原樣保留；目標文字留空，程式會以來源文字作為目標。
+- **指定最終寫法**：在原文比對，完整命中直接使用目標文字，並略過後續轉換。
+- **保護原文**：在原文比對，命中部分不交給 OpenCC、引號或標點處理。
+- **轉換前取代**：在未鎖定的原文比對，取代結果會繼續經過 OpenCC、引號和標點處理。
+- **轉換後取代**：在 OpenCC、引號和標點處理後比對，不再進入 OpenCC。
 
-規則依字面比對。請將需要保留的完整文字和標點都寫進來源文字。署名若沒有可辨別標記、只剩單字「著」，就無法安全判斷它是署名還是正文；不要全域保護單字「著」，否則「慰藉著」也會保留，而不會轉換為「慰藉着」。
+「一般文字」會依字面比對；「正規表示式」使用隨附的 `regex` VERSION1 方言。正規表示式只比對目前擷取的文字或允許轉換的屬性值，不會跨越標籤，也不會直接掃描或改寫整份 XHTML。同一取代階段每輪只依階段輸入比對一次，新產生的文字不會在同階段再次比對。
+
+零長度命中會被拒絕。外掛會限制表示式長度、單條規則命中數、整次分析命中數、取代輸出大小和比對時間。逾時或超過限制會中止整次分析，不會產生可寫回的部分計畫。可從「使用範本」開始，例如署名保護範本只比對 `◎` 後的署名標記，不會保護正文中所有單獨的「著」。
+
+規則只會在單一擷取文字片段內比對。被 `<span>` 等標籤分開的文字不會先拼接再比對。
 
 ### 署名範例
 
@@ -86,18 +98,24 @@ V1 规则只支持字面匹配，不支持正则表达式。只读的词典检�
 4. 在沙箱輸入有代表性的文字，點擊「測試」；同時檢查應受保護的文字和周圍仍應轉換的文字。
 5. 點擊「儲存」，並確認目前設定檔包含此規則集。
 
-V1 規則只支援字面比對，不支援正規表示式。唯讀的詞典檢查器用來查看 OpenCC 轉換結果，不會修改詞典。
+升級後的舊 `exact` 規則仍是「指定最終寫法」，舊 `protect` 仍會保留原文；不會自動改成前置取代。儲存或匯入時會檢查正規表示式語法與取代範本，分析時只執行目前方向和範圍實際生效的規則。唯讀詞典檢查器用來查看 OpenCC 轉換結果，不會修改詞典。
 
 ## English
 
-Open **Rules / sandbox** from the conversion settings to add a literal rule. Rules run before OpenCC. Protected text never reaches OpenCC, so its characters, punctuation, and symbols remain unchanged.
+Open **Rules / sandbox** from the conversion settings to manage rule sets and try rules. Existing rules keep their semantics; new rules choose an action, match type, and stage.
 
-### Rule types
+### Actions and match types
 
-- **Exact** replaces each full match of **Source** with **Target**.
-- **Protect** leaves each full match of **Source** unchanged. Leave **Target** blank; the source is used as the target.
+- **Final wording** matches original text, writes the target for the full match, and skips later conversion.
+- **Protect original** matches original text and keeps the match out of OpenCC, quotation, and punctuation processing.
+- **Pre-replacement** matches unlocked original text; its output continues through OpenCC, quotation, and punctuation processing.
+- **Post-replacement** matches after OpenCC, quotation, and punctuation processing, and does not re-enter OpenCC.
 
-Rules match literal text. Include the complete wording and punctuation to preserve. If a credit has no distinguishing marker and only contains `著`, it is ambiguous; do not protect bare `著` globally, because ordinary wording such as `慰藉著` should still convert to `慰藉着`.
+**Plain text** matches literally. **Regular expression** uses the bundled `regex` VERSION1 dialect. Expressions only match one extracted text or allowed attribute value; they do not cross tags or scan and rewrite whole XHTML. A stage matches its input once, so newly generated text is not matched again in the same stage.
+
+Zero-length matches are rejected. The plugin caps pattern length, hits per rule, total hits, replacement output, and matching time. A timeout or limit stops the whole analysis, so it cannot produce a partial writeback plan. Start with **Templates**, such as the author-credit protection template; it matches a marked credit and does not protect every standalone `著` in prose.
+
+Matching stays inside each extracted text fragment. Text split by tags such as `<span>` is not joined for matching.
 
 ### Author-credit example
 
@@ -130,4 +148,4 @@ Choose **Global** to apply the rule to every book, **Current profile** to apply 
 4. Enter representative text in the sandbox and select **Test**. Check both the protected text and nearby text that should still convert.
 5. Select **Save**, then make sure the active profile includes this rule set.
 
-Version 1 rules use literal matching; regular expressions are not supported. The read-only dictionary inspector shows OpenCC output and does not edit its dictionaries.
+Upgraded `exact` rules remain **Final wording** and `protect` rules still keep the original; they are not silently changed to pre-replacements. Saving or importing checks regex syntax and replacement templates. Analysis executes only rules enabled for the active direction and scope. The read-only dictionary inspector shows OpenCC output and does not edit its dictionaries.

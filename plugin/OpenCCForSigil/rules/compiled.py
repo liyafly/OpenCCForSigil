@@ -10,7 +10,14 @@ from typing import Mapping
 from .conflicts import validate_no_blocking_conflicts
 from .models import RULE_SCHEMA_VERSION, Rule, canonical_rules_json
 from .precedence import applies_to, ordered_rules
-from .validators import validate_rules
+from .validators import validate_rule, validate_rules
+from .matching import (
+    REGEX_MAX_PATTERN_CHARS,
+    REGEX_MAX_RULES,
+    RegexBudget,
+    RuleExecutionError,
+    source_matches,
+)
 
 
 @dataclass(frozen=True)
@@ -23,6 +30,7 @@ class CompiledOverlay:
     book_fingerprint: str | None
     rules: tuple[Rule, ...]
     index: Mapping[str, tuple[Rule, ...]]
+    regex_patterns: Mapping[str, object]
 
     @classmethod
     def build(
@@ -55,65 +63,46 @@ class CompiledOverlay:
         # conversion from starting.
         validate_no_blocking_conflicts(candidates)
         buckets: dict[str, list[Rule]] = {}
+        regex_rules = tuple(rule for rule in candidates if rule.match_type == "regex")
+        if len(regex_rules) > REGEX_MAX_RULES:
+            raise ValueError(f"at most {REGEX_MAX_RULES} active regular-expression rules are allowed")
+        patterns = {}
+        if regex_rules:
+            from .regex_runtime import RegexRuntimeError, load_regex_module
+
+            try:
+                regex_module = load_regex_module()
+            except RegexRuntimeError as exc:
+                raise RuleExecutionError(str(exc)) from exc
+            for rule in regex_rules:
+                validate_rule(rule)
+                if len(rule.source) > REGEX_MAX_PATTERN_CHARS:
+                    raise ValueError(
+                        f"rule {rule.id}: regular-expression pattern exceeds "
+                        f"{REGEX_MAX_PATTERN_CHARS} characters")
+                try:
+                    patterns[rule.id] = regex_module.compile(rule.source, regex_module.VERSION1)
+                except Exception as exc:
+                    raise ValueError(f"rule {rule.id}: invalid regular expression: {exc}") from exc
         for rule in candidates:
+            if rule.match_type == "regex":
+                continue
             buckets.setdefault(rule.source[0], []).append(rule)
         index = MappingProxyType({key: tuple(values) for key, values in buckets.items()})
-        return cls(actual_hash, config, profile_id, book_fingerprint, candidates, index)
+        return cls(actual_hash, config, profile_id, book_fingerprint, candidates, index,
+                   MappingProxyType(patterns))
 
 
-def lock_spans_compiled(text: str, overlay: CompiledOverlay):
+def lock_spans_compiled(text: str, overlay: CompiledOverlay, budget: RegexBudget | None = None):
     """Return deterministic matches after reserving all protected ranges."""
 
     from .engine import LockedSpan
-
-    protected = []
-    cursor = 0
-    while cursor < len(text):
-        match = next(
-            (
-                rule for rule in overlay.index.get(text[cursor], ())
-                if rule.type == "protect" and text.startswith(rule.source, cursor)
-            ),
-            None,
-        )
-        if match is None:
-            cursor += 1
-            continue
-        end = cursor + len(match.source)
-        protected.append(LockedSpan(cursor, end, match.source, match.source, match))
-        cursor = end
-
-    spans = []
-    protected_index = 0
-    cursor = 0
-    while cursor < len(text):
-        while protected_index < len(protected) and protected[protected_index].end <= cursor:
-            protected_index += 1
-        if (protected_index < len(protected)
-                and protected[protected_index].start == cursor):
-            span = protected[protected_index]
-            spans.append(span)
-            cursor = span.end
-            protected_index += 1
-            continue
-
-        match = None
-        for rule in overlay.index.get(text[cursor], ()):
-            if not text.startswith(rule.source, cursor):
-                continue
-            end = cursor + len(rule.source)
-            if (rule.type != "protect" and protected_index < len(protected)
-                    and protected[protected_index].start < end):
-                continue
-            match = rule
-            break
-        if match is None:
-            cursor += 1
-            continue
-        end = cursor + len(match.source)
-        spans.append(LockedSpan(cursor, end, match.source, match.target, match))
-        cursor = end
-    return tuple(spans)
+    budget = budget or RegexBudget()
+    source_rules = tuple(rule for rule in overlay.rules if rule.stage == "source")
+    return tuple(
+        LockedSpan(match.start, match.end, text[match.start:match.end], match.target, match.rule)
+        for match in source_matches(text, source_rules, dict(overlay.regex_patterns), budget)
+    )
 
 
 __all__ = ["CompiledOverlay", "lock_spans_compiled"]

@@ -144,6 +144,7 @@ def _manager(rules, *, config="s2t", row=0, rule_type="exact", source="术语", 
     manager.apply_button = Button()
     manager.update_button = Button()
     manager.type_combo = Combo(rule_type)
+    manager.match_type_combo = Combo("literal")
     manager.direction_combo = Combo(config)
     manager.source_edit = Edit(source)
     manager.target_edit = Edit(target)
@@ -208,6 +209,7 @@ def test_enter_in_rule_editor_submits_without_opening_ruleset_prompt():
             manager.add_button,
             manager.update_button,
             manager.remove_button,
+            manager.template_button,
             manager.import_button,
             manager.export_button,
             manager.test_button,
@@ -253,9 +255,11 @@ def test_rule_table_and_default_ruleset_use_localized_labels():
     translator = Translator("zh-Hans")
     manager = RuleManagerDialog(qt, (rule, wildcard), translator=translator)
 
-    assert manager.table.item(0, 0).text() == translator.text("rules.exact")
+    assert manager.table.item(0, 0).text() == (
+        translator.text("rules.exact") + " · " + translator.text("rules.literal"))
     assert manager.table.item(0, 1).text() == configuration_label(translator, "s2t")
-    assert manager.table.item(1, 0).text() == translator.text("rules.protect")
+    assert manager.table.item(1, 0).text() == (
+        translator.text("rules.protect") + " · " + translator.text("rules.literal"))
     assert manager.table.item(1, 1).text() == translator.text("rules.direction_any")
     any_index = manager.direction_combo.findData("*")
     assert manager.direction_combo.itemText(any_index) == translator.text("rules.direction_any")
@@ -277,8 +281,8 @@ def test_rules_editor_labels_are_buddied_and_table_has_accessible_name():
     manager = RuleManagerDialog(make_with_table(), (), translator=Translator("en"))
 
     children = manager.editor_form.children
-    assert len(children) == 14
-    assert all(children[index].buddy() is children[index + 1] for index in range(0, 12, 2))
+    assert len(children) == 16
+    assert all(children[index].buddy() is children[index + 1] for index in range(0, 16, 2))
     assert manager.table.accessibleName()
 
 
