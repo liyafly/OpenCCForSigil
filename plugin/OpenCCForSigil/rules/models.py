@@ -38,7 +38,10 @@ SUPPORTED_DIRECTIONS = frozenset(
     }
 )
 SUPPORTED_RULE_TYPES = frozenset({"exact", "protect"})
-SUPPORTED_SCOPES = frozenset({"global", "profile", "book"})
+SUPPORTED_RULE_ACTIONS = frozenset({"protect", "override", "replace"})
+SUPPORTED_MATCH_TYPES = frozenset({"literal", "regex"})
+SUPPORTED_RULE_STAGES = frozenset({"source", "pre", "post"})
+SUPPORTED_SCOPES = frozenset({"global", "profile", "book", "builtin"})
 
 
 def _now() -> str:
@@ -54,11 +57,15 @@ _new_id = new_rule_id
 
 @dataclass(frozen=True)
 class Rule:
-    """A directional exact or protected overlay rule.
+    """A directional rule with versioned behavior.
 
     ``profile_id`` and ``book_fingerprint`` are optional selectors used only
     for their corresponding scopes.  Keeping them on the rule avoids a
     separate mutable registry and means a snapshot is self-contained.
+
+    The ``type`` field keeps the V1 JSON/API shape readable. ``action``,
+    ``match_type``, and ``stage`` are the V2 semantic dimensions. Old rules
+    infer their action from ``type`` and retain semantic version 1.
     """
 
     id: str = field(default_factory=new_rule_id)
@@ -75,6 +82,18 @@ class Rule:
     updated_at: str = field(default_factory=_now)
     profile_id: str = ""
     book_fingerprint: str = ""
+    semantic_version: int = 1
+    action: str | None = None
+    match_type: str = "literal"
+    stage: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.action is None:
+            object.__setattr__(
+                self, "action", "protect" if self.type == "protect" else "override")
+        if self.stage is None:
+            object.__setattr__(
+                self, "stage", "pre" if self.action == "replace" else "source")
 
     @classmethod
     def from_dict(
@@ -95,6 +114,18 @@ class Rule:
             values["profile_id"] = profile_id
         if book_fingerprint and not values.get("book_fingerprint"):
             values["book_fingerprint"] = book_fingerprint
+        if "pattern" in values and "source" not in values:
+            values["source"] = values.pop("pattern")
+        if "replacement" in values and "target" not in values:
+            values["target"] = values.pop("replacement")
+        if "action" in values and "type" not in values:
+            values["type"] = "protect" if values["action"] == "protect" else "exact"
+        values.setdefault(
+            "semantic_version",
+            2 if any(key in values for key in ("action", "match_type", "stage")) else 1,
+        )
+        if values.get("action") == "replace" and "stage" not in values:
+            values["stage"] = "pre"
         if values.get("type") == "protect" and "target" not in values:
             values["target"] = values.get("source", "")
         allowed = {
@@ -112,6 +143,10 @@ class Rule:
             "updated_at",
             "profile_id",
             "book_fingerprint",
+            "semantic_version",
+            "action",
+            "match_type",
+            "stage",
         }
         unknown = sorted(set(values) - allowed)
         if unknown:
@@ -119,9 +154,10 @@ class Rule:
         return cls(**{key: value for key, value in values.items() if key in allowed})
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        result = {
             "id": self.id,
             "enabled": self.enabled,
+            "semantic_version": self.semantic_version,
             "type": self.type,
             "direction": self.direction,
             "source": self.source,
@@ -135,10 +171,17 @@ class Rule:
             "profile_id": self.profile_id,
             "book_fingerprint": self.book_fingerprint,
         }
+        if self.semantic_version >= 2:
+            result.update({
+                "action": self.action,
+                "match_type": self.match_type,
+                "stage": self.stage,
+            })
+        return result
 
     @property
     def is_protect(self) -> bool:
-        return self.type == "protect"
+        return self.action == "protect"
 
 
 def canonical_rule_dict(rule: Rule) -> dict[str, Any]:
@@ -231,6 +274,9 @@ __all__ = [
     "RULE_SCHEMA_VERSION",
     "SUPPORTED_DIRECTIONS",
     "SUPPORTED_RULE_TYPES",
+    "SUPPORTED_RULE_ACTIONS",
+    "SUPPORTED_MATCH_TYPES",
+    "SUPPORTED_RULE_STAGES",
     "SUPPORTED_SCOPES",
     "Rule",
     "RuleSnapshot",

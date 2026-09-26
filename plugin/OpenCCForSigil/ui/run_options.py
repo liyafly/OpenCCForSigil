@@ -57,6 +57,10 @@ class RunOptionsPanel:
         self.checks = {}
         self.combos = {}
         self.combo_labels = {}
+        self._combo_values = {}
+        self._option_groups = []
+        self._named_groups = []
+        self._profile_buttons = []
         self.profile_label = qt.QLabel()
         self.ruleset_label = qt.QLabel()
         size_policy = getattr(qt.QSizePolicy, "Policy", qt.QSizePolicy)
@@ -77,27 +81,31 @@ class RunOptionsPanel:
         self.rules_button_layout = qt.QHBoxLayout()
         ruleset_row.addLayout(self.rules_button_layout)
         body_layout.addLayout(ruleset_row)
+        builtin_rules_check = qt.QCheckBox(translator.text("options.builtin_rules_enabled"))
+        builtin_rules_check.setChecked(bool(self._initial.get("builtin_rules_enabled", True)))
+        self.checks["builtin_rules_enabled"] = builtin_rules_check
+        body_layout.addWidget(builtin_rules_check)
 
-        documents = qt.QGroupBox(translator.text("options.documents"))
-        documents_layout = qt.QVBoxLayout(documents)
+        self.documents_group = qt.QGroupBox(translator.text("options.documents"))
+        documents_layout = qt.QVBoxLayout(self.documents_group)
         for name, default in (("include_nav", True), ("include_ncx", False),
                               ("include_metadata", False)):
             self._add_check(documents_layout, name, default)
-        body_layout.addWidget(documents)
+        body_layout.addWidget(self.documents_group)
 
-        tool_button = qt.QToolButton()
-        tool_button.setText(translator.text("settings.tools"))
+        self.tool_button = qt.QToolButton()
+        self.tool_button.setText(translator.text("settings.tools"))
         popup_mode = enum_value(qt.QToolButton, "InstantPopup")
         if popup_mode is not None:
-            tool_button.setPopupMode(popup_mode)
-        self.tools_menu = qt.QMenu(tool_button)
-        tool_button.setMenu(self.tools_menu)
+            self.tool_button.setPopupMode(popup_mode)
+        self.tools_menu = qt.QMenu(self.tool_button)
+        self.tool_button.setMenu(self.tools_menu)
         self._tool_actions = {}
         action_type = getattr(getattr(qt, "QtGui", None), "QAction", None)
         action_type = action_type or getattr(qt, "QAction", None)
         if action_type is not None:
             for name in ("history", "self_test"):
-                action = action_type(translator.text("settings." + name), tool_button)
+                action = action_type(translator.text("settings." + name), self.tool_button)
                 action.triggered.connect(
                     lambda _checked=False, selected=name: self._tool(selected))
                 self.tools_menu.addAction(action)
@@ -118,23 +126,26 @@ class RunOptionsPanel:
             ("convert_ruby_rt", False), ("convert_code_pre", False),
             ("decode_numeric_cjk_refs", False)))
         punctuation_group = qt.QGroupBox(translator.text("options.punctuation"))
+        self._named_groups.append((punctuation_group, "options.punctuation"))
         punctuation_layout = qt.QFormLayout(punctuation_group)
         self._add_combo(punctuation_layout, "quotation_mode",
                         ("keep", "curly", "corner", "nested_corner"))
         self._add_combo(punctuation_layout, "punctuation_mode", ("keep", "horizontal"))
         advanced_layout.addWidget(punctuation_group)
         language_group = qt.QGroupBox(translator.text("options.language_tags"))
+        self._named_groups.append((language_group, "options.language_tags"))
         language_form = qt.QFormLayout(language_group)
         self._add_combo(language_form, "language_metadata", ("keep", "suggest", "force"))
         self._add_combo(language_form, "language_preset", ("legacy", "bcp47"))
         self._add_combo(language_form, "language_region", ("", "zh-TW", "zh-HK"))
-        language_note = qt.QLabel(translator.text("options.language_note"))
-        language_note.setWordWrap(True)
-        language_form.addRow(language_note)
+        self.language_note = qt.QLabel(translator.text("options.language_note"))
+        self.language_note.setWordWrap(True)
+        language_form.addRow(self.language_note)
         advanced_layout.addWidget(language_group)
         self._add_option_group(
             advanced_layout, "options.diagnostics", tuple(PANEL_OPTION_DEFAULTS.items()))
         high_risk = qt.QGroupBox(translator.text("options.high_risk"))
+        self._named_groups.append((high_risk, "options.high_risk"))
         high_risk_layout = qt.QFormLayout(high_risk)
         self._add_check(high_risk_layout, "force_pivot", False)
         self._add_combo(high_risk_layout, "pivot_chain", ())
@@ -146,7 +157,7 @@ class RunOptionsPanel:
         self.advanced_button.toggled.connect(self._advanced_toggled)
         self._advanced_toggled(self._advanced_expanded)
         self.tool_layout = qt.QHBoxLayout()
-        self.tool_layout.addWidget(tool_button)
+        self.tool_layout.addWidget(self.tool_button)
         self.tool_layout.addStretch(1)
         scroll = qt.QScrollArea()
         scroll.setWidgetResizable(True)
@@ -173,6 +184,8 @@ class RunOptionsPanel:
 
     def _add_combo(self, layout, name, values):
         combo = self._qt.QComboBox()
+        values = tuple(values)
+        self._combo_values[name] = values
         for value in values:
             combo.addItem(self._tr.text("options." + (value or "no_region")), value)
         if values:
@@ -190,6 +203,7 @@ class RunOptionsPanel:
 
     def _add_option_group(self, parent_layout, title_key, fields):
         group = self._qt.QGroupBox(self._tr.text(title_key))
+        self._option_groups.append((group, title_key))
         group_layout = self._qt.QVBoxLayout(group)
         for name, default in fields:
             self._add_check(group_layout, name, default)
@@ -254,6 +268,7 @@ class RunOptionsPanel:
             button = self._qt.QPushButton(self._tr.text("settings." + name))
             button.clicked.connect(lambda _checked=False, action=name: self._tool(action))
             self.profile_buttons_layout.addWidget(button)
+            self._profile_buttons.append((button, name))
         self.ruleset_button = self._qt.QPushButton(self._tr.text("settings.rules"))
         self.ruleset_button.clicked.connect(lambda _checked=False: self._tool("rules"))
         self.rules_button_layout.addWidget(self.ruleset_button)
@@ -343,10 +358,53 @@ class RunOptionsPanel:
         self.profile_label.setText(self._tr.text(
             "options.current_profile", name=profile_display_name(active, self._tr), status=status))
         self.ruleset_label.setText(self._tr.text(
-            "options.active_rulesets", ids=", ".join(active.ruleset_ids) or "—"))
+            "options.active_rulesets",
+            ids=", ".join(active.ruleset_ids) or "—",
+            builtin=(self._tr.text("options.builtin_on")
+                     if getattr(active, "builtin_rules_enabled", True)
+                     else self._tr.text("options.builtin_off")),
+        ))
 
     def ui_state(self):
         return {"run_options_advanced_expanded": self._advanced_expanded}
+
+    def set_nav_available(self, available):
+        self._nav_available = bool(available)
+        self.update_enablement()
+
+    def retranslate(self):
+        """Refresh this panel's labels after its shared translator changes."""
+        for name, control in self.checks.items():
+            control.setText(self._tr.text("options." + name))
+        for name, label in self.combo_labels.items():
+            label.setText(self._tr.text("options." + name))
+        for name, combo in self.combos.items():
+            if name == "pivot_chain":
+                continue
+            selected = combo.currentData()
+            blocked = combo.blockSignals(True)
+            try:
+                combo.clear()
+                for value in self._combo_values[name]:
+                    combo.addItem(self._tr.text("options." + (value or "no_region")), value)
+            finally:
+                combo.blockSignals(blocked)
+            index = combo.findData(selected)
+            if index >= 0:
+                combo.setCurrentIndex(index)
+        self.documents_group.setTitle(self._tr.text("options.documents"))
+        for group, key in (*self._option_groups, *self._named_groups):
+            group.setTitle(self._tr.text(key))
+        self.language_note.setText(self._tr.text("options.language_note"))
+        self.tool_button.setText(self._tr.text("settings.tools"))
+        for name, action in self._tool_actions.items():
+            action.setText(self._tr.text("settings." + name))
+        self.advanced_button.setText(self._tr.text("options.advanced"))
+        for button, name in self._profile_buttons:
+            button.setText(self._tr.text("settings." + name))
+        if hasattr(self, "ruleset_button"):
+            self.ruleset_button.setText(self._tr.text("settings.rules"))
+        self.update_enablement()
 
     def _tool(self, name):
         from app.settings import profile_options
@@ -386,7 +444,8 @@ class RunOptionsPanel:
                 self._services.save_profile(config, self.values(), self._tr, self._qt, self._parent)
                 self.update_enablement(config)
             elif name == "rules":
-                self._services.edit_rules(config, self._tr, self._qt, self._parent)
+                self._services.edit_rules(
+                    config, self._tr, self._qt, self._parent, run_options=self.values())
                 self.update_enablement(config)
             else:
                 self._services.open_tool(name, self._tr, self._qt, self._parent)

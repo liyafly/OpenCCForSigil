@@ -181,6 +181,73 @@ def test_snapshot_from_dict_checks_supplied_hash_and_requires_direction():
         import_rules('{"rules":[{"source":"a","target":"b"}]}')
 
 
+def test_ruleset_schema_two_applies_defaults_and_preserves_enabled_state():
+    ruleset = RuleSet.from_dict({
+        "schema_version": 2,
+        "id": "configured",
+        "semantic_version": 2,
+        "default_direction": "s2t",
+        "default_scope": "global",
+        "enabled": False,
+        "rules": [{"id": "space", "source": " ", "target": ""}],
+    })
+
+    assert ruleset.semantic_version == 2
+    assert ruleset.default_direction == "s2t"
+    assert ruleset.default_scope == "global"
+    assert not ruleset.enabled
+    assert ruleset.rules[0].semantic_version == 2
+    assert ruleset.rules[0].action == "override"
+    assert ruleset.rules[0].direction == "s2t"
+    assert ruleset.rules[0].source == " "
+
+
+def test_legacy_ruleset_migration_keeps_v1_semantics_and_backs_up_source(tmp_path):
+    store = RuleStore(tmp_path)
+    original = {
+        "schema_version": 1,
+        "id": "legacy",
+        "rules": [{
+            "id": "old-rule", "type": "exact", "direction": "s2t",
+            "source": "旧词", "target": "舊詞",
+        }],
+    }
+    path = store.directory / "legacy.json"
+    path.parent.mkdir(parents=True)
+    original_bytes = (json.dumps(original, ensure_ascii=False) + "\n").encode()
+    path.write_bytes(original_bytes)
+
+    migrated = store.load("legacy")
+    store.save(migrated)
+
+    saved = json.loads(path.read_text(encoding="utf-8"))
+    assert saved["schema_version"] == 2
+    assert saved["semantic_version"] == 1
+    assert saved["rules"][0]["semantic_version"] == 1
+    assert store.load("legacy").rules[0].action == "override"
+    assert path.with_suffix(".json.v1.bak").read_bytes() == original_bytes
+
+
+def test_new_ruleset_precedence_changes_without_changing_legacy_order():
+    def winning_target(rules):
+        spans = lock_spans(
+            "术语", RuleSnapshot.freeze(rules), config="s2t", profile_id="profile")
+        return spans[0].target
+
+    legacy = (
+        Rule(id="global-old", direction="s2t", source="术语", target="全局"),
+        Rule(id="profile-old", direction="s2t", source="术语", target="方案",
+             scope="profile", profile_id="profile"),
+    )
+    current = (
+        replace(legacy[0], id="global-new", semantic_version=2, action="override"),
+        replace(legacy[1], id="profile-new", semantic_version=2, action="override"),
+    )
+
+    assert winning_target(legacy) == "全局"
+    assert winning_target(current) == "方案"
+
+
 def test_global_conflicts_ignore_inactive_profile_owner_fields():
     rules = [
         Rule(id="one", direction="s2t", source="软件", target="甲", scope="global", profile_id="a"),

@@ -395,6 +395,8 @@ def test_profile_label_marks_changed_settings(tmp_path):
         "options.profile_modified": " (modified)",
         "options.current_profile": "Current: {name}{status}",
         "options.active_rulesets": "Rules: {ids}",
+        "options.builtin_on": "on",
+        "options.builtin_off": "off",
     }[key].format(**values))
     panel.profile_label = SimpleNamespace(setText=lambda value: setattr(panel, "label", value))
     panel.ruleset_label = SimpleNamespace(setText=lambda value: setattr(panel, "rules", value))
@@ -419,6 +421,8 @@ def test_profile_label_does_not_mark_an_untouched_profile_modified(tmp_path):
         "options.profile_modified": " (modified)",
         "options.current_profile": "Current: {name}{status}",
         "options.active_rulesets": "Rules: {ids}",
+        "options.builtin_on": "on",
+        "options.builtin_off": "off",
     }[key].format(**values))
     panel.profile_label = SimpleNamespace(setText=lambda value: setattr(panel, "label", value))
     panel.ruleset_label = SimpleNamespace(setText=lambda value: setattr(panel, "rules", value))
@@ -475,8 +479,8 @@ def test_conversion_dialog_keeps_direction_panel_and_footer_in_order():
     assert footer is dialog.options_panel.tool_layout
     scroll_body = outer[6].widget()
     assert [type(item).__name__ for item in scroll_body._layout.children] == [
-        "QHBoxLayout", "QHBoxLayout", "QGroupBox", "QToolButton", "QWidget",
-        "str",
+        "QHBoxLayout", "QHBoxLayout", "QCheckBox", "QGroupBox", "QToolButton",
+        "QWidget", "str",
     ]
     assert scroll_body._layout.children[-1] == "<stretch>"
     assert footer.children[0]._text == Translator("en").text("settings.tools")

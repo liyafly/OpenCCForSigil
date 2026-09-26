@@ -14,7 +14,10 @@ AUTHOR_CREDIT_PROTECTION = Rule(
     direction="tw2sp",
     source="◎【著】",
     target="◎【著】",
-    scope="global",
+    scope="builtin",
+    semantic_version=2,
+    action="protect",
+    stage="source",
     source_note="OpenCCForSigil built-in context protection",
     comment="Keep this Taiwan-to-Simplified author-credit marker unchanged.",
 )
@@ -25,7 +28,10 @@ AUTHOR_CREDIT_UNBRACKETED_PROTECTION = Rule(
     direction="tw2sp",
     source="◎著",
     target="◎著",
-    scope="global",
+    scope="builtin",
+    semantic_version=2,
+    action="protect",
+    stage="source",
     source_note="OpenCCForSigil built-in context protection",
     comment="Keep the unbracketed Taiwan-to-Simplified author-credit marker unchanged.",
 )
@@ -37,7 +43,10 @@ AUTHOR_CREDIT_SPACED_PROTECTIONS = (
         direction="tw2sp",
         source="◎ 著",
         target="◎ 著",
-        scope="global",
+        scope="builtin",
+        semantic_version=2,
+        action="protect",
+        stage="source",
         source_note="OpenCCForSigil built-in context protection",
         comment="Keep the spaced Taiwan-to-Simplified author-credit marker unchanged.",
     ),
@@ -47,7 +56,10 @@ AUTHOR_CREDIT_SPACED_PROTECTIONS = (
         direction="tw2sp",
         source="◎　著",
         target="◎　著",
-        scope="global",
+        scope="builtin",
+        semantic_version=2,
+        action="protect",
+        stage="source",
         source_note="OpenCCForSigil built-in context protection",
         comment="Keep the ideographic-space Taiwan-to-Simplified author-credit marker unchanged.",
     ),
@@ -60,14 +72,16 @@ BUILTIN_RULES = (
 )
 
 
-def with_builtin_rules(rules: Iterable[Rule], *, config: str) -> tuple[Rule, ...]:
-    """Return user rules together with the current, non-overridable defaults."""
+def with_builtin_rules(
+    rules: Iterable[Rule], *, config: str, enabled: bool = True,
+) -> tuple[Rule, ...]:
+    """Return user rules together with the optional built-in rule package."""
 
     user_rules = tuple(rules)
-    if base_config(config) != AUTHOR_CREDIT_PROTECTION.direction:
-        return user_rules
     builtin_ids = {rule.id for rule in BUILTIN_RULES}
     cleaned_rules = tuple(rule for rule in user_rules if rule.id not in builtin_ids)
+    if not enabled or base_config(config) != AUTHOR_CREDIT_PROTECTION.direction:
+        return cleaned_rules
     return (*cleaned_rules, *BUILTIN_RULES)
 
 

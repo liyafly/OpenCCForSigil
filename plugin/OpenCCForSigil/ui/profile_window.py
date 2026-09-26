@@ -49,6 +49,7 @@ _PROFILE_SUMMARY_KEYS = {
     "language_preset": "options.language_preset",
     "language_region": "options.language_region",
     "ruleset_ids": "profile.rules",
+    "builtin_rules_enabled": "options.builtin_rules_enabled",
     "preview_required": "profile.preview_required",
     "attributes": "profile.attributes",
     "protected_elements": "profile.protected_elements",

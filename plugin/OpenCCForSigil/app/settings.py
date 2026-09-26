@@ -101,6 +101,8 @@ class RunSettings:
         return Profile(
             id="conservative", name=Translator(self.language).text("profile.default_name"),
             ruleset_ids=self._existing_ruleset_ids(saved_ids),
+            builtin_rules_enabled=(options.get("builtin_rules_enabled", True)
+                                   if isinstance(options, dict) else True),
         )
 
     @property
@@ -284,7 +286,7 @@ class RunSettings:
         self.profiles.save(profile)
         self.active = profile
 
-    def edit_rules(self, config, translator, qt, parent):
+    def edit_rules(self, config, translator, qt, parent, *, run_options=None):
         from ui.rules_window import show_rules_window
 
         rulesets, errors = self.rules.list()
@@ -304,7 +306,8 @@ class RunSettings:
             jieba_pending=jieba_pending,
             comparison_configs=comparison_configs(config),
             storage_errors=self._storage_error_labels(errors, translator),
-            run_options=profile_options(self.active),
+            run_options=(profile_options(self.active) if run_options is None
+                         else dict(run_options)),
             rulesets=tuple(values.values()), ruleset_id=initial_id,
             rule_store=self.rules,
             ui_preferences=self._ui_preferences,
@@ -383,7 +386,9 @@ class RunSettings:
             if identifier == "default" and not (self.rules.directory / "default.json").exists():
                 continue
             try:
-                rules.extend(self.rules.load(identifier).rules)
+                ruleset = self.rules.load(identifier)
+                if ruleset.enabled:
+                    rules.extend(ruleset.rules)
             except RuleSetFutureSchemaError:
                 self._add_recovery_notice(("rulesets_future_schema", identifier))
             except (OSError, ValueError):
@@ -398,7 +403,10 @@ class RunSettings:
                     self._add_recovery_notice(("rulesets_recovered", backup_name))
                 self._pending_missing_rulesets = tuple(dict.fromkeys(
                     (*self._pending_missing_rulesets, identifier)))
-        rules = list(with_builtin_rules(rules, config=profile.conversion))
+        rules = list(with_builtin_rules(
+            rules, config=profile.conversion,
+            enabled=profile.builtin_rules_enabled,
+        ))
         from rules.models import RuleSnapshot as Snapshot
         frozen = Snapshot.freeze(rules)
         return RuleSnapshot(rules_hash=frozen.sha256, rules=frozen.rules)

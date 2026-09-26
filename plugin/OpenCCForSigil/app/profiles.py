@@ -64,6 +64,7 @@ _KNOWN_FIELDS = {
     "language_preset",
     "language_region",
     "ruleset_ids",
+    "builtin_rules_enabled",
     "preview_required",
     "pivot_chain",
     "include_nav",
@@ -122,6 +123,7 @@ class Profile:
     language_preset: str = "legacy"
     language_region: str = "auto"
     ruleset_ids: tuple[str, ...] = ()
+    builtin_rules_enabled: bool = True
     preview_required: bool = True
     attributes: tuple[str, ...] = ("alt", "title")
     protected_elements: tuple[str, ...] = ("script", "style", "code", "pre")
@@ -222,6 +224,7 @@ class Profile:
             "language_preset",
             "language_region",
             "ruleset_ids",
+            "builtin_rules_enabled",
             "preview_required",
             "attributes",
             "protected_elements",
@@ -269,6 +272,7 @@ class Profile:
             "language_preset": self.language_preset,
             "language_region": self.language_region,
             "ruleset_ids": list(self.ruleset_ids),
+            "builtin_rules_enabled": self.builtin_rules_enabled,
             "preview_required": self.preview_required,
             "attributes": list(self.attributes),
             "protected_elements": list(self.protected_elements),
@@ -353,6 +357,7 @@ def _validate_payload(payload: Mapping[str, Any]) -> None:
         "force_pivot",
         "review_annotations",
         "checkpoint_notice",
+        "builtin_rules_enabled",
     ):
         if key in payload and not isinstance(payload[key], bool):
             raise ProfileValidationError(f"{key} must be boolean")
@@ -377,6 +382,7 @@ def migrate_profile_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
         result.setdefault("conversion", "s2t")
         result.setdefault("segmentation", "mmseg")
         result.setdefault("ruleset_ids", [])
+        result.setdefault("builtin_rules_enabled", True)
         result.setdefault("preview_required", True)
         return result
     raise ProfileValidationError(

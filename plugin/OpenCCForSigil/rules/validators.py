@@ -10,7 +10,16 @@ from dataclasses import dataclass
 from typing import Any, Iterable, Mapping
 import unicodedata
 
-from .models import Rule, RuleSnapshot, SUPPORTED_DIRECTIONS, SUPPORTED_RULE_TYPES, SUPPORTED_SCOPES
+from .models import (
+    Rule,
+    RuleSnapshot,
+    SUPPORTED_DIRECTIONS,
+    SUPPORTED_MATCH_TYPES,
+    SUPPORTED_RULE_ACTIONS,
+    SUPPORTED_RULE_STAGES,
+    SUPPORTED_RULE_TYPES,
+    SUPPORTED_SCOPES,
+)
 
 
 class RuleValidationError(ValueError):
@@ -54,11 +63,54 @@ def validate_rule(rule: Rule | Mapping[str, Any], *, index: int | None = None) -
     if rule.type not in SUPPORTED_RULE_TYPES:
         if rule.type == "regex":
             raise RuleValidationError(
-                "regex rules are disabled and unsupported until V1.1", field="type", index=index
+                "regex is a match type, not a legacy rule type (V1.1)",
+                field="type", index=index,
             )
         raise RuleValidationError(
             f"must be one of {sorted(SUPPORTED_RULE_TYPES)}", field="type", index=index
         )
+    if rule.semantic_version not in {1, 2} or isinstance(rule.semantic_version, bool):
+        raise RuleValidationError(
+            "semantic_version must be 1 or 2", field="semantic_version", index=index)
+    if rule.action not in SUPPORTED_RULE_ACTIONS:
+        raise RuleValidationError(
+            f"must be one of {sorted(SUPPORTED_RULE_ACTIONS)}", field="action", index=index)
+    if rule.match_type not in SUPPORTED_MATCH_TYPES:
+        raise RuleValidationError(
+            f"must be one of {sorted(SUPPORTED_MATCH_TYPES)}", field="match_type", index=index)
+    if rule.stage not in SUPPORTED_RULE_STAGES:
+        raise RuleValidationError(
+            f"must be one of {sorted(SUPPORTED_RULE_STAGES)}", field="stage", index=index)
+    if rule.match_type == "regex":
+        raise RuleValidationError(
+            "regular expression matching is not available until the guarded engine is bundled",
+            field="match_type",
+            index=index,
+        )
+    if rule.action == "replace":
+        raise RuleValidationError(
+            "staged replacement is not available until source mapping is enabled",
+            field="action",
+            index=index,
+        )
+    if rule.semantic_version == 1 and (
+        rule.action not in {"protect", "override"}
+        or rule.match_type != "literal"
+        or rule.stage != "source"
+    ):
+        raise RuleValidationError(
+            "V1 rules must use literal source-stage protect or override behavior",
+            field="semantic_version",
+            index=index,
+        )
+    if (rule.action == "protect") != (rule.type == "protect"):
+        raise RuleValidationError("type does not agree with action", field="type", index=index)
+    if rule.action in {"protect", "override"} and rule.stage != "source":
+        raise RuleValidationError(
+            "protect and final-writing rules must use the source stage", field="stage", index=index)
+    if rule.action == "replace" and rule.stage not in {"pre", "post"}:
+        raise RuleValidationError(
+            "replace rules must use the pre or post stage", field="stage", index=index)
     if not isinstance(rule.direction, str):
         raise RuleValidationError("direction must be a string", field="direction", index=index)
     if rule.direction not in SUPPORTED_DIRECTIONS:
@@ -73,13 +125,16 @@ def validate_rule(rule: Rule | Mapping[str, Any], *, index: int | None = None) -
         raise RuleValidationError(
             f"must be one of {sorted(SUPPORTED_SCOPES)}", field="scope", index=index
         )
-    if not isinstance(rule.source, str) or not rule.source or not _has_visible_text(rule.source):
+    if (not isinstance(rule.source, str) or not rule.source
+            or (rule.semantic_version == 1 and not _has_visible_text(rule.source))):
         raise RuleValidationError(
-            "source must contain visible non-punctuation text", field="source", index=index
+            "source must not be empty" if rule.semantic_version >= 2
+            else "source must contain visible non-punctuation text",
+            field="source", index=index
         )
-    if rule.type == "protect" and rule.target not in ("", rule.source):
+    if rule.action == "protect" and rule.target not in ("", rule.source):
         raise RuleValidationError("protect target must equal source", field="target", index=index)
-    if rule.type == "exact" and not isinstance(rule.target, str):
+    if rule.action != "protect" and not isinstance(rule.target, str):
         raise RuleValidationError("target must be a string", field="target", index=index)
     for field in ("source", "target"):
         value = getattr(rule, field)

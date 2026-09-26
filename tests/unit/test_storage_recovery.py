@@ -127,7 +127,7 @@ def test_future_ruleset_schema_is_preserved_and_not_reported_as_corrupt(tmp_path
     ProfileStore(storage.paths.profiles).save(
         Profile(id="custom", name="Custom", ruleset_ids=("newer",)))
     path = storage.paths.rules / "newer.json"
-    original = '{"schema_version": 2, "id": "newer", "rules": []}\n'
+    original = '{"schema_version": 3, "id": "newer", "rules": []}\n'
     path.write_text(original, encoding="utf-8")
     before = path.stat().st_mtime_ns
 

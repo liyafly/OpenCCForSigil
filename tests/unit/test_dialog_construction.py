@@ -93,11 +93,49 @@ def test_scope_dialog_constructs_and_single_file_can_continue_after_row_change()
     dialog.list_widget.setCurrentRow(1)
     assert dialog.analyze_button.isEnabled()
     assert dialog.selected_ids() == ("b",)
-
     dialog.all_radio.setChecked(True)
     dialog.single_radio.setChecked(True)
     assert dialog.analyze_button.isEnabled()
     assert dialog.selected_ids() == ("b",)
+
+
+def test_scope_and_conversion_configuration_share_one_dialog(monkeypatch):
+    qt = fake_qt.make()
+    monkeypatch.setattr(preview_window, "_load_ui_qt", lambda _translator: qt)
+    monkeypatch.setattr(preview_window, "ensure_application", lambda *_args, **_kwargs: None)
+    executed = []
+
+    class Adapter:
+        def text_file_inventory(self):
+            return (TextFile("chapter", "Text/chapter.xhtml"),)
+
+        def selected_ids(self):
+            return ("chapter",)
+
+        def text_files(self, scope):
+            assert scope is Scope.SPINE
+            return (("chapter", "Text/chapter.xhtml"),)
+
+        def nav_id(self):
+            return None
+
+    def execute(dialog):
+        executed.append(dialog)
+        tabs, footer = dialog._layout.children
+        assert isinstance(tabs, qt.QTabWidget)
+        assert len(tabs.calls) == 2
+        footer.children[-1].click()
+
+    monkeypatch.setattr(preview_window, "exec_dialog", execute)
+    outcome = preview_window.choose_scope(
+        Adapter(), initial_language="en", translator=Translator("en"),
+        available_configs=("s2t",),
+    )
+
+    assert len(executed) == 1
+    assert outcome.accepted is True
+    assert outcome.selection.file_ids == ("chapter",)
+    assert str(outcome.configuration) == "s2t"
 
 
 def test_conversion_profile_rule_and_history_dialogs_construct(monkeypatch, tmp_path):

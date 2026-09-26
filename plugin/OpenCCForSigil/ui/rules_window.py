@@ -7,9 +7,10 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Iterable
 
 from rules.conflicts import find_conflicts
+from rules.builtin import BUILTIN_RULES
 from rules.engine import lock_spans
 from rules.builtin import with_builtin_rules
-from rules.models import Rule, RuleSnapshot
+from rules.models import Rule, RuleSnapshot, SUPPORTED_DIRECTIONS
 from rules.precedence import base_direction
 from rules.validators import RuleValidationError, validate_rules
 from core.converter import OfficialBackendConverter
@@ -118,7 +119,9 @@ def inspect_dictionary(
     )
     if snapshot is None:
         snapshot = RuleSnapshot.freeze(())
-    snapshot = RuleSnapshot.freeze(with_builtin_rules(snapshot.rules, config=config))
+    builtin_enabled = bool((run_options or {}).get("builtin_rules_enabled", True))
+    snapshot = RuleSnapshot.freeze(with_builtin_rules(
+        snapshot.rules, config=config, enabled=builtin_enabled))
     backend = _ConfigAwareBackend(config, official_convert)
     options = dict(run_options or {})
     pivot_chain = tuple(options.get("pivot_chain", ())) if options.get("force_pivot") else ()
@@ -369,7 +372,7 @@ class RuleManagerDialog:
         self._ruleset_id = selected
         self._renamed: list[tuple[str, str]] = []
         self.rules = list(self._rulesets[selected].rules)
-        self._initial_ruleset_snapshot = self._ruleset_snapshot()
+        self._initial_ruleset_snapshot = None
         self.result: RuleWindowResult | None = None
         self._official_convert = official_convert
         self._config = config
@@ -391,6 +394,7 @@ class RuleManagerDialog:
             self.dialog, self._ui_preferences, "rules_dialog_size", (840, 540))
         self._build()
         self._populate_rulesets()
+        self._initial_ruleset_snapshot = self._ruleset_snapshot()
         self._refresh()
 
     def _store_ui_preferences(self, values) -> None:
@@ -424,9 +428,29 @@ class RuleManagerDialog:
         ruleset_row.addWidget(self.rename_ruleset_button)
         layout.addLayout(ruleset_row)
 
+        metadata_form = qt.QFormLayout()
+        self.ruleset_enabled_check = qt.QCheckBox(self._labels["ruleset_enabled"])
+        self.ruleset_enabled_check.setChecked(True)
+        self.default_direction_combo = qt.QComboBox()
+        for direction in (*sorted(SUPPORTED_DIRECTIONS - {"*"}), "*"):
+            label = (self._labels["direction_any"] if direction == "*"
+                     else configuration_label(self._translator, direction))
+            self.default_direction_combo.addItem(label, direction)
+        self.default_scope_combo = qt.QComboBox()
+        for scope in ("global", "profile", "book"):
+            self.default_scope_combo.addItem(self._labels[f"scope_{scope}"], scope)
+        metadata_form.addRow(self.ruleset_enabled_check)
+        metadata_form.addRow(self._labels["default_direction"], self.default_direction_combo)
+        metadata_form.addRow(self._labels["default_scope"], self.default_scope_combo)
+        layout.addLayout(metadata_form)
+
         self.help_label = qt.QLabel(self._labels["help"])
         self.help_label.setWordWrap(True)
         layout.addWidget(self.help_label)
+        self.builtin_info_label = qt.QLabel()
+        self.builtin_info_label.setWordWrap(True)
+        layout.addWidget(self.builtin_info_label)
+        self._refresh_builtin_info()
 
         self.table = qt.QTableWidget(0, 6)
         self.table.setHorizontalHeaderLabels(
@@ -540,6 +564,9 @@ class RuleManagerDialog:
         self.ruleset_combo.currentIndexChanged.connect(self._ruleset_changed)
         self.new_ruleset_button.clicked.connect(self._new_ruleset)
         self.rename_ruleset_button.clicked.connect(self._rename_ruleset)
+        self.ruleset_enabled_check.stateChanged.connect(self._ruleset_metadata_changed)
+        self.default_direction_combo.currentIndexChanged.connect(self._ruleset_metadata_changed)
+        self.default_scope_combo.currentIndexChanged.connect(self._ruleset_metadata_changed)
         self.add_button.clicked.connect(self._add)
         self.update_button.clicked.connect(self._update_selected)
         self.remove_button.clicked.connect(self._remove)
@@ -563,22 +590,85 @@ class RuleManagerDialog:
                 if identifier == "default"
                 else ruleset.name or identifier
             )
+            if not ruleset.enabled:
+                label += " · " + self._labels["disabled"]
             self.ruleset_combo.addItem(label, identifier)
         index = self.ruleset_combo.findData(self._ruleset_id)
         if index >= 0:
             self.ruleset_combo.setCurrentIndex(index)
         self.ruleset_combo.blockSignals(False)
+        self._load_ruleset_metadata()
+        self._apply_rule_defaults()
 
     def _stash_ruleset(self) -> None:
         if self._ruleset_id in self._rulesets:
             current = self._rulesets[self._ruleset_id]
-            self._rulesets[self._ruleset_id] = RuleSet(
-                current.id, tuple(self.rules), current.name)
+            enabled_check = getattr(self, "ruleset_enabled_check", None)
+            direction_combo = getattr(self, "default_direction_combo", None)
+            scope_combo = getattr(self, "default_scope_combo", None)
+            self._rulesets[self._ruleset_id] = replace(
+                current,
+                rules=tuple(self.rules),
+                enabled=(enabled_check.isChecked() if enabled_check is not None
+                         else current.enabled),
+                default_direction=(str(direction_combo.currentData())
+                                   if direction_combo is not None
+                                   else current.default_direction),
+                default_scope=(str(scope_combo.currentData()) if scope_combo is not None
+                               else current.default_scope),
+            )
+
+    def _load_ruleset_metadata(self) -> None:
+        current = self._rulesets.get(self._ruleset_id)
+        if current is None or not hasattr(self, "ruleset_enabled_check"):
+            return
+        for control in (self.ruleset_enabled_check, self.default_direction_combo,
+                        self.default_scope_combo):
+            control.blockSignals(True)
+        self.ruleset_enabled_check.setChecked(current.enabled)
+        direction_index = self.default_direction_combo.findData(current.default_direction)
+        self.default_direction_combo.setCurrentIndex(max(0, direction_index))
+        scope_index = self.default_scope_combo.findData(current.default_scope)
+        self.default_scope_combo.setCurrentIndex(max(0, scope_index))
+        for control in (self.ruleset_enabled_check, self.default_direction_combo,
+                        self.default_scope_combo):
+            control.blockSignals(False)
+
+    def _ruleset_metadata_changed(self, *_args) -> None:
+        current = self._rulesets.get(self._ruleset_id)
+        if current is None or not hasattr(self, "ruleset_enabled_check"):
+            return
+        self._rulesets[self._ruleset_id] = replace(
+            current,
+            enabled=self.ruleset_enabled_check.isChecked(),
+            default_direction=str(self.default_direction_combo.currentData()),
+            default_scope=str(self.default_scope_combo.currentData()),
+        )
+
+    def _apply_rule_defaults(self) -> None:
+        current = self._rulesets.get(self._ruleset_id)
+        if current is None or not hasattr(self, "direction_combo"):
+            return
+        direction = self.direction_combo.findData(current.default_direction)
+        if direction >= 0:
+            self.direction_combo.setCurrentIndex(direction)
+        scope = self.scope_combo.findData(current.default_scope)
+        if scope >= 0:
+            self.scope_combo.setCurrentIndex(scope)
+
+    def _refresh_builtin_info(self) -> None:
+        active = bool(self._run_options.get("builtin_rules_enabled", True))
+        status = self._labels["builtin_on" if active else "builtin_off"]
+        sources = ", ".join(rule.source for rule in BUILTIN_RULES)
+        self.builtin_info_label.setText(
+            self._labels["builtin_info"].format(status=status, rules=sources))
 
     def _ruleset_snapshot(self):
         self._stash_ruleset()
         return tuple(
-            (identifier, ruleset.name, tuple(ruleset.rules))
+            (identifier, ruleset.name, ruleset.semantic_version,
+             ruleset.default_direction, ruleset.default_scope, ruleset.enabled,
+             tuple(ruleset.rules))
             for identifier, ruleset in sorted(self._rulesets.items())
         )
 
@@ -613,6 +703,8 @@ class RuleManagerDialog:
             return
         self._ruleset_id = str(identifier)
         self.rules = list(self._rulesets[self._ruleset_id].rules)
+        self._load_ruleset_metadata()
+        self._apply_rule_defaults()
         self._refresh()
 
     def _new_ruleset(self) -> None:
@@ -632,10 +724,16 @@ class RuleManagerDialog:
             self._warn(self._labels["duplicate_ruleset"])
             return
         self._stash_ruleset()
-        self._rulesets[identifier] = RuleSet(identifier)
+        self._rulesets[identifier] = RuleSet(
+            identifier,
+            semantic_version=2,
+            default_direction=base_direction(self._config),
+            default_scope="global",
+        )
         self._ruleset_id = identifier
         self.rules = []
         self._populate_rulesets()
+        self._apply_rule_defaults()
         self._refresh()
 
     def _rename_ruleset(self) -> None:
@@ -658,7 +756,7 @@ class RuleManagerDialog:
             return
         self._stash_ruleset()
         ruleset = self._rulesets.pop(old)
-        self._rulesets[identifier] = RuleSet(identifier, ruleset.rules, ruleset.name)
+        self._rulesets[identifier] = replace(ruleset, id=identifier)
         previous = next((index for index, pair in enumerate(self._renamed)
                          if pair[1] == old), None)
         if previous is None:
@@ -745,8 +843,14 @@ class RuleManagerDialog:
 
     def _rule_from_form(self):
         rule_type = str(self.type_combo.currentData())
+        ruleset = getattr(self, "_rulesets", {}).get(getattr(self, "_ruleset_id", ""))
+        semantic_version = ruleset.semantic_version if ruleset is not None else 1
         values = {
             "type": rule_type,
+            "action": "protect" if rule_type == "protect" else "override",
+            "match_type": "literal",
+            "stage": "source",
+            "semantic_version": semantic_version,
             "direction": str(self.direction_combo.currentData()),
             "source": self.source_edit.text(),
             "target": self.source_edit.text() if rule_type == "protect" else self.target_edit.text(),
@@ -817,7 +921,10 @@ class RuleManagerDialog:
             return
         try:
             snapshot = RuleSnapshot.freeze(
-                with_builtin_rules(self.rules, config=self._config))
+                with_builtin_rules(
+                    self.rules, config=self._config,
+                    enabled=bool(getattr(self, "_run_options", {}).get(
+                        "builtin_rules_enabled", True))))
             inspection = inspect_dictionary(
                 self.test_input.toPlainText(), config=self._config,
                 official_convert=self._official_convert, snapshot=snapshot,
@@ -862,7 +969,9 @@ class RuleManagerDialog:
                 config=self._config,
                 official_convert=self._official_convert,
                 comparison_configs=self._comparison_configs,
-                snapshot=RuleSnapshot.freeze(with_builtin_rules(self.rules, config=self._config)),
+                snapshot=RuleSnapshot.freeze(with_builtin_rules(
+                    self.rules, config=self._config,
+                    enabled=bool(self._run_options.get("builtin_rules_enabled", True)))),
                 profile_id=self._profile_id,
                 book_fingerprint=self._book_fingerprint,
                 run_options=getattr(self, "_run_options", {}),

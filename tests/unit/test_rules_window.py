@@ -544,8 +544,8 @@ def test_switching_ruleset_stashes_edits_and_loads_selected_rules():
     second = Rule(id="second", source="丙", target="丁", direction="s2t")
     manager = object.__new__(RuleManagerDialog)
     manager._ruleset_id = "one"
-    manager._rulesets = {"one": SimpleNamespace(id="one", rules=(first,), name=""),
-                         "two": SimpleNamespace(id="two", rules=(second,), name="")}
+    manager._rulesets = {"one": RuleSet("one", (first,)),
+                         "two": RuleSet("two", (second,))}
     manager.rules = [first]
     manager.ruleset_combo = SimpleNamespace(currentData=lambda: "two")
     manager._refresh = lambda: None

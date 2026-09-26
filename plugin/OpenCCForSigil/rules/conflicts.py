@@ -39,7 +39,7 @@ class BlockingRuleConflict(ValueError):
 def find_conflicts(rules: Iterable[Rule]) -> tuple[RuleConflict, ...]:
     checked = validate_rules(rules)
     conflicts: list[RuleConflict] = []
-    by_key: dict[tuple[str, str, str, str, int, str, str], list[Rule]] = {}
+    by_key: dict[tuple, list[Rule]] = {}
     for rule in checked:
         if not rule.enabled:
             continue
@@ -48,6 +48,10 @@ def find_conflicts(rules: Iterable[Rule]) -> tuple[RuleConflict, ...]:
             rule.direction,
             rule.source,
             rule.type,
+            rule.action,
+            rule.match_type,
+            rule.stage,
+            rule.semantic_version,
             rule.priority,
             rule.profile_id if rule.scope == "profile" else "",
             rule.book_fingerprint if rule.scope == "book" else "",
@@ -58,13 +62,19 @@ def find_conflicts(rules: Iterable[Rule]) -> tuple[RuleConflict, ...]:
         _direction,
         source,
         kind,
+        _action,
+        _match_type,
+        _stage,
+        _semantic_version,
         _priority,
         _profile_id,
         _book_fingerprint,
     ), group in by_key.items():
         if len(group) < 2:
             continue
-        targets = {rule.source if rule.type == "protect" else rule.target for rule in group}
+        targets = {
+            rule.source if rule.action == "protect" else rule.target for rule in group
+        }
         if len(targets) == 1:
             conflicts.append(
                 RuleConflict("DUPLICATE", source, tuple(sorted(group, key=lambda r: r.id)), False)
@@ -78,7 +88,7 @@ def find_conflicts(rules: Iterable[Rule]) -> tuple[RuleConflict, ...]:
     # A wildcard and a concrete direction with the same scope/source may both
     # apply.  Different targets are a blocking overlap because no deterministic
     # direction choice could satisfy both declarations.
-    by_overlap: dict[tuple[str, str, str, int, str, str], list[Rule]] = {}
+    by_overlap: dict[tuple, list[Rule]] = {}
     for rule in checked:
         if not rule.enabled:
             continue
@@ -88,6 +98,10 @@ def find_conflicts(rules: Iterable[Rule]) -> tuple[RuleConflict, ...]:
                     rule.scope,
                     rule.source,
                     rule.type,
+                    rule.action,
+                    rule.match_type,
+                    rule.stage,
+                    rule.semantic_version,
                     rule.priority,
                     rule.profile_id if rule.scope == "profile" else "",
                     rule.book_fingerprint if rule.scope == "book" else "",
@@ -102,6 +116,10 @@ def find_conflicts(rules: Iterable[Rule]) -> tuple[RuleConflict, ...]:
                 rule.scope,
                 rule.source,
                 rule.type,
+                rule.action,
+                rule.match_type,
+                rule.stage,
+                rule.semantic_version,
                 rule.priority,
                 rule.profile_id if rule.scope == "profile" else "",
                 rule.book_fingerprint if rule.scope == "book" else "",
@@ -109,7 +127,10 @@ def find_conflicts(rules: Iterable[Rule]) -> tuple[RuleConflict, ...]:
             [],
         )
         for wildcard in group:
-            if (wildcard.target or wildcard.source) != (rule.target or rule.source):
+            wildcard_target = (
+                wildcard.source if wildcard.action == "protect" else wildcard.target)
+            rule_target = rule.source if rule.action == "protect" else rule.target
+            if wildcard_target != rule_target:
                 conflicts.append(
                     RuleConflict("DIRECTION_OVERLAP", rule.source, (wildcard, rule), True)
                 )

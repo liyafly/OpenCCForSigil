@@ -21,12 +21,14 @@ def applies_to(
     profile_id: str | None = None,
     book_fingerprint: str | None = None,
 ) -> bool:
-    if not rule.enabled or rule.type not in {"exact", "protect"}:
+    if not rule.enabled:
         return False
     direction = base_direction(config)
     if rule.direction not in {"*", direction}:
         return False
     if rule.scope == "global":
+        return True
+    if rule.scope == "builtin":
         return True
     if rule.scope == "profile":
         return bool(profile_id and rule.profile_id == profile_id)
@@ -36,18 +38,25 @@ def applies_to(
 
 
 def type_rank(rule: Rule) -> int:
-    return 2 if rule.type == "protect" else 1
+    return {"protect": 3, "override": 2, "replace": 1}.get(
+        rule.action or ("protect" if rule.type == "protect" else "override"), 0)
 
 
 def scope_rank(rule: Rule) -> int:
-    # The fixed V1 order is protection, book-local, global, profile.
-    return {"book": 3, "global": 2, "profile": 1}.get(rule.scope, 0)
+    if rule.semantic_version <= 1:
+        # V1 order is book, global, profile. Preserve it for migrated rules.
+        return {"book": 3, "global": 2, "profile": 1, "builtin": 0}.get(
+            rule.scope, 0)
+    # V2 order is book, profile, global, built-in.
+    return {"book": 4, "profile": 3, "global": 2, "builtin": 1}.get(
+        rule.scope, 0)
 
 
-def precedence_key(rule: Rule) -> tuple[int, int, int, int, str]:
+def precedence_key(rule: Rule) -> tuple[int, int, int, int, int, str]:
     """Higher tuple values win, except id is inverted by ``ordered_rules``."""
 
-    return type_rank(rule), scope_rank(rule), int(rule.priority), len(rule.source), rule.id
+    return (type_rank(rule), rule.semantic_version, scope_rank(rule),
+            int(rule.priority), len(rule.source), rule.id)
 
 
 def ordered_rules(rules: Iterable[Rule]) -> tuple[Rule, ...]:
@@ -58,16 +67,21 @@ def ordered_rules(rules: Iterable[Rule]) -> tuple[Rule, ...]:
     longest-match among otherwise equal candidates.
     """
 
+    def key(rule):
+        if rule.semantic_version <= 1:
+            return (
+                -type_rank(rule), -rule.semantic_version, -scope_rank(rule),
+                -len(rule.source), -int(rule.priority), rule.id,
+            )
+        return (
+            -type_rank(rule), -rule.semantic_version, -scope_rank(rule),
+            -len(rule.source), -int(rule.priority), rule.id,
+        )
+
     return tuple(
         sorted(
             rules,
-            key=lambda rule: (
-                -type_rank(rule),
-                -scope_rank(rule),
-                -len(rule.source),
-                -int(rule.priority),
-                rule.id,
-            ),
+            key=key,
         )
     )
 

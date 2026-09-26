@@ -46,6 +46,7 @@ class ScopeOutcome:
     selection: TargetSelection | None
     language: str
     checkpoint_notice_shown: bool = False
+    configuration: object | None = None
 
 
 @dataclass(frozen=True)
@@ -335,6 +336,13 @@ def choose_scope(
     translator: Translator | None = None,
     ui_preferences=None,
     save_ui_preferences=None,
+    available_configs: Sequence[str] | None = None,
+    default_config: str = "s2t",
+    jieba_probe=None,
+    initial_options=None,
+    metadata_available=True,
+    nav_available=True,
+    services=None,
 ) -> ScopeOutcome:
     """Choose a frozen XHTML target set after enumerating metadata only."""
 
@@ -353,7 +361,54 @@ def choose_scope(
     translator.set_language(language)
     qt_widgets = _load_ui_qt(translator)
     ensure_application(qt_widgets, language=language)
-    dialog = _ScopeDialog(
+    if available_configs is None:
+        dialog = _ScopeDialog(
+            qt_widgets,
+            inventory,
+            selected_ids,
+            language,
+            translator,
+            ignored_non_xhtml=ignored_non_xhtml,
+            spine_ids=spine_ids,
+            nav_id=nav_id,
+            recovery_notices=notice,
+            initial_scope=initial_scope,
+            checkpoint_notice_enabled=checkpoint_notice_enabled,
+            hide_checkpoint_notice=hide_checkpoint_notice,
+            ui_preferences=ui_preferences,
+        )
+        exec_dialog(dialog.dialog)
+        save_window_size(dialog.dialog, "scope_dialog_size", save_ui_preferences)
+        if not dialog.accepted:
+            return ScopeOutcome(
+                False, None, dialog.language, dialog.checkpoint_notice_shown)
+        translator.set_language(dialog.language)
+        selection = resolve_target_selection(
+            inventory,
+            dialog.scope,
+            dialog.spine_ids if dialog.scope is Scope.SPINE else dialog.selected_ids(),
+        )
+        return ScopeOutcome(
+            True, selection, dialog.language, dialog.checkpoint_notice_shown)
+
+    configs = tuple(config for config in CONFIG_SELECTION_ORDER
+                    if config in set(available_configs))
+    if not configs:
+        raise UIUnavailableError(translator.text("error.no_config"))
+    jieba_configs = {
+        base: plugin
+        for base, plugin in JIEBA_CONFIG_BY_BASE.items()
+        if plugin in set(available_configs)
+    }
+    outer = qt_widgets.QDialog()
+    outer.setWindowTitle(plugin_window_title(
+        translator, translator.text("scope.title")))
+    restore_window_size(outer, ui_preferences, "main_dialog_size", (1080, 760))
+    outer_layout = qt_widgets.QVBoxLayout(outer)
+    tabs = qt_widgets.QTabWidget()
+    scope_page = qt_widgets.QWidget()
+    config_page = qt_widgets.QWidget()
+    scope_dialog = _ScopeDialog(
         qt_widgets,
         inventory,
         selected_ids,
@@ -367,20 +422,83 @@ def choose_scope(
         checkpoint_notice_enabled=checkpoint_notice_enabled,
         hide_checkpoint_notice=hide_checkpoint_notice,
         ui_preferences=ui_preferences,
+        embedded=True,
+        container=scope_page,
+        parent_dialog=outer,
     )
-    exec_dialog(dialog.dialog)
-    save_window_size(dialog.dialog, "scope_dialog_size", save_ui_preferences)
-    if not dialog.accepted:
+    config_dialog = _ConversionConfigDialog(
+        qt_widgets, configs, default_config, jieba_configs, translator=translator,
+        jieba_probe=jieba_probe, initial_options=initial_options,
+        metadata_available=metadata_available, nav_available=nav_available,
+        services=services, ui_preferences=ui_preferences,
+        embedded=True, container=config_page, parent_dialog=outer,
+    )
+    tabs.addTab(scope_page, translator.text("scope.title"))
+    tabs.addTab(config_page, translator.text("config.title"))
+    outer_layout.addWidget(tabs)
+    footer = qt_widgets.QHBoxLayout()
+    cancel_button = qt_widgets.QPushButton(translator.text("common.cancel"))
+    analyze_button = qt_widgets.QPushButton(translator.text("scope.analyze"))
+    analyze_button.setDefault(True)
+    config_dialog._completion_button = analyze_button
+    scope_dialog._analysis_button = analyze_button
+
+    def update_analyze_enabled():
+        analyze_button.setEnabled(
+            scope_dialog._selection_is_valid() and config_dialog._continue_is_allowed())
+
+    scope_dialog._analysis_enabled_callback = update_analyze_enabled
+    config_dialog._completion_enabled_callback = update_analyze_enabled
+    update_analyze_enabled()
+    footer.addStretch(1)
+    footer.addWidget(cancel_button)
+    footer.addWidget(analyze_button)
+    outer_layout.addLayout(footer)
+
+    def retranslate_combined_controls():
+        tabs.setTabText(0, translator.text("scope.title"))
+        tabs.setTabText(1, translator.text("config.title"))
+        cancel_button.setText(translator.text("common.cancel"))
+        analyze_button.setText(translator.text("scope.analyze"))
+        config_dialog._retranslate()
+
+    scope_dialog._language_changed_callback = retranslate_combined_controls
+    cancel_button.clicked.connect(outer.reject)
+    cancel_button.clicked.connect(config_dialog._stop_probe_timer)
+
+    def accept_combined():
+        scope_dialog._accept(close=False)
+        if not scope_dialog.accepted:
+            return
+        selected = scope_dialog.selection
+        config_dialog.options_panel.set_nav_available(
+            bool(nav_id and nav_id in selected.file_ids))
+        config_dialog._accept(close=False)
+        if not config_dialog.accepted:
+            return
+        outer.accept()
+
+    analyze_button.clicked.connect(accept_combined)
+    exec_dialog(outer)
+    config_dialog._stop_probe_timer()
+    if callable(save_ui_preferences):
+        state = {**dict(ui_preferences or {}), **config_dialog.options_panel.ui_state()}
+        size = getattr(outer, "size", None)
+        size = size() if callable(size) else None
+        if size is not None:
+            width, height = getattr(size, "width", None), getattr(size, "height", None)
+            if callable(width) and callable(height):
+                state["main_dialog_size"] = [int(width()), int(height())]
+        save_ui_preferences(state)
+    if not config_dialog.accepted or not scope_dialog.accepted:
         return ScopeOutcome(
-            False, None, dialog.language, dialog.checkpoint_notice_shown)
-    translator.set_language(dialog.language)
-    selection = resolve_target_selection(
-        inventory,
-        dialog.scope,
-        dialog.spine_ids if dialog.scope is Scope.SPINE else dialog.selected_ids(),
-    )
+            False, None, scope_dialog.language, scope_dialog.checkpoint_notice_shown)
+    translator.set_language(scope_dialog.language)
+    selection = scope_dialog.selection
     return ScopeOutcome(
-        True, selection, dialog.language, dialog.checkpoint_notice_shown)
+        True, selection, scope_dialog.language, scope_dialog.checkpoint_notice_shown,
+        config_dialog.selected_config,
+    )
 
 
 def create_progress_reporter(
@@ -1957,12 +2075,16 @@ class _ConversionConfigDialog:
         nav_available=True,
         services=None,
         ui_preferences=None,
+        embedded=False,
+        container=None,
+        parent_dialog=None,
     ) -> None:
         self._qt = qt_widgets
         self._jieba_configs = jieba_configs
         self._translator = translator
         self._jieba_probe = jieba_probe
         self._ui_preferences = dict(ui_preferences or {})
+        self._embedded = bool(embedded)
         self._probe_error = None
         self._probe_state = "not_started"
         self._default_base = BASE_CONFIG_BY_JIEBA.get(default_config, default_config)
@@ -1973,17 +2095,19 @@ class _ConversionConfigDialog:
         self.accepted = False
         self.selected_config = None
         self.action = "cancel"
-        self.dialog = qt_widgets.QDialog()
-        self.dialog.setWindowTitle(plugin_window_title(
-            self._translator, self._translator.text("config.title")))
-        restore_window_size(
-            self.dialog, self._ui_preferences, "conversion_dialog_size", (720, 720))
-        self.dialog.setMinimumWidth(460)
+        self.dialog = parent_dialog or qt_widgets.QDialog()
+        if not self._embedded:
+            self.dialog.setWindowTitle(plugin_window_title(
+                self._translator, self._translator.text("config.title")))
+            restore_window_size(
+                self.dialog, self._ui_preferences, "conversion_dialog_size", (720, 720))
+            self.dialog.setMinimumWidth(460)
 
-        layout = qt_widgets.QVBoxLayout(self.dialog)
-        label = qt_widgets.QLabel(self._translator.text("config.explanation"))
-        label.setWordWrap(True)
-        layout.addWidget(label)
+        layout = qt_widgets.QVBoxLayout(container or self.dialog)
+        self.explanation_label = qt_widgets.QLabel(
+            self._translator.text("config.explanation"))
+        self.explanation_label.setWordWrap(True)
+        layout.addWidget(self.explanation_label)
 
         self.direction_label = qt_widgets.QLabel(
             self._translator.text("config.direction"))
@@ -2032,21 +2156,27 @@ class _ConversionConfigDialog:
         )
         self.options_panel.bind(self._get_config, self._set_config, self.dialog)
 
-        self.button_layout = qt_widgets.QHBoxLayout()
-        self.back_button = qt_widgets.QPushButton(self._translator.text("scope.back"))
-        self.cancel_button = qt_widgets.QPushButton(self._translator.text("common.cancel"))
-        self.continue_button = qt_widgets.QPushButton(
-            self._translator.text("config.continue"))
-        self.continue_button.setDefault(True)
-        self.button_layout.addWidget(self.back_button)
-        self.button_layout.addStretch(1)
-        self.button_layout.addWidget(self.cancel_button)
-        self.button_layout.addWidget(self.continue_button)
-        self.options_panel.tool_layout.addLayout(self.button_layout)
-        self.cancel_button.clicked.connect(self.dialog.reject)
-        self.cancel_button.clicked.connect(self._stop_probe_timer)
-        self.back_button.clicked.connect(self._back_to_scope)
-        self.continue_button.clicked.connect(self._accept)
+        self.button_layout = None
+        self.back_button = None
+        self.cancel_button = None
+        self.continue_button = None
+        if not self._embedded:
+            self.button_layout = qt_widgets.QHBoxLayout()
+            self.back_button = qt_widgets.QPushButton(self._translator.text("scope.back"))
+            self.cancel_button = qt_widgets.QPushButton(self._translator.text("common.cancel"))
+            self.continue_button = qt_widgets.QPushButton(
+                self._translator.text("config.continue"))
+            self.continue_button.setDefault(True)
+            self.button_layout.addWidget(self.back_button)
+            self.button_layout.addStretch(1)
+            self.button_layout.addWidget(self.cancel_button)
+            self.button_layout.addWidget(self.continue_button)
+            self.options_panel.tool_layout.addLayout(self.button_layout)
+            self.cancel_button.clicked.connect(self.dialog.reject)
+            self.cancel_button.clicked.connect(self._stop_probe_timer)
+            self.back_button.clicked.connect(self._back_to_scope)
+            self.continue_button.clicked.connect(self._accept)
+        self._completion_button = self.continue_button
         self.combo.currentIndexChanged.connect(self._direction_changed)
         self.jieba_checkbox.stateChanged.connect(self._update_jieba_state)
         self.jieba_details_button.clicked.connect(self._show_jieba_details)
@@ -2124,13 +2254,14 @@ class _ConversionConfigDialog:
         self.jieba_status.setText(status)
         self.jieba_details_button.setEnabled(bool(self._probe_error))
         self.jieba_details_button.setVisible(bool(self._probe_error))
-        if self._preferred_jieba and self._probe_state in {"not_started", "pending"}:
-            self.continue_button.setEnabled(False)
-        elif (self._preferred_jieba and self._probe_state == "unavailable"
-              and not self._direction_reselected):
-            self.continue_button.setEnabled(False)
-        else:
-            self.continue_button.setEnabled(True)
+        completion_button = getattr(
+            self, "_completion_button", getattr(self, "continue_button", None))
+        if completion_button is not None:
+            callback = getattr(self, "_completion_enabled_callback", None)
+            if callable(callback):
+                callback()
+            else:
+                completion_button.setEnabled(self._continue_is_allowed())
         if hasattr(self, "options_panel"):
             self.options_panel.update_enablement(self._get_config())
 
@@ -2170,7 +2301,7 @@ class _ConversionConfigDialog:
         if timer is not None:
             timer.stop()
 
-    def _accept(self) -> None:
+    def _accept(self, *, close=True) -> None:
         from transforms.language_tags import target_language
         from ui.run_options import ConfigurationChoice
 
@@ -2197,12 +2328,49 @@ class _ConversionConfigDialog:
             config, options, preference_options=preference_options)
         self.accepted = True
         self.action = "continue"
-        self.dialog.accept()
+        if close:
+            self.dialog.accept()
 
     def _back_to_scope(self) -> None:
         self.action = "back_to_scope"
         self._stop_probe_timer()
         self.dialog.reject()
+
+    def _retranslate(self) -> None:
+        """Refresh visible text after the shared language selector changes."""
+        self.dialog.setWindowTitle(plugin_window_title(
+            self._translator, self._translator.text("scope.title")))
+        self.explanation_label.setText(self._translator.text("config.explanation"))
+        self.direction_label.setText(self._translator.text("config.direction"))
+        selected = self.combo.currentData()
+        blocked = self.combo.blockSignals(True)
+        try:
+            for index in range(self.combo.count()):
+                config = self.combo.itemData(index)
+                if config:
+                    self.combo.setItemText(index, self._translator.text(f"config.{config}"))
+        finally:
+            self.combo.blockSignals(blocked)
+        selected_index = self.combo.findData(selected)
+        if selected_index >= 0:
+            self.combo.setCurrentIndex(selected_index)
+        self.jieba_checkbox.setText(self._translator.text("config.jieba"))
+        self.jieba_checkbox.setToolTip(self._translator.text("config.jieba_tooltip"))
+        self.jieba_details_button.setText(self._translator.text("config.jieba_details"))
+        if self.cancel_button is not None:
+            self.back_button.setText(self._translator.text("scope.back"))
+            self.cancel_button.setText(self._translator.text("common.cancel"))
+            self.continue_button.setText(self._translator.text("config.continue"))
+        self.options_panel.retranslate()
+        self._apply_jieba_state()
+
+    def _continue_is_allowed(self) -> bool:
+        if self._preferred_jieba and self._probe_state in {"not_started", "pending"}:
+            return False
+        if (self._preferred_jieba and self._probe_state == "unavailable"
+                and not self._direction_reselected):
+            return False
+        return True
 
 
 def _information_icon_label(qt_widgets: Any, parent: Any, translator: Translator) -> Any:
@@ -2277,12 +2445,20 @@ class _ScopeDialog:
         checkpoint_notice_enabled: bool = False,
         hide_checkpoint_notice=None,
         ui_preferences=None,
+        embedded=False,
+        container=None,
+        parent_dialog=None,
     ) -> None:
         self._qt = qt_widgets
         self._inventory = inventory
         self._translator = translator
         self._ui_preferences = dict(ui_preferences or {})
+        self._embedded = bool(embedded)
+        self._language_changed_callback = None
+        self._analysis_enabled_callback = None
+        self._analysis_button = None
         self.accepted = False
+        self.selection = None
         self.language = language
         self.ignored_non_xhtml = max(0, ignored_non_xhtml)
         self.spine_ids = tuple(file_id for file_id in spine_ids if file_id)
@@ -2294,12 +2470,13 @@ class _ScopeDialog:
         self.checkpoint_notice_shown = bool(checkpoint_notice_enabled)
         self._hide_checkpoint_notice_callback = hide_checkpoint_notice
         self._checkpoint_notice_hidden = False
-        self.dialog = qt_widgets.QDialog()
-        self.dialog.setWindowTitle(plugin_window_title(
-            translator, translator.text("scope.title")))
-        restore_window_size(
-            self.dialog, self._ui_preferences, "scope_dialog_size", (700, 560))
-        layout = qt_widgets.QVBoxLayout(self.dialog)
+        self.dialog = parent_dialog or qt_widgets.QDialog()
+        if not self._embedded:
+            self.dialog.setWindowTitle(plugin_window_title(
+                translator, translator.text("scope.title")))
+            restore_window_size(
+                self.dialog, self._ui_preferences, "scope_dialog_size", (700, 560))
+        layout = qt_widgets.QVBoxLayout(container or self.dialog)
         self.recovery_notice_label = None
         self.recovery_notice_banner = None
         self.recovery_notice_icon_label = None
@@ -2377,22 +2554,26 @@ class _ScopeDialog:
         self.ignored_label.setWordWrap(True)
         layout.addWidget(self.ignored_label)
 
-        button_row = qt_widgets.QHBoxLayout()
-        self.cancel_button = qt_widgets.QPushButton(translator.text("common.cancel"))
-        self.analyze_button = qt_widgets.QPushButton(translator.text("scope.analyze"))
-        self.cancel_button.setAutoDefault(False)
-        set_default = getattr(self.analyze_button, "setDefault", None)
-        if callable(set_default):
-            set_default(True)
-        set_auto_default = getattr(self.analyze_button, "setAutoDefault", None)
-        if callable(set_auto_default):
-            set_auto_default(False)
-        button_row.addStretch(1)
-        button_row.addWidget(self.cancel_button)
-        button_row.addWidget(self.analyze_button)
-        layout.addLayout(button_row)
-        self.cancel_button.clicked.connect(self.dialog.reject)
-        self.analyze_button.clicked.connect(self._accept)
+        self.cancel_button = None
+        self.analyze_button = None
+        if not self._embedded:
+            button_row = qt_widgets.QHBoxLayout()
+            self.cancel_button = qt_widgets.QPushButton(translator.text("common.cancel"))
+            self.analyze_button = qt_widgets.QPushButton(translator.text("scope.analyze"))
+            self.cancel_button.setAutoDefault(False)
+            set_default = getattr(self.analyze_button, "setDefault", None)
+            if callable(set_default):
+                set_default(True)
+            set_auto_default = getattr(self.analyze_button, "setAutoDefault", None)
+            if callable(set_auto_default):
+                set_auto_default(False)
+            button_row.addStretch(1)
+            button_row.addWidget(self.cancel_button)
+            button_row.addWidget(self.analyze_button)
+            layout.addLayout(button_row)
+            self.cancel_button.clicked.connect(self.dialog.reject)
+            self.analyze_button.clicked.connect(self._accept)
+            self._analysis_button = self.analyze_button
         self.select_visible.clicked.connect(lambda: self._set_visible(True))
         self.clear_visible.clicked.connect(lambda: self._set_visible(False))
 
@@ -2498,10 +2679,13 @@ class _ScopeDialog:
             if callable(set_icon_accessible_name):
                 set_icon_accessible_name(
                     self._translator.text("a11y.scope.information"))
-        self.cancel_button.setText(self._translator.text("common.cancel"))
-        self.analyze_button.setText(self._translator.text("scope.analyze"))
+        if self.cancel_button is not None:
+            self.cancel_button.setText(self._translator.text("common.cancel"))
+            self.analyze_button.setText(self._translator.text("scope.analyze"))
         self._refresh_count()
         self._update_analyze_enabled()
+        if callable(self._language_changed_callback):
+            self._language_changed_callback()
 
     def _scope_item_label(self, item: TextFile) -> str:
         label = item.href
@@ -2687,8 +2871,16 @@ class _ScopeDialog:
         return tuple(item.file_id for item in self._inventory)
 
     def _update_analyze_enabled(self) -> None:
-        if not hasattr(self, "analyze_button"):
+        callback = getattr(self, "_analysis_enabled_callback", None)
+        if callable(callback):
+            callback()
             return
+        button = getattr(self, "_analysis_button", None)
+        if button is None:
+            return
+        button.setEnabled(self._selection_is_valid())
+
+    def _selection_is_valid(self) -> bool:
         count = len(self.selected_ids())
         valid = bool(self._inventory)
         if self.single_radio.isChecked():
@@ -2697,9 +2889,9 @@ class _ScopeDialog:
             valid = count > 0
         elif self.spine_radio.isChecked():
             valid = bool(self.spine_ids)
-        self.analyze_button.setEnabled(valid)
+        return valid
 
-    def _accept(self) -> None:
+    def _accept(self, *, close=True) -> None:
         checked_count = len(self.selected_ids())
         try:
             scope = Scope.SINGLE if self.single_radio.isChecked() else (
@@ -2727,5 +2919,7 @@ class _ScopeDialog:
             )
             return
         self.scope = scope
+        self.selection = selection
         self.accepted = True
-        self.dialog.accept()
+        if close:
+            self.dialog.accept()

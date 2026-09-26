@@ -66,6 +66,16 @@ def test_builtin_tw2sp_protection_covers_bracketed_and_unbracketed_credits(tmp_p
         )
         assert ordinary.final == "奶茶店慰藉着旅者的味蕾"
 
+    disabled_snapshot = settings.freeze_rules(Profile(
+        id="test", conversion="tw2sp", builtin_rules_enabled=False))
+    unprotected = convert_with_overlay(
+        "安迪·威爾（Andy Weir）◎著",
+        lambda text: text.replace("威爾", "威尔").replace("著", "着"),
+        config="tw2sp", snapshot=disabled_snapshot,
+    )
+    assert unprotected.final.endswith("◎着")
+    assert not any(rule.id.startswith("builtin-") for rule in disabled_snapshot.rules)
+
 
 def test_saved_profile_ruleset_ids_win_over_old_run_options(tmp_path):
     store = ProfileStore(tmp_path / "profiles")

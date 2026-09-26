@@ -160,6 +160,34 @@ class Controller:
             if missing_rulesets:
                 recovery_notices.append(("rulesets_missing", ", ".join(missing_rulesets)))
             checkpoint_notice_enabled = settings.checkpoint_notice_enabled()
+
+            def available_conversion_configs():
+                list_configs = getattr(jieba_probe, "available_configs_nonblocking", None)
+                return (list_configs() if callable(list_configs)
+                        else backend.available_configs_nonblocking())
+
+            def initial_run_options():
+                values = profile_options(settings.active)
+                previous = preferences.get("run_options")
+                if isinstance(previous, dict):
+                    previous = dict(previous)
+                    if settings.active_profile_is_saved:
+                        previous.pop("ruleset_ids", None)
+                    values.update(previous)
+                return values
+
+            def merged_dialog_options():
+                return {
+                    "available_configs": available_conversion_configs(),
+                    "default_config": default_config,
+                    "jieba_probe": jieba_probe,
+                    "initial_options": initial_run_options(),
+                    "metadata_available": adapter.metadata_supported(),
+                    "nav_available": bool(adapter.nav_id()),
+                    "services": settings,
+                }
+
+            pending_config_choice = None
             # Text-capable hosts always get an explicit scope chooser.  A host
             # without selected_iter simply opens it with no initial checks; it
             # must never silently widen the run to ALL_XHTML.
@@ -173,6 +201,7 @@ class Controller:
                     hide_checkpoint_notice=settings.hide_checkpoint_notice,
                     ui_preferences=ui_preferences,
                     save_ui_preferences=save_run_ui_preferences,
+                    **merged_dialog_options(),
                 )
             else:
                 scope_outcome = choose_scope(
@@ -183,7 +212,9 @@ class Controller:
                     hide_checkpoint_notice=settings.hide_checkpoint_notice,
                     ui_preferences=ui_preferences,
                     save_ui_preferences=save_run_ui_preferences,
+                    **merged_dialog_options(),
                 )
+            pending_config_choice = getattr(scope_outcome, "configuration", None)
             checkpoint_notice_shown = bool(scope_outcome.checkpoint_notice_shown)
             language = scope_outcome.language
             translator.set_language(language)
@@ -200,6 +231,7 @@ class Controller:
             def reselect_scope(previous_selection):
                 nonlocal language, preferences, ui_preferences, targets
                 nonlocal default_config
+                nonlocal pending_config_choice
                 nonlocal checkpoint_notice_shown
                 preferences = self.storage.load_preferences()
                 default_config = _preferred_config(preferences, default_config)
@@ -214,6 +246,7 @@ class Controller:
                     checkpoint_notice_enabled=False,
                     ui_preferences=ui_preferences,
                     save_ui_preferences=save_run_ui_preferences,
+                    **merged_dialog_options(),
                 )
                 checkpoint_notice_shown = (
                     checkpoint_notice_shown or scope_outcome.checkpoint_notice_shown)
@@ -227,37 +260,29 @@ class Controller:
                         status="cancelled", files_scanned=0, changes=0, files_changed=0))
                     return False
                 targets = scope_outcome.selection
+                pending_config_choice = getattr(scope_outcome, "configuration", None)
                 return True
 
             # The language choice is now settled before the direction dialog
             # is constructed, including on a first launch with no preference.
             while True:
-                list_configs = getattr(jieba_probe, "available_configs_nonblocking", None)
-                available_configs = (
-                    list_configs() if callable(list_configs)
-                    else backend.available_configs_nonblocking()
-                )
-                initial_options = profile_options(settings.active)
-                previous_options = preferences.get("run_options")
-                if isinstance(previous_options, dict):
-                    previous_options = dict(previous_options)
-                    if settings.active_profile_is_saved:
-                        previous_options.pop("ruleset_ids", None)
-                    initial_options.update(previous_options)
-
-                selected_config = choose_conversion_config(
-                    available_configs,
-                    default_config=default_config,
-                    jieba_probe=jieba_probe,
-                    initial_options=initial_options,
-                    metadata_available=adapter.metadata_supported(),
-                    nav_available=bool(
-                        adapter.nav_id() and adapter.nav_id() in targets.file_ids),
-                    services=settings,
-                    ui_preferences=ui_preferences,
-                    save_ui_preferences=save_run_ui_preferences,
-                    translator=translator,
-                )
+                if pending_config_choice is not None:
+                    selected_config = pending_config_choice
+                    pending_config_choice = None
+                else:
+                    selected_config = choose_conversion_config(
+                        available_conversion_configs(),
+                        default_config=default_config,
+                        jieba_probe=jieba_probe,
+                        initial_options=initial_run_options(),
+                        metadata_available=adapter.metadata_supported(),
+                        nav_available=bool(
+                            adapter.nav_id() and adapter.nav_id() in targets.file_ids),
+                        services=settings,
+                        ui_preferences=ui_preferences,
+                        save_ui_preferences=save_run_ui_preferences,
+                        translator=translator,
+                    )
                 action = getattr(selected_config, "action", None)
                 if action == "back_to_scope":
                     current_choice = getattr(selected_config, "configuration", None)
