@@ -152,6 +152,40 @@ def test_expired_regex_budget_stops_with_rule_identity():
         budget.timeout_for(rule, 17)
 
 
+@pytest.mark.parametrize("stage,action", [
+    ("source", "override"), ("pre", "replace"), ("post", "replace")])
+def test_replacement_output_budget_covers_every_stage(monkeypatch, stage, action):
+    monkeypatch.setattr("rules.matching.REGEX_MAX_OUTPUT_CHARS_PER_RUN", 4)
+    rule = _rule(id=stage, stage=stage, action=action, source="x", target="12345")
+
+    with pytest.raises(RuleExecutionError, match=f"{stage}.*output"):
+        OfficialBackendConverter(_Backend()).convert("x", _request((rule,)))
+
+
+def test_replacement_output_budget_accepts_exact_limit_and_protect_does_not_use_it(
+        monkeypatch):
+    monkeypatch.setattr("rules.matching.REGEX_MAX_OUTPUT_CHARS_PER_RUN", 4)
+    exact = _rule(id="exact", stage="source", action="override", source="x", target="1234")
+    converter = OfficialBackendConverter(_Backend())
+    assert converter.convert("x", _request((exact,))).target == "1234"
+
+    protect = Rule.from_dict({
+        "id": "protect", "type": "protect", "action": "protect",
+        "match_type": "literal", "stage": "source", "direction": "*",
+        "scope": "global", "source": "protected",
+    })
+    result = OfficialBackendConverter(_Backend()).convert("protected", _request((protect,)))
+    assert result.target == "protected"
+
+
+def test_a_new_converter_starts_a_fresh_rule_output_budget(monkeypatch):
+    monkeypatch.setattr("rules.matching.REGEX_MAX_OUTPUT_CHARS_PER_RUN", 4)
+    rule = _rule(id="bounded", stage="source", action="override", source="x", target="1234")
+
+    for _ in range(2):
+        assert OfficialBackendConverter(_Backend()).convert("x", _request((rule,))).target == "1234"
+
+
 def test_malformed_rule_fields_are_reported_as_validation_errors():
     with pytest.raises(RuleValidationError, match="rule 0: action: action must be a string"):
         validate_rules(({"id": "bad", "action": [], "source": "x", "target": "y"},))

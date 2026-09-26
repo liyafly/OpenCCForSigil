@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 import time
 
 from .models import Rule
@@ -16,6 +17,7 @@ REGEX_MAX_PATTERN_CHARS = 512
 REGEX_MAX_HITS_PER_RULE = 512
 REGEX_MAX_HITS_PER_RUN = 4096
 REGEX_MAX_OUTPUT_CHARS_PER_RUN = 2_000_000
+REGEX_MAX_CANDIDATE_OUTPUT_CHARS_PER_RUN = 2_000_000
 
 
 class RuleExecutionError(RuntimeError):
@@ -46,6 +48,7 @@ class RegexBudget:
         self.regex_seconds = 0.0
         self.regex_hits = 0
         self.output_chars = 0
+        self.candidate_output_chars = 0
         self._hits_by_rule: dict[str, int] = {}
 
     def timeout_for(self, rule: Rule, position: int) -> float:
@@ -76,12 +79,19 @@ class RegexBudget:
                 f"rule {rule.id}: regular-expression rules exceeded "
                 f"{REGEX_MAX_HITS_PER_RUN} hits near offset {position}")
 
-    def note_output(self, rule: Rule, length: int, position: int) -> None:
-        self.output_chars += length
-        if self.output_chars > REGEX_MAX_OUTPUT_CHARS_PER_RUN:
+    def note_candidate_output(self, rule: Rule, length: int, position: int) -> None:
+        if self.candidate_output_chars + length > REGEX_MAX_CANDIDATE_OUTPUT_CHARS_PER_RUN:
             raise RuleExecutionError(
-                f"rule {rule.id}: replacement output exceeded "
+                f"rule {rule.id}: replacement candidate memory exceeded "
+                f"{REGEX_MAX_CANDIDATE_OUTPUT_CHARS_PER_RUN} characters near offset {position}")
+        self.candidate_output_chars += length
+
+    def note_output(self, rule: Rule, length: int, position: int, *, stage: str) -> None:
+        if self.output_chars + length > REGEX_MAX_OUTPUT_CHARS_PER_RUN:
+            raise RuleExecutionError(
+                f"rule {rule.id}: {stage} replacement output exceeded "
                 f"{REGEX_MAX_OUTPUT_CHARS_PER_RUN} characters near offset {position}")
+        self.output_chars += length
 
 
 def _rank(match: RuleMatch) -> tuple[int, int, int, int, int]:
@@ -155,12 +165,20 @@ def collect_matches(
             if rule.action == "protect":
                 target = matched_text
             else:
+                references = len(re.findall(r"\\(?:[1-9]|g<[^>]+>)", rule.target))
+                upper_bound = len(rule.target) + len(matched_text) * references
+                if upper_bound > REGEX_MAX_CANDIDATE_OUTPUT_CHARS_PER_RUN:
+                    raise RuleExecutionError(
+                        f"rule {rule.id}: replacement candidate exceeds "
+                        f"{REGEX_MAX_CANDIDATE_OUTPUT_CHARS_PER_RUN} characters "
+                        f"near offset {found.start()}")
                 try:
                     target = found.expand(rule.target)
                 except (IndexError, KeyError, ValueError) as exc:
                     raise RuleExecutionError(
                         f"rule {rule.id}: invalid replacement template at "
                         f"offset {found.start()}: {exc}") from exc
+                budget.note_candidate_output(rule, len(target), found.start())
             matches.append(RuleMatch(rule, found.start(), found.end(), target))
             # Advancing one code point preserves candidates that overlap this hit.
             cursor = found.start() + 1
@@ -203,6 +221,7 @@ def source_matches(
         if (protected_index < len(protected)
                 and protected[protected_index].start < chosen.end):
             continue
+        budget.note_output(chosen.rule, len(chosen.target), chosen.start, stage="source")
         spans.append(chosen)
         cursor = chosen.end
     return tuple(sorted(spans, key=lambda item: (item.start, item.end)))
@@ -237,7 +256,8 @@ def replace_stage(
     for match in selected:
         output.append(text[cursor:match.start])
         output.append(match.target)
-        budget.note_output(match.rule, len(match.target), match.start)
+        budget.note_output(match.rule, len(match.target), match.start,
+                           stage=f"{match.rule.stage} stage")
         hits.append(StageHit(match.rule, match.start, match.end,
                              text[match.start:match.end], match.target))
         cursor = match.end
