@@ -169,6 +169,48 @@ def test_update_selected_replaces_rule_without_creating_conflict():
     assert manager.apply_button.enabled
 
 
+def test_update_preserves_rule_owner_version_and_annotations():
+    original = Rule(
+        id="owned-id", source="术语", target="旧词", direction="s2t", scope="book",
+        book_fingerprint="book-A", semantic_version=1, comment="Comment",
+        source_note="Source note", created_at="2024-01-01T00:00:00Z",
+        updated_at="2024-01-01T00:00:00Z",
+    )
+    manager = _manager((original,), source="术语", target="新词")
+    manager.scope_combo = Combo("book")
+    manager._book_fingerprint = "book-B"
+    manager._rulesets = {"default": RuleSet("default", semantic_version=1)}
+    manager._ruleset_id = "default"
+
+    manager._update_selected()
+
+    updated = manager.rules[0]
+    assert updated.id == original.id
+    assert updated.book_fingerprint == "book-A"
+    assert updated.semantic_version == 1
+    assert updated.comment == "Comment"
+    assert updated.source_note == "Source note"
+    assert updated.created_at == original.created_at
+    assert updated.updated_at != original.updated_at
+
+
+def test_explicitly_changing_scope_to_current_book_binds_current_book():
+    original = Rule(
+        id="owned-id", source="术语", target="旧词", direction="s2t", scope="global",
+        semantic_version=2, action="replace", stage="pre",
+    )
+    manager = _manager((original,), source="术语", target="新词", rule_type="replace_post")
+    manager.scope_combo = Combo("book")
+    manager._book_fingerprint = "book-B"
+    manager._rulesets = {"default": RuleSet("default", semantic_version=2)}
+    manager._ruleset_id = "default"
+
+    manager._update_selected()
+
+    assert manager.rules[0].book_fingerprint == "book-B"
+    assert manager.rules[0].stage == "post"
+
+
 def test_add_appends_new_rule_and_protect_uses_source_as_target():
     manager = _manager(())
     manager._add()

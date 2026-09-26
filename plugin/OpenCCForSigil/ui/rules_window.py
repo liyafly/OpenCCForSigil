@@ -854,17 +854,18 @@ class RuleManagerDialog:
         row = self.table.currentRow()
         if row < 0 or row >= len(self.rules):
             return
-        candidate = self._rule_from_form()
+        previous = self.rules[row]
+        candidate = self._rule_from_form(previous)
         if candidate is None:
             return
-        previous = self.rules[row]
         updated_at = datetime.now(timezone.utc).isoformat(timespec="microseconds").replace(
             "+00:00", "Z")
         self.rules[row] = replace(candidate, id=previous.id,
-                                  created_at=previous.created_at, updated_at=updated_at)
+                                  created_at=previous.created_at, updated_at=updated_at,
+                                  comment=previous.comment, source_note=previous.source_note)
         self._refresh()
 
-    def _rule_from_form(self):
+    def _rule_from_form(self, existing: Rule | None = None):
         editor_action = str(self.type_combo.currentData())
         match_type = str(self.match_type_combo.currentData())
         action, stage = {
@@ -875,9 +876,17 @@ class RuleManagerDialog:
         }.get(editor_action, ("override", "source"))
         rule_type = "protect" if action == "protect" else "exact"
         ruleset = getattr(self, "_rulesets", {}).get(getattr(self, "_ruleset_id", ""))
-        semantic_version = ruleset.semantic_version if ruleset is not None else 1
-        if match_type == "regex" or action == "replace":
-            semantic_version = max(2, semantic_version)
+        needs_v2 = match_type == "regex" or action == "replace"
+        semantic_version = (
+            2 if needs_v2 else existing.semantic_version if existing is not None
+            else ruleset.semantic_version if ruleset is not None else 1
+        )
+        scope = str(self.scope_combo.currentData())
+        profile_id = self._profile_id or "" if scope == "profile" else ""
+        book_fingerprint = self._book_fingerprint or "" if scope == "book" else ""
+        if existing is not None and existing.scope == scope:
+            profile_id = existing.profile_id
+            book_fingerprint = existing.book_fingerprint
         values = {
             "type": rule_type,
             "action": action,
@@ -888,12 +897,12 @@ class RuleManagerDialog:
             "source": self.source_edit.text(),
             "target": (self.source_edit.text() if rule_type == "protect"
                        else self.target_edit.text()),
-            "scope": str(self.scope_combo.currentData()),
+            "scope": scope,
             "priority": int(self.priority_edit.value()),
             "enabled": (self.enabled_check.isChecked()
                         if hasattr(self, "enabled_check") else True),
-            "profile_id": self._profile_id or "",
-            "book_fingerprint": self._book_fingerprint or "",
+            "profile_id": profile_id,
+            "book_fingerprint": book_fingerprint,
         }
         try:
             return validate_rules((Rule.from_dict(values),))[0]
