@@ -6,6 +6,8 @@ to absolute document offsets.
 """
 
 from dataclasses import replace
+from hashlib import sha256
+import json
 from typing import Protocol
 
 from core.diff import bounded_opcodes
@@ -282,9 +284,12 @@ def _staged_segment_changes(
 
     component_keys = {}
     for index, (rule, start, _end) in enumerate(user_hits):
-        component_keys.setdefault(find(index), []).append(f"{rule.id}@{start}")
+        component_keys.setdefault(find(index), []).append(
+            f"{rule.id}@{source_offset + start}:{source_offset + _end}")
     group_ids = {
-        root: "rules:" + "+".join(sorted(values))
+        root: "rules:" + sha256(
+            json.dumps(sorted(values), ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()[:24]
         for root, values in component_keys.items()
     }
 

@@ -10,6 +10,7 @@ from core.workflow import ConversionWorkflow, WorkflowError
 from rules.models import Rule, RuleSnapshot as Rules
 from sigil.adapter import SigilBookAdapter
 from document.tokenizer import TokenizerOptions
+from ui.preview_window import _PreviewDialog
 
 
 class Backend:
@@ -38,6 +39,22 @@ class Book:
 
     def writefile(self, _id, source):
         self.writes.append(source)
+
+
+class MultiBook:
+    def __init__(self, sources):
+        self.sources = dict(sources)
+        self.writes = {}
+
+    def text_iter(self):
+        return iter((identifier, f"{identifier}.xhtml")
+                    for identifier in self.sources)
+
+    def readfile(self, identifier):
+        return self.sources[identifier]
+
+    def writefile(self, identifier, source):
+        self.writes[identifier] = source
 
 
 def request_with_rules(*rules):
@@ -107,6 +124,44 @@ def test_rules_hash_mismatch_blocks_plan_and_accept_all_reconstructs_exactly():
     flow.request = replace(request, rules_snapshot=replace(request.rules_snapshot, rules_hash="bad"))
     with pytest.raises(ValueError, match="hash mismatch"):
         flow.plan()
+
+
+def test_staged_replacement_groups_are_local_to_one_rule_occurrence():
+    rule = Rule(
+        id="wrap", semantic_version=2, action="replace", stage="pre", direction="s2t",
+        source="a123b", target="x123y",
+    )
+    source = "<html><body><p>a123b</p><p>a123b</p></body></html>"
+    book = MultiBook((("chapter-a", source), ("chapter-b", source)))
+    flow = ConversionWorkflow(SigilBookAdapter(book), Backend(), request_with_rules(rule))
+    planned = flow.plan()
+    entries = [
+        (preview, change)
+        for item in planned
+        for preview in (PreviewSession(item.plan),)
+        for change in preview.changes
+    ]
+    groups = {}
+    for preview, change in entries:
+        assert change.group_id.startswith("rules:")
+        groups.setdefault(change.group_id, []).append((preview, change))
+
+    assert len(groups) == 4
+    assert all(len(items) == 2 for items in groups.values())
+    assert len({change.file_id for _preview, change in entries}) == 2
+
+    selected_group = next(
+        group_id for group_id, items in groups.items()
+        if items[0][1].file_id == "chapter-a"
+    )
+    preview_by_file = {}
+    for preview, change in entries:
+        preview_by_file.setdefault(change.file_id, preview)
+    dialog = object.__new__(_PreviewDialog)
+    dialog._entries = entries
+    assert dialog._decide_group(selected_group, True) == 2
+    assert preview_by_file["chapter-a"].summary()["accepted"] == 2
+    assert preview_by_file["chapter-b"].summary()["accepted"] == 0
 
 
 def test_numeric_reference_opt_in_outputs_characters_and_preserves_named_entities():

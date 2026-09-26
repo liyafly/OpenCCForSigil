@@ -322,6 +322,12 @@ def _absolute_change(
         (file_id, target.node_id, str(start), str(patch_end), target_text)
     )
     change_id = sha256(change_key.encode("utf-8")).hexdigest()[:24]
+    group_id = local_change.group_id
+    if group_id.startswith("rules:"):
+        group_key = json.dumps(
+            (file_id, target.node_id, group_id), ensure_ascii=False, separators=(",", ":")
+        )
+        group_id = "rules:" + sha256(group_key.encode("utf-8")).hexdigest()[:24]
     return TokenChange(
         source=change_source,
         target=target_text,
@@ -336,7 +342,7 @@ def _absolute_change(
         comparison_stage=local_change.comparison_stage,
         attribution_confidence=local_change.attribution_confidence,
         document_kind=document_kind,
-        group_id=local_change.group_id,
+        group_id=group_id,
     )
 
 
