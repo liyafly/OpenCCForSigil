@@ -11,7 +11,8 @@ import json
 from typing import Protocol
 
 from core.diff import bounded_opcodes
-from core.models import ConvertRequest, ConvertResult, SourceSpan, TokenChange, Diagnostic
+from core.models import (ConvertRequest, ConvertResult, Diagnostic, RuleTrace, SourceSpan,
+                         TokenChange)
 from opencc_backend.backend import OpenCCBackend
 
 
@@ -71,7 +72,12 @@ class OfficialBackendConverter:
             if diagnosis.status == "mixed":
                 diagnostics.append(Diagnostic("MIXED_SCRIPT", diagnosis.warning))
         if target == text:
-            return ConvertResult(text, target, diagnostics=tuple(diagnostics))
+            return ConvertResult(
+                text, target, diagnostics=tuple(diagnostics),
+                after_pre_rules=text if request.include_rule_trace else "",
+                after_opencc=target if request.include_rule_trace else "",
+                after_post_rules=target if request.include_rule_trace else "",
+            )
         classification = {}
         if request.detailed_classification and callable(compare) and not request.pivot_chain:
             result = classify_conversion(text, request.config, compare, final=official)
@@ -112,7 +118,12 @@ class OfficialBackendConverter:
                 comparison_stage=attribution.comparison_stage if attribution else None,
                 attribution_confidence=attribution.attribution_confidence if attribution else None,
             ))
-        return ConvertResult(text, target, tuple(changes), tuple(diagnostics))
+        return ConvertResult(
+            text, target, tuple(changes), tuple(diagnostics),
+            after_pre_rules=text if request.include_rule_trace else "",
+            after_opencc=target if request.include_rule_trace else "",
+            after_post_rules=target if request.include_rule_trace else "",
+        )
 
     def _convert_rules(self, text, request, *, quotation_pairer=None):
         from rules.compiled import CompiledOverlay, lock_spans_compiled
@@ -146,10 +157,13 @@ class OfficialBackendConverter:
         # Reuse the complete unlocked pipeline while avoiding a second rule pass.
         unlocked = replace(request, rules_snapshot=type(request.rules_snapshot)())
         output, changes, diagnostics = [], [], []
+        after_pre, after_opencc, after_post, rule_trace = [], [], [], []
         regex_patterns = dict(overlay.regex_patterns)
         pre_rules = tuple(rule for rule in overlay.rules if rule.action == "replace" and rule.stage == "pre")
         post_rules = tuple(rule for rule in overlay.rules if rule.action == "replace" and rule.stage == "post")
         cursor = 0
+        pre_offset = 0
+        opencc_offset = 0
         for span in (*spans, None):
             end = span.start if span is not None else len(text)
             if end > cursor:
@@ -164,6 +178,20 @@ class OfficialBackendConverter:
                 except RuleExecutionError:
                     raise
                 output.append(final_segment)
+                if request.include_rule_trace:
+                    after_pre.append(before_opencc)
+                    after_opencc.append(converted.target)
+                    after_post.append(final_segment)
+                    rule_trace.extend(RuleTrace(
+                        hit.rule.id, hit.rule.action or hit.rule.type, "pre",
+                        hit.source, hit.target, pre_offset + hit.start,
+                        pre_offset + hit.end) for hit in pre_hits)
+                    rule_trace.extend(RuleTrace(
+                        hit.rule.id, hit.rule.action or hit.rule.type, "post",
+                        hit.source, hit.target, opencc_offset + hit.start,
+                        opencc_offset + hit.end) for hit in post_hits)
+                    pre_offset += len(before_opencc)
+                    opencc_offset += len(converted.target)
                 changed_pre_hits = tuple(hit for hit in pre_hits if hit.source != hit.target)
                 changed_post_hits = tuple(hit for hit in post_hits if hit.source != hit.target)
                 if not changed_pre_hits and not changed_post_hits:
@@ -190,6 +218,15 @@ class OfficialBackendConverter:
             if span is not None:
                 pairer.feed(span.source, mutate=False)
                 output.append(span.target)
+                if request.include_rule_trace:
+                    after_pre.append(span.target)
+                    after_opencc.append(span.target)
+                    after_post.append(span.target)
+                    rule_trace.append(RuleTrace(
+                        span.rule.id, span.rule.action or span.rule.type, "source",
+                        span.source, span.target, span.start, span.end))
+                    pre_offset += len(span.target)
+                    opencc_offset += len(span.target)
                 if span.source != span.target:
                     changes.append(TokenChange(
                         source=span.source, target=span.target,
@@ -197,7 +234,16 @@ class OfficialBackendConverter:
                         rule_source=f"UserRule:{span.rule.id}", category="user_rule",
                         risk="HIGH" if len(span.source) != len(span.target) else "REVIEW"))
                 cursor = span.end
-        return ConvertResult(text, "".join(output), tuple(changes), tuple(diagnostics))
+        return ConvertResult(
+            text,
+            "".join(output),
+            tuple(changes),
+            tuple(diagnostics),
+            tuple(rule_trace),
+            "".join(after_pre) if request.include_rule_trace else "",
+            "".join(after_opencc) if request.include_rule_trace else "",
+            "".join(after_post) if request.include_rule_trace else "",
+        )
 
 
 def _map_generated_span(source: str, generated: str, start: int, end: int) -> tuple[int, int]:

@@ -74,6 +74,7 @@ class ConvertRequest:
     pivot_chain: Tuple[str, ...] = ()
     detailed_classification: bool = True
     diagnose_mixed: bool = True
+    include_rule_trace: bool = False
 
 
 @dataclass(frozen=True)
@@ -104,11 +105,28 @@ class Diagnostic:
 
 
 @dataclass(frozen=True)
+class RuleTrace:
+    """One selected rule match, with offsets in the input to its named stage."""
+
+    rule_id: str
+    action: str
+    stage: str
+    source: str
+    target: str
+    start: int
+    end: int
+
+
+@dataclass(frozen=True)
 class ConvertResult:
     source: str
     target: str
     changes: Tuple[TokenChange, ...] = ()
     diagnostics: Tuple[Diagnostic, ...] = ()
+    rule_trace: Tuple[RuleTrace, ...] = ()
+    after_pre_rules: str = ""
+    after_opencc: str = ""
+    after_post_rules: str = ""
 
 
 @dataclass(frozen=True)

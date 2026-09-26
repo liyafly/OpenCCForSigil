@@ -549,6 +549,55 @@ def test_dictionary_inspection_uses_the_full_run_conversion_options():
     assert inspection.final == "「文字」,"
 
 
+def test_sandbox_run_scope_uses_only_referenced_enabled_rulesets_and_current_context():
+    active = Rule(id="active", source="旧词", target="新词", direction="s2t")
+    disabled = Rule(id="disabled-rule", source="旧词", target="错误", direction="s2t")
+    unrelated = Rule(id="unrelated", source="额外", target="不参与", direction="s2t")
+    manager = RuleManagerDialog(
+        make_with_table(), (), translator=Translator("en"),
+        official_convert=lambda _config, value: value, config="s2t",
+        profile_id="profile-A", book_fingerprint="book-A",
+        rulesets=(
+            RuleSet("active", (active,)),
+            RuleSet("disabled", (disabled,), enabled=False),
+            RuleSet("extra", (unrelated,)),
+        ),
+        ruleset_id="extra", run_options={"ruleset_ids": ["active", "disabled"]},
+    )
+    current_snapshot, current_context = manager._sandbox_snapshot()
+    assert unrelated in current_snapshot.rules
+    assert active not in current_snapshot.rules
+    assert "not included in this conversion" in current_context
+
+    manager.test_scope_combo.setCurrentIndex(manager.test_scope_combo.findData("run"))
+    run_snapshot, run_context = manager._sandbox_snapshot()
+    assert active in run_snapshot.rules
+    assert disabled not in run_snapshot.rules
+    assert unrelated not in run_snapshot.rules
+    assert "active" in run_context
+
+    inspection = inspect_dictionary(
+        "旧词", config="s2t", official_convert=lambda _config, value: value,
+        snapshot=run_snapshot, profile_id="profile-A", book_fingerprint="book-A",
+    )
+    assert inspection.final == "新词"
+    assert inspection.matched_rules == ("active",)
+
+
+def test_sandbox_scope_excludes_direction_and_owner_mismatches():
+    rules = (
+        Rule(id="direction", source="旧词", target="错向", direction="t2s"),
+        Rule(id="owner", source="旧词", target="错书", direction="s2t",
+             scope="book", book_fingerprint="other-book"),
+    )
+    inspection = inspect_dictionary(
+        "旧词", config="s2t", official_convert=lambda _config, value: value,
+        snapshot=RuleSnapshot.freeze(rules), profile_id="profile-A", book_fingerprint="book-A",
+    )
+    assert inspection.final == "旧词"
+    assert inspection.matched_rules == ()
+
+
 def test_dictionary_inspector_localizes_config_classification_and_rule_labels(monkeypatch):
     inspection = DictionaryInspection(
         input="軟體", config="s2tw", comparisons=(("s2t", "软件"),),
@@ -627,23 +676,13 @@ def test_switching_ruleset_stashes_edits_and_loads_selected_rules():
 
 def test_sandbox_lists_rule_id_source_target_and_match_location():
     rule = Rule(id="known-rule", source="术语", target="专名", direction="s2t")
-    manager = object.__new__(RuleManagerDialog)
-    manager.rules = [rule]
-    manager._official_convert = lambda _config, text: text
-    manager._config = "s2t"
-    manager._profile_id = "profile"
-    manager._book_fingerprint = "book-hash"
-    manager._labels = {
-        "no_converter": "no converter", "original_label": "Original",
-        "pre_rules_label": "Pre", "opencc_label": "OpenCC",
-        "post_rules_label": "Post", "final_label": "Final", "hits_label": "Hits",
-        "rule_hit": "{id}: {source} -> {target} at {start}-{end}",
-        "no_hits": "No matches",
-    }
-    manager.test_input = SimpleNamespace(toPlainText=lambda: "术语")
-    manager.test_output = SimpleNamespace(setPlainText=lambda text:
-                                           setattr(manager, "output", text))
+    manager = RuleManagerDialog(
+        make_with_table(), (rule,), translator=Translator("en"),
+        official_convert=lambda _config, text: text, config="s2t",
+        profile_id="profile", book_fingerprint="book-hash")
+    manager.test_input.setPlainText("术语")
 
     manager._test()
 
-    assert "known-rule: 术语 -> 专名 at 0-2" in manager.output
+    assert "known-rule: 术语 → 专名 at 0–2" in manager.test_output.toPlainText()
+    assert "Hits: 1" in manager.test_output.toPlainText().splitlines()

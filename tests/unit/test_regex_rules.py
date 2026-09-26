@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from core.converter import OfficialBackendConverter
@@ -184,6 +186,39 @@ def test_a_new_converter_starts_a_fresh_rule_output_budget(monkeypatch):
 
     for _ in range(2):
         assert OfficialBackendConverter(_Backend()).convert("x", _request((rule,))).target == "1234"
+
+
+def test_optional_rule_trace_preserves_output_patches_and_reports_each_stage_hit():
+    source = _rule(id="source", stage="source", action="override", source="s", target="S")
+    pre = _rule(id="pre", stage="pre", source="a", target="b")
+    post = _rule(id="post", stage="post", source="c", target="d")
+    backend = _Backend()
+    converter = OfficialBackendConverter(backend)
+    plain = converter.convert("as c", _request((source, pre, post)))
+    traced = OfficialBackendConverter(backend).convert(
+        "as c", replace(_request((source, pre, post)), include_rule_trace=True))
+
+    assert (traced.target, traced.changes) == (plain.target, plain.changes)
+    assert traced.after_pre_rules == "bS c"
+    assert traced.after_opencc == "bS c"
+    assert traced.after_post_rules == "bS d"
+    assert {(hit.rule_id, hit.stage, hit.source, hit.target)
+            for hit in traced.rule_trace} == {
+                ("source", "source", "s", "S"),
+                ("pre", "pre", "a", "b"),
+                ("post", "post", "c", "d"),
+            }
+
+
+def test_optional_rule_trace_keeps_a_match_whose_target_is_unchanged():
+    same = _rule(id="same", stage="source", action="override", source="x", target="x")
+    result = OfficialBackendConverter(_Backend()).convert(
+        "x", replace(_request((same,)), include_rule_trace=True))
+
+    assert result.target == "x"
+    assert result.changes == ()
+    assert len(result.rule_trace) == 1
+    assert (result.rule_trace[0].source, result.rule_trace[0].target) == ("x", "x")
 
 
 def test_malformed_rule_fields_are_reported_as_validation_errors():

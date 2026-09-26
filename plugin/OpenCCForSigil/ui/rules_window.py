@@ -8,7 +8,6 @@ from typing import Any, Callable, Iterable
 
 from rules.conflicts import find_conflicts
 from rules.builtin import BUILTIN_RULES
-from rules.engine import lock_spans
 from rules.builtin import with_builtin_rules
 from rules.models import Rule, RuleSnapshot, SUPPORTED_DIRECTIONS
 from rules.precedence import base_direction
@@ -97,6 +96,9 @@ class DictionaryInspection:
     attribution: str = "OpenCC"
     classifications: tuple[object, ...] = ()
     changes: tuple[object, ...] = ()
+    after_pre_rules: str = ""
+    after_opencc: str = ""
+    rule_trace: tuple[object, ...] = ()
 
 
 def inspect_dictionary(
@@ -138,19 +140,10 @@ def inspect_dictionary(
         pivot_chain=pivot_chain,
         detailed_classification=False,
         diagnose_mixed=False,
+        include_rule_trace=True,
     )
     converted = OfficialBackendConverter(backend).convert(text, request)
-    matched = lock_spans(
-        text, snapshot, config=config, profile_id=profile_id,
-        book_fingerprint=book_fingerprint,
-    )
-    matched_ids = tuple(dict.fromkeys(
-        tuple(span.rule.id for span in matched) + tuple(
-            change.rule_source.removeprefix("UserRule:")
-            for change in converted.changes
-            if change.rule_source.startswith("UserRule:")
-        )
-    ))
+    matched_ids = tuple(dict.fromkeys(hit.rule_id for hit in converted.rule_trace))
     from core.classifier import classify_conversion
     classification = classify_conversion(
         text, config, lambda name, value: convert_for(name, value, official_convert))
@@ -163,6 +156,9 @@ def inspect_dictionary(
         f"OpenCC:{config}/comparative_config_diff",
         classification.changes,
         converted.changes,
+        converted.after_pre_rules,
+        converted.after_opencc,
+        converted.rule_trace,
     )
 
 
@@ -550,6 +546,16 @@ class RuleManagerDialog:
         test_box.setChecked(False)
         self.test_box = test_box
         test_layout = qt.QVBoxLayout(test_box)
+        scope_row = qt.QHBoxLayout()
+        scope_row.addWidget(qt.QLabel(self._labels["test_scope"]))
+        self.test_scope_combo = qt.QComboBox()
+        self.test_scope_combo.addItem(self._labels["test_current_set"], "current")
+        self.test_scope_combo.addItem(self._labels["test_this_conversion"], "run")
+        scope_row.addWidget(self.test_scope_combo, 1)
+        test_layout.addLayout(scope_row)
+        self.test_context_label = qt.QLabel()
+        self.test_context_label.setWordWrap(True)
+        test_layout.addWidget(self.test_context_label)
         test_buttons = qt.QHBoxLayout()
         self.test_button = qt.QPushButton(self._labels["test"])
         self.inspect_button = qt.QPushButton(self._labels["inspect"])
@@ -1033,43 +1039,88 @@ class RuleManagerDialog:
         if row >= 0:
             self.table.selectRow(row)
 
+    def _sandbox_snapshot(self):
+        """Freeze the same enabled-set combination used by a conversion run."""
+
+        self._stash_ruleset()
+        mode = str(self.test_scope_combo.currentData()) if hasattr(
+            self, "test_scope_combo") else "current"
+        run_ids = tuple(dict.fromkeys(str(item) for item in
+                                     self._run_options.get("ruleset_ids", ())))
+        if mode == "run":
+            identifiers = run_ids
+            rules = [
+                rule
+                for identifier in identifiers
+                if (ruleset := self._rulesets.get(identifier)) is not None
+                and ruleset.enabled
+                for rule in ruleset.rules
+            ]
+            names = [self._rulesets[item].name or item for item in identifiers
+                     if item in self._rulesets and self._rulesets[item].enabled]
+            context = self._labels["test_run_context"].format(
+                rulesets=", ".join(names) if names else self._labels["no_enabled_rulesets"])
+        else:
+            identifier = self._ruleset_id
+            ruleset = self._rulesets[identifier]
+            rules = list(ruleset.rules) if ruleset.enabled else []
+            is_in_run = identifier in run_ids
+            if not ruleset.enabled:
+                status = self._labels["ruleset_disabled_context"]
+            elif not is_in_run:
+                status = self._labels["ruleset_not_in_run"]
+            else:
+                status = self._labels["ruleset_in_run"]
+            context = self._labels["test_set_context"].format(
+                ruleset=ruleset.name or identifier, status=status)
+        context += "\n" + self._labels["test_context_scope"].format(
+            config=configuration_label(self._translator, self._config),
+            profile=self._profile_id or self._labels["not_available"],
+            book=self._book_fingerprint or self._labels["not_available"],
+        )
+        snapshot = RuleSnapshot.freeze(with_builtin_rules(
+            rules,
+            config=self._config,
+            enabled=bool(self._run_options.get("builtin_rules_enabled", True)),
+        ))
+        return snapshot, context
+
     def _test(self) -> None:
         if self._official_convert is None:
             self.test_output.setPlainText(self._labels["no_converter"])
             return
         try:
-            snapshot = RuleSnapshot.freeze(
-                with_builtin_rules(
-                    self.rules, config=self._config,
-                    enabled=bool(getattr(self, "_run_options", {}).get(
-                        "builtin_rules_enabled", True))))
+            snapshot, context = self._sandbox_snapshot()
+            self.test_context_label.setText(context)
             inspection = inspect_dictionary(
                 self.test_input.toPlainText(), config=self._config,
                 official_convert=self._official_convert, snapshot=snapshot,
                 profile_id=self._profile_id, book_fingerprint=self._book_fingerprint,
                 run_options=getattr(self, "_run_options", {}),
             )
-            matched = lock_spans(
-                self.test_input.toPlainText(), snapshot, config=self._config,
-                profile_id=self._profile_id, book_fingerprint=self._book_fingerprint)
-            staged_hits = tuple(
-                change for change in inspection.changes
-                if change.rule_source.startswith("UserRule:")
-            )
+            trace = inspection.rule_trace
             lines = [
+                context,
                 f"{self._labels['original_label']}: {inspection.input}",
+                self._labels["source_stage"].format(text=inspection.input),
+                self._labels["pre_stage"].format(text=inspection.after_pre_rules),
+                self._labels["opencc_stage"].format(text=inspection.after_opencc),
+                self._labels["post_stage"].format(text=inspection.final),
                 f"{self._labels['final_label']}: {inspection.final}",
-                f"{self._labels['hits_label']}: {len(matched) + len(staged_hits)}",
+                f"{self._labels['hits_label']}: {len(trace)}",
+                f"{self._labels['patches_label']}: {len(inspection.changes)}",
             ]
-            lines.extend(self._labels["rule_hit"].format(
-                id=span.rule.id, source=span.source, target=span.target,
-                start=span.start, end=span.end) for span in matched)
-            lines.extend(self._labels["rule_hit"].format(
-                id=change.rule_source.removeprefix("UserRule:"),
-                source=change.source, target=change.target,
-                start=change.span.start, end=change.span.end,
-            ) for change in staged_hits)
-            if not matched and not staged_hits:
+            for hit in trace:
+                target = (self._labels["deleted_target"]
+                          if hit.action != "protect" and hit.target == "" else hit.target)
+                detail = self._labels["rule_hit"].format(
+                    id=hit.rule_id, source=hit.source, target=target,
+                    start=hit.start, end=hit.end)
+                detail = f"{self._labels[f'{hit.stage}_stage_name']}: {detail}"
+                if hit.source == hit.target:
+                    detail += " · " + self._labels["matched_no_change"]
+                lines.append(detail)
+            if not trace:
                 lines.append(self._labels["no_hits"])
             self.test_output.setPlainText("\n".join(lines))
         except Exception as exc:
@@ -1091,14 +1142,14 @@ class RuleManagerDialog:
             self.test_output.setPlainText(self._labels["input_required"])
             return
         try:
+            snapshot, context = self._sandbox_snapshot()
+            self.test_context_label.setText(context)
             show_dictionary_inspector(
                 text,
                 config=self._config,
                 official_convert=self._official_convert,
                 comparison_configs=self._comparison_configs,
-                snapshot=RuleSnapshot.freeze(with_builtin_rules(
-                    self.rules, config=self._config,
-                    enabled=bool(self._run_options.get("builtin_rules_enabled", True)))),
+                snapshot=snapshot,
                 profile_id=self._profile_id,
                 book_fingerprint=self._book_fingerprint,
                 run_options=getattr(self, "_run_options", {}),
