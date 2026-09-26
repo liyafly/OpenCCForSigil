@@ -1,0 +1,38 @@
+{
+  "PySide6": "6.11.2",
+  "results": [
+    {
+      "language": "en",
+      "minimum_width": 979,
+      "minimum_height": 925,
+      "initial_width": 979,
+      "initial_height": 925,
+      "collapsed_input_visible": true,
+      "collapsed_input_enabled": false,
+      "table_height": 90,
+      "expanded_input_visible": true
+    },
+    {
+      "language": "zh-Hans",
+      "minimum_width": 582,
+      "minimum_height": 939,
+      "initial_width": 840,
+      "initial_height": 939,
+      "collapsed_input_visible": true,
+      "collapsed_input_enabled": false,
+      "table_height": 90,
+      "expanded_input_visible": true
+    },
+    {
+      "language": "zh-Hant",
+      "minimum_width": 594,
+      "minimum_height": 939,
+      "initial_width": 840,
+      "initial_height": 939,
+      "collapsed_input_visible": true,
+      "collapsed_input_enabled": false,
+      "table_height": 90,
+      "expanded_input_visible": true
+    }
+  ]
+}
