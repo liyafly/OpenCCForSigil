@@ -45,13 +45,15 @@ class CompiledOverlay:
             snapshot, "rules_hash", getattr(snapshot, "sha256", ""))
         if actual_hash != requested_hash:
             raise ValueError("rule snapshot hash mismatch")
-        validate_no_blocking_conflicts(rules)
-
         candidates = ordered_rules(
             rule for rule in rules
             if applies_to(rule, config=config, profile_id=profile_id,
                           book_fingerprint=book_fingerprint)
         )
+        # Conflict scope is the rules that can participate in this run. A
+        # different direction, profile, or book must not prevent an unrelated
+        # conversion from starting.
+        validate_no_blocking_conflicts(candidates)
         buckets: dict[str, list[Rule]] = {}
         for rule in candidates:
             buckets.setdefault(rule.source[0], []).append(rule)

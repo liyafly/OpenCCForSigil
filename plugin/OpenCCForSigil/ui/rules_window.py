@@ -7,11 +7,13 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Iterable
 
 from rules.conflicts import find_conflicts
-from rules.engine import convert_with_overlay
+from rules.engine import lock_spans
 from rules.builtin import with_builtin_rules
 from rules.models import Rule, RuleSnapshot
 from rules.precedence import base_direction
 from rules.validators import RuleValidationError, validate_rules
+from core.converter import OfficialBackendConverter
+from core.models import ConvertRequest, RuleSnapshot as RequestRuleSnapshot
 from opencc_backend.configs import base_config_options
 from rules.store import RuleSet, RuleStore
 from rules.importers import ImportResult, reassign_colliding_ids, rule_dedup_key
@@ -93,6 +95,7 @@ class DictionaryInspection:
     matched_rules: tuple[str, ...] = ()
     attribution: str = "OpenCC"
     classifications: tuple[object, ...] = ()
+    changes: tuple[object, ...] = ()
 
 
 def inspect_dictionary(
@@ -105,6 +108,7 @@ def inspect_dictionary(
     snapshot: RuleSnapshot | None = None,
     profile_id: str | None = None,
     book_fingerprint: str | None = None,
+    run_options: dict[str, object] | None = None,
 ) -> DictionaryInspection:
     """Run independent comparison callbacks on the same original input."""
 
@@ -115,12 +119,26 @@ def inspect_dictionary(
     if snapshot is None:
         snapshot = RuleSnapshot.freeze(())
     snapshot = RuleSnapshot.freeze(with_builtin_rules(snapshot.rules, config=config))
-    result = convert_with_overlay(
-        text,
-        lambda value: convert_for(config, value, official_convert),
-        config=config,
-        snapshot=snapshot,
-        profile_id=profile_id,
+    backend = _ConfigAwareBackend(config, official_convert)
+    options = dict(run_options or {})
+    pivot_chain = tuple(options.get("pivot_chain", ())) if options.get("force_pivot") else ()
+    if pivot_chain and pivot_chain[-1] != config:
+        pivot_chain = ()
+    request = ConvertRequest(
+        config,
+        rules_snapshot=RequestRuleSnapshot(
+            rules_hash=snapshot.rules_hash, rules=snapshot.rules),
+        profile_id=profile_id or "",
+        book_fingerprint=book_fingerprint or "",
+        quotation_mode=str(options.get("quotation_mode", "keep")),
+        punctuation_mode=str(options.get("punctuation_mode", "keep")),
+        pivot_chain=pivot_chain,
+        detailed_classification=False,
+        diagnose_mixed=False,
+    )
+    converted = OfficialBackendConverter(backend).convert(text, request)
+    matched = lock_spans(
+        text, snapshot, config=config, profile_id=profile_id,
         book_fingerprint=book_fingerprint,
     )
     from core.classifier import classify_conversion
@@ -130,10 +148,11 @@ def inspect_dictionary(
         text,
         config,
         comparisons,
-        result.final,
-        tuple(hit.rule_id for hit in result.rule_hits),
+        converted.target,
+        tuple(span.rule.id for span in matched),
         f"OpenCC:{config}/comparative_config_diff",
         classification.changes,
+        converted.changes,
     )
 
 
@@ -146,6 +165,7 @@ def show_dictionary_inspector(
     snapshot: RuleSnapshot | None = None,
     profile_id: str | None = None,
     book_fingerprint: str | None = None,
+    run_options: dict[str, object] | None = None,
     translator: Any = None,
     ui_preferences=None,
     save_ui_preferences=None,
@@ -160,6 +180,7 @@ def show_dictionary_inspector(
         snapshot=snapshot,
         profile_id=profile_id,
         book_fingerprint=book_fingerprint,
+        run_options=run_options,
     )
     qt = load_qt()
     active_translator = translator or Translator("en")
@@ -247,6 +268,20 @@ def _require_text(value: Any) -> str:
     return value
 
 
+class _ConfigAwareBackend:
+    """Adapt the inspector's callbacks to the core converter contract."""
+
+    def __init__(self, config: str, backend: Any) -> None:
+        self.config = config
+        self._backend = backend
+
+    def convert(self, text: str) -> str:
+        return _require_text(convert_for(self.config, text, self._backend))
+
+    def convert_for_config(self, config: str, text: str) -> str:
+        return _require_text(convert_for(config, text, self._backend))
+
+
 def show_rules_window(
     rules: Iterable[Rule],
     *,
@@ -258,6 +293,7 @@ def show_rules_window(
     available_configs: Iterable[str] | None = None,
     comparison_configs: Iterable[str] = (),
     storage_errors: Iterable[str] = (),
+    run_options: dict[str, object] | None = None,
     rulesets: Iterable[RuleSet] | None = None,
     ruleset_id: str | None = None,
     rule_store: RuleStore | None = None,
@@ -281,6 +317,7 @@ def show_rules_window(
         available_configs=available_configs,
         comparison_configs=comparison_configs,
         storage_errors=storage_errors,
+        run_options=run_options,
         rulesets=rulesets,
         ruleset_id=ruleset_id,
         rule_store=rule_store,
@@ -311,6 +348,7 @@ class RuleManagerDialog:
         available_configs: Iterable[str] | None = None,
         comparison_configs: Iterable[str] = (),
         storage_errors: Iterable[str] = (),
+        run_options: dict[str, object] | None = None,
         rulesets: Iterable[RuleSet] | None = None,
         ruleset_id: str | None = None,
         rule_store: RuleStore | None = None,
@@ -340,6 +378,7 @@ class RuleManagerDialog:
         self._available_configs = base_config_options(available_configs)
         self._comparison_configs = tuple(comparison_configs)
         self._storage_errors = tuple(storage_errors)
+        self._run_options = dict(run_options or {})
         self._jieba_pending = bool(jieba_pending)
         self._ui_preferences = dict(ui_preferences or {})
         self._save_ui_preferences_callback = save_ui_preferences
@@ -419,6 +458,8 @@ class RuleManagerDialog:
             self.direction_combo.addItem(label, direction)
         self.source_edit = qt.QLineEdit()
         self.target_edit = qt.QLineEdit()
+        self.enabled_check = qt.QCheckBox(self._labels["enabled"])
+        self.enabled_check.setChecked(True)
         self.scope_combo = qt.QComboBox()
         for scope in ("global", "profile", "book"):
             self.scope_combo.addItem(self._labels[f"scope_{scope}"], scope)
@@ -434,6 +475,7 @@ class RuleManagerDialog:
             ("target", self.target_edit),
             ("scope", self.scope_combo),
             ("priority", self.priority_edit),
+            ("enabled", self.enabled_check),
         )
         for row, (key, widget) in enumerate(controls):
             label = qt.QLabel(self._labels[key])
@@ -648,7 +690,9 @@ class RuleManagerDialog:
             row = self.table.rowCount()
             self.table.insertRow(row)
             values = (
-                self._labels.get(rule.type, rule.type),
+                self._labels.get(rule.type, rule.type)
+                + (" · " + self._labels.get("disabled", "disabled")
+                   if not rule.enabled else ""),
                 (
                     self._labels["direction_any"]
                     if rule.direction == "*"
@@ -708,6 +752,8 @@ class RuleManagerDialog:
             "target": self.source_edit.text() if rule_type == "protect" else self.target_edit.text(),
             "scope": str(self.scope_combo.currentData()),
             "priority": int(self.priority_edit.value()),
+            "enabled": (self.enabled_check.isChecked()
+                        if hasattr(self, "enabled_check") else True),
             "profile_id": self._profile_id or "",
             "book_fingerprint": self._book_fingerprint or "",
         }
@@ -737,6 +783,7 @@ class RuleManagerDialog:
         self.target_edit.setText(rule.target)
         self.scope_combo.setCurrentIndex(self.scope_combo.findData(rule.scope))
         self.priority_edit.setValue(rule.priority)
+        self.enabled_check.setChecked(rule.enabled)
         self._type_changed()
         if rule.type == "protect":
             self.target_edit.clear()
@@ -769,26 +816,26 @@ class RuleManagerDialog:
             self.test_output.setPlainText(self._labels["no_converter"])
             return
         try:
-            result = convert_with_overlay(
-                self.test_input.toPlainText(),
-                lambda value: convert_for(self._config, value, self._official_convert),
-                config=self._config,
-                snapshot=RuleSnapshot.freeze(with_builtin_rules(self.rules, config=self._config)),
-                profile_id=self._profile_id,
-                book_fingerprint=self._book_fingerprint,
+            snapshot = RuleSnapshot.freeze(
+                with_builtin_rules(self.rules, config=self._config))
+            inspection = inspect_dictionary(
+                self.test_input.toPlainText(), config=self._config,
+                official_convert=self._official_convert, snapshot=snapshot,
+                profile_id=self._profile_id, book_fingerprint=self._book_fingerprint,
+                run_options=getattr(self, "_run_options", {}),
             )
+            matched = lock_spans(
+                self.test_input.toPlainText(), snapshot, config=self._config,
+                profile_id=self._profile_id, book_fingerprint=self._book_fingerprint)
             lines = [
-                        f"{self._labels['original_label']}: {result.original}",
-                        f"{self._labels['pre_rules_label']}: {result.after_pre_rules}",
-                        f"{self._labels['opencc_label']}: {result.after_opencc}",
-                        f"{self._labels['post_rules_label']}: {result.after_post_rules}",
-                        f"{self._labels['final_label']}: {result.final}",
-                        f"{self._labels['hits_label']}: {len(result.rule_hits)}",
+                f"{self._labels['original_label']}: {inspection.input}",
+                f"{self._labels['final_label']}: {inspection.final}",
+                f"{self._labels['hits_label']}: {len(matched)}",
             ]
             lines.extend(self._labels["rule_hit"].format(
-                id=hit.rule_id, source=hit.source, target=hit.target,
-                start=hit.start, end=hit.end) for hit in result.rule_hits)
-            if not result.rule_hits:
+                id=span.rule.id, source=span.source, target=span.target,
+                start=span.start, end=span.end) for span in matched)
+            if not matched:
                 lines.append(self._labels["no_hits"])
             self.test_output.setPlainText("\n".join(lines))
         except Exception as exc:
@@ -818,6 +865,7 @@ class RuleManagerDialog:
                 snapshot=RuleSnapshot.freeze(with_builtin_rules(self.rules, config=self._config)),
                 profile_id=self._profile_id,
                 book_fingerprint=self._book_fingerprint,
+                run_options=getattr(self, "_run_options", {}),
                 translator=self._translator,
                 ui_preferences=self._ui_preferences,
                 save_ui_preferences=self._save_ui_preferences,

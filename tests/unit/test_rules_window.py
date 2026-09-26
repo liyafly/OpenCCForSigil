@@ -277,7 +277,7 @@ def test_rules_editor_labels_are_buddied_and_table_has_accessible_name():
     manager = RuleManagerDialog(make_with_table(), (), translator=Translator("en"))
 
     children = manager.editor_form.children
-    assert len(children) == 12
+    assert len(children) == 14
     assert all(children[index].buddy() is children[index + 1] for index in range(0, 12, 2))
     assert manager.table.accessibleName()
 
@@ -470,6 +470,15 @@ def test_dictionary_inspection_applies_profile_rules_and_comparison_configs():
 
     assert inspection.matched_rules == ("profile-rule",)
     assert tuple(name for name, _value in inspection.comparisons) == ("s2t", "s2tw", "s2twp")
+
+
+def test_dictionary_inspection_uses_the_full_run_conversion_options():
+    inspection = inspect_dictionary(
+        '“文字”︐', config="s2t", official_convert=lambda _config, value: value,
+        run_options={"quotation_mode": "corner", "punctuation_mode": "horizontal"},
+    )
+
+    assert inspection.final == "「文字」,"
 
 
 def test_dictionary_inspector_localizes_config_classification_and_rule_labels(monkeypatch):

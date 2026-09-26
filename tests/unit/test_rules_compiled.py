@@ -153,6 +153,20 @@ def test_compiled_overlay_rejects_mismatched_requested_hash():
         CompiledOverlay.build(snapshot, expected_hash="0" * 64, config="s2t")
 
 
+def test_conflicts_in_an_unselected_direction_do_not_block_this_run():
+    from rules.compiled import CompiledOverlay
+    from rules.conflicts import BlockingRuleConflict
+
+    snapshot = RuleSnapshot.freeze((
+        Rule(id="s2t-one", source="同词", target="甲", direction="s2t"),
+        Rule(id="s2t-two", source="同词", target="乙", direction="s2t"),
+    ))
+
+    assert CompiledOverlay.build(snapshot, config="t2s").rules == ()
+    with pytest.raises(BlockingRuleConflict):
+        CompiledOverlay.build(snapshot, config="s2t")
+
+
 def test_protect_rule_wins_over_earlier_overlapping_exact_match():
     from rules.compiled import CompiledOverlay, lock_spans_compiled
 

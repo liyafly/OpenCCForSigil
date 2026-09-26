@@ -304,6 +304,7 @@ class RunSettings:
             jieba_pending=jieba_pending,
             comparison_configs=comparison_configs(config),
             storage_errors=self._storage_error_labels(errors, translator),
+            run_options=profile_options(self.active),
             rulesets=tuple(values.values()), ruleset_id=initial_id,
             rule_store=self.rules,
             ui_preferences=self._ui_preferences,
@@ -399,8 +400,6 @@ class RunSettings:
                     (*self._pending_missing_rulesets, identifier)))
         rules = list(with_builtin_rules(rules, config=profile.conversion))
         from rules.models import RuleSnapshot as Snapshot
-        from rules.conflicts import validate_no_blocking_conflicts
-        validate_no_blocking_conflicts(rules)
         frozen = Snapshot.freeze(rules)
         return RuleSnapshot(rules_hash=frozen.sha256, rules=frozen.rules)
 
