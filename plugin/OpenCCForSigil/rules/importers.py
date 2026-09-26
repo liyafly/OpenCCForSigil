@@ -36,7 +36,8 @@ class ImportResult:
 def rule_dedup_key(rule: Rule) -> tuple:
     """Return the stable semantic key shared by imports and the rule UI."""
 
-    return (rule.direction, rule.scope, rule.type, rule.source, rule.target, rule.priority,
+    return (rule.semantic_version, rule.enabled, rule.type, rule.action, rule.match_type,
+            rule.stage, rule.direction, rule.scope, rule.source, rule.target, rule.priority,
             rule.profile_id if rule.scope == "profile" else "",
             rule.book_fingerprint if rule.scope == "book" else "")
 
