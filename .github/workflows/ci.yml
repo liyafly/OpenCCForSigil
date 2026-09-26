@@ -276,16 +276,23 @@ jobs:
       - name: Install locked Python dependencies
         run: mise exec -- uv sync --locked
 
-      - name: Download all target-tested payload artifacts
+      - name: Download target-tested OpenCC payload artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          path: native_build/artifacts
+          pattern: opencc-payload-*
+          path: native_build/artifacts/opencc-payloads
+
+      - name: Download target-tested regex runtime artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: regex-payload-*
+          path: native_build/artifacts/regex-payloads
 
       - name: Merge target-tested payloads into the Fat Plugin tree
-        run: mise exec -- uv run python tools/merge_verified_payloads.py --artifact-root native_build/artifacts --require-runtimes
+        run: mise exec -- uv run python tools/merge_verified_payloads.py --artifact-root native_build/artifacts/opencc-payloads --require-runtimes
 
       - name: Merge target-tested regex runtimes into the Fat Plugin tree
-        run: mise exec -- uv run python tools/merge_regex_payloads.py --artifact-root native_build/artifacts --require-runtimes
+        run: mise exec -- uv run python tools/merge_regex_payloads.py --artifact-root native_build/artifacts/regex-payloads --require-runtimes
 
       - name: Verify the merged manifests and every payload
         run: mise exec -- uv run python tools/verify_vendor.py --require-runtimes
