@@ -1275,7 +1275,10 @@ class RuleManagerDialog:
             self.dialog,
             plugin_window_title(self._translator, self._labels["export"]),
             self._translator.text("rules.export_default_filename"),
-            self._translator.text("rules.export_filter"),
+            self._translator.text(
+                "rules.export_filter",
+                json=self._translator.text("rules.export_json_recommended"),
+            ),
         )
         if not path:
             return

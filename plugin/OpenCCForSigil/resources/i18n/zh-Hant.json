@@ -488,9 +488,10 @@
   "preview.file_count_many": "{count} 個檔案",
   "rules.import_filter": "規則檔案 (*.json *.tsv *.csv *.txt);;所有檔案 (*)",
   "rules.export_default_filename": "rules.json",
-  "rules.export_filter": "JSON 檔案 (*.json);;TSV 檔案 (*.tsv);;CSV 檔案 (*.csv);;OpenCC 文字 (*.txt)",
-  "rules.export_lossy_warning": "這種格式不會保留規則的啟用狀態、類型和優先級。需要完整備份請選 JSON。是否繼續匯出？",
-  "rules.export_txt_skipped": "TXT 匯出會略過目標含空白字元的 {count} 條規則。",
+  "rules.export_filter": "{json} (*.json);;TSV 檔案 (*.tsv);;CSV 檔案 (*.csv);;OpenCC 文字 (*.txt)",
+  "rules.export_lossy_warning": "此格式無法保留規則的所有行為，包括比對方式、階段、範圍、所屬對象、啟用狀態或優先級。TXT 也會遺失方向。需要完整備份請選 JSON。是否繼續匯出？",
+  "rules.export_txt_skipped": "OpenCC TXT 無法表示 {count} 條規則，這些規則會被略過；無法表示的規則包括已停用、保護、取代、正規表示式、空目標或多行內容。",
+  "rules.export_json_recommended": "JSON（推薦，完整備份規則）",
   "settings.export_filter": "Markdown 文件 (*.md);;JSON 檔案 (*.json)",
   "settings.preview_not_committed": "預覽（未提交）"
 }

@@ -488,9 +488,10 @@
   "preview.file_count_many": "{count} files",
   "rules.import_filter": "Rules (*.json *.tsv *.csv *.txt);;All files (*)",
   "rules.export_default_filename": "rules.json",
-  "rules.export_filter": "JSON (*.json);;TSV (*.tsv);;CSV (*.csv);;OpenCC TXT (*.txt)",
-  "rules.export_lossy_warning": "This format does not preserve enabled state, rule type, or priority. Choose JSON for a complete backup. Continue?",
-  "rules.export_txt_skipped": "TXT export will skip {count} rule(s) whose target contains whitespace.",
+  "rules.export_filter": "{json} (*.json);;TSV (*.tsv);;CSV (*.csv);;OpenCC TXT (*.txt)",
+  "rules.export_lossy_warning": "This format cannot preserve all rule behavior, including matching mode, stage, scope, ownership, enabled state, or priority. TXT also omits direction. Choose JSON for a complete rule backup. Continue?",
+  "rules.export_txt_skipped": "OpenCC TXT cannot represent {count} rule(s). They will be skipped; unsupported rules include disabled, protected, replacement, regular-expression, empty-target, or multiline entries.",
+  "rules.export_json_recommended": "JSON (complete rule backup recommended)",
   "settings.export_filter": "Markdown (*.md);;JSON (*.json)",
   "settings.preview_not_committed": "preview (not committed)"
 }

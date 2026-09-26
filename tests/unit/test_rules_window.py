@@ -498,8 +498,30 @@ def test_export_confirms_before_writing_a_lossy_format(monkeypatch, tmp_path):
     manager._export()
 
     assert len(prompts) == 1
-    assert "enabled state, rule type, or priority" in prompts[0]
+    assert "matching mode, stage, scope, ownership, enabled state, or priority" in prompts[0]
     assert destination.read_text(encoding="utf-8").startswith("direction\tsource\ttarget\tcomment")
+
+
+def test_export_cancellation_does_not_replace_existing_file(monkeypatch, tmp_path):
+    rule = Rule(
+        id="replace", semantic_version=2, action="replace", stage="pre",
+        direction="s2t", source="old", target="new",
+    )
+    destination = tmp_path / "rules.tsv"
+    destination.write_text("keep this file", encoding="utf-8")
+    manager = object.__new__(RuleManagerDialog)
+    manager._qt = SimpleNamespace(QFileDialog=SimpleNamespace(
+        getSaveFileName=lambda *_args: (str(destination), "TSV"),
+    ))
+    manager._labels = {"export": "Export", "title": "Rules"}
+    manager._translator = Translator("en")
+    manager.dialog = object()
+    manager.rules = [rule]
+    monkeypatch.setattr(rules_window, "ask_confirmation", lambda *_args: False)
+
+    manager._export()
+
+    assert destination.read_text(encoding="utf-8") == "keep this file"
 
 
 def test_dictionary_inspection_applies_profile_rules_and_comparison_configs():

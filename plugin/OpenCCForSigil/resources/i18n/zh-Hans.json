@@ -488,9 +488,10 @@
   "preview.file_count_many": "{count} 个文件",
   "rules.import_filter": "规则文件 (*.json *.tsv *.csv *.txt);;所有文件 (*)",
   "rules.export_default_filename": "rules.json",
-  "rules.export_filter": "JSON 文件 (*.json);;TSV 文件 (*.tsv);;CSV 文件 (*.csv);;OpenCC 文本 (*.txt)",
-  "rules.export_lossy_warning": "这种格式不保存规则的启用状态、类型和优先级。需要完整备份请选 JSON。是否继续导出？",
-  "rules.export_txt_skipped": "TXT 导出将跳过目标含空白字符的 {count} 条规则。",
+  "rules.export_filter": "{json} (*.json);;TSV 文件 (*.tsv);;CSV 文件 (*.csv);;OpenCC 文本 (*.txt)",
+  "rules.export_lossy_warning": "这种格式无法保留规则的全部行为，包括匹配方式、阶段、范围、归属、启用状态或优先级。TXT 还会丢失方向。需要完整备份请选 JSON。是否继续导出？",
+  "rules.export_txt_skipped": "OpenCC TXT 无法表示 {count} 条规则，将跳过这些规则；不能表示的规则包括已禁用、保护、替换、正则、空目标或多行内容。",
+  "rules.export_json_recommended": "JSON（推荐，完整备份规则）",
   "settings.export_filter": "Markdown 文档 (*.md);;JSON 文件 (*.json)",
   "settings.preview_not_committed": "预览（未提交）"
 }

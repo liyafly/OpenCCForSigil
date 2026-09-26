@@ -48,8 +48,7 @@ def export_rules(
     elif fmt in {"txt", "opencc", "opencc-txt"}:
         text = "".join(
             f"{rule.source}\t{rule.target if rule.type == 'exact' else rule.source}\n"
-            for rule in selected
-            if not any(character.isspace() for character in rule.target)
+            for rule in _opencc_txt_rules(selected)
         )
     else:
         raise ValueError(f"unsupported rule export format: {format}")
@@ -82,17 +81,53 @@ def _export_warnings(rules: Iterable[Rule], fmt: str) -> tuple[bool, int]:
     if fmt == "json":
         return False, 0
     if fmt in {"tsv", "tab", "csv", "txt", "opencc", "opencc-txt"}:
-        lossy = any(
-            not rule.enabled or rule.type == "protect" or rule.priority != 100
-            for rule in rules
-        )
-        skipped_txt = (
-            sum(any(character.isspace() for character in rule.target) for rule in rules)
-            if fmt in {"txt", "opencc", "opencc-txt"}
-            else 0
-        )
+        selected = tuple(rules)
+        is_txt = fmt in {"txt", "opencc", "opencc-txt"}
+        representable = _opencc_txt_rules(selected) if is_txt else selected
+        skipped_txt = len(selected) - len(representable) if is_txt else 0
+        if is_txt:
+            # TXT has no columns for direction or scope. The importer requires
+            # the user to choose a direction, so even a plain global dictionary
+            # cannot be round-tripped without an explicit semantic loss.
+            lossy = bool(representable) or skipped_txt > 0
+        else:
+            lossy = any(_delimited_loses_semantics(rule) for rule in selected)
         return lossy, skipped_txt
     raise ValueError(f"unsupported rule export format: {fmt}")
+
+
+def _delimited_loses_semantics(rule: Rule) -> bool:
+    """Whether legacy direction/source/target/comment rows change rule behavior."""
+
+    return (
+        not rule.enabled
+        or rule.semantic_version != 1
+        or rule.type != "exact"
+        or rule.action != "override"
+        or rule.match_type != "literal"
+        or rule.stage != "source"
+        or rule.scope != "global"
+        or rule.priority != 100
+        or bool(rule.source_note)
+    )
+
+
+def _opencc_txt_rules(rules: Iterable[Rule]) -> tuple[Rule, ...]:
+    """Keep only enabled V1 literal final-wording rows safely represented by TXT."""
+
+    return tuple(
+        rule for rule in rules
+        if rule.enabled
+        and rule.semantic_version == 1
+        and rule.type == "exact"
+        and rule.action == "override"
+        and rule.match_type == "literal"
+        and rule.stage == "source"
+        and bool(rule.target)
+        and not rule.source.lstrip().startswith("#")
+        and not any(character in "\t\r\n" for character in rule.source)
+        and not any(character.isspace() for character in rule.target)
+    )
 
 
 def _delimited(rules: Iterable[Rule], delimiter: str) -> str:

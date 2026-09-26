@@ -290,8 +290,28 @@ def test_opencc_txt_export_skips_targets_with_whitespace():
         Rule(direction="s2t", source="软件", target="軟體"),
     )
 
-    assert export_warnings(rules, format="txt") == (False, 1)
+    assert export_warnings(rules, format="txt") == (True, 1)
     assert export_rules(rules, format="txt") == "软件\t軟體\n"
+
+
+def test_opencc_txt_skips_every_unrepresentable_rule():
+    rules = (
+        Rule(id="plain", direction="*", source="term", target="word"),
+        Rule(id="regex", semantic_version=2, action="replace", stage="pre",
+             match_type="regex", source="term.+", target="word"),
+        Rule(id="protect", direction="s2t", type="protect", source="protected",
+             target="protected"),
+        Rule(id="disabled", direction="s2t", source="disabled", target="word",
+             enabled=False),
+        Rule(id="empty", semantic_version=2, action="replace", stage="post",
+             direction="s2t", source="empty", target=""),
+        Rule(id="whitespace", direction="s2t", source="space", target="two words"),
+        Rule(id="tab", direction="s2t", source="tab\tterm", target="word"),
+        Rule(id="comment", direction="s2t", source="#comment", target="word"),
+    )
+
+    assert export_warnings(rules, format="txt") == (True, 7)
+    assert export_rules(rules, format="txt") == "term\tword\n"
 
 
 def test_delimited_export_reports_lossy_rule_semantics():
@@ -302,3 +322,24 @@ def test_delimited_export_reports_lossy_rule_semantics():
     )
 
     assert export_warnings(rules, format="tsv") == (True, 0)
+
+
+def test_delimited_export_reports_all_semantic_fields_it_cannot_preserve():
+    v2_regex = Rule(
+        id="regex", semantic_version=2, action="replace", match_type="regex",
+        stage="post", direction="s2t", source=r"term.+", target="word",
+        scope="book", book_fingerprint="book-hash",
+    )
+
+    for format in ("csv", "tsv"):
+        assert export_warnings((v2_regex,), format=format) == (True, 0)
+
+
+def test_json_export_is_lossless_for_versioned_rules():
+    rule = Rule(
+        id="regex", semantic_version=2, action="replace", match_type="regex",
+        stage="post", direction="s2t", source=r"term.+", target="word",
+        scope="book", book_fingerprint="book-hash",
+    )
+
+    assert export_warnings((rule,), format="json") == (False, 0)
