@@ -17,6 +17,7 @@ try:
     )
     from native_compatibility import NativeCompatibilityError, validate_binary_path
     from runtime_subset import RuntimeSubsetError, validate_derivation
+    from verify_regex_vendor import validate_manifest as validate_regex_manifest
 except ModuleNotFoundError:  # Imported as tools.verify_vendor by the test suite.
     from tools.runtime_matrix import (
         SUPPORTED_RUNTIME_IDENTITIES,
@@ -25,6 +26,7 @@ except ModuleNotFoundError:  # Imported as tools.verify_vendor by the test suite
     )
     from tools.native_compatibility import NativeCompatibilityError, validate_binary_path
     from tools.runtime_subset import RuntimeSubsetError, validate_derivation
+    from tools.verify_regex_vendor import validate_manifest as validate_regex_manifest
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -423,6 +425,7 @@ def validate_manifest(
                     + ",".join(format_runtime_identity(item) for item in sorted(unexpected, key=str))
                 )
             raise SystemExit("manifest runtime matrix mismatch: " + "; ".join(details))
+    validate_regex_manifest(require_runtimes=require_runtimes)
     print(f"official OpenCC payload manifest valid ({payload['status']}); payloads={len(locations)}")
     print("verified runtimes: " + ", ".join(sorted(locations)))
     return 0

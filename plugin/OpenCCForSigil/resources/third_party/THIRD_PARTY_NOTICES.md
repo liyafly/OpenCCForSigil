@@ -34,6 +34,7 @@ the final ZIP validator.
 | tclap 1.2.5 | `BYVoid/OpenCC@025f371dc76b598d77384fbdab90c937471844d8`, `deps/tclap-1.2.5`; header code compiled into shipped CLI tools | [TCLAP_COPYING](TCLAP_COPYING) (MIT) |
 | pybind11 2.13.1 | `BYVoid/OpenCC@025f371dc76b598d77384fbdab90c937471844d8`, `deps/pybind11-2.13.1`; compiled into the shipped `opencc_clib` Python extension (headers are not shipped) | [PYBIND11_LICENSE](PYBIND11_LICENSE) (BSD-3-Clause) |
 | cppjieba | `BYVoid/OpenCC@025f371dc76b598d77384fbdab90c937471844d8`, `plugins/jieba/deps/cppjieba`; compiled into the optional shipped native Jieba plugin | [CPPJIEBA_LICENSE](CPPJIEBA_LICENSE) (MIT) |
+| regex 2026.9.10 | Official PyPI CPython wheels, selected per supported runtime; only verified package modules are shipped | [REGEX_LICENSE.txt](REGEX_LICENSE.txt) (Apache-2.0 AND CNRI-Python) |
 
 The marisa notice preserves its upstream dual-license wording; distribution
 does not require applying both licenses. The RapidJSON notice preserves its
@@ -52,3 +53,9 @@ built at release time against the same-release official OpenCC static core and
 is vendored with its plugin configs and dictionary resources. The native
 library SHA-256, resource hashes, compiler profile, and upstream provenance
 are recorded in the payload manifest.
+
+The optional guarded-regex capability uses the official `regex` 2026.9.10
+CPython wheels from PyPI. The six supported runtime wheels are locked by URL
+and SHA-256 in the repository's `native_build/regex-wheel-lock.json`; the
+shipped `vendor/regex/manifest.json` records the selected wheel and payload
+hashes. The upstream license text is included as [REGEX_LICENSE.txt](REGEX_LICENSE.txt).

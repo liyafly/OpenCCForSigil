@@ -21,6 +21,7 @@ try:
     )
     from native_compatibility import NativeCompatibilityError, validate_binary_bytes
     from runtime_subset import RuntimeSubsetError, validate_derivation
+    from verify_regex_vendor import validate_archive as validate_regex_archive
 except ModuleNotFoundError:  # Imported as tools.validate_artifact by tests.
     from tools.package_contract import package_asset_name, package_oslist, package_runtime_ids
     from tools.runtime_matrix import (
@@ -30,6 +31,7 @@ except ModuleNotFoundError:  # Imported as tools.validate_artifact by tests.
     )
     from tools.native_compatibility import NativeCompatibilityError, validate_binary_bytes
     from tools.runtime_subset import RuntimeSubsetError, validate_derivation
+    from tools.verify_regex_vendor import validate_archive as validate_regex_archive
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -288,14 +290,19 @@ _I18N_REQUIRED_KEYS = _I18N_REQUIRED_KEYS | frozenset(
         'rules.editor_group',
         'rules.exact',
         'rules.export',
+        'rules.literal',
         'rules.field.book_fingerprint',
+        'rules.field.action',
         'rules.field.comment',
         'rules.field.direction',
         'rules.field.enabled',
         'rules.field.id',
         'rules.field.priority',
+        'rules.field.match_type',
         'rules.field.profile_id',
+        'rules.field.semantic_version',
         'rules.field.scope',
+        'rules.field.stage',
         'rules.field.source',
         'rules.field.source_note',
         'rules.field.target',
@@ -325,6 +332,9 @@ _I18N_REQUIRED_KEYS = _I18N_REQUIRED_KEYS | frozenset(
         'rules.pre_rules_label',
         'rules.priority',
         'rules.protect',
+        'rules.regex',
+        'rules.replace_post',
+        'rules.replace_pre',
         'rules.remove',
         'rules.rename_ruleset',
         'rules.rule_hit',
@@ -342,6 +352,19 @@ _I18N_REQUIRED_KEYS = _I18N_REQUIRED_KEYS | frozenset(
         'rules.title',
         'rules.transfer_group',
         'rules.type',
+        'rules.match_type',
+        'rules.templates',
+        'rules.template_after',
+        'rules.template_before',
+        'rules.template_context',
+        'rules.template_left',
+        'rules.template_markers',
+        'rules.template_replacement',
+        'rules.template_right',
+        'rules.template_signature',
+        'rules.template_spaces',
+        'rules.template_spaces_count',
+        'rules.template_term',
         'rules.update',
         'rules.validation.field',
         'rules.validation.generic',
@@ -421,7 +444,9 @@ _REQUIRED_MEMBERS = {
     "OpenCCForSigil/resources/third_party/TCLAP_COPYING",
     "OpenCCForSigil/resources/third_party/PYBIND11_LICENSE",
     "OpenCCForSigil/resources/third_party/CPPJIEBA_LICENSE",
+    "OpenCCForSigil/resources/third_party/REGEX_LICENSE.txt",
     "OpenCCForSigil/vendor/opencc/manifest.json",
+    "OpenCCForSigil/vendor/regex/manifest.json",
     "OpenCCForSigil/resources/third_party/THIRD_PARTY_NOTICES.md",
 }
 
@@ -674,6 +699,10 @@ def validate(
         payloads = manifest.get("payloads", [])
         if not payloads:
             raise SystemExit("plugin artifact contains no official OpenCC payload")
+        validate_regex_archive(
+            archive,
+            expected_runtime_identities={runtime_identity(payload) for payload in payloads},
+        )
         identities = {runtime_identity(payload) for payload in payloads}
         if len(identities) != len(payloads):
             raise SystemExit("plugin artifact contains duplicate payload runtime identities")

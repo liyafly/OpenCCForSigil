@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "package": "regex",
+  "version": "2026.9.10",
+  "source": "https://pypi.org/project/regex/2026.9.10/",
+  "wheel_lock_sha256": "3d9ea43a7214140f199b37418848f31deb41686112fcc1076e27ea3945093a77",
+  "payloads": [
+    {
+      "schema_version": 1,
+      "package": "regex",
+      "version": "2026.9.10",
+      "python_implementation": "CPython",
+      "python_version": "3.14",
+      "python_abi": "cp314",
+      "os": "macos",
+      "architecture": "arm64",
+      "payload_path": "payloads/macos-arm64-cp314",
+      "wheel_filename": "regex-2026.9.10-cp314-cp314-macosx_11_0_arm64.whl",
+      "wheel_url": "https://files.pythonhosted.org/packages/2b/e4/5d1f005a3825ec49842ad349061c1c26e6d42f47ccf105e6e5aa6aeed392/regex-2026.9.10-cp314-cp314-macosx_11_0_arm64.whl",
+      "wheel_sha256": "14caa05ce39ec70437af5aac8814c50ee6628f4a90353871c059692f448a164f",
+      "payload_sha256": "042a2c6b54d8ff2252dc9037656c03ed7ea2ad4bc9f2346ef17d7de941a2fb6a",
+      "files": {
+        "regex/__init__.py": "039934ae6f0b9fb1cab1f1bef2c11661e85e93ccc22847bab105b94065009925",
+        "regex/_main.py": "2ff4b88d0b81b9d56a6360ba2eb5f577aef49865780795d59b69d825791eefa9",
+        "regex/_regex.cpython-314-darwin.so": "8845d90daf4dbc417edf43c5dcc1d0d29bf14ac8b5f85c1921ee6e41918b2d87",
+        "regex/_regex_core.py": "604eb46253402336c66362f32c4a20af095d3bd0b5505501b44e6077e92951a2"
+      }
+    }
+  ]
+}

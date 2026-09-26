@@ -46,10 +46,12 @@ def _is_within(path: Path, root: Path) -> bool:
 
 
 def _verify_import_origins(plugin_root: Path, payload_root: Path) -> None:
+    regex_root = plugin_root / "vendor" / "regex"
     for prefix, expected_root in (
         ("app", plugin_root),
         ("opencc_backend", plugin_root),
         ("opencc", payload_root),
+        ("regex", regex_root),
     ):
         for name, module in tuple(sys.modules.items()):
             if name != prefix and not name.startswith(prefix + "."):
@@ -99,6 +101,27 @@ def run_smoke(
         opencc_origin = Path(opencc.__file__).resolve()
         if not _is_within(opencc_origin, payload_root):
             raise SystemExit(f"OpenCC Binding imported outside selected payload: {opencc_origin}")
+
+        from rules.regex_runtime import REGEX_VERSION, load_regex_module
+
+        regex = load_regex_module()
+        regex_origin = Path(regex.__file__).resolve()
+        expected_regex_root = (
+            plugin_root / "vendor" / "regex" / "payloads" / expected_runtime
+        ).resolve()
+        if not _is_within(regex_origin, expected_regex_root):
+            raise SystemExit(f"regex imported outside selected payload: {regex_origin}")
+        if regex.__version__ != REGEX_VERSION:
+            raise SystemExit(f"package loaded unexpected regex version: {regex.__version__}")
+        if regex.search(r"(?V1)(?P<han>[漢字]+)", "前漢字后").group("han") != "漢字":
+            raise SystemExit("bundled regex failed the Unicode capture smoke check")
+        try:
+            timeout_result = regex.compile(r"(?V1)(a+)+$").search(
+                "a" * 500 + "!", timeout=0.02)
+        except TimeoutError:
+            timeout_result = None
+        if timeout_result is not None:
+            raise SystemExit("bundled regex timeout smoke pattern unexpectedly matched")
         _verify_import_origins(plugin_root, payload_root)
 
         self_test = backend.self_test(include_optional=True)
@@ -127,6 +150,7 @@ def run_smoke(
             )
         return {
             "runtime": selected_runtime,
+            "regex_version": REGEX_VERSION,
             "self_test": self_test.checks,
             "conversion_cases": len(cases),
         }

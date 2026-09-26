@@ -22,9 +22,10 @@ make check
 
 The test tree separates unit and integration behavior: native payload and OS
 metadata, bounded diff reconstruction, thread ownership/cancellation, XML/NCX
-metadata whitelists, grouped language decisions, rules/profile persistence,
-locked outputs, pivot/quotation/punctuation transforms, history privacy, source
-and settings drift, return-to-settings replanning, and commit verification.
+metadata whitelists, grouped language decisions, literal and regex rules,
+pre/post replacement mapping, rule/profile persistence, locked outputs,
+pivot/quotation/punctuation transforms, history privacy, source and settings
+drift, return-to-settings replanning, and commit verification.
 Preview scale coverage includes 300,000-row model counts and bounded dialog
 build, filtering, and bulk acceptance.
 The source-only official CLI corpus includes all 16 configs plus ambiguity,
@@ -45,7 +46,10 @@ For a release candidate, require the complete Fat Plugin matrix and validate
 the archive after it is assembled:
 
 ```sh
+mise exec -- uv run python tools/merge_regex_payloads.py \
+  --artifact-root native_build/artifacts --require-runtimes
 mise exec -- uv run python tools/verify_vendor.py --require-runtimes
+mise exec -- uv run python tools/verify_regex_vendor.py --require-runtimes
 mise exec -- uv run python tools/build_plugin.py --require-runtimes \
   --output dist/OpenCCForSigil_release.zip
 mise exec -- uv run python tools/validate_artifact.py --require-runtimes \
@@ -57,6 +61,12 @@ The package builder fixes ZIP member order, timestamps, and executable modes.
 are byte-for-byte identical. The final archive validator recomputes each
 payload tree hash from ZIP contents, so a successful pre-package manifest check
 cannot hide a packaging omission or mutation.
+
+Regex archive validation matches its runtime identities to the OpenCC package,
+checks file and tree hashes against the locked PyPI wheel records, verifies
+native extension architecture, and rejects unmanifested payload files. Package
+smoke imports the target-specific module and exercises Unicode captures and
+the timeout argument.
 
 The Python Binding and matching official CLI must be 100% equal. The GitHub
 matrix runs this on each native Windows/macOS/Linux payload before assembly.

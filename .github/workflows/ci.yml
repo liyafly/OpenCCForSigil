@@ -40,6 +40,20 @@ jobs:
       - name: Install locked Python dependencies
         run: mise exec -- uv sync --locked
 
+      - name: Export the target-tested regex runtime
+        run: mise exec -- uv run python tools/regex_payload.py --output native_build/artifacts/regex-payload
+
+      - name: Add the target-tested regex runtime to the job's package tree
+        run: mise exec -- uv run python tools/merge_regex_payloads.py --artifact-root native_build/artifacts
+
+      - name: Upload target-tested regex runtime
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: regex-payload-${{ matrix.id }}
+          path: native_build/artifacts/regex-payload
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Check pinned OpenCC provenance before cache restore
         id: upstream
         run: mise exec -- uv run python tools/check_upstream_provenance.py
@@ -162,6 +176,20 @@ jobs:
         with:
           python-version: "3.12.10"
 
+      - name: Export the target-tested CPython 3.12 regex runtime
+        run: python tools/regex_payload.py --output native_build/artifacts/regex-payload
+
+      - name: Add the target-tested CPython 3.12 regex runtime to the job's package tree
+        run: python tools/merge_regex_payloads.py --artifact-root native_build/artifacts
+
+      - name: Upload target-tested CPython 3.12 regex runtime
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: regex-payload-linux-x86_64-cp312
+          path: native_build/artifacts/regex-payload
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Check pinned OpenCC provenance
         id: upstream
         run: python tools/check_upstream_provenance.py
@@ -256,7 +284,10 @@ jobs:
       - name: Merge target-tested payloads into the Fat Plugin tree
         run: mise exec -- uv run python tools/merge_verified_payloads.py --artifact-root native_build/artifacts --require-runtimes
 
-      - name: Verify the merged manifest and every payload
+      - name: Merge target-tested regex runtimes into the Fat Plugin tree
+        run: mise exec -- uv run python tools/merge_regex_payloads.py --artifact-root native_build/artifacts --require-runtimes
+
+      - name: Verify the merged manifests and every payload
         run: mise exec -- uv run python tools/verify_vendor.py --require-runtimes
 
       - name: Lint the assembled source once

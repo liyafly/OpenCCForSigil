@@ -15,12 +15,20 @@ import xml.etree.ElementTree as ET
 try:
     from package_contract import package_asset_name, package_oslist, package_runtime_ids, payload_id
     from verify_vendor import validate_manifest
+    from verify_regex_vendor import (
+        prepare_package as prepare_regex_package,
+        validate_manifest as validate_regex_manifest,
+    )
     from validate_artifact import validate as validate_artifact
     from runtime_subset import RuntimeSubsetError, derive_record, sha256_tree, validate_derivation
     from runtime_matrix import FAT_RUNTIME_IDENTITIES, runtime_identity
 except ModuleNotFoundError:  # Imported as tools.build_plugin by tests.
     from tools.package_contract import package_asset_name, package_oslist, package_runtime_ids, payload_id
     from tools.verify_vendor import validate_manifest
+    from tools.verify_regex_vendor import (
+        prepare_package as prepare_regex_package,
+        validate_manifest as validate_regex_manifest,
+    )
     from tools.validate_artifact import validate as validate_artifact
     from tools.runtime_subset import RuntimeSubsetError, derive_record, sha256_tree, validate_derivation
     from tools.runtime_matrix import FAT_RUNTIME_IDENTITIES, runtime_identity
@@ -49,6 +57,7 @@ def validate(*, require_runtimes: bool = False) -> str:
     if not MANIFEST_FILE.is_file():
         raise SystemExit("missing vendor/opencc/manifest.json")
     validate_manifest(require_runtimes=require_runtimes)
+    validate_regex_manifest(require_runtimes=require_runtimes)
 
     root = ET.parse(PLUGIN_XML).getroot()
     if root.tag != "plugin":
@@ -203,6 +212,10 @@ def _prepare_package(
         "asset_name": asset_name,
     }
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    prepare_regex_package(
+        package_root,
+        runtime_identities={runtime_identity(record) for record in selected},
+    )
 
     plugin_xml = package_root / "plugin.xml"
     source = plugin_xml.read_text(encoding="utf-8")
