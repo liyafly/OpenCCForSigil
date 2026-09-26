@@ -1233,8 +1233,10 @@ class RuleManagerDialog:
             message += "\n" + self._translator.text(
                 "rules.import_ids_reassigned", count=review.id_reassigned_count
             )
-        detail_lines = [self._labels["import_line"].format(
-            line=item.line, message=item.message) for item in diagnostics]
+        detail_lines = [self._labels[
+            "import_record" if getattr(item, "location", "line") == "record"
+            else "import_line"].format(line=item.line, message=item.message)
+                        for item in diagnostics]
         detail_lines.extend(
             _conflict_summary(conflict, self._translator) for conflict in review.conflicts)
         detail = "\n".join(detail_lines)

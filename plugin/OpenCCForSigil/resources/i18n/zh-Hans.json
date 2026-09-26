@@ -379,6 +379,7 @@
   "rules.import_summary": "新增：{new}\n重复：{duplicates}\n丢弃候选：{discarded}\n错误行：{errors}",
   "rules.import_ids_reassigned": "为避免冲突而重新分配的规则 ID：{count}",
   "rules.import_line": "第 {line} 行：{message}",
+  "rules.import_record": "第 {line} 条记录：{message}",
   "rules.rule_hit": "{id}：{source} → {target}，位置 {start}–{end}",
   "rules.no_hits": "未命中用户规则。",
   "rules.duplicate_ruleset": "已有此 ID 的规则集。",

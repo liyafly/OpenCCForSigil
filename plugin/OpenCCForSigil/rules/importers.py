@@ -11,7 +11,7 @@ from typing import Any, Iterable, TextIO
 
 from .conflicts import RuleConflict, find_conflicts
 from .models import Rule, new_rule_id
-from .validators import RuleValidationError, validate_rules
+from .validators import RuleValidationError, validate_rule, validate_rules
 
 
 @dataclass(frozen=True)
@@ -19,6 +19,7 @@ class ImportDiagnostic:
     line: int
     message: str
     severity: str = "warning"
+    location: str = "line"
 
 
 @dataclass(frozen=True)
@@ -106,17 +107,20 @@ def import_rules(
             scope=scope,
             profile_id=profile_id,
             book_fingerprint=book_fingerprint,
+            diagnostics=diagnostics,
+            strict=strict,
         )
     else:
         raise ValueError(f"unsupported rule import format: {fmt}")
     valid: list[Rule] = []
-    for index, value in enumerate(values):
+    for index, value in enumerate(values, 1):
         try:
             valid.extend(validate_rules((value,)))
         except RuleValidationError as exc:
             if strict:
                 raise
-            diagnostics.append(ImportDiagnostic(index + 1, str(exc), "error"))
+            diagnostics.append(ImportDiagnostic(
+                index, str(exc), "error", "record" if fmt == "json" else "line"))
     unique: list[Rule] = []
     duplicates: list[Rule] = []
     seen: set[tuple] = set()
@@ -253,7 +257,8 @@ def _opencc_rows(
 
 
 def _json_rules(
-    text: str, *, direction: str | None, scope: str, profile_id: str, book_fingerprint: str
+    text: str, *, direction: str | None, scope: str, profile_id: str,
+    book_fingerprint: str, diagnostics: list[ImportDiagnostic], strict: bool,
 ) -> list[Rule]:
     payload = json.loads(text)
     if isinstance(payload, dict):
@@ -266,16 +271,26 @@ def _json_rules(
         raise ValueError("JSON rule import must be an object or array")
     if not isinstance(values, list):
         raise ValueError("JSON rules must be an array")
-    return [
-        Rule.from_dict(
-            value,
-            default_direction=direction,
-            default_scope=scope,
-            profile_id=profile_id,
-            book_fingerprint=book_fingerprint,
-        )
-        for value in values
-    ]
+    result = []
+    for index, value in enumerate(values, 1):
+        try:
+            if not isinstance(value, dict):
+                raise RuleValidationError("rule record must be an object", index=index)
+            rule = Rule.from_dict(
+                value,
+                default_direction=direction,
+                default_scope=scope,
+                profile_id=profile_id,
+                book_fingerprint=book_fingerprint,
+            )
+            result.append(validate_rule(rule, index=index))
+        except (TypeError, ValueError) as exc:
+            error = (exc if isinstance(exc, RuleValidationError) else
+                     RuleValidationError(str(exc), index=index))
+            if strict:
+                raise error from exc
+            diagnostics.append(ImportDiagnostic(index, str(error), "error", "record"))
+    return result
 
 
 def _is_header(row: list[str]) -> bool:

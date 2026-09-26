@@ -379,6 +379,7 @@
   "rules.import_summary": "New: {new}\nDuplicates: {duplicates}\nDiscarded candidates: {discarded}\nError rows: {errors}",
   "rules.import_ids_reassigned": "Rule IDs reassigned to avoid collisions: {count}",
   "rules.import_line": "Line {line}: {message}",
+  "rules.import_record": "Record {line}: {message}",
   "rules.rule_hit": "{id}: {source} → {target} at {start}–{end}",
   "rules.no_hits": "No user rules matched.",
   "rules.duplicate_ruleset": "A rule set with this ID already exists.",
