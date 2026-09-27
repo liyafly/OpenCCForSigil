@@ -10,6 +10,7 @@ from app.profiles import ProfileStore, ProfileValidationError
 from logging_ext.history import HistoryError, HistoryStore
 from logging_ext.retention import RetentionResult, cleanup, retention_policy
 from ui.i18n import Translator, configuration_label, plugin_window_title
+from ui.history_filters import filter_history_records
 from ui.qt import ask_confirmation, ensure_application, exec_dialog, load_qt
 from ui.window_state import restore_window_size
 
@@ -29,14 +30,15 @@ def _local_datetime(value: str) -> str:
 def history_rows(
     records: Sequence[Mapping[str, Any]], *, translator: Any = None,
     profile_store: ProfileStore | None = None,
+    profile_name_cache: Mapping[str, str] | None = None,
 ) -> list[tuple[str, str, str, str, str, str, str]]:
     """Return localized table rows with metadata only."""
 
     tr = translator or Translator()
-    ordered = sorted(records, key=lambda item: str(item.get("recorded_at", "")), reverse=True)
+    ordered = _ordered_history_records(records)
     rows = []
     empty = tr.text("history.empty_value")
-    profile_names: dict[str, str] = {}
+    resolved_profiles: dict[str, str] = {}
     for record in ordered:
         summary = record.get("summary", {})
         if not isinstance(summary, Mapping):
@@ -46,13 +48,16 @@ def history_rows(
         if status_text == f"history.status.{status}":
             status_text = status or empty
         profile_id = str(summary.get("profile_id", summary.get("profile", "")) or "")
-        if profile_id and profile_id not in profile_names:
-            profile_names[profile_id] = _profile_name(profile_id, profile_store)
+        if profile_id and profile_id not in resolved_profiles:
+            resolved_profiles[profile_id] = (
+                profile_name_cache.get(profile_id)
+                if profile_name_cache is not None and profile_id in profile_name_cache
+                else _profile_name(profile_id, profile_store))
         config = str(summary.get("config", "") or "")
         rows.append((
             _local_datetime(str(record.get("recorded_at", ""))),
             str(summary.get("book_label") or empty),
-            profile_names.get(profile_id, empty),
+            resolved_profiles.get(profile_id, empty),
             configuration_label(tr, config) if config else empty,
             str(summary.get("files_changed", summary.get("files_scanned", 0))),
             str(summary.get("changes", 0)),
@@ -135,6 +140,39 @@ def show_history(
         translator, translator.text("history.title")))
     restore_window_size(dialog, ui_preferences, "history_dialog_size", (960, 500))
     layout = qt_widgets.QVBoxLayout(dialog)
+
+    filters = qt_widgets.QHBoxLayout()
+    search_edit = qt_widgets.QLineEdit(dialog)
+    search_edit.setPlaceholderText(translator.text("history.search_placeholder"))
+    filters.addWidget(search_edit, 2)
+    status_filter = qt_widgets.QComboBox(dialog)
+    status_filter.addItem(translator.text("history.filter_all_statuses"), "")
+    statuses = sorted({str(record.get("summary", {}).get("status", "") or "")
+                       for record in records
+                       if isinstance(record.get("summary", {}), Mapping)
+                       and record.get("summary", {}).get("status")})
+    for value in statuses:
+        label = translator.text(f"history.status.{value}")
+        if label == f"history.status.{value}":
+            label = value or translator.text("history.unknown_status")
+        status_filter.addItem(label, value)
+    filters.addWidget(status_filter)
+    direction_filter = qt_widgets.QComboBox(dialog)
+    direction_filter.addItem(translator.text("history.filter_all_directions"), "")
+    configs = sorted({str(record.get("summary", {}).get("config", "") or "")
+                      for record in records
+                      if isinstance(record.get("summary", {}), Mapping)
+                      and record.get("summary", {}).get("config")})
+    for value in configs:
+        direction_filter.addItem(configuration_label(translator, value), value)
+    filters.addWidget(direction_filter)
+    layout.addLayout(filters)
+    count_label = qt_widgets.QLabel()
+    layout.addWidget(count_label)
+    profile_note = qt_widgets.QLabel(translator.text("history.profile_name_note"))
+    profile_note.setWordWrap(True)
+    layout.addWidget(profile_note)
+
     table = qt_widgets.QTableWidget(0, 7, dialog)
     table.setHorizontalHeaderLabels([
         translator.text("history.date"), translator.text("history.file"),
@@ -144,7 +182,10 @@ def show_history(
     ])
     _configure_history_table(table, qt_widgets)
     profile_store = ProfileStore(Path(history_root).parent)
-    _render_table(table, records, qt_widgets, translator, profile_store=profile_store)
+    profile_names = _profile_name_cache(records, profile_store)
+    visible_records = list(records)
+    _render_table(table, visible_records, qt_widgets, translator,
+                  profile_store=profile_store, profile_name_cache=profile_names)
     table.setSortingEnabled(True)
     table.sortItems(0, _descending_order(qt_widgets))
     header = table.horizontalHeader()
@@ -152,7 +193,7 @@ def show_history(
     header.setSectionResizeMode(getattr(resize_mode, "Stretch"))
     layout.addWidget(table)
     empty = qt_widgets.QLabel(translator.text("history.none"), dialog)
-    empty.setVisible(not records)
+    empty.setVisible(not visible_records)
     layout.addWidget(empty)
 
     buttons = qt_widgets.QHBoxLayout()
@@ -171,17 +212,64 @@ def show_history(
     buttons.addWidget(close_button)
     layout.addLayout(buttons)
 
+    action_note = qt_widgets.QLabel(dialog)
+    action_note.setWordWrap(True)
+    layout.addWidget(action_note)
+
+    role = getattr(qt_widgets.Qt, "UserRole", 32)
+
+    def _row_session_id(row: int) -> str | None:
+        item = table.item(row, 0) if row >= 0 else None
+        identifier = item.data(role) if item is not None else None
+        return str(identifier) if identifier else None
+
+    def update_actions(*_args) -> None:
+        has_selection = table.currentRow() >= 0 and _row_session_id(table.currentRow()) is not None
+        inspect_button.setEnabled(has_selection and callable(on_inspect))
+        export_button.setEnabled(has_selection and callable(on_export))
+        if not records:
+            action_note.setText("")
+        elif not has_selection:
+            action_note.setText(translator.text("history.select_action_note"))
+        else:
+            unavailable = []
+            if not callable(on_inspect):
+                unavailable.append(translator.text("history.open_unavailable"))
+            if not callable(on_export):
+                unavailable.append(translator.text("history.export_unavailable"))
+            action_note.setText(" ".join(unavailable))
+
+    def refresh_filters(*_args, preserve_session: str | None = None) -> None:
+        nonlocal visible_records
+        if preserve_session is None:
+            preserve_session = _row_session_id(table.currentRow())
+        visible_records = filter_history_records(
+            records,
+            query=search_edit.text(),
+            status=str(status_filter.currentData() or ""),
+            direction=str(direction_filter.currentData() or ""),
+            profile_names=profile_names,
+            translator=translator,
+        )
+        _render_table(table, visible_records, qt_widgets, translator,
+                      profile_store=profile_store, profile_name_cache=profile_names)
+        if preserve_session is not None:
+            for row in range(table.rowCount()):
+                if _row_session_id(row) == preserve_session:
+                    table.selectRow(row)
+                    break
+        count_label.setText(translator.text(
+            "history.count", visible=len(visible_records), total=len(records)))
+        empty.setText(translator.text("history.none" if not records else "history.no_matches"))
+        empty.setVisible(not visible_records)
+        cleanup_button.setEnabled(bool(records))
+        update_actions()
+
     def selected() -> Mapping[str, Any] | None:
         row = table.currentRow()
         if row < 0:
-            qt_widgets.QMessageBox.information(
-                dialog,
-                plugin_window_title(translator, translator.text("history.title")),
-                translator.text("history.select"))
             return None
-        item = table.item(row, 0)
-        role = getattr(qt_widgets.Qt, "UserRole", 32)
-        session_id = item.data(role) if item is not None else None
+        session_id = _row_session_id(row)
         return next((record for record in records if record.get("session_id") == session_id), None)
 
     def inspect() -> None:
@@ -211,25 +299,41 @@ def show_history(
                             logs=len(result.removed_log_files)),
         )
         records[:] = HistoryStore(Path(history_root)).load()
-        _render_table(table, records, qt_widgets, translator, profile_store=profile_store)
-        empty.setVisible(not records)
-        cleanup_button.setEnabled(bool(records))
+        profile_names.clear()
+        profile_names.update(_profile_name_cache(records, profile_store))
+        refresh_filters(preserve_session=None)
 
     inspect_button.clicked.connect(inspect)
     export_button.clicked.connect(export)
     cleanup_button.clicked.connect(do_cleanup)
     table.doubleClicked.connect(lambda *_args: inspect())
+    table.itemSelectionChanged.connect(update_actions)
+    search_edit.textChanged.connect(refresh_filters)
+    status_filter.currentIndexChanged.connect(refresh_filters)
+    direction_filter.currentIndexChanged.connect(refresh_filters)
     close_button.clicked.connect(dialog.close)
+    count_label.setText(translator.text(
+        "history.count", visible=len(visible_records), total=len(records)))
+    update_actions()
     dialog.history_records = records
     dialog.history_table = table
     dialog.cleanup_button = cleanup_button
     dialog.history_buttons = (cleanup_button, inspect_button, export_button, close_button)
+    dialog.history_search = search_edit
+    dialog.history_status_filter = status_filter
+    dialog.history_direction_filter = direction_filter
+    dialog.history_count_label = count_label
+    dialog.history_empty_label = empty
+    dialog.history_action_note = action_note
     dialog.show()
     return dialog
 
 
-def _render_table(table, records, qt, translator, *, profile_store=None) -> None:
-    rows = history_rows(records, translator=translator, profile_store=profile_store)
+def _render_table(table, records, qt, translator, *, profile_store=None,
+                  profile_name_cache=None) -> None:
+    ordered = _ordered_history_records(records)
+    rows = history_rows(ordered, translator=translator, profile_store=profile_store,
+                        profile_name_cache=profile_name_cache)
     table.setSortingEnabled(False)
     table.setRowCount(len(rows))
     for row, values in enumerate(rows):
@@ -240,9 +344,25 @@ def _render_table(table, records, qt, translator, *, profile_store=None) -> None
                 item.setData(role, int(value))
             if column == 0:
                 role = getattr(qt.Qt, "UserRole", 32)
-                item.setData(role, records[row].get("session_id"))
+                item.setData(role, ordered[row].get("session_id"))
             table.setItem(row, column, item)
     table.setSortingEnabled(True)
+
+
+def _ordered_history_records(records):
+    return sorted(records, key=lambda item: (
+        str(item.get("recorded_at", "")), str(item.get("session_id", ""))), reverse=True)
+
+
+def _profile_name_cache(records, profile_store) -> dict[str, str]:
+    identifiers = set()
+    for record in records:
+        summary = record.get("summary", {})
+        if isinstance(summary, Mapping):
+            identifier = str(summary.get("profile_id", summary.get("profile", "")) or "")
+            if identifier:
+                identifiers.add(identifier)
+    return {identifier: _profile_name(identifier, profile_store) for identifier in identifiers}
 
 
 def _configure_history_table(table, qt):

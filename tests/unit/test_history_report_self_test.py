@@ -232,6 +232,21 @@ def test_history_dialog_uses_the_adjacent_profile_store(monkeypatch, tmp_path):
         MANIFEST,
         PROVENANCE,
     )
+    profile_loads = []
+    history_loads = []
+    original_profile_load = ProfileStore.load
+    original_history_load = HistoryStore.load
+
+    def tracked_profile_load(self, profile_id):
+        profile_loads.append(profile_id)
+        return original_profile_load(self, profile_id)
+
+    def tracked_history_load(self):
+        history_loads.append(self.root)
+        return original_history_load(self)
+
+    monkeypatch.setattr(ProfileStore, "load", tracked_profile_load)
+    monkeypatch.setattr(HistoryStore, "load", tracked_history_load)
     monkeypatch.setattr(history_window, "ensure_application", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(history_window, "exec_dialog", lambda *_args: None)
 
@@ -244,6 +259,34 @@ def test_history_dialog_uses_the_adjacent_profile_store(monkeypatch, tmp_path):
     assert dialog.history_table.item(0, 3).text() == configuration_label(
         Translator("zh-Hans"), "s2t"
     )
+    dialog.history_search.setText("profile")
+    dialog.history_search.textChanged.emit("profile")
+    dialog.history_search.setText("book")
+    dialog.history_search.textChanged.emit("book")
+    assert profile_loads == ["profile-123456"]
+    assert len(history_loads) == 1
+
+
+def test_history_render_keeps_session_identity_attached_to_sorted_rows():
+    older = {
+        "session_id": "older-session",
+        "recorded_at": "2026-09-27T12:00:00+00:00",
+        "summary": {"book_label": "Older", "status": "success"},
+    }
+    newer = {
+        "session_id": "newer-session",
+        "recorded_at": "2026-09-28T12:00:00+00:00",
+        "summary": {"book_label": "Newer", "status": "success"},
+    }
+    qt = make_with_table()
+    table = qt.QTableWidget(0, 7)
+
+    _render_table(table, [older, newer], qt, Translator("en"))
+
+    assert table.item(0, 1).text() == "Newer"
+    assert table.item(0, 0).data(qt.Qt.UserRole) == "newer-session"
+    assert table.item(1, 1).text() == "Older"
+    assert table.item(1, 0).data(qt.Qt.UserRole) == "older-session"
 
 
 def test_cleanup_confirmation_runs_dry_run_before_delete_and_respects_cancel(tmp_path):
