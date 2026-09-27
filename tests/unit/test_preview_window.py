@@ -310,9 +310,10 @@ def test_preview_table_uses_interactive_columns_and_resizes_once():
 def test_preview_filters_use_minimum_contents_length():
     dialog, _preview, _model = _preview_dialog()
 
-    for combo in (dialog.file_filter, dialog.category_filter, dialog.risk_filter):
+    for combo in (dialog.file_filter, dialog.category_filter, dialog.risk_filter,
+                  dialog.source_filter, dialog.status_filter):
         assert ("setSizeAdjustPolicy", (6,)) in combo.calls
-        assert ("setMinimumContentsLength", (16,)) in combo.calls
+        assert ("setMinimumContentsLength", (10,)) in combo.calls
 
 
 def test_preview_dialog_single_decisions_update_only_selected_row_and_summary():

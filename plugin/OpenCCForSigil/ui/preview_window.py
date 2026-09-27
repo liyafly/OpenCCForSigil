@@ -1223,6 +1223,8 @@ class _PreviewDialog:
         self.file_filter = qt.QComboBox()
         self.category_filter = qt.QComboBox()
         self.risk_filter = qt.QComboBox()
+        self.source_filter = qt.QComboBox()
+        self.status_filter = qt.QComboBox()
         file_counts = self._file_filter_counts
         ordered_ids = sorted(
             file_counts,
@@ -1262,31 +1264,74 @@ class _PreviewDialog:
             for risk in ("LOW", "REVIEW", "HIGH")
             if any(change.risk == risk for _, change in self._entries)
         ]
+        source_values = [
+            (self._source_filter_label(source), source)
+            for source in sorted({change.rule_source for _, change in self._entries
+                                  if change.rule_source})
+        ]
+        status_values = [
+            (self._translator.text(f"preview.filter_status.{status}"), status)
+            for status in ("undecided", "accepted", "rejected")
+        ]
         self._populate_filter(self.file_filter, self._translator.text("preview.filter_file"),
                               file_values, self._translator)
         self._populate_filter(self.category_filter, self._translator.text("preview.filter_category"),
                               category_values, self._translator)
         self._populate_filter(self.risk_filter, self._translator.text("preview.filter_risk"),
                               risk_values, self._translator)
+        self._populate_filter(self.source_filter, self._translator.text("preview.filter_source"),
+                              source_values, self._translator)
+        self._populate_filter(self.status_filter, self._translator.text("preview.filter_status"),
+                              status_values, self._translator)
         adjust_policy = _enum_value(
             qt.QComboBox, "AdjustToMinimumContentsLengthWithIcon")
-        for widget in (self.file_filter, self.category_filter, self.risk_filter):
+        for widget in (self.file_filter, self.category_filter, self.risk_filter,
+                       self.source_filter, self.status_filter):
             if adjust_policy is not None:
                 set_adjust_policy = getattr(widget, "setSizeAdjustPolicy", None)
                 if callable(set_adjust_policy):
                     set_adjust_policy(adjust_policy)
             set_minimum_length = getattr(widget, "setMinimumContentsLength", None)
             if callable(set_minimum_length):
-                set_minimum_length(16)
+                set_minimum_length(10)
             filter_row.addWidget(widget)
             widget.currentIndexChanged.connect(lambda *_args: self._refresh())
         for widget, key in (
             (self.file_filter, "a11y.preview.file_filter"),
             (self.category_filter, "a11y.preview.category_filter"),
             (self.risk_filter, "a11y.preview.risk_filter"),
+            (self.source_filter, "a11y.preview.source_filter"),
         ):
             widget.setAccessibleName(self._translator.text(key))
         layout.addLayout(filter_row)
+
+        search_row = qt.QHBoxLayout()
+        search_row.addWidget(self.status_filter)
+        self.status_filter.setAccessibleName(
+            self._translator.text("a11y.preview.status_filter"))
+        self.search_input = qt.QLineEdit()
+        self.search_input.setPlaceholderText(self._translator.text("preview.filter_search"))
+        self.search_input.setAccessibleName(self._translator.text("a11y.preview.search"))
+        search_row.addWidget(self.search_input, 1)
+        self.clear_filters_button = qt.QPushButton(
+            self._translator.text("preview.clear_filters"))
+        self.clear_filters_button.setAccessibleName(
+            self._translator.text("a11y.preview.clear_filters"))
+        search_row.addWidget(self.clear_filters_button)
+        self.filter_count_label = qt.QLabel()
+        search_row.addWidget(self.filter_count_label)
+        layout.addLayout(search_row)
+        self.status_filter.currentIndexChanged.connect(lambda *_args: self._refresh())
+        self.clear_filters_button.clicked.connect(self._clear_filters)
+        self.search_input.textChanged.connect(self._schedule_filter_refresh)
+        timer_type = getattr(qt, "QTimer", None)
+        self._search_refresh_timer = timer_type(self.dialog) if callable(timer_type) else None
+        if self._search_refresh_timer is not None:
+            set_single_shot = getattr(self._search_refresh_timer, "setSingleShot", None)
+            if callable(set_single_shot):
+                set_single_shot(True)
+            self._search_refresh_timer.setInterval(140)
+            self._search_refresh_timer.timeout.connect(self._refresh)
 
         self.table_view = qt.QTableView()
         self.table_model = _create_preview_table_model(
@@ -1315,6 +1360,10 @@ class _PreviewDialog:
         resize_columns = getattr(self.table_view, "resizeColumnsToContents", None)
         if callable(resize_columns):
             resize_columns()
+        set_column_width = getattr(self.table_view, "setColumnWidth", None)
+        if callable(set_column_width):
+            # Leave room for the widest decision label after rows change state.
+            set_column_width(0, 96)
 
         self.show_source_context = qt.QCheckBox(
             self._translator.text("preview.show_source_context"))
@@ -1487,6 +1536,45 @@ class _PreviewDialog:
         for display, value in values:
             combo.addItem(str(display), str(value))
 
+    def _source_filter_label(self, source: str) -> str:
+        if source.startswith("UserRule:"):
+            return self._translator.text(
+                "preview.source.user_rule", source=source.removeprefix("UserRule:"))
+        if source.startswith("OpenCC:"):
+            return self._translator.text(
+                "preview.source.opencc", source=source.removeprefix("OpenCC:"))
+        return self._translator.text("preview.source.named", source=source)
+
+    def _schedule_filter_refresh(self, *_args) -> None:
+        timer = getattr(self, "_search_refresh_timer", None)
+        if timer is None:
+            self._refresh()
+        else:
+            timer.start()
+
+    def _clear_filters(self) -> None:
+        for name in (
+            "file_filter", "category_filter", "risk_filter", "source_filter", "status_filter",
+        ):
+            combo = getattr(self, name, None)
+            if combo is None:
+                continue
+            was_blocked = combo.blockSignals(True) if callable(
+                getattr(combo, "blockSignals", None)) else False
+            combo.setCurrentIndex(0)
+            if callable(getattr(combo, "blockSignals", None)):
+                combo.blockSignals(was_blocked)
+        search = self.search_input
+        search_blocked = search.blockSignals(True) if callable(
+            getattr(search, "blockSignals", None)) else False
+        search.setText("")
+        if callable(getattr(search, "blockSignals", None)):
+            search.blockSignals(search_blocked)
+        timer = getattr(self, "_search_refresh_timer", None)
+        if timer is not None:
+            timer.stop()
+        self._refresh()
+
     def _current_filter(self) -> PreviewFilter:
         def data(name: str) -> str | None:
             combo = getattr(self, name, None)
@@ -1499,13 +1587,47 @@ class _PreviewDialog:
             file_id=data("file_filter"),
             category=data("category_filter"),
             risk=data("risk_filter"),
+            rule_source=data("source_filter"),
         )
 
     def _visible_entries(self) -> Tuple[Tuple[PreviewSession, TokenChange], ...]:
         current = self._current_filter()
-        if not any((current.file_id, current.category, current.risk, current.rule_source)):
+        status_combo = getattr(self, "status_filter", None)
+        status = None
+        if status_combo is not None and callable(getattr(status_combo, "currentData", None)):
+            status = status_combo.currentData()
+        status = str(status) if status else None
+        search_input = getattr(self, "search_input", None)
+        query = (search_input.text() if search_input is not None
+                 and callable(getattr(search_input, "text", None)) else "")
+        query = str(query).strip().casefold()
+        if not any((current.file_id, current.category, current.risk,
+                    current.rule_source, status, query)):
             return self._entries
-        return tuple((preview, change) for preview, change in self._entries if current.matches(change))
+        visible = []
+        for preview, change in self._entries:
+            if not current.matches(change):
+                continue
+            if status and self._decision_bucket(
+                    preview.decision(change.change_id)) != status:
+                continue
+            if query:
+                href = self._href_by_id.get(change.file_id, change.file_id)
+                searchable = "\n".join((
+                    unescape(change.source), unescape(change.target),
+                    change.rule_source, href,
+                )).casefold()
+                if query not in searchable:
+                    continue
+            visible.append((preview, change))
+        return tuple(visible)
+
+    def _status_filter_value(self) -> str | None:
+        combo = getattr(self, "status_filter", None)
+        if combo is None or not callable(getattr(combo, "currentData", None)):
+            return None
+        value = combo.currentData()
+        return str(value) if value else None
 
     @staticmethod
     def _decision_bucket(decision) -> str:
@@ -1565,12 +1687,17 @@ class _PreviewDialog:
         return index.row() if index.isValid() else -1
 
     def _selected_change_id(self) -> str | None:
+        identity = self._selected_change_identity()
+        return identity[1] if identity is not None else None
+
+    def _selected_change_identity(self) -> Tuple[str, str] | None:
         row = self._current_row()
         entries = getattr(self, "_visible_entries_cache", None)
         if entries is None:
             entries = self._visible_entries()
         if 0 <= row < len(entries):
-            return entries[row][1].change_id
+            change = entries[row][1]
+            return change.file_id, change.change_id
         return None
 
     def _set_current_row(self, row: int) -> None:
@@ -1626,8 +1753,10 @@ class _PreviewDialog:
     def _refresh(self, *_args, recalculate_counts=False, refresh_statuses=False) -> None:
         if recalculate_counts:
             self._recompute_counts()
+        self._selection_advanced_scan_start = None
         cached_entries = getattr(self, "_visible_entries_cache", None)
-        if refresh_statuses and cached_entries is not None:
+        status_filter_active = self._status_filter_value() is not None
+        if refresh_statuses and cached_entries is not None and not status_filter_active:
             # Decisions change row status, not which rows match the filters.
             # Keep the tuple/model identity and avoid rescanning large books.
             visible_entries = cached_entries
@@ -1635,13 +1764,22 @@ class _PreviewDialog:
             if row < 0 and visible_entries:
                 row = 0
         else:
-            selected_change_id = self._selected_change_id()
+            selected_identity = self._selected_change_identity()
+            previous_row = self._current_row()
             visible_entries = self._visible_entries()
-            row = next(
+            selected_row = next(
                 (index for index, (_preview, change) in enumerate(visible_entries)
-                 if change.change_id == selected_change_id),
-                0 if visible_entries else -1,
+                 if (change.file_id, change.change_id) == selected_identity),
+                None,
             )
+            if selected_row is not None:
+                row = selected_row
+            elif visible_entries and status_filter_active:
+                row = min(max(previous_row, 0), len(visible_entries) - 1)
+                if selected_identity is not None:
+                    self._selection_advanced_scan_start = previous_row - 1
+            else:
+                row = 0 if visible_entries else -1
         self._visible_entries_cache = visible_entries
         if getattr(self, "table_model", None) is not None:
             prior_entries = self.table_model.rows.entries
@@ -1652,8 +1790,13 @@ class _PreviewDialog:
         if visible_entries:
             self._show_current(row)
         else:
-            self.detail.setPlainText(self._translator.text("preview.no_changes"))
+            empty_key = "preview.no_filter_matches" if self._entries else "preview.no_changes"
+            self.detail.setPlainText(self._translator.text(empty_key))
             self._update_group_controls(None)
+        count_label = getattr(self, "filter_count_label", None)
+        if count_label is not None:
+            count_label.setText(self._translator.text(
+                "preview.visible_count", visible=len(visible_entries), total=len(self._entries)))
         self._update_summary()
 
     def _update_summary(self) -> None:
@@ -1863,16 +2006,23 @@ class _PreviewDialog:
             (preview.accept_this if accepted else preview.reject_this)(change.change_id)
             after = preview.decision(change.change_id)
             self._record_decision_change(change.file_id, before, after)
-            self._refresh_current(rows=(row,))
-        self._select_next_undecided(change.change_id)
+            if self._status_filter_value() is not None:
+                self._refresh(refresh_statuses=True)
+            else:
+                self._refresh_current(rows=(row,))
+        scan_start = self._selection_advanced_scan_start
+        self._selection_advanced_scan_start = None
+        self._select_next_undecided(change.change_id, start_row=scan_start)
 
-    def _select_next_undecided(self, current_change_id=None, *, direction: int = 1) -> None:
+    def _select_next_undecided(
+        self, current_change_id=None, *, direction: int = 1, start_row=None,
+    ) -> None:
         entries = getattr(self, "_visible_entries_cache", None)
         if entries is None:
             entries = self._visible_entries()
         if not entries:
             return
-        current_row = self._current_row()
+        current_row = self._current_row() if start_row is None else start_row
         if current_row < 0:
             current_row = -1 if direction > 0 else 0
         for offset in range(1, len(entries) + 1):

@@ -4,10 +4,10 @@
     {
       "language": "en",
       "minimum_width": 821,
-      "minimum_height": 476,
+      "minimum_height": 532,
       "initial_width": 900,
       "initial_height": 620,
-      "table_height": 218,
+      "table_height": 162,
       "group_actions": {
         "language_group_label": "Accept language tag group",
         "language_group_accepts_both_files": true,
@@ -15,15 +15,22 @@
         "accept_file_completes_local_rule_group": true,
         "rule_only_language_button_hidden_and_inert": true,
         "hidden_group_prompt_cancel_preserves_and_confirm_expands": true
+      },
+      "filter_interactions": {
+        "filter_controls_follow_tab_order": true,
+        "source_status_and_debounced_search_combine": true,
+        "decided_row_hides_and_focus_moves_to_next_change": true,
+        "global_apply_guard_and_empty_state": true,
+        "clear_filters_restores_all_rows": true
       }
     },
     {
       "language": "zh-Hans",
       "minimum_width": 770,
-      "minimum_height": 476,
+      "minimum_height": 532,
       "initial_width": 900,
       "initial_height": 620,
-      "table_height": 218,
+      "table_height": 162,
       "group_actions": {
         "language_group_label": "接受语言标签组",
         "language_group_accepts_both_files": true,
@@ -31,15 +38,22 @@
         "accept_file_completes_local_rule_group": true,
         "rule_only_language_button_hidden_and_inert": true,
         "hidden_group_prompt_cancel_preserves_and_confirm_expands": true
+      },
+      "filter_interactions": {
+        "filter_controls_follow_tab_order": true,
+        "source_status_and_debounced_search_combine": true,
+        "decided_row_hides_and_focus_moves_to_next_change": true,
+        "global_apply_guard_and_empty_state": true,
+        "clear_filters_restores_all_rows": true
       }
     },
     {
       "language": "zh-Hant",
       "minimum_width": 796,
-      "minimum_height": 476,
+      "minimum_height": 532,
       "initial_width": 900,
       "initial_height": 620,
-      "table_height": 218,
+      "table_height": 162,
       "group_actions": {
         "language_group_label": "接受語言標籤組",
         "language_group_accepts_both_files": true,
@@ -47,6 +61,13 @@
         "accept_file_completes_local_rule_group": true,
         "rule_only_language_button_hidden_and_inert": true,
         "hidden_group_prompt_cancel_preserves_and_confirm_expands": true
+      },
+      "filter_interactions": {
+        "filter_controls_follow_tab_order": true,
+        "source_status_and_debounced_search_combine": true,
+        "decided_row_hides_and_focus_moves_to_next_change": true,
+        "global_apply_guard_and_empty_state": true,
+        "clear_filters_restores_all_rows": true
       }
     }
   ]

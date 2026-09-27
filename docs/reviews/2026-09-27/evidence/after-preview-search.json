@@ -1,0 +1,22 @@
+{
+  "python": "3.14.7",
+  "platform": "macOS-27.0-arm64-arm-64bit-Mach-O",
+  "results": [
+    {
+      "rows": 10000,
+      "matches": 1,
+      "search_seconds": 0.0028478749954956584,
+      "formatted_rows": 0,
+      "opencc_calls": 0,
+      "matcher": "casefolded literal substring"
+    },
+    {
+      "rows": 300000,
+      "matches": 1,
+      "search_seconds": 0.08301087499421556,
+      "formatted_rows": 0,
+      "opencc_calls": 0,
+      "matcher": "casefolded literal substring"
+    }
+  ]
+}

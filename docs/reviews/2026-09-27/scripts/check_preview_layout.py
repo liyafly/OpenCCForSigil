@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT / "plugin/OpenCCForSigil"))
 
 import PySide6  # noqa: E402
-from PySide6.QtCore import QTimer  # noqa: E402
+from PySide6.QtCore import QEventLoop, QTimer  # noqa: E402
 from PySide6.QtWidgets import QMessageBox  # noqa: E402
 from core.models import ConversionPlan, SourceSpan, TokenChange  # noqa: E402
 from core.preview import PreviewSession  # noqa: E402
@@ -137,6 +137,98 @@ def exercise_group_actions(qt, app, language):
     }
 
 
+def exercise_filters(qt, app, language, output_dir):
+    translator = Translator(language)
+    changes = (
+        TokenChange(
+            source="needle 源", target="目标甲", span=SourceSpan(0, 7),
+            rule_source="UserRule:alpha", change_id="filter-1", file_id="chapter",
+            category="user_rule", risk="LOW",
+        ),
+        TokenChange(
+            source="普通文本", target="needle target", span=SourceSpan(0, 4),
+            rule_source="UserRule:alpha", change_id="filter-2", file_id="chapter",
+            category="user_rule", risk="LOW",
+        ),
+        TokenChange(
+            source="needle other", target="other target", span=SourceSpan(0, 5),
+            rule_source="UserRule:beta", change_id="filter-3", file_id="other",
+            category="user_rule", risk="LOW",
+        ),
+    )
+    chapter_plan = ConversionPlan(
+        source_sha256="", file_id="chapter", changes=changes[:2])
+    other_plan = ConversionPlan(source_sha256="", file_id="other", changes=(changes[2],))
+    planned = tuple(SimpleNamespace(
+        source=SimpleNamespace(file_id=file_id, href=href, document_kind="xhtml"),
+        plan=plan,
+    ) for file_id, href, plan in (
+        ("chapter", "Text/chapter.xhtml", chapter_plan),
+        ("other", "Text/other.xhtml", other_plan),
+    ))
+    previews = (PreviewSession(chapter_plan), PreviewSession(other_plan))
+    dialog = _PreviewDialog(qt, planned, previews, translator)
+    dialog.dialog.show()
+    app.processEvents()
+    expected_focus_order = (
+        dialog.file_filter, dialog.category_filter, dialog.risk_filter,
+        dialog.source_filter, dialog.status_filter, dialog.search_input,
+        dialog.clear_filters_button, dialog.table_view,
+    )
+    focus_order = []
+    current = dialog.file_filter
+    for _index in range(100):
+        if any(current is widget for widget in expected_focus_order):
+            focus_order.append(current)
+        current = current.nextInFocusChain()
+        if current is dialog.file_filter:
+            break
+    assert focus_order == list(expected_focus_order), [
+        type(widget).__name__ for widget in focus_order]
+
+    dialog.source_filter.setCurrentIndex(dialog.source_filter.findData("UserRule:alpha"))
+    dialog.status_filter.setCurrentIndex(dialog.status_filter.findData("undecided"))
+    dialog.search_input.setText("needle")
+    loop = QEventLoop()
+    QTimer.singleShot(240, loop.quit)
+    loop.exec()
+    assert tuple(change.change_id for _preview, change in dialog._visible_entries_cache) == (
+        "filter-1", "filter-2")
+    dialog.search_input.setFocus()
+    app.processEvents()
+    assert app.focusWidget() is dialog.search_input
+    dialog._set_current_row(0)
+    dialog.accept_this_button.click()
+    app.processEvents()
+    assert tuple(change.change_id for _preview, change in dialog._visible_entries_cache) == (
+        "filter-2",)
+    assert dialog._current_entry()[1].change_id == "filter-2"
+    assert not dialog.apply_button.isEnabled()
+    dialog.status_filter.setCurrentIndex(dialog.status_filter.findData("accepted"))
+    assert tuple(change.change_id for _preview, change in dialog._visible_entries_cache) == (
+        "filter-1",)
+    dialog.search_input.setText("no such change")
+    loop = QEventLoop()
+    QTimer.singleShot(240, loop.quit)
+    loop.exec()
+    assert dialog.filter_count_label.text() == translator.text(
+        "preview.visible_count", visible=0, total=3)
+    assert dialog.detail.toPlainText() == translator.text("preview.no_filter_matches")
+    dialog.clear_filters_button.click()
+    app.processEvents()
+    assert len(dialog._visible_entries_cache) == 3
+    assert not dialog.search_input.text()
+    dialog.dialog.grab().save(str(output_dir / f"preview-filter-cleared-{language}.png"))
+    dialog.dialog.hide()
+    return {
+        "filter_controls_follow_tab_order": True,
+        "source_status_and_debounced_search_combine": True,
+        "decided_row_hides_and_focus_moves_to_next_change": True,
+        "global_apply_guard_and_empty_state": True,
+        "clear_filters_restores_all_rows": True,
+    }
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, required=True)
@@ -168,6 +260,7 @@ def main():
         }
         window.dialog.grab().save(str(args.output / f"preview-{language}.png"))
         item["group_actions"] = exercise_group_actions(qt, app, language)
+        item["filter_interactions"] = exercise_filters(qt, app, language, args.output)
         results.append(item)
         window.dialog.hide()
     report = {"PySide6": PySide6.__version__, "results": results}
@@ -182,6 +275,7 @@ def main():
             assert item["initial_height"] <= 720, item
             assert item["table_height"] >= 150, item
             assert all(item["group_actions"].values()), item
+            assert all(item["filter_interactions"].values()), item
 
 
 if __name__ == "__main__":
