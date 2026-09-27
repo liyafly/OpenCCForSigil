@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.2.8 - 2026-09-27
+
+### Added
+
+- Filter preview changes by decision status, rule source, and literal source or
+  target text; keep global pending counts independent from visible rows.
+- Undo and redo preview decisions, including full-group and bulk decisions,
+  while the preview is open.
+- Browse frozen-plan diagnostics by file and code, with original source
+  excerpts and line/column navigation, including runs with no proposed changes.
+
+### Fixed
+
+- Keep rule-occurrence groups separate from cross-resource language-tag groups,
+  and confirm when filtered actions expand to hidden linked members.
+- Preserve MathML identifiers and all content outside `mtext` when the optional
+  MathML profile policy is enabled.
+
+### Performance
+
+- Index preview decision groups and compact bulk Undo/Redo history so large
+  previews retain reversible decisions without per-change history objects.
+
 ## 0.2.6 - 2026-09-27
 
 ### Added
