@@ -1,5 +1,7 @@
 """Optional document/language controls, independent of the Sigil container."""
 
+from dataclasses import replace
+
 from core.transformation import FORCE_PIVOT_CHAINS
 from opencc_backend.configs import base_config
 from ui.i18n import (
@@ -8,12 +10,21 @@ from ui.i18n import (
     settings_error_message,
     show_error_details,
 )
-from ui.qt import enum_value
+from ui.qt import enum_value, exec_dialog
 
 PANEL_OPTION_DEFAULTS = {
     "diagnose_mixed": True,
     "detailed_classification": True,
 }
+
+_ADVANCED_FIELDS = frozenset({
+    "convert_alt", "convert_title", "convert_aria_label", "convert_svg_text",
+    "convert_ruby_rt", "convert_code_pre", "decode_numeric_cjk_refs",
+    "quotation_mode", "punctuation_mode", "language_metadata", "language_preset",
+    "language_region", "diagnose_mixed", "detailed_classification", "force_pivot",
+    "pivot_chain", "mathml", "regex_rules", "tofu_policy", "numeric_cjk_char_refs",
+})
+_HIGH_RISK_FIELDS = ("force_pivot", "convert_metadata", "regex_rules")
 
 
 def option_enablement(config: str, values: dict) -> dict[str, bool]:
@@ -62,6 +73,8 @@ class RunOptionsPanel:
         self._summary_changed_callback = None
         self._named_groups = []
         self._profile_buttons = []
+        self._profile_changes = ()
+        self._profile_baseline_label = ""
         self.profile_label = qt.QLabel()
         self.ruleset_label = qt.QLabel()
         size_policy = getattr(qt.QSizePolicy, "Policy", qt.QSizePolicy)
@@ -74,6 +87,10 @@ class RunOptionsPanel:
         body_layout = qt.QVBoxLayout(body)
         profile_row = qt.QHBoxLayout()
         profile_row.addWidget(self.profile_label, 1)
+        self.view_changes_button = qt.QPushButton(translator.text("options.view_changes"))
+        self.view_changes_button.setVisible(False)
+        self.view_changes_button.clicked.connect(self._show_profile_changes)
+        profile_row.addWidget(self.view_changes_button)
         self.profile_buttons_layout = qt.QHBoxLayout()
         profile_row.addLayout(self.profile_buttons_layout)
         body_layout.addLayout(profile_row)
@@ -251,8 +268,9 @@ class RunOptionsPanel:
     def preference_values(self):
         """Return the user's selections, including temporarily disabled options."""
         values = self.values()
+        checks = getattr(self, "checks", {})
         for name in ("include_nav", "include_metadata", "force_pivot"):
-            control = self.checks.get(name)
+            control = checks.get(name)
             if control is not None:
                 values[name] = control.isChecked()
         preferred_chain = getattr(self, "_preferred_pivot_chain", "")
@@ -352,8 +370,11 @@ class RunOptionsPanel:
     def _update_profile_label(self, config):
         from app.settings import profile_options
         from ui.profile_window import _profile_signature
+        from ui.profile_compare import compare_profile_settings
 
-        current = self._services.current_profile(config, self.values())
+        preferred_values = (self.preference_values() if hasattr(self, "preference_values")
+                            else self.values())
+        current = self._profile_for_values(config, preferred_values, preserve_disabled=True)
         active = self._services.active
         normalized_active = self._services.current_profile(
             active.conversion, profile_options(active))
@@ -368,6 +389,168 @@ class RunOptionsPanel:
                      if current.builtin_rules_enabled
                      else self._tr.text("options.builtin_off")),
         ))
+        self._profile_changes = compare_profile_settings(active, current)
+        baseline_key = ("options.saved_profile"
+                        if getattr(self._services, "active_profile_is_saved", False)
+                        else "options.initial_settings")
+        try:
+            self._profile_baseline_label = self._tr.text(baseline_key)
+        except KeyError:
+            self._profile_baseline_label = baseline_key
+        view_changes_button = getattr(self, "view_changes_button", None)
+        if view_changes_button is not None:
+            view_changes_button.setVisible(True)
+        self._refresh_advanced_label()
+
+    def _refresh_advanced_label(self):
+        if not hasattr(self, "advanced_button"):
+            return
+        advanced_count = sum(name in _ADVANCED_FIELDS
+                             for name, _old, _new in getattr(self, "_profile_changes", ()))
+        risks = self._current_risks()
+        self.advanced_button.setText(self._tr.text(
+            "options.advanced_summary", count=advanced_count,
+            risks=(self._tr.text("options.advanced_risks", items=" · ".join(risks))
+                   if risks else "")))
+
+    def _current_risks(self):
+        if not hasattr(self, "_get_config") or self._services is None:
+            return ()
+        from app.settings import profile_options
+
+        values = self.preference_values() if hasattr(self, "preference_values") else self.values()
+        current = self._profile_for_values(self._get_config(), values, preserve_disabled=True)
+        values = profile_options(current)
+        return tuple(self._effective_display(
+            key, True, self._tr.text("options." + key)) for key in _HIGH_RISK_FIELDS
+            if values.get(key))
+
+    def _show_profile_changes(self):
+        if self._services is None or not hasattr(self, "_get_config"):
+            return
+        dialog = self._qt.QDialog(self._parent)
+        dialog.setWindowTitle(self._tr.text("options.changes_title"))
+        layout = self._qt.QVBoxLayout(dialog)
+        layout.addWidget(self._qt.QLabel(self._tr.text(
+            "options.changes_baseline", baseline=self._profile_baseline_label)))
+        from ui.profile_compare import normalized_profile_values, profile_runtime_fields
+        from app.profiles import Profile
+
+        config = self._get_config()
+        preferred_values = self.preference_values()
+        preferred_profile = self._profile_for_values(
+            config, preferred_values, preserve_disabled=True)
+        effective_profile = self._profile_for_values(config, self.values())
+        saved_values = normalized_profile_values(self._services.active)
+        current_values = normalized_profile_values(preferred_profile)
+        effective_values = normalized_profile_values(effective_profile)
+        names = (*profile_runtime_fields(), *PANEL_OPTION_DEFAULTS)
+        table = self._qt.QTableWidget(len(names), 4, dialog)
+        table.setHorizontalHeaderLabels([
+            self._tr.text("options.change_field"),
+            self._tr.text("options.change_saved"),
+            self._tr.text("options.change_current"),
+            self._tr.text("options.change_effective"),
+        ])
+        table.setWordWrap(True)
+        header = table.horizontalHeader()
+        resize_mode = getattr(self._qt.QHeaderView, "ResizeMode", self._qt.QHeaderView)
+        header.setSectionResizeMode(getattr(resize_mode, "Stretch"))
+        from ui.profile_window import _PROFILE_SUMMARY_KEYS, _profile_summary_value
+
+        no_edit = enum_value(self._qt.QAbstractItemView, "NoEditTriggers")
+        if no_edit is not None:
+            table.setEditTriggers(no_edit)
+        for row, name in enumerate(names):
+            old, new = saved_values[name], current_values[name]
+            key = _PROFILE_SUMMARY_KEYS.get(name, "options." + name)
+            label = self._tr.text(key)
+            if label == key:
+                label = name
+            try:
+                old_display = _profile_summary_value(replace(Profile(), **{name: old}),
+                                                     name, self._tr)
+                new_display = _profile_summary_value(replace(Profile(), **{name: new}),
+                                                     name, self._tr)
+            except (AttributeError, TypeError, ValueError):
+                old_display = _display_option_value(old, self._tr)
+                new_display = _display_option_value(new, self._tr)
+            values = (
+                label,
+                old_display,
+                new_display,
+                self._effective_display(
+                    name, effective_values[name],
+                    _profile_summary_value(replace(Profile(), **{name: effective_values[name]}),
+                                           name, self._tr)
+                    if hasattr(Profile, name) else _display_option_value(
+                        effective_values[name], self._tr),
+                    requested=new),
+            )
+            for column, value in enumerate(values):
+                item = self._qt.QTableWidgetItem(value)
+                item.setToolTip(value)
+                table.setItem(row, column, item)
+        close = self._qt.QPushButton(self._tr.text("common.close"))
+        close.clicked.connect(dialog.accept)
+        layout.addWidget(close)
+        scroll = self._qt.QScrollArea(dialog)
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(table)
+        scroll.setMinimumHeight(300)
+        layout.insertWidget(1, scroll, 1)
+        application = self._qt.QApplication.instance()
+        screen = application.primaryScreen() if application is not None else None
+        available = screen.availableGeometry() if screen is not None else None
+        available_width = available.width() if available is not None else 1040
+        available_height = available.height() if available is not None else 720
+        dialog.resize(min(1040, available_width), min(680, available_height))
+        dialog.change_table = table
+        exec_dialog(dialog)
+
+    def _profile_for_values(self, config, values, *, preserve_disabled=False):
+        try:
+            return self._services.current_profile(config, values)
+        except ValueError:
+            # A display snapshot may intentionally retain force-pivot preferences
+            # for a direction where the runtime control is disabled. Build it from
+            # the validated effective profile, then restore only canonical fields.
+            effective = self._services.current_profile(config, self.values())
+            if not preserve_disabled:
+                return effective
+            preferred = self.preference_values()
+            overrides = {
+                "convert_nav": preferred.get("include_nav", effective.convert_nav),
+                "convert_metadata": preferred.get("include_metadata", effective.convert_metadata),
+                "force_pivot": preferred.get("force_pivot", effective.force_pivot),
+                "pivot_chain": preferred.get("pivot_chain", effective.pivot_chain),
+            }
+            return replace(effective, **overrides)
+
+    def _effective_display(self, name, value, normal_display, *, requested=None):
+        config = self._get_config() if hasattr(self, "_get_config") else "s2t"
+        enablement = option_enablement(str(config), {
+            **self.values(), "metadata_available": self._metadata_available,
+            "nav_available": self._nav_available,
+        })
+        unavailable_reason = None
+        if name in {"convert_nav", "include_nav"} and not self._nav_available:
+            unavailable_reason = "options.nav_unavailable"
+        elif name in {"convert_metadata", "include_metadata"} and not self._metadata_available:
+            unavailable_reason = "options.metadata_unavailable"
+        elif name in {"force_pivot", "pivot_chain"} and not enablement.get(name, False):
+            unavailable_reason = "options.force_pivot_unavailable"
+        elif name in {"language_preset", "language_region"} and not enablement.get(name, False):
+            unavailable_reason = "options.language_not_effective"
+        if unavailable_reason or (requested is not None and requested != value):
+            unavailable_reason = unavailable_reason or "options.disabled_by_scope"
+            reason = (self._tr.text(unavailable_reason, config=str(config))
+                      if unavailable_reason == "options.force_pivot_unavailable"
+                      else self._tr.text(unavailable_reason))
+            return self._tr.text("options.not_effective_reason",
+                                 value=normal_display,
+                                 reason=reason)
+        return normal_display
 
     def ui_state(self):
         return {"run_options_advanced_expanded": self._advanced_expanded}
@@ -404,11 +587,13 @@ class RunOptionsPanel:
         for name, action in self._tool_actions.items():
             action.setText(self._tr.text("settings." + name))
         self.advanced_button.setText(self._tr.text("options.advanced"))
+        self.view_changes_button.setText(self._tr.text("options.view_changes"))
         for button, name in self._profile_buttons:
             button.setText(self._tr.text("settings." + name))
         if hasattr(self, "ruleset_button"):
             self.ruleset_button.setText(self._tr.text("settings.rules"))
         self.update_enablement()
+
 
     def _tool(self, name):
         from app.settings import profile_options
@@ -489,3 +674,11 @@ class ConfigurationChoice(str):
         instance.preference_options = MappingProxyType(
             dict(options if preference_options is None else preference_options))
         return instance
+
+
+def _display_option_value(value, translator):
+    if isinstance(value, bool):
+        return translator.text("options.enabled" if value else "options.disabled")
+    if isinstance(value, (tuple, list)):
+        return ", ".join(str(item) for item in value) or "—"
+    return str(value) if value not in (None, "") else "—"

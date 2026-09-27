@@ -520,7 +520,8 @@ def choose_scope(
             config_dialog.options_panel.set_nav_available(nav_available_now)
         data = run_summary_data(
             selected_ids, nav_id, config_dialog._get_config(),
-            config_dialog.options_panel.values(),
+            {**config_dialog.options_panel.preference_values(),
+             "metadata_available": config_dialog.options_panel._metadata_available},
         )
         direction = configuration_label(translator, data["config"])
         summary_text = translator.text(
@@ -529,19 +530,24 @@ def choose_scope(
         if not data["file_count"]:
             details.append(translator.text("scope.run_summary_empty"))
         if data["nav_included"]:
-            details.append(translator.text("options.include_nav"))
+            details.append(translator.text("scope.run_summary_nav_included"))
+        elif data["nav_available"] and not data["nav_requested"]:
+            details.append(translator.text("scope.run_summary_nav_disabled"))
         elif not data["nav_available"]:
             details.append(translator.text("scope.run_summary_nav_unavailable"))
-        details.extend(translator.text(f"scope.run_summary_{name}")
+        details.extend(translator.text(
+            f"scope.run_summary_{name}" if name in {"ncx", "metadata"}
+            else "scope.run_summary_metadata_unavailable")
                        for name in data["additions"])
-        if details:
-            summary_text += "\n" + translator.text(
-                "scope.run_summary_documents", items=" · ".join(details))
         if data["risks"]:
-            summary_text += "\n" + translator.text(
-                "scope.run_summary_risks", items=" · ".join(
-                    translator.text(f"scope.run_summary_risk_{name}")
-                    for name in data["risks"]))
+            risk_names = {
+                "pivot": "scope.run_summary_risk_pivot",
+                "pivot_inactive": "scope.run_summary_risk_pivot_inactive",
+                "metadata": "scope.run_summary_risk_metadata",
+                "metadata_inactive": "scope.run_summary_risk_metadata_inactive",
+            }
+            details.append(translator.text("scope.run_summary_risks", items=" · ".join(
+                translator.text(risk_names[name]) for name in data["risks"])))
         capability = None
         if config_dialog._probe_state == "pending":
             capability = translator.text("config.jieba_checking")
@@ -550,8 +556,16 @@ def choose_scope(
         elif config_dialog.jieba_checkbox.isChecked():
             capability = translator.text("config.jieba_available")
         if capability:
-            summary_text += "\n" + capability
+            details.append(capability)
+        if details:
+            summary_text += "\n" + " · ".join(details)
         summary.setText(summary_text)
+        summary.setToolTip(summary_text)
+        metrics = getattr(summary, "fontMetrics", None)
+        metrics = metrics() if callable(metrics) else None
+        line_height = getattr(metrics, "lineSpacing", None)
+        if callable(line_height):
+            summary.setMaximumHeight(line_height() * 2 + 8)
         analyze_button.setEnabled(
             scope_dialog._selection_is_valid() and config_dialog._continue_is_allowed())
 

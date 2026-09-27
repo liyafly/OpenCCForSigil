@@ -12,6 +12,7 @@ def test_run_summary_counts_only_selected_xhtml_and_lists_whole_book_additions()
         "file_count": 3,
         "config": "s2twp",
         "nav_available": True,
+        "nav_requested": True,
         "nav_included": True,
         "additions": ("ncx", "metadata"),
         "risks": ("pivot", "metadata"),
@@ -33,3 +34,15 @@ def test_run_summary_preserves_an_effective_optional_backend_configuration():
     summary = run_summary_data(("one.xhtml",), None, "s2t_jieba", {})
 
     assert summary["config"] == "s2t_jieba"
+
+
+def test_run_summary_keeps_but_marks_unavailable_risky_preferences():
+    summary = run_summary_data(
+        ("one.xhtml",), "nav.xhtml", "s2t_jieba",
+        {"include_nav": True, "include_metadata": True,
+         "metadata_available": False, "force_pivot": True},
+    )
+
+    assert summary["nav_requested"] and not summary["nav_available"]
+    assert summary["risks"] == ("pivot_inactive", "metadata_inactive")
+    assert summary["additions"] == ("metadata_unavailable",)
