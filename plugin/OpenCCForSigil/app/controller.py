@@ -432,6 +432,7 @@ class Controller:
                         files_without_changes=files_without_changes,
                         return_to_scope=True,
                         diagnostics=invalid_source_diagnostics,
+                        diagnostic_documents=planned,
                     )
                     if result_action == "back_to_scope":
                         if not reselect_scope(targets):

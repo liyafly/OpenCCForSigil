@@ -520,9 +520,11 @@ def test_cancelling_preview_shows_cancelled_result_without_writing(monkeypatch, 
 
 
 def test_noop_result_skips_preview_and_offers_scope_return(monkeypatch, tmp_path):
+    from opencc_backend.backend import OpenCCBackend
+
     class NoopBook:
         def __init__(self):
-            self.files = {"chapter": "<p>汉字</p>"}
+            self.files = {"chapter": "<p>SECRET_DIAGNOSTIC_CONTEXT<br></p>"}
             self.writes = []
 
         def text_iter(self):
@@ -536,6 +538,15 @@ def test_noop_result_skips_preview_and_offers_scope_return(monkeypatch, tmp_path
 
     book = NoopBook()
     results = []
+    converted_book_text = []
+    original_convert = OpenCCBackend.convert
+
+    def track_content_conversion(backend, text):
+        if text != "汉字":  # The one smoke string used by backend self-test.
+            converted_book_text.append(text)
+        return original_convert(backend, text)
+
+    monkeypatch.setattr(OpenCCBackend, "convert", track_content_conversion)
     monkeypatch.setattr(
         "ui.preview_window.choose_scope",
         lambda _adapter, initial_language, **_kwargs: ScopeOutcome(
@@ -552,13 +563,25 @@ def test_noop_result_skips_preview_and_offers_scope_return(monkeypatch, tmp_path
     monkeypatch.setattr(
         "ui.preview_window.show_result", lambda **values: results.append(values) or "close")
 
-    assert Controller(book, data_dir=tmp_path / "plugin-data").run() == 0
+    data_dir = tmp_path / "plugin-data"
+    assert Controller(book, data_dir=data_dir).run() == 0
 
     assert book.writes == []
+    assert converted_book_text == []
     assert len(results) == 1
     assert results[0]["status"] == "success"
     assert results[0]["accepted_changes"] == 0
     assert results[0]["return_to_scope"] is True
+    assert len(results[0]["diagnostic_documents"]) == 1
+    assert [diagnostic.code for diagnostic in
+            results[0]["diagnostic_documents"][0].plan.diagnostics] == [
+                "SOURCE_INVALID_XHTML"]
+    assert results[0].get("report_text") is None
+    log_text = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (data_dir / "logs").rglob("*") if path.is_file()
+    )
+    assert "SECRET_DIAGNOSTIC_CONTEXT" not in log_text
 
 
 def test_noop_return_to_scope_restarts_with_new_selection(monkeypatch, tmp_path):

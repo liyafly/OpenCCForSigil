@@ -10,9 +10,10 @@ ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT / "plugin/OpenCCForSigil"))
 
 import PySide6  # noqa: E402
-from PySide6.QtCore import QEventLoop, Qt, QTimer  # noqa: E402
+from PySide6.QtCore import QCoreApplication, QEvent, QEventLoop, Qt, QTimer  # noqa: E402
+from PySide6.QtGui import QKeyEvent  # noqa: E402
 from PySide6.QtWidgets import QMessageBox  # noqa: E402
-from core.models import ConversionPlan, SourceSpan, TokenChange  # noqa: E402
+from core.models import ConversionPlan, Diagnostic, SourceSpan, TokenChange  # noqa: E402
 from core.preview import PreviewSession  # noqa: E402
 from ui.i18n import Translator  # noqa: E402
 from ui.preview_window import _PreviewDialog  # noqa: E402
@@ -265,6 +266,130 @@ def exercise_filters(qt, app, language, output_dir):
     }
 
 
+def exercise_diagnostics(qt, app, language, output_dir):
+    translator = Translator(language)
+    source = "<p>甲<em>乙</em></p>"
+    changes = (
+        TokenChange(
+            source="甲", target="乙", span=SourceSpan(3, 4), rule_source="OpenCC:s2t",
+            change_id="diagnostic-first", file_id="changed",
+        ),
+        TokenChange(
+            source="乙", target="丙", span=SourceSpan(8, 9), rule_source="OpenCC:s2t",
+            change_id="diagnostic-second", file_id="changed",
+        ),
+    )
+    changed_plan = ConversionPlan(
+        source_sha256="", file_id="changed", changes=changes,
+        diagnostics=(
+            Diagnostic("INLINE_BOUNDARY", "fixture", SourceSpan(4, 8)),
+            Diagnostic("QUOTE_UNBALANCED", "fixture", SourceSpan(8, 9)),
+        ),
+    )
+    no_change_plan = ConversionPlan(
+        source_sha256="", file_id="diagnostic-only", changes=(),
+        diagnostics=(Diagnostic("MIXED_SCRIPT", "fixture", SourceSpan(0, 5)),),
+    )
+    planned = tuple(SimpleNamespace(
+        source=SimpleNamespace(file_id=file_id, href=href, document_kind="xhtml",
+                               source=source_text),
+        plan=plan,
+    ) for file_id, href, source_text, plan in (
+        ("changed", "Text/changed.xhtml", source, changed_plan),
+        ("diagnostic-only", "Text/diagnostic-only.xhtml", "plain source", no_change_plan),
+    ))
+    previews = (PreviewSession(changed_plan), PreviewSession(no_change_plan))
+    dialog = _PreviewDialog(qt, planned, previews, translator)
+    panel = dialog.diagnostic_panel
+    assert panel is not None
+    dialog.dialog.show()
+    app.processEvents()
+    assert not panel.content.isVisible()
+    panel.toggle.click()
+    app.processEvents()
+    assert panel.content.isVisible()
+    assert panel.table.rowCount() == 3
+    assert panel._visible_records[0].location == translator.text(
+        "preview.invalid_source_location", line=1, column=5)
+
+    # A click reveals the linked change; keyboard navigation moves to the
+    # following diagnostic and selects its real matching preview change.
+    panel.table.cellClicked.emit(0, 0)
+    assert dialog._selected_change_identity() == ("changed", "diagnostic-first")
+    assert previews[0].decision("diagnostic-first") is None
+    panel.table.setFocus()
+    key_press = QKeyEvent(
+        QEvent.Type.KeyPress, Qt.Key_Down, Qt.KeyboardModifier.NoModifier)
+    key_release = QKeyEvent(
+        QEvent.Type.KeyRelease, Qt.Key_Down, Qt.KeyboardModifier.NoModifier)
+    QCoreApplication.sendEvent(panel.table, key_press)
+    QCoreApplication.sendEvent(panel.table, key_release)
+    app.processEvents()
+    assert dialog._selected_change_identity() == ("changed", "diagnostic-second")
+    assert previews[0].decision("diagnostic-second") is None
+
+    panel.file_filter.setCurrentIndex(panel.file_filter.findData("diagnostic-only"))
+    app.processEvents()
+    assert panel.table.rowCount() == 1
+    assert panel._visible_records[0].file_id == "diagnostic-only"
+    panel.table.cellClicked.emit(0, 0)
+    assert dialog._selected_change_identity() == ("changed", "diagnostic-second")
+    assert "【plain】 source" in panel.context.toPlainText()
+    dialog.dialog.grab().save(str(output_dir / f"preview-diagnostics-{language}.png"))
+    panel.toggle.click()
+    app.processEvents()
+    assert not panel.content.isVisible()
+    dialog.dialog.hide()
+
+    events = []
+
+    def click_result_diagnostics():
+        modal = app.activeModalWidget()
+        assert isinstance(modal, QMessageBox)
+        button = next(
+            button for button in modal.buttons()
+            if button.text() == translator.text("result.view_diagnostics"))
+        events.append("opened")
+        button.click()
+
+    def close_diagnostics():
+        modal = app.activeModalWidget()
+        assert modal is not None and not isinstance(modal, QMessageBox)
+        button = next(
+            button for button in modal.findChildren(qt.QPushButton)
+            if button.text() == translator.text("common.close"))
+        events.append("diagnostics_closed")
+        button.click()
+
+    def close_result():
+        modal = app.activeModalWidget()
+        assert isinstance(modal, QMessageBox)
+        button = next(
+            button for button in modal.buttons()
+            if button.text() == translator.text("common.close"))
+        events.append("result_closed")
+        button.click()
+
+    QTimer.singleShot(0, click_result_diagnostics)
+    QTimer.singleShot(100, close_diagnostics)
+    QTimer.singleShot(250, close_result)
+    from ui.preview_window import show_result
+    result = show_result(
+        status="success", files_scanned=1, files_changed=0,
+        accepted_changes=0, skipped_changes=0, return_to_scope=True,
+        diagnostic_documents=(planned[1],), translator=translator,
+    )
+    assert result == "close"
+    assert events == ["opened", "diagnostics_closed", "result_closed"]
+    return {
+        "collapsed_by_default_and_expandable": True,
+        "file_filter_includes_no_change_diagnostics": True,
+        "click_and_keyboard_navigation_select_real_preview_rows": True,
+        "diagnostic_selection_does_not_change_decisions": True,
+        "zero_change_result_opens_and_closes_diagnostics": True,
+    }
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, required=True)
@@ -297,6 +422,8 @@ def main():
         window.dialog.grab().save(str(args.output / f"preview-{language}.png"))
         item["group_actions"] = exercise_group_actions(qt, app, language)
         item["filter_interactions"] = exercise_filters(qt, app, language, args.output)
+        item["diagnostic_interactions"] = exercise_diagnostics(
+            qt, app, language, args.output)
         results.append(item)
         window.dialog.hide()
     report = {"PySide6": PySide6.__version__, "results": results}
@@ -312,6 +439,7 @@ def main():
             assert item["table_height"] >= 150, item
             assert all(item["group_actions"].values()), item
             assert all(item["filter_interactions"].values()), item
+            assert all(item["diagnostic_interactions"].values()), item
 
 
 if __name__ == "__main__":

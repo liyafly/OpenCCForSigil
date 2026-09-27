@@ -128,6 +128,8 @@ class Base:
             "currentTextChanged",
             "itemDoubleClicked",
             "cellDoubleClicked",
+            "currentCellChanged",
+            "cellClicked",
             "itemClicked",
         ):
             s = Signal()
@@ -645,6 +647,7 @@ class TableWidget(Base):
         self._columns = max(0, columns)
         self._items = {}
         self._current_row = -1
+        self._current_column = -1
 
     def setRowCount(self, count):
         self._rows = max(0, int(count))
@@ -674,6 +677,15 @@ class TableWidget(Base):
 
     def currentRow(self):
         return self._current_row
+
+    def setCurrentCell(self, row, column):
+        previous_row, previous_column = self._current_row, self._current_column
+        self._current_row, self._current_column = int(row), int(column)
+        if (previous_row, previous_column) != (self._current_row, self._current_column):
+            self.currentCellChanged.emit(
+                self._current_row, self._current_column,
+                previous_row, previous_column,
+            )
 
     def selectRow(self, row):
         self._current_row = row

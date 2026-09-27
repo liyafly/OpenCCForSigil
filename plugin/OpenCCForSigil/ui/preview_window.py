@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from bisect import bisect_right
 from collections import Counter
 from dataclasses import dataclass
 from html import unescape
@@ -58,6 +59,18 @@ class _DecisionHistoryChange:
 class _DecisionHistoryOperation:
     sequence: int
     changes: Tuple[_DecisionHistoryChange, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _DiagnosticRecord:
+    file_id: str
+    href: str
+    code: str
+    name: str
+    description: str
+    location: str
+    excerpt: str
+    related_changes: Tuple[Tuple[str, str], ...]
 
 
 @dataclass(frozen=True)
@@ -564,6 +577,337 @@ def _spine_ids(adapter: Any) -> Tuple[str, ...]:
         return ()
 
 
+def _source_line_starts(source: str) -> Tuple[int, ...]:
+    """Index original-source lines, treating CRLF as one newline."""
+
+    starts = [0]
+    index = 0
+    while index < len(source):
+        character = source[index]
+        if character == "\r":
+            index += 2 if index + 1 < len(source) and source[index + 1] == "\n" else 1
+            starts.append(index)
+        elif character == "\n":
+            index += 1
+            starts.append(index)
+        else:
+            index += 1
+    return tuple(starts)
+
+
+def _line_column_for_offset(starts: Tuple[int, ...], offset: int) -> Tuple[int, int]:
+    line_index = max(0, bisect_right(starts, offset) - 1)
+    return line_index + 1, offset - starts[line_index] + 1
+
+
+def _diagnostic_excerpt(
+    source: str, start: int | None, end: int | None,
+    line: int | None, column: int | None, starts: Tuple[int, ...],
+) -> str:
+    if not source:
+        return ""
+    if start is None or end is None or not (0 <= start <= end <= len(source)):
+        if line is None or column is None or line < 1 or column < 1:
+            return ""
+        if line - 1 >= len(starts):
+            return ""
+        start = min(starts[line - 1] + column - 1, len(source))
+        end = start
+    # Keep the locator compact even when a diagnostic covers a whole block.
+    visible_end = min(end, start + 72)
+    before = source[max(0, start - 48):start]
+    selected = source[start:visible_end]
+    after = source[visible_end:min(len(source), visible_end + 48)]
+    marker = selected if selected else "|"
+    return f"…{before}【{marker}】{after}…"
+
+
+def _diagnostic_records(
+    planned_documents: Sequence[PlannedDocument], translator: Translator,
+) -> Tuple[_DiagnosticRecord, ...]:
+    """Build review rows only from the immutable plan and source snapshot."""
+
+    records = []
+    seen = set()
+    for planned in planned_documents:
+        source_document = getattr(planned, "source", None)
+        plan = getattr(planned, "plan", None)
+        if plan is None:
+            continue
+        file_id = str(
+            getattr(source_document, "file_id", "")
+            or getattr(plan, "file_id", "")
+        )
+        href = str(getattr(source_document, "href", "") or file_id)
+        source_value = getattr(source_document, "source", None)
+        has_source = isinstance(source_value, str)
+        source = source_value if has_source else ""
+        line_starts = _source_line_starts(source)
+        changes = tuple(getattr(plan, "changes", ()) or ())
+        for diagnostic in getattr(plan, "diagnostics", ()) or ():
+            code = str(getattr(diagnostic, "code", "") or "")
+            if not code:
+                continue
+            span = getattr(diagnostic, "span", None)
+            raw_start = getattr(span, "start", None)
+            raw_end = getattr(span, "end", None)
+            start = raw_start if isinstance(raw_start, int) and not isinstance(raw_start, bool) else None
+            end = raw_end if isinstance(raw_end, int) and not isinstance(raw_end, bool) else None
+            span_key = (start, end) if start is not None and end is not None else None
+            identity = (file_id, code, span_key)
+            if identity in seen:
+                continue
+            seen.add(identity)
+
+            line = getattr(diagnostic, "line", None)
+            column = getattr(diagnostic, "column", None)
+            if not (isinstance(line, int) and line > 0
+                    and isinstance(column, int) and column > 0):
+                line = column = None
+                if has_source and start is not None and 0 <= start <= len(source):
+                    line, column = _line_column_for_offset(line_starts, start)
+            if line is None or column is None:
+                location = translator.text("preview.diagnostic_position_unavailable")
+            else:
+                location = translator.text(
+                    "preview.invalid_source_location", line=line, column=column)
+
+            related = []
+            if (start is not None and end is not None and 0 <= start <= end <= len(source)):
+                for change in changes:
+                    change_span = getattr(change, "span", None)
+                    change_start = getattr(change_span, "start", None)
+                    change_end = getattr(change_span, "end", None)
+                    if (getattr(change, "file_id", file_id) != file_id
+                            or not isinstance(change_start, int)
+                            or not isinstance(change_end, int)):
+                        continue
+                    if code == "INLINE_BOUNDARY":
+                        # The boundary span contains markup, while the affected
+                        # text changes sit exactly on either side. The planner
+                        # uses these same endpoints when it raises their risk.
+                        overlaps = change_end == start or change_start == end
+                    else:
+                        overlaps = (
+                            change_start <= start <= change_end
+                            if start == end
+                            else change_start < end and start < change_end
+                        )
+                    if overlaps:
+                        identity = (file_id, str(getattr(change, "change_id", "")))
+                        if identity not in related:
+                            related.append(identity)
+            diagnostic_name = translator.text(f"diagnostic.name.{code}", code=code)
+            if diagnostic_name == f"diagnostic.name.{code}":
+                diagnostic_name = translator.text("diagnostic.name.unknown", code=code)
+            records.append(_DiagnosticRecord(
+                file_id=file_id,
+                href=href,
+                code=code,
+                name=diagnostic_name,
+                description=diagnostic_summary(translator, code, 1),
+                location=location,
+                excerpt=_diagnostic_excerpt(source, start, end, line, column, line_starts),
+                related_changes=tuple(related),
+            ))
+    return tuple(records)
+
+
+class _DiagnosticPanel:
+    """Read-only, filterable diagnostics backed by frozen source snapshots."""
+
+    def __init__(
+        self, qt: Any, records: Sequence[_DiagnosticRecord], translator: Translator,
+        on_related_change=None,
+    ) -> None:
+        self._qt = qt
+        self._records = tuple(records)
+        self._translator = translator
+        self._on_related_change = on_related_change
+        self.widget = qt.QWidget()
+        layout = qt.QVBoxLayout(self.widget)
+
+        self.toggle = qt.QToolButton()
+        self.toggle.setText(translator.text(
+            "preview.diagnostics_count", count=len(self._records)))
+        self.toggle.setCheckable(True)
+        self.toggle.setAccessibleName(translator.text("a11y.preview.diagnostics"))
+        self.toggle.setToolButtonStyle(_enum_value(qt.Qt, "ToolButtonTextBesideIcon"))
+        layout.addWidget(self.toggle)
+
+        self.content = qt.QWidget()
+        content_layout = qt.QVBoxLayout(self.content)
+        filter_row = qt.QHBoxLayout()
+        self.file_filter = qt.QComboBox()
+        self.code_filter = qt.QComboBox()
+        self._populate_filter(
+            self.file_filter,
+            translator.text("preview.filter_file"),
+            tuple((record.href, record.file_id)
+                  for record in self._unique_by_value("file_id")),
+            translator,
+        )
+        self._populate_filter(
+            self.code_filter,
+            translator.text("preview.diagnostic_code_filter"),
+            tuple((record.name, record.code)
+                  for record in self._unique_by_value("code")),
+            translator,
+        )
+        for combo in (self.file_filter, self.code_filter):
+            combo.setSizeAdjustPolicy(
+                _enum_value(qt.QComboBox, "AdjustToMinimumContentsLengthWithIcon"))
+            combo.setMinimumContentsLength(10)
+            filter_row.addWidget(combo)
+            combo.currentIndexChanged.connect(self._refresh)
+        content_layout.addLayout(filter_row)
+
+        self.table = qt.QTableWidget(0, 4)
+        self.table.setHorizontalHeaderLabels((
+            translator.text("preview.column.file"),
+            translator.text("preview.diagnostic_column.code"),
+            translator.text("preview.diagnostic_column.position"),
+            translator.text("preview.diagnostic_column.description"),
+        ))
+        self.table.setSelectionBehavior(
+            _enum_value(qt.QAbstractItemView, "SelectRows"))
+        self.table.setSelectionMode(
+            _enum_value(qt.QAbstractItemView, "SingleSelection"))
+        self.table.setEditTriggers(_enum_value(qt.QAbstractItemView, "NoEditTriggers"))
+        self.table.setAccessibleName(translator.text("a11y.preview.diagnostics"))
+        header = self.table.horizontalHeader()
+        interactive = _enum_value(qt.QHeaderView, "Interactive")
+        stretch = _enum_value(qt.QHeaderView, "Stretch")
+        if interactive is not None and stretch is not None:
+            for column in (0, 1, 2):
+                header.setSectionResizeMode(column, interactive)
+            header.setSectionResizeMode(3, stretch)
+        self.table.currentCellChanged.connect(self._row_selected)
+        self.table.cellClicked.connect(self._row_selected)
+        content_layout.addWidget(self.table)
+
+        self.context = qt.QPlainTextEdit()
+        self.context.setReadOnly(True)
+        self.context.setAccessibleName(translator.text("a11y.preview.diagnostic_context"))
+        self.context.setMinimumHeight(64)
+        content_layout.addWidget(self.context)
+        layout.addWidget(self.content)
+        self.toggle.toggled.connect(self.set_expanded)
+        self.set_expanded(False)
+        self._visible_records: Tuple[_DiagnosticRecord, ...] = ()
+        self._refresh()
+
+    def _unique_by_value(self, attribute: str) -> Tuple[_DiagnosticRecord, ...]:
+        selected = set()
+        result = []
+        for record in self._records:
+            value = getattr(record, attribute)
+            if value in selected:
+                continue
+            selected.add(value)
+            result.append(record)
+        return tuple(result)
+
+    @staticmethod
+    def _populate_filter(combo, label, values, translator) -> None:
+        combo.addItem(
+            f"{label}{translator.text('common.label_separator')}"
+            f"{translator.text('preview.filter_all')}", None)
+        for display, value in values:
+            combo.addItem(str(display), str(value))
+
+    def set_expanded(self, expanded: bool) -> None:
+        expanded = bool(expanded)
+        self.content.setVisible(expanded)
+        arrow = _enum_value(
+            self._qt.Qt, "DownArrow" if expanded else "RightArrow")
+        if arrow is not None:
+            self.toggle.setArrowType(arrow)
+        if self.toggle.isChecked() != expanded:
+            blocked = self.toggle.blockSignals(True)
+            try:
+                self.toggle.setChecked(expanded)
+            finally:
+                self.toggle.blockSignals(blocked)
+
+    def _refresh(self, *_args) -> None:
+        file_id = self.file_filter.currentData()
+        code = self.code_filter.currentData()
+        records = tuple(
+            record for record in self._records
+            if (file_id is None or record.file_id == file_id)
+            and (code is None or record.code == code)
+        )
+        self._visible_records = records
+        blocked = self.table.blockSignals(True)
+        try:
+            self.table.setRowCount(0)
+            self.table.setRowCount(len(records))
+            qt_user_role = _enum_value(self._qt.Qt, "UserRole")
+            for row, record in enumerate(records):
+                values = (record.href, record.name, record.location,
+                          record.description)
+                for column, value in enumerate(values):
+                    item = self._qt.QTableWidgetItem(str(value))
+                    if column == 0 and qt_user_role is not None:
+                        item.setData(qt_user_role, row)
+                    self.table.setItem(row, column, item)
+            if records:
+                self.table.setCurrentCell(0, 0)
+        finally:
+            self.table.blockSignals(blocked)
+        if records:
+            self._row_selected(0, navigate=False)
+        else:
+            self.context.setPlainText(
+                self._translator.text("preview.diagnostics_no_matches"))
+
+    def _row_selected(self, row: int, *_args, navigate=True) -> None:
+        if row < 0 or row >= len(self._visible_records):
+            return
+        record = self._visible_records[row]
+        lines = [
+            f"{self._translator.text('preview.diagnostic_column.code')}"
+            f"{self._translator.text('common.label_separator')}{record.name}",
+            f"{self._translator.text('preview.diagnostic_column.position')}"
+            f"{self._translator.text('common.label_separator')}{record.location}",
+            self._translator.text("preview.diagnostic_context_label"),
+            record.excerpt or self._translator.text("preview.diagnostic_context_unavailable"),
+        ]
+        if record.related_changes:
+            lines.append(self._translator.text(
+                "preview.diagnostic_related_changes", count=len(record.related_changes)))
+        self.context.setPlainText("\n".join(lines))
+        if (navigate and record.related_changes
+                and callable(self._on_related_change)):
+            self._on_related_change(record.related_changes[0])
+
+
+def _show_diagnostics_dialog(
+    qt: Any, planned_documents: Sequence[PlannedDocument], translator: Translator,
+) -> None:
+    records = _diagnostic_records(planned_documents, translator)
+    if not records:
+        return
+    dialog = qt.QDialog()
+    dialog.setWindowTitle(plugin_window_title(
+        translator, translator.text("preview.diagnostics_title")))
+    resize = getattr(dialog, "resize", None)
+    if callable(resize):
+        resize(850, 520)
+    layout = qt.QVBoxLayout(dialog)
+    panel = _DiagnosticPanel(qt, records, translator)
+    panel.set_expanded(True)
+    layout.addWidget(panel.widget, 1)
+    buttons = qt.QHBoxLayout()
+    buttons.addStretch(1)
+    close = qt.QPushButton(translator.text("common.close"))
+    buttons.addWidget(close)
+    layout.addLayout(buttons)
+    close.clicked.connect(dialog.accept)
+    exec_dialog(dialog)
+
+
 def _ordered_scope_inventory(
     inventory: Sequence[TextFile], spine_ids: Sequence[str]
 ) -> Tuple[TextFile, ...]:
@@ -633,6 +977,7 @@ def show_result(
     failed_file: str | None = None,
     return_to_scope: bool = False,
     diagnostics=(),
+    diagnostic_documents: Sequence[PlannedDocument] = (),
     report_text: str | None = None,
     translator: Translator | None = None,
     ui_preferences=None,
@@ -678,6 +1023,8 @@ def show_result(
     if status == "success" and accepted_changes > 0:
         message += "\n\n" + translator.text("result.save_reminder")
     diagnostics = tuple(diagnostics)
+    diagnostic_documents = tuple(diagnostic_documents)
+    diagnostic_records = _diagnostic_records(diagnostic_documents, translator)
     if diagnostics:
         rows = []
         for item in diagnostics:
@@ -691,7 +1038,7 @@ def show_result(
             else:
                 rows.append(str(item))
         message += "\n\n" + translator.text("result.invalid_sources") + "\n" + "\n".join(rows)
-    if return_to_scope or report_text:
+    if return_to_scope or report_text or diagnostic_records:
         box = qt_widgets.QMessageBox()
         box.setWindowTitle(plugin_window_title(
             translator, translator.text("result.title")))
@@ -704,6 +1051,12 @@ def show_result(
         if report_text:
             view_report = box.addButton(
                 translator.text("result.view_report"), qt_widgets.QMessageBox.ActionRole)
+        view_diagnostics = None
+        if diagnostic_records:
+            view_diagnostics = box.addButton(
+                translator.text("result.view_diagnostics"),
+                qt_widgets.QMessageBox.ActionRole,
+            )
         close = box.addButton(translator.text("common.close"), qt_widgets.QMessageBox.AcceptRole)
         box.setDefaultButton(close)
         box.setEscapeButton(close)
@@ -716,6 +1069,10 @@ def show_result(
                     ui_preferences=ui_preferences,
                     save_ui_preferences=save_ui_preferences,
                 )
+                continue
+            if view_diagnostics is not None and clicked is view_diagnostics:
+                _show_diagnostics_dialog(
+                    qt_widgets, diagnostic_documents, translator)
                 continue
             return "back_to_scope" if back is not None and clicked is back else "close"
     method(None, plugin_window_title(
@@ -1157,6 +1514,7 @@ class _PreviewDialog:
             for item in self._planned
             if isinstance(getattr(item.source, "source", None), str)
         }
+        self._diagnostic_records = _diagnostic_records(self._planned, translator)
         self._targets_by_id = {
             (item.source.file_id, target.node_id): target
             for item in self._planned
@@ -1423,6 +1781,14 @@ class _PreviewDialog:
         ):
             self.splitter.setSizes([int(item) for item in saved_splitter_sizes])
         layout.addWidget(self.splitter, 1)
+
+        self.diagnostic_panel = None
+        if self._diagnostic_records:
+            self.diagnostic_panel = _DiagnosticPanel(
+                qt, self._diagnostic_records, self._translator,
+                on_related_change=self._navigate_to_related_change,
+            )
+            layout.addWidget(self.diagnostic_panel.widget)
 
         buttons = qt.QHBoxLayout()
         self.accept_this_button = qt.QPushButton(self._translator.text("preview.accept_this"))
@@ -1913,6 +2279,25 @@ class _PreviewDialog:
             change = entries[row][1]
             return change.file_id, change.change_id
         return None
+
+    def _navigate_to_related_change(self, identity: Tuple[str, str]) -> None:
+        """Reveal a real related preview row without changing its decision."""
+
+        self._clear_filters()
+        file_id, change_id = identity
+        for index in range(self.file_filter.count()):
+            if self.file_filter.itemData(index) == file_id:
+                self.file_filter.setCurrentIndex(index)
+                break
+        self._refresh()
+        visible_entries = getattr(self, "_visible_entries_cache", ())
+        row = next(
+            (index for index, (_preview, change) in enumerate(visible_entries)
+             if (change.file_id, change.change_id) == identity),
+            None,
+        )
+        if row is not None:
+            self._set_current_row(row)
 
     def _set_current_row(self, row: int) -> None:
         table = getattr(self, "table_view", None)
