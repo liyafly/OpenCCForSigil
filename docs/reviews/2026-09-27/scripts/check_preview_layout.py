@@ -23,6 +23,169 @@ from ui.preview_window import _PreviewDialog  # noqa: E402
 from ui.qt import ensure_application, load_qt  # noqa: E402
 
 
+def exercise_batch_decisions(qt, app, language, output_dir):
+    translator = Translator(language)
+
+    def make_dialog(changes):
+        by_file = {}
+        for change in changes:
+            by_file.setdefault(change.file_id, []).append(change)
+        plans = tuple(ConversionPlan(source_sha256="", file_id=file_id,
+                                     changes=tuple(items))
+                      for file_id, items in by_file.items())
+        planned = tuple(SimpleNamespace(
+            source=SimpleNamespace(file_id=plan.file_id, href=plan.file_id,
+                                   document_kind="xhtml"), plan=plan,
+        ) for plan in plans)
+        previews = tuple(PreviewSession(plan) for plan in plans)
+        return _PreviewDialog(qt, planned, previews, translator), previews
+
+    def complete(dialog, *, scope=None, confirm=True, screenshot=None):
+        action = dialog._more_action_by_button[dialog.batch_button]
+        assert action.isEnabled()
+        details = {}
+
+        def interact():
+            modal = app.activeModalWidget()
+            assert modal is not None
+            combos = modal.findChildren(qt.QComboBox)
+            check = modal.findChild(qt.QCheckBox)
+            labels = modal.findChildren(qt.QLabel)
+            buttons = modal.findChildren(qt.QPushButton)
+            assert len(combos) == 2 and check is not None and check.isChecked()
+            if screenshot is not None:
+                app.processEvents()
+                modal.grab().save(str(output_dir / screenshot))
+            if scope is not None:
+                combo = combos[0]
+                combo.setCurrentIndex(combo.findData(scope))
+            details["summary"] = next(label.text() for label in labels
+                                       if "Will change" in label.text()
+                                       or "将更改" in label.text()
+                                       or "將變更" in label.text())
+            confirm_button = next(button for button in buttons
+                                  if button.text().startswith(
+                                      translator.text("preview.batch_confirm").split("{")[0])
+                                  or button.text().startswith(
+                                      translator.text("preview.batch_confirm_overwrite").split("{")[0]))
+            details["enabled"] = confirm_button.isEnabled()
+            (confirm_button if confirm else next(
+                button for button in buttons
+                if button.text() == translator.text("common.cancel"))).click()
+
+        QTimer.singleShot(0, interact)
+        action.trigger()
+        app.processEvents()
+        return details
+
+    plain = [TokenChange(source="a", target="b", span=SourceSpan(0, 1),
+                         rule_source="fixture", change_id=f"b1-{i}",
+                         file_id="chapter") for i in range(10)]
+    dialog, previews = make_dialog(plain)
+    for change in plain[:2]:
+        previews[0].accept_this(change.change_id)
+    for change in plain[2:5]:
+        previews[0].reject_this(change.change_id)
+    dialog._recompute_counts()
+    b1 = complete(dialog, screenshot="batch-b1-dialog-en.png")
+    assert b1["enabled"] and "5" in b1["summary"]
+    assert sum((decision := previews[0].decision(change.change_id)) is not None
+               and decision.value.startswith("accept") for change in plain) == 7
+    assert sum((decision := previews[0].decision(change.change_id)) is not None
+               and decision.value.startswith("reject") for change in plain) == 3
+    dialog._undo_preview_action()
+    assert sum(previews[0].decision(change.change_id) is None for change in plain) == 5
+    assert sum((decision := previews[0].decision(change.change_id)) is not None
+               and decision.value.startswith("accept") for change in plain) == 2
+    assert sum((decision := previews[0].decision(change.change_id)) is not None
+               and decision.value.startswith("reject") for change in plain) == 3
+    dialog.dialog.hide()
+
+    grouped = [TokenChange(source="a", target="b", span=SourceSpan(0, 1),
+                           rule_source="fixture", change_id=f"b3-{i}",
+                           file_id=f"file-{i}", group_id="rules:batch")
+               for i in range(3)]
+    dialog, previews = make_dialog(grouped)
+    dialog._visible_entries_cache = (dialog._entries[0],)
+    cancelled = complete(dialog, confirm=False)
+    assert cancelled["enabled"] and "2" in cancelled["summary"]
+    assert all(preview.decision(change.change_id) is None
+               for preview, change in dialog._entries)
+    b3 = complete(dialog)
+    assert b3["enabled"] and "2" in b3["summary"]
+    assert all(preview.decision(change.change_id).value.startswith("accept")
+               for preview, change in dialog._entries)
+    dialog._undo_preview_action()
+    assert all(preview.decision(change.change_id) is None
+               for preview, change in dialog._entries)
+    dialog.dialog.hide()
+
+    b5_changes = [
+        TokenChange(source="a", target="b", span=SourceSpan(0, 1),
+                    rule_source="UserRule", change_id="local-1", file_id="chapter",
+                    group_id="rules:local"),
+        TokenChange(source="a", target="b", span=SourceSpan(0, 1),
+                    rule_source="UserRule", change_id="local-2", file_id="chapter",
+                    group_id="rules:local"),
+        TokenChange(source="zh-CN", target="zh-TW", span=SourceSpan(0, 5),
+                    rule_source="language_metadata", change_id="lang-chapter",
+                    file_id="chapter", group_id="language_metadata"),
+        TokenChange(source="zh-CN", target="zh-TW", span=SourceSpan(0, 5),
+                    rule_source="language_metadata", change_id="lang-opf",
+                    file_id="content.opf", group_id="language_metadata"),
+    ]
+    dialog, previews = make_dialog(b5_changes)
+    b5_file = complete(dialog, scope="file")
+    assert b5_file["enabled"]
+    assert sum(preview.summary()["accepted"] for preview in previews) == 2
+    assert sum(preview.summary()["undecided"] for preview in previews) == 2
+    dialog._undo_preview_action()
+    b5_all = complete(dialog, scope="all")
+    assert b5_all["enabled"]
+    assert sum(preview.summary()["accepted"] for preview in previews) == 4
+    dialog.dialog.hide()
+
+    stale_changes = [TokenChange(source="a", target="b", span=SourceSpan(0, 1),
+                                 rule_source="fixture", change_id=f"stale-{index}",
+                                 file_id="chapter") for index in range(2)]
+    dialog, previews = make_dialog(stale_changes)
+    stale_details = {}
+
+    def click_confirmation(expect_stale):
+        modal = app.activeModalWidget()
+        assert modal is not None
+        labels = modal.findChildren(qt.QLabel)
+        buttons = modal.findChildren(qt.QPushButton)
+        stale_details["stale_visible"] = any(
+            translator.text("preview.batch_stale") in label.text() for label in labels)
+        confirm_button = next(
+            button for button in buttons
+            if button.text().startswith("Apply to "))
+        assert confirm_button.isEnabled()
+        assert stale_details["stale_visible"] is expect_stale
+        confirm_button.click()
+
+    def change_then_confirm():
+        previews[0].accept_this(stale_changes[0].change_id)
+        click_confirmation(False)
+        QTimer.singleShot(30, lambda: click_confirmation(True))
+
+    QTimer.singleShot(0, change_then_confirm)
+    dialog._more_action_by_button[dialog.batch_button].trigger()
+    assert previews[0].decision("stale-0").value == "accept_this"
+    assert previews[0].decision("stale-1").value == "accept_this"
+    assert len(dialog._undo_stack) == 1
+    dialog._undo_preview_action()
+    assert previews[0].decision("stale-0").value == "accept_this"
+    assert previews[0].decision("stale-1") is None
+    dialog.dialog.hide()
+
+    return {"B1": "real QAction, exact counts and one-step Undo",
+            "B3": "Cancel preserved decisions; filtered hit expanded group and Undo restored",
+            "B5": "file scope included local rules and excluded language group; all scope included it",
+            "B10": "stale decision revision refreshed and required a second confirmation"}
+
+
 def exercise_group_actions(qt, app, language):
     translator = Translator(language)
     language_changes = (
@@ -475,6 +638,9 @@ def main():
         }
         window.dialog.grab().save(str(args.output / f"preview-{language}.png"))
         item["group_actions"] = exercise_group_actions(qt, app, language)
+        if language == "en":
+            item["batch_decisions"] = exercise_batch_decisions(
+                qt, app, language, args.output)
         item["filter_interactions"] = exercise_filters(qt, app, language, args.output)
         item["diagnostic_interactions"] = exercise_diagnostics(
             qt, app, language, args.output)

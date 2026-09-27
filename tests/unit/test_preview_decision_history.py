@@ -190,6 +190,51 @@ def test_bulk_history_snapshot_restores_mixed_prior_decisions_as_one_operation()
     assert dialog._totals == {"total": 3, "accepted": 3, "rejected": 0, "undecided": 0}
 
 
+def test_scoped_bulk_history_restores_exact_decisions_as_one_compact_operation():
+    dialog, previews = _dialog(tuple(_change(f"change-{i}") for i in range(10)))
+    for preview, change in dialog._entries[:2]:
+        preview.accept_this(change.change_id)
+    for preview, change in dialog._entries[2:5]:
+        preview.reject_this(change.change_id)
+    before_decisions = _decisions(previews)
+    changed = dialog._entries[5:]
+    compact = dialog._capture_compact_decisions(changed)
+    for preview, change in changed:
+        preview.accept_this(change.change_id)
+    dialog._record_scoped_bulk_decision_action(
+        compact, PreviewDecision.ACCEPT_THIS, len(changed))
+
+    assert len(dialog._undo_stack) == 1
+    assert len(dialog._undo_stack[0].changes) == len(changed)
+    dialog._undo_preview_action()
+    assert _decisions(previews) == before_decisions
+    dialog._redo_preview_action()
+    assert sum(decision == PreviewDecision.ACCEPT_THIS
+               for decision in _decisions(previews).values()) == 7
+    assert sum(decision == PreviewDecision.REJECT_THIS
+               for decision in _decisions(previews).values()) == 3
+
+
+def test_cancelled_batch_keeps_redo_but_new_batch_action_clears_it():
+    dialog, previews = _dialog((_change("one"), _change("two", source="丙")))
+    dialog._accept_this()
+    dialog._undo_preview_action()
+    redo_before = tuple(dialog._redo_stack)
+    decisions_before = _decisions(previews)
+
+    # Opening and cancelling the dialog only plans changes; it records nothing.
+    dialog._record_scoped_bulk_decision_action((), PreviewDecision.ACCEPT_THIS, 0)
+    assert tuple(dialog._redo_stack) == redo_before
+    assert _decisions(previews) == decisions_before
+
+    compact = dialog._capture_compact_decisions(dialog._entries)
+    for preview, change in dialog._entries:
+        preview.reject_this(change.change_id)
+    dialog._record_scoped_bulk_decision_action(
+        compact, PreviewDecision.REJECT_THIS, len(dialog._entries))
+    assert dialog._redo_stack == []
+
+
 def test_filtered_decision_undo_restores_status_filter_visibility():
     dialog, previews = _dialog((_change("one"), _change("two", source="丙")))
     dialog.status_filter.setCurrentIndex(dialog.status_filter.findData("undecided"))

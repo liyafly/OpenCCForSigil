@@ -36,6 +36,11 @@ from ui.i18n import (
 )
 from ui.window_state import restore_window_size, save_window_size
 from ui.run_summary import run_summary_data
+from ui.preview_batch import plan_batch_decision
+
+_DECISION_VALUES = tuple(PreviewDecision)
+_DECISION_TO_CODE = {decision: index + 1
+                     for index, decision in enumerate(_DECISION_VALUES)}
 
 
 class UIUnavailableError(RuntimeError):
@@ -70,10 +75,23 @@ class _BulkDecisionHistoryOperation:
     before_snapshots: Tuple[Tuple[str, PreviewDecisionSnapshot], ...]
     after: PreviewDecision
     change_count: int
+    after_snapshots: Tuple[Tuple[str, PreviewDecisionSnapshot], ...] | None = None
 
     @property
     def changes(self):
         # Keep pruning and budget accounting shared with per-change operations.
+        return range(self.change_count)
+
+
+@dataclass(frozen=True, slots=True)
+class _ScopedBulkDecisionHistoryOperation:
+    sequence: int
+    before_decisions: Tuple[Tuple[str, Tuple[str, ...], bytes], ...]
+    after: PreviewDecision
+    change_count: int
+
+    @property
+    def changes(self):
         return range(self.change_count)
 
 
@@ -1800,7 +1818,6 @@ class _PreviewDialog:
             lambda current, _previous: self._show_current(current.row()))
         header = self.table_view.horizontalHeader()
         interactive = _enum_value(qt.QHeaderView, "Interactive")
-        stretch = _enum_value(qt.QHeaderView, "Stretch")
         if interactive is not None:
             for column in range(7):
                 header.setSectionResizeMode(column, interactive)
@@ -1905,6 +1922,8 @@ class _PreviewDialog:
         self.reset_current_button.setAccessibleName(
             self._translator.text("a11y.preview.reset_current"))
         self.export_button = qt.QPushButton(self._translator.text("preview.export"))
+        self.batch_button = qt.QPushButton(self._translator.text("preview.batch_decide"))
+        self.batch_button.setVisible(False)
         self.export_full_diff = qt.QCheckBox(self._translator.text("preview.export_full_diff"))
         self.export_full_diff.setChecked(False)
         self.export_full_diff.setVisible(False)
@@ -1930,7 +1949,8 @@ class _PreviewDialog:
         for button in (self.accept_file_button, self.reject_file_button,
                        self.accept_filter_button, self.reject_filter_button,
                        self.accept_all_button, self.reject_all_button,
-                       self.reset_current_button, self.export_button):
+                       self.reset_current_button, self.export_button,
+                       self.batch_button):
             button.setVisible(False)
             if action_type is not None:
                 action = action_type(button.text(), self.more_menu)
@@ -1970,6 +1990,7 @@ class _PreviewDialog:
         self.redo_button.clicked.connect(self._redo_preview_action)
         self.reset_current_button.clicked.connect(self._reset_current_to_undecided)
         self.export_button.clicked.connect(self._export_preview)
+        self.batch_button.clicked.connect(self._open_batch_decision)
         self.apply_button.clicked.connect(self._apply)
         self.back_settings_button.clicked.connect(self._back_to_settings)
         self.cancel_button.clicked.connect(self.dialog.reject)
@@ -2083,6 +2104,132 @@ class _PreviewDialog:
                     self._translator, self._translator.text("preview.export")),
                 self._translator.text("preview.export_failed", reason=str(error)),
             )
+
+    def _open_batch_decision(self) -> None:
+        if not self._entries:
+            return
+        qt = self._qt
+        selected_scope = "filtered"
+        selected_action = "accept"
+        only_undecided = True
+        stale = False
+        while True:
+            current = self._current_entry()
+            current_file_id = current[1].file_id if current is not None else None
+            before_revision = tuple(
+                (file_id, preview.decision_revision)
+                for file_id, preview in self._preview_by_file_id.items()
+            )
+            dialog = qt.QDialog(self.dialog)
+            dialog.setWindowTitle(self._translator.text("preview.batch_title"))
+            layout = qt.QVBoxLayout(dialog)
+            scope_combo = qt.QComboBox()
+            for label_key, value in (
+                ("preview.batch_scope_filtered", "filtered"),
+                ("preview.batch_scope_file", "file"),
+                ("preview.batch_scope_all", "all"),
+            ):
+                scope_combo.addItem(self._translator.text(label_key), value)
+            file_index = scope_combo.findData("file")
+            if current_file_id is None:
+                model = scope_combo.model()
+                model_item = model.item(file_index) if model is not None else None
+                if model_item is not None:
+                    model_item.setEnabled(False)
+                    model_item.setToolTip(
+                        self._translator.text("preview.batch_file_unavailable"))
+            scope_combo.setCurrentIndex(scope_combo.findData(selected_scope))
+            layout.addWidget(scope_combo)
+            action_combo = qt.QComboBox()
+            action_combo.addItem(self._translator.text("preview.batch_accept"), "accept")
+            action_combo.addItem(self._translator.text("preview.batch_skip"), "skip")
+            action_combo.setCurrentIndex(action_combo.findData(selected_action))
+            layout.addWidget(action_combo)
+            only_check = qt.QCheckBox(self._translator.text("preview.batch_only_undecided"))
+            only_check.setChecked(only_undecided)
+            layout.addWidget(only_check)
+            summary = qt.QLabel()
+            summary.setWordWrap(True)
+            layout.addWidget(summary)
+            if stale:
+                stale_label = qt.QLabel(self._translator.text("preview.batch_stale"))
+                stale_label.setWordWrap(True)
+                layout.addWidget(stale_label)
+            buttons = qt.QHBoxLayout()
+            buttons.addStretch(1)
+            cancel = qt.QPushButton(self._translator.text("common.cancel"))
+            confirm = qt.QPushButton()
+            buttons.addWidget(cancel)
+            buttons.addWidget(confirm)
+            layout.addLayout(buttons)
+            cancel.clicked.connect(dialog.reject)
+
+            def build_plan():
+                visible = getattr(self, "_visible_entries_cache", self._entries)
+                return plan_batch_decision(
+                    self._entries, self._group_entries_by_id, self._group_file_ids,
+                    scope=scope_combo.currentData() or "filtered",
+                    visible_change_ids=(id(change) for _preview, change in visible),
+                    file_id=current_file_id,
+                    accepted=(action_combo.currentData() != "skip"),
+                    undecided_only=only_check.isChecked(),
+                )
+
+            def refresh_batch_summary(*_args):
+                batch = build_plan()
+                summary.setText(self._translator.text(
+                    "preview.batch_summary",
+                    changes=batch.change_count,
+                    groups=batch.group_count,
+                    files=batch.file_count,
+                    hidden=batch.hidden_count,
+                    overwrite=batch.overwrite_count,
+                    mixed=batch.excluded_mixed_groups,
+                    language=batch.excluded_language_groups,
+                    other=batch.excluded_other_groups,
+                ))
+                confirm.setText(self._translator.text(
+                    "preview.batch_confirm_overwrite"
+                    if batch.overwrite_count and not only_check.isChecked()
+                    else "preview.batch_confirm",
+                    count=batch.change_count, overwrite=batch.overwrite_count,
+                ))
+                confirm.setEnabled(batch.change_count > 0)
+
+            scope_combo.currentIndexChanged.connect(refresh_batch_summary)
+            action_combo.currentIndexChanged.connect(refresh_batch_summary)
+            only_check.toggled.connect(refresh_batch_summary)
+            refresh_batch_summary()
+            confirm.clicked.connect(dialog.accept)
+            if exec_dialog(dialog) != 1:
+                return
+            selected_scope = str(scope_combo.currentData() or "filtered")
+            selected_action = str(action_combo.currentData() or "accept")
+            only_undecided = only_check.isChecked()
+            current_revision = tuple(
+                (file_id, preview.decision_revision)
+                for file_id, preview in self._preview_by_file_id.items()
+            )
+            if current_revision != before_revision:
+                stale = True
+                continue
+            batch = build_plan()
+            if batch.change_count <= 0:
+                return
+            accepted = selected_action != "skip"
+            target = (PreviewDecision.ACCEPT_THIS if accepted
+                      else PreviewDecision.REJECT_THIS)
+            before_decisions = self._capture_compact_decisions(batch.entries)
+            for preview, change in batch.entries:
+                preview.restore_decision(change.change_id, target)
+            self._record_scoped_bulk_decision_action(
+                before_decisions, target, batch.change_count)
+            self._last_group_feedback = self._translator.text(
+                "preview.batch_applied", changes=batch.change_count,
+                groups=batch.group_count)
+            self._recompute_counts()
+            self._refresh(refresh_statuses=True)
+            return
 
     @staticmethod
     def _populate_filter(
@@ -2284,6 +2431,26 @@ class _PreviewDialog:
             self._history_sequence, tuple(before_snapshots), after, change_count)
         self._push_decision_history(operation)
 
+    @staticmethod
+    def _capture_compact_decisions(entries):
+        grouped = {}
+        for preview, change in entries:
+            record = grouped.setdefault(preview.plan.file_id, [[], bytearray()])
+            record[0].append(change.change_id)
+            decision = preview.decision(change.change_id)
+            record[1].append(0 if decision is None else _DECISION_TO_CODE[decision])
+        return tuple((file_id, tuple(change_ids), bytes(states))
+                     for file_id, (change_ids, states) in grouped.items())
+
+    def _record_scoped_bulk_decision_action(self, before_decisions, after, change_count):
+        if change_count <= 0:
+            return
+        self._history_sequence += 1
+        operation = _ScopedBulkDecisionHistoryOperation(
+            self._history_sequence, tuple(before_decisions), after, change_count,
+        )
+        self._push_decision_history(operation)
+
     def _push_decision_history(self, operation):
         if self._redo_stack:
             self._history_record_count -= sum(
@@ -2363,9 +2530,23 @@ class _PreviewDialog:
         )
 
     def _apply_history_side(self, operation, side):
+        if isinstance(operation, _ScopedBulkDecisionHistoryOperation):
+            for file_id, change_ids, states in operation.before_decisions:
+                preview = self._preview_by_file_id[file_id]
+                if side == "before":
+                    for change_id, state in zip(change_ids, states):
+                        preview.restore_decision(
+                            change_id, None if state == 0 else _DECISION_VALUES[state - 1])
+                else:
+                    for change_id in change_ids:
+                        preview.restore_decision(change_id, operation.after)
+            self._recompute_counts()
+            return
         if isinstance(operation, _BulkDecisionHistoryOperation):
-            if side == "before":
-                for file_id, snapshot in operation.before_snapshots:
+            snapshots = (operation.before_snapshots if side == "before"
+                         else operation.after_snapshots)
+            if snapshots is not None:
+                for file_id, snapshot in snapshots:
                     self._preview_by_file_id[file_id].restore_decision_snapshot(snapshot)
             else:
                 decision_all = (
@@ -2615,7 +2796,7 @@ class _PreviewDialog:
         # preview contains changes.  Applying remains blocked until every
         # change has a decision, including a preview with no changes.
         has_entries = bool(self._entries)
-        for name in ("accept_all_button", "reject_all_button"):
+        for name in ("accept_all_button", "reject_all_button", "batch_button"):
             button = getattr(self, name, None)
             if button is not None:
                 button.setEnabled(has_entries)

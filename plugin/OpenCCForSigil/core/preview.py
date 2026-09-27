@@ -86,6 +86,13 @@ class PreviewSession:
             self._changes[change_id] = change
         self._decisions: Dict[str, PreviewDecision] = {}
         self._snapshot_owner = object()
+        self._decision_revision = 0
+
+    @property
+    def decision_revision(self) -> int:
+        """Monotonic in-memory revision for detecting stale preview dialogs."""
+
+        return self._decision_revision
 
     @property
     def changes(self) -> Tuple[TokenChange, ...]:
@@ -116,11 +123,15 @@ class PreviewSession:
 
         self._require_change(change_id)
         if decision is None:
+            changed = change_id in self._decisions
             self._decisions.pop(change_id, None)
         elif isinstance(decision, PreviewDecision):
+            changed = self._decisions.get(change_id) is not decision
             self._decisions[change_id] = decision
         else:
             raise TypeError("decision must be a PreviewDecision or None")
+        if changed:
+            self._decision_revision += 1
 
     def decision_snapshot(self) -> PreviewDecisionSnapshot:
         """Capture decisions without retaining any change text or plan objects."""
@@ -137,6 +148,7 @@ class PreviewSession:
             raise PreviewError("decision snapshot belongs to a different preview session")
         self._decisions.clear()
         self._decisions.update(snapshot._decisions)
+        self._decision_revision += 1
 
     def accept_all(
         self,
@@ -207,7 +219,10 @@ class PreviewSession:
 
     def _set(self, change_id: str, decision: PreviewDecision) -> None:
         self._require_change(change_id)
+        changed = self._decisions.get(change_id) is not decision
         self._decisions[change_id] = decision
+        if changed:
+            self._decision_revision += 1
 
     def _set_all(
         self,
@@ -217,13 +232,17 @@ class PreviewSession:
         overwrite: bool = False,
     ) -> int:
         count = 0
+        changed = False
         for change in self._changes.values():
             if not overwrite and change.change_id in self._decisions:
                 continue
             if scope is not None and not scope.matches(change):
                 continue
+            changed = changed or self._decisions.get(change.change_id) is not decision
             self._decisions[change.change_id] = decision
             count += 1
+        if changed:
+            self._decision_revision += 1
         return count
 
     def _require_change(self, change_id: str) -> None:
