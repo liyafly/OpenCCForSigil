@@ -53,6 +53,9 @@ def probe(qt, app, output, language, storage_root):
     services = RunSettings(
         storage, SimpleNamespace(), {}, language=language, session_id="ui-review")
     services.active = Profile(id="review", name="UI review", builtin_rules_enabled=True)
+    services.profiles.save(services.active)
+    profile_path = services.profiles._path(services.active.id)
+    saved_profile_bytes = profile_path.read_bytes()
     config = _ConversionConfigDialog(
         qt, tuple(V1_CONFIGS), "s2t", {}, translator=tr, services=services,
         initial_options=profile_options(services.active),
@@ -94,6 +97,7 @@ def probe(qt, app, output, language, storage_root):
                 rule.id for rule in disabled_snapshot.rules if rule.id.startswith("builtin-")],
             "enabled_s2t_builtin_rules": [
                 rule.id for rule in standard_snapshot.rules if rule.id.startswith("builtin-")],
+            "saved_profile_file_bytes_unchanged": profile_path.read_bytes() == saved_profile_bytes,
         },
     }
     result["settings"] = capture(config.dialog, app, output, f"settings-{language}")
@@ -174,6 +178,7 @@ def main():
             assert len(summary["enabled_tw2sp_builtin_rules"]) == 4
             assert not summary["disabled_tw2sp_builtin_rules"]
             assert not summary["enabled_s2t_builtin_rules"]
+            assert summary["saved_profile_file_bytes_unchanged"]
     text = json.dumps(report, ensure_ascii=False, indent=2) + "\n"
     (args.output / "baseline.json").write_text(text, encoding="utf-8")
     print(text, end="")
