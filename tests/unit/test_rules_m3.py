@@ -298,7 +298,7 @@ def test_opencc_txt_skips_every_unrepresentable_rule():
     rules = (
         Rule(id="plain", direction="*", source="term", target="word"),
         Rule(id="regex", semantic_version=2, action="replace", stage="pre",
-             match_type="regex", source="term.+", target="word"),
+             match_type="regex", direction="s2t", source="term.+", target="word"),
         Rule(id="protect", direction="s2t", type="protect", source="protected",
              target="protected"),
         Rule(id="disabled", direction="s2t", source="disabled", target="word",
