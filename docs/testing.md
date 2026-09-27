@@ -33,6 +33,25 @@ TW/HK vocabulary, mixed scripts, and Unicode preservation examples. Frozen
 comparison outputs are explanatory; accepting all must reproduce the selected
 pipeline exactly.
 
+The UI workflow has real PySide6/offscreen interaction probes for the merged
+settings summary, rules and profile editors, preview controls, bulk-decision
+scopes, and searchable conversion history. Run the consolidated matrix with:
+
+```sh
+QT_QPA_PLATFORM=offscreen mise exec -- uv run --with PySide6==6.11.2 python \
+  docs/reviews/2026-09-27/ui-workflow/scripts/check_ui_acceptance.py \
+  --output /tmp/opencc-ui-acceptance --verify --width 960 --height 640
+```
+
+The `--verify` run exercises English, Simplified Chinese, and Traditional
+Chinese. The committed review evidence also records 1280×800 requested layout,
+125%, and 200% Qt scale-factor runs. Those scale-factor runs use Qt's offscreen
+platform; their synthetic logical screen sizes do not establish physical
+high-DPI or multi-monitor behavior, and they do not replace testing the plugin
+inside Sigil. `make check` includes the 300,000-entry bulk-planning operation
+count regression. A separate benchmark records median planner time and
+incremental memory for 10,000, 100,000, and 300,000 synthetic entries.
+
 The native Jieba suite is a separate advanced-payload gate:
 [`jieba-native-evaluation.md`](jieba-native-evaluation.md) records the pinned
 upstream build. Run it with:

@@ -1,0 +1,579 @@
+{
+  "PySide6": "6.11.2",
+  "python": "3.14.7",
+  "platform": "macOS-27.0-arm64-arm-64bit-Mach-O",
+  "qpa_platform": "offscreen",
+  "screen_geometry": [
+    640,
+    640
+  ],
+  "screen_device_pixel_ratio": 1.25,
+  "git_head": "31c76fef1964e1ce7da8a4be126344dfb649f014",
+  "language": "en",
+  "requested_window": [
+    960,
+    640
+  ],
+  "merged_scope_settings": {
+    "actual_dialog_geometry": [
+      960,
+      640
+    ],
+    "initial_summary": "This run: 1 XHTML · Simplified Chinese → Traditional Chinese\nNavigation document is not included for this selection · NCX · metadata · Review enabled options: forced pivot · metadata conversion",
+    "summary_lines": 2,
+    "advanced_text": "Advanced options · 1 changed · active risks: Force pivot (HIGH risk) · metadata conversion",
+    "view_changes_clicked": true,
+    "change_dialog_geometries": [
+      [
+        640,
+        640
+      ],
+      [
+        640,
+        640
+      ]
+    ],
+    "full_value_tooltips": [
+      {
+        "rules": "default, a-long-rule-set-id, second-rule-set",
+        "nav_effective_reason": "Disabled (not effective: The navigation document is outside the selected files.)"
+      },
+      {
+        "rules": "default, a-long-rule-set-id, second-rule-set",
+        "nav_effective_reason": "Disabled (not effective: The navigation document is outside the selected files.)"
+      }
+    ],
+    "tables": [
+      {
+        "Direction": [
+          "Simplified Chinese → Traditional Chinese",
+          "Simplified Chinese → Traditional Chinese",
+          "Simplified Chinese → Traditional Chinese"
+        ],
+        "Segmentation": [
+          "Built-in segmenter",
+          "Built-in segmenter",
+          "Built-in segmenter"
+        ],
+        "Conversion scope": [
+          "All XHTML",
+          "All XHTML",
+          "All XHTML"
+        ],
+        "Include NAV within the selected XHTML files": [
+          "Enabled",
+          "Enabled",
+          "Disabled (not effective: The navigation document is outside the selected files.)"
+        ],
+        "Also convert NCX labels (whole book · EPUB 2 navigation)": [
+          "Disabled",
+          "Enabled",
+          "Enabled"
+        ],
+        "Also convert allowed book metadata (whole book · high risk)": [
+          "Enabled",
+          "Enabled",
+          "Enabled"
+        ],
+        "Convert alt text": [
+          "Enabled",
+          "Disabled",
+          "Disabled"
+        ],
+        "Convert title attributes": [
+          "Enabled",
+          "Enabled",
+          "Enabled"
+        ],
+        "Convert aria-label": [
+          "Disabled",
+          "Disabled",
+          "Disabled"
+        ],
+        "Convert SVG text": [
+          "Disabled",
+          "Disabled",
+          "Disabled"
+        ],
+        "Convert ruby annotations": [
+          "Disabled",
+          "Disabled",
+          "Disabled"
+        ],
+        "Convert code and pre text": [
+          "Disabled",
+          "Disabled",
+          "Disabled"
+        ],
+        "Convert numeric Han references": [
+          "Disabled",
+          "Disabled",
+          "Disabled"
+        ],
+        "Quotation marks": [
+          "Keep unchanged",
+          "Keep unchanged",
+          "Keep unchanged"
+        ],
+        "Punctuation": [
+          "Keep unchanged",
+          "Keep unchanged",
+          "Keep unchanged"
+        ],
+        "Language tags": [
+          "Keep unchanged",
+          "Keep unchanged",
+          "Keep unchanged"
+        ],
+        "Language tag style": [
+          "Legacy region tags",
+          "Legacy region tags",
+          "Legacy region tags (not effective: Language tag mode is set to keep.)"
+        ],
+        "Explicit generic Traditional region": [
+          "No explicit region",
+          "No explicit region",
+          "No explicit region (not effective: Language tag mode is set to keep.)"
+        ],
+        "Rule sets": [
+          "default, a-long-rule-set-id, second-rule-set",
+          "default",
+          "default"
+        ],
+        "Use built-in author-credit protections": [
+          "Enabled",
+          "Enabled",
+          "Enabled"
+        ],
+        "Require preview": [
+          "Enabled",
+          "Enabled",
+          "Enabled"
+        ],
+        "Converted attributes": [
+          "Convert alt text, Convert title attributes",
+          "Convert title attributes",
+          "Convert title attributes"
+        ],
+        "Protected elements": [
+          "script, style, code, pre",
+          "script, style, code, pre",
+          "script, style, code, pre"
+        ],
+        "Convert MathML text": [
+          "Enabled (mtext text only; identifiers and attributes stay unchanged)",
+          "Enabled (mtext text only; identifiers and attributes stay unchanged)",
+          "Enabled (mtext text only; identifiers and attributes stay unchanged)"
+        ],
+        "Numeric CJK character references": [
+          "Keep unchanged",
+          "Keep unchanged",
+          "Keep unchanged"
+        ],
+        "Unmapped character policy": [
+          "Include by default",
+          "Include by default",
+          "Include by default"
+        ],
+        "Enable regular-expression rules": [
+          "Disabled",
+          "Disabled",
+          "Disabled"
+        ],
+        "Force pivot (HIGH risk)": [
+          "Enabled",
+          "Enabled",
+          "Enabled"
+        ],
+        "Explicit pivot chain": [
+          "Traditional Chinese → Simplified Chinese, Simplified Chinese → Traditional Chinese",
+          "Traditional Chinese → Simplified Chinese, Simplified Chinese → Traditional Chinese",
+          "Traditional Chinese → Simplified Chinese, Simplified Chinese → Traditional Chinese"
+        ],
+        "Add review annotations": [
+          "Disabled",
+          "Disabled",
+          "Disabled"
+        ],
+        "Show checkpoint reminder": [
+          "Enabled",
+          "Enabled",
+          "Enabled"
+        ],
+        "Diagnose mixed scripts": [
+          "enabled",
+          "enabled",
+          "enabled"
+        ],
+        "Compare official configs to classify changes (slower)": [
+          "enabled",
+          "enabled",
+          "enabled"
+        ]
+      },
+      {
+        "Direction": [
+          "Simplified Chinese → Traditional Chinese",
+          "Traditional Chinese → Japanese Shinjitai",
+          "Traditional Chinese → Japanese Shinjitai"
+        ],
+        "Segmentation": [
+          "Built-in segmenter",
+          "Built-in segmenter",
+          "Built-in segmenter"
+        ],
+        "Conversion scope": [
+          "All XHTML",
+          "All XHTML",
+          "All XHTML"
+        ],
+        "Include NAV within the selected XHTML files": [
+          "Enabled",
+          "Enabled",
+          "Disabled (not effective: The navigation document is outside the selected files.)"
+        ],
+        "Also convert NCX labels (whole book · EPUB 2 navigation)": [
+          "Disabled",
+          "Enabled",
+          "Enabled"
+        ],
+        "Also convert allowed book metadata (whole book · high risk)": [
+          "Enabled",
+          "Enabled",
+          "Enabled"
+        ],
+        "Convert alt text": [
+          "Enabled",
+          "Disabled",
+          "Disabled"
+        ],
+        "Convert title attributes": [
+          "Enabled",
+          "Enabled",
+          "Enabled"
+        ],
+        "Convert aria-label": [
+          "Disabled",
+          "Disabled",
+          "Disabled"
+        ],
+        "Convert SVG text": [
+          "Disabled",
+          "Disabled",
+          "Disabled"
+        ],
+        "Convert ruby annotations": [
+          "Disabled",
+          "Disabled",
+          "Disabled"
+        ],
+        "Convert code and pre text": [
+          "Disabled",
+          "Disabled",
+          "Disabled"
+        ],
+        "Convert numeric Han references": [
+          "Disabled",
+          "Disabled",
+          "Disabled"
+        ],
+        "Quotation marks": [
+          "Keep unchanged",
+          "Keep unchanged",
+          "Keep unchanged"
+        ],
+        "Punctuation": [
+          "Keep unchanged",
+          "Keep unchanged",
+          "Keep unchanged"
+        ],
+        "Language tags": [
+          "Keep unchanged",
+          "Keep unchanged",
+          "Keep unchanged"
+        ],
+        "Language tag style": [
+          "Legacy region tags",
+          "Legacy region tags",
+          "Legacy region tags (not effective: Language tag mode is set to keep.)"
+        ],
+        "Explicit generic Traditional region": [
+          "No explicit region",
+          "No explicit region",
+          "No explicit region (not effective: Language tag mode is set to keep.)"
+        ],
+        "Rule sets": [
+          "default, a-long-rule-set-id, second-rule-set",
+          "default",
+          "default"
+        ],
+        "Use built-in author-credit protections": [
+          "Enabled",
+          "Enabled",
+          "Enabled"
+        ],
+        "Require preview": [
+          "Enabled",
+          "Enabled",
+          "Enabled"
+        ],
+        "Converted attributes": [
+          "Convert alt text, Convert title attributes",
+          "Convert title attributes",
+          "Convert title attributes"
+        ],
+        "Protected elements": [
+          "script, style, code, pre",
+          "script, style, code, pre",
+          "script, style, code, pre"
+        ],
+        "Convert MathML text": [
+          "Enabled (mtext text only; identifiers and attributes stay unchanged)",
+          "Enabled (mtext text only; identifiers and attributes stay unchanged)",
+          "Enabled (mtext text only; identifiers and attributes stay unchanged)"
+        ],
+        "Numeric CJK character references": [
+          "Keep unchanged",
+          "Keep unchanged",
+          "Keep unchanged"
+        ],
+        "Unmapped character policy": [
+          "Include by default",
+          "Include by default",
+          "Include by default"
+        ],
+        "Enable regular-expression rules": [
+          "Disabled",
+          "Disabled",
+          "Disabled"
+        ],
+        "Force pivot (HIGH risk)": [
+          "Enabled",
+          "Enabled",
+          "Disabled (not effective: No supported force-pivot chain ends in t2jp.)"
+        ],
+        "Explicit pivot chain": [
+          "Traditional Chinese → Simplified Chinese, Simplified Chinese → Traditional Chinese",
+          "Traditional Chinese → Simplified Chinese, Simplified Chinese → Traditional Chinese",
+          "None (not effective: No supported force-pivot chain ends in t2jp.)"
+        ],
+        "Add review annotations": [
+          "Disabled",
+          "Disabled",
+          "Disabled"
+        ],
+        "Show checkpoint reminder": [
+          "Enabled",
+          "Enabled",
+          "Enabled"
+        ],
+        "Diagnose mixed scripts": [
+          "enabled",
+          "enabled",
+          "enabled"
+        ],
+        "Compare official configs to classify changes (slower)": [
+          "enabled",
+          "enabled",
+          "enabled"
+        ]
+      }
+    ],
+    "rows": {
+      "Direction": [
+        "Simplified Chinese → Traditional Chinese",
+        "Traditional Chinese → Japanese Shinjitai",
+        "Traditional Chinese → Japanese Shinjitai"
+      ],
+      "Segmentation": [
+        "Built-in segmenter",
+        "Built-in segmenter",
+        "Built-in segmenter"
+      ],
+      "Conversion scope": [
+        "All XHTML",
+        "All XHTML",
+        "All XHTML"
+      ],
+      "Include NAV within the selected XHTML files": [
+        "Enabled",
+        "Enabled",
+        "Disabled (not effective: The navigation document is outside the selected files.)"
+      ],
+      "Also convert NCX labels (whole book · EPUB 2 navigation)": [
+        "Disabled",
+        "Enabled",
+        "Enabled"
+      ],
+      "Also convert allowed book metadata (whole book · high risk)": [
+        "Enabled",
+        "Enabled",
+        "Enabled"
+      ],
+      "Convert alt text": [
+        "Enabled",
+        "Disabled",
+        "Disabled"
+      ],
+      "Convert title attributes": [
+        "Enabled",
+        "Enabled",
+        "Enabled"
+      ],
+      "Convert aria-label": [
+        "Disabled",
+        "Disabled",
+        "Disabled"
+      ],
+      "Convert SVG text": [
+        "Disabled",
+        "Disabled",
+        "Disabled"
+      ],
+      "Convert ruby annotations": [
+        "Disabled",
+        "Disabled",
+        "Disabled"
+      ],
+      "Convert code and pre text": [
+        "Disabled",
+        "Disabled",
+        "Disabled"
+      ],
+      "Convert numeric Han references": [
+        "Disabled",
+        "Disabled",
+        "Disabled"
+      ],
+      "Quotation marks": [
+        "Keep unchanged",
+        "Keep unchanged",
+        "Keep unchanged"
+      ],
+      "Punctuation": [
+        "Keep unchanged",
+        "Keep unchanged",
+        "Keep unchanged"
+      ],
+      "Language tags": [
+        "Keep unchanged",
+        "Keep unchanged",
+        "Keep unchanged"
+      ],
+      "Language tag style": [
+        "Legacy region tags",
+        "Legacy region tags",
+        "Legacy region tags (not effective: Language tag mode is set to keep.)"
+      ],
+      "Explicit generic Traditional region": [
+        "No explicit region",
+        "No explicit region",
+        "No explicit region (not effective: Language tag mode is set to keep.)"
+      ],
+      "Rule sets": [
+        "default, a-long-rule-set-id, second-rule-set",
+        "default",
+        "default"
+      ],
+      "Use built-in author-credit protections": [
+        "Enabled",
+        "Enabled",
+        "Enabled"
+      ],
+      "Require preview": [
+        "Enabled",
+        "Enabled",
+        "Enabled"
+      ],
+      "Converted attributes": [
+        "Convert alt text, Convert title attributes",
+        "Convert title attributes",
+        "Convert title attributes"
+      ],
+      "Protected elements": [
+        "script, style, code, pre",
+        "script, style, code, pre",
+        "script, style, code, pre"
+      ],
+      "Convert MathML text": [
+        "Enabled (mtext text only; identifiers and attributes stay unchanged)",
+        "Enabled (mtext text only; identifiers and attributes stay unchanged)",
+        "Enabled (mtext text only; identifiers and attributes stay unchanged)"
+      ],
+      "Numeric CJK character references": [
+        "Keep unchanged",
+        "Keep unchanged",
+        "Keep unchanged"
+      ],
+      "Unmapped character policy": [
+        "Include by default",
+        "Include by default",
+        "Include by default"
+      ],
+      "Enable regular-expression rules": [
+        "Disabled",
+        "Disabled",
+        "Disabled"
+      ],
+      "Force pivot (HIGH risk)": [
+        "Enabled",
+        "Enabled",
+        "Disabled (not effective: No supported force-pivot chain ends in t2jp.)"
+      ],
+      "Explicit pivot chain": [
+        "Traditional Chinese → Simplified Chinese, Simplified Chinese → Traditional Chinese",
+        "Traditional Chinese → Simplified Chinese, Simplified Chinese → Traditional Chinese",
+        "None (not effective: No supported force-pivot chain ends in t2jp.)"
+      ],
+      "Add review annotations": [
+        "Disabled",
+        "Disabled",
+        "Disabled"
+      ],
+      "Show checkpoint reminder": [
+        "Enabled",
+        "Enabled",
+        "Enabled"
+      ],
+      "Diagnose mixed scripts": [
+        "enabled",
+        "enabled",
+        "enabled"
+      ],
+      "Compare official configs to classify changes (slower)": [
+        "enabled",
+        "enabled",
+        "enabled"
+      ]
+    },
+    "details_columns_visible": true,
+    "details_horizontal_scroll_max": 0,
+    "nav_saved_current_effective": [
+      "Enabled",
+      "Enabled",
+      "Disabled (not effective: The navigation document is outside the selected files.)"
+    ],
+    "mathml_visible_when_unchanged": true,
+    "changed_direction_summary": "This run: 1 XHTML · Traditional Chinese → Japanese Shinjitai\nNavigation document is not included for this selection · NCX · metadata · Review enabled options: forced pivot requested but inactive for this direction · metadata conversion",
+    "inactive_pivot_effective": "Disabled (not effective: No supported force-pivot chain ends in t2jp.)",
+    "nav_selected_summary": "This run: 2 XHTML · Traditional Chinese → Japanese Shinjitai\nNAV included · NCX · metadata · Review enabled options: forced pivot requested but inactive for this direction · metadata conversion",
+    "translated_summary": "本次：2 个 XHTML · 繁体 → 日文新字体\n包含 NAV · NCX · 元数据 · 启用的选项需留意：请求强制中转，但当前方向不支持 · 转换元数据",
+    "readfile_count": 0,
+    "book_write_count": 0,
+    "backend_constructor_count": 0,
+    "profile_save_count": 0,
+    "cancel_keeps_outcome_unaccepted": true
+  },
+  "jieba_pending": {
+    "summary": "This run: 1 XHTML · Simplified Chinese → Traditional Chinese\nNavigation document is not included for this selection · Checking the optional native Jieba plugin…",
+    "analyze_enabled": false
+  },
+  "jieba_unavailable": {
+    "summary": "This run: 1 XHTML · Simplified Chinese → Traditional Chinese\nNavigation document is not included for this selection · The saved Jieba config is unavailable. Select a standard direction to continue.",
+    "analyze_enabled": false
+  },
+  "jieba_available": {
+    "summary": "This run: 1 XHTML · Simplified Chinese → Traditional Chinese + Advanced: use the official native Jieba plugin\nNavigation document is not included for this selection · The verified official native Jieba payload is available.",
+    "analyze_enabled": true
+  }
+}

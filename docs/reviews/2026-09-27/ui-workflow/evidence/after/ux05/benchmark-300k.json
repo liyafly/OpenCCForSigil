@@ -1,0 +1,51 @@
+{
+  "head": "9c9f37a44ddaf5346f17661ff29ddf986cdb77a5",
+  "python": "3.14.7",
+  "platform": "macOS-27.0-arm64-arm-64bit-Mach-O",
+  "repeats": 3,
+  "scope": "all, undecided_only; ungrouped synthetic entries without source/target text",
+  "results": [
+    {
+      "input_count": 10000,
+      "selected_count": 5000,
+      "decision_accesses": 10000,
+      "accesses_per_input": 1.0,
+      "elapsed_seconds": [
+        0.01442158299323637,
+        0.01378962499438785,
+        0.0135630839940859
+      ],
+      "median_seconds": 0.01378962499438785,
+      "planner_peak_bytes_excluding_fixture": 275880,
+      "planner_peak_mib_excluding_fixture": 0.263
+    },
+    {
+      "input_count": 100000,
+      "selected_count": 50000,
+      "decision_accesses": 100000,
+      "accesses_per_input": 1.0,
+      "elapsed_seconds": [
+        0.15081129199825227,
+        0.13840175000950694,
+        0.13926470799196977
+      ],
+      "median_seconds": 0.13926470799196977,
+      "planner_peak_bytes_excluding_fixture": 3918336,
+      "planner_peak_mib_excluding_fixture": 3.737
+    },
+    {
+      "input_count": 300000,
+      "selected_count": 150000,
+      "decision_accesses": 300000,
+      "accesses_per_input": 1.0,
+      "elapsed_seconds": [
+        0.48516720900079235,
+        0.465840582997771,
+        0.4196641250018729
+      ],
+      "median_seconds": 0.465840582997771,
+      "planner_peak_bytes_excluding_fixture": 11957368,
+      "planner_peak_mib_excluding_fixture": 11.403
+    }
+  ]
+}

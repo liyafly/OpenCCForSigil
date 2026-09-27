@@ -1,0 +1,237 @@
+{
+  "head": "31c76fef1964e1ce7da8a4be126344dfb649f014",
+  "python": "3.14.7",
+  "qt_binding": "6.11.2",
+  "platform": "macOS-27.0-arm64-arm-64bit-Mach-O",
+  "qpa": "offscreen",
+  "results": [
+    {
+      "language": "en",
+      "builtin_summary": {
+        "saved_profile_value": true,
+        "off_effective_value": false,
+        "off_summary": "Rule sets: — · built-in package off",
+        "off_summary_matches_effective": true,
+        "on_effective_value": true,
+        "on_summary": "Rule sets: — · built-in package on",
+        "on_summary_matches_effective": true,
+        "tw2sp_summary": "Rule sets: — · built-in package on",
+        "tw2sp_summary_enabled": true,
+        "tw2sp_effective_value": true,
+        "enabled_tw2sp_builtin_rules": [
+          "builtin-author-credit-tw2sp",
+          "builtin-author-credit-tw2sp-unbracketed",
+          "builtin-author-credit-tw2sp-spaced",
+          "builtin-author-credit-tw2sp-ideographic-spaced"
+        ],
+        "disabled_tw2sp_builtin_rules": [],
+        "enabled_s2t_builtin_rules": [],
+        "saved_profile_file_bytes_unchanged": true
+      },
+      "settings": {
+        "size": [
+          720,
+          720
+        ],
+        "minimum": [
+          488,
+          451
+        ]
+      },
+      "profiles_60_rulesets": {
+        "size": [
+          768,
+          500
+        ],
+        "minimum": [
+          597,
+          418
+        ],
+        "screen_available": [
+          800,
+          800
+        ]
+      },
+      "rules": {
+        "size": [
+          768,
+          614
+        ],
+        "minimum": [
+          476,
+          614
+        ],
+        "source_editor_visible_in_viewport": true,
+        "scroll_range": 180
+      },
+      "preview": {
+        "size": [
+          768,
+          620
+        ],
+        "minimum": [
+          547,
+          471
+        ],
+        "visible_pushbuttons": 9,
+        "table_height": 239
+      },
+      "oversized_restore_before_show": [
+        768,
+        768
+      ]
+    },
+    {
+      "language": "zh-Hans",
+      "builtin_summary": {
+        "saved_profile_value": true,
+        "off_effective_value": false,
+        "off_summary": "规则集：— · 内置规则包已关闭",
+        "off_summary_matches_effective": true,
+        "on_effective_value": true,
+        "on_summary": "规则集：— · 内置规则包已启用",
+        "on_summary_matches_effective": true,
+        "tw2sp_summary": "规则集：— · 内置规则包已启用",
+        "tw2sp_summary_enabled": true,
+        "tw2sp_effective_value": true,
+        "enabled_tw2sp_builtin_rules": [
+          "builtin-author-credit-tw2sp",
+          "builtin-author-credit-tw2sp-unbracketed",
+          "builtin-author-credit-tw2sp-spaced",
+          "builtin-author-credit-tw2sp-ideographic-spaced"
+        ],
+        "disabled_tw2sp_builtin_rules": [],
+        "enabled_s2t_builtin_rules": [],
+        "saved_profile_file_bytes_unchanged": true
+      },
+      "settings": {
+        "size": [
+          720,
+          720
+        ],
+        "minimum": [
+          364,
+          461
+        ]
+      },
+      "profiles_60_rulesets": {
+        "size": [
+          768,
+          500
+        ],
+        "minimum": [
+          554,
+          426
+        ],
+        "screen_available": [
+          800,
+          800
+        ]
+      },
+      "rules": {
+        "size": [
+          768,
+          620
+        ],
+        "minimum": [
+          471,
+          620
+        ],
+        "source_editor_visible_in_viewport": true,
+        "scroll_range": 186
+      },
+      "preview": {
+        "size": [
+          768,
+          620
+        ],
+        "minimum": [
+          502,
+          485
+        ],
+        "visible_pushbuttons": 9,
+        "table_height": 225
+      },
+      "oversized_restore_before_show": [
+        768,
+        768
+      ]
+    },
+    {
+      "language": "zh-Hant",
+      "builtin_summary": {
+        "saved_profile_value": true,
+        "off_effective_value": false,
+        "off_summary": "規則集：— · 內建規則包已關閉",
+        "off_summary_matches_effective": true,
+        "on_effective_value": true,
+        "on_summary": "規則集：— · 內建規則包已啟用",
+        "on_summary_matches_effective": true,
+        "tw2sp_summary": "規則集：— · 內建規則包已啟用",
+        "tw2sp_summary_enabled": true,
+        "tw2sp_effective_value": true,
+        "enabled_tw2sp_builtin_rules": [
+          "builtin-author-credit-tw2sp",
+          "builtin-author-credit-tw2sp-unbracketed",
+          "builtin-author-credit-tw2sp-spaced",
+          "builtin-author-credit-tw2sp-ideographic-spaced"
+        ],
+        "disabled_tw2sp_builtin_rules": [],
+        "enabled_s2t_builtin_rules": [],
+        "saved_profile_file_bytes_unchanged": true
+      },
+      "settings": {
+        "size": [
+          720,
+          720
+        ],
+        "minimum": [
+          364,
+          461
+        ]
+      },
+      "profiles_60_rulesets": {
+        "size": [
+          768,
+          500
+        ],
+        "minimum": [
+          554,
+          426
+        ],
+        "screen_available": [
+          800,
+          800
+        ]
+      },
+      "rules": {
+        "size": [
+          768,
+          620
+        ],
+        "minimum": [
+          471,
+          620
+        ],
+        "source_editor_visible_in_viewport": true,
+        "scroll_range": 186
+      },
+      "preview": {
+        "size": [
+          768,
+          620
+        ],
+        "minimum": [
+          502,
+          485
+        ],
+        "visible_pushbuttons": 9,
+        "table_height": 225
+      },
+      "oversized_restore_before_show": [
+        768,
+        768
+      ]
+    }
+  ]
+}

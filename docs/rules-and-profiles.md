@@ -4,6 +4,21 @@ Use the conversion settings toolbar to manage profiles, save the current
 settings as a named profile, or open the rule manager. Profiles live in the
 plugin user-data `profiles/` directory and reference separate `rules/` sets.
 Loading a profile does not widen the XHTML selection confirmed earlier.
+The profile picker searches saved profiles and compares the selected profile
+with the current run before it is applied. The comparison includes remembered
+panel options and ruleset references. Temporary ruleset toggles refresh the
+comparison immediately; they are saved only when the user explicitly saves a
+profile. The picker can also show an unsaved current-run draft without treating
+that draft as a persisted profile.
+
+The conversion settings step shows a compact summary of the current XHTML
+selection, direction, whole-book NCX/metadata options, and enabled risks. Open
+“View changes” for a read-only table of saved (or initial), current, and
+effective values. Effective values explain when a remembered preference is
+disabled by the selected scope or conversion direction; unchanged settings
+such as MathML remain visible in the detail table. Merely viewing these
+settings does not read book text, invoke the converter, write to the book, or
+save a profile.
 
 Rules separate action, match type, and stage. Legacy `exact` rules still mean
 final wording: the full source match is written directly and bypasses OpenCC,

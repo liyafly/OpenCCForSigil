@@ -1,0 +1,22 @@
+{
+  "rules": [
+    {
+      "book_fingerprint": "",
+      "comment": "",
+      "created_at": "2026-09-27T18:05:37Z",
+      "direction": "s2t",
+      "enabled": true,
+      "id": "qt-imported",
+      "priority": 100,
+      "profile_id": "",
+      "scope": "global",
+      "semantic_version": 1,
+      "source": "imported source",
+      "source_note": "",
+      "target": "imported target",
+      "type": "exact",
+      "updated_at": "2026-09-27T18:05:37Z"
+    }
+  ],
+  "schema_version": 1
+}

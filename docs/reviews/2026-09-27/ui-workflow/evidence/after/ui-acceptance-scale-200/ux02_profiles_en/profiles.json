@@ -1,0 +1,37 @@
+{
+  "PySide6": "6.11.2",
+  "python": "3.14.7",
+  "platform": "macOS-27.0-arm64-arm-64bit-Mach-O",
+  "qpa_platform": "offscreen",
+  "screen_geometry": [
+    400,
+    400
+  ],
+  "screen_device_pixel_ratio": 2.0,
+  "git_head": "31c76fef1964e1ce7da8a4be126344dfb649f014",
+  "requested_window": [
+    960,
+    640
+  ],
+  "language": "en",
+  "profile_count": 200,
+  "rule_set_choice_count": 64,
+  "rule_set_scroll_range": 1468,
+  "rule_set_scroll_height": 210,
+  "filter_count": 1,
+  "filtered_current_id": "profile-199",
+  "comparison_has_direction": true,
+  "comparison_has_rules": true,
+  "comparison_has_panel_option": true,
+  "comparison_has_force_pivot": true,
+  "temporary_ruleset_updates_comparison": true,
+  "temporary_ruleset_can_match_current_run": true,
+  "new_profile_selection_reloads_rulesets": true,
+  "list_is_sorted_by_display_name": true,
+  "empty_filter_disables_actions": true,
+  "clearing_search_restores_profile_id": true,
+  "use_after_filter_uses_profile_id": true,
+  "delete_after_filter_hits_exact_id": true,
+  "copy_after_filter_copies_exact_id": true,
+  "unavailable_jieba_remains_visible_and_unmodified": true
+}

@@ -23,6 +23,9 @@ The V1 conversion workflow is connected end to end:
 - preview decisions by item, file, category, and risk, with status/source/text
   filters, preview-only Undo/Redo, searchable diagnostics, grouped language
   changes, return-to-settings analysis, and a Checkpoint reminder before applying;
+- a per-run summary with read-only effective-setting details, searchable saved
+  profile comparison, safe batch-decision scopes, and metadata filters for
+  conversion history;
 - worker-owned conversion, cooperative cancellation, in-memory staging, XML
   syntax/structure verification, and source/rule/profile snapshot checks;
 - conversion history and Markdown/JSON reports; document text is excluded from
