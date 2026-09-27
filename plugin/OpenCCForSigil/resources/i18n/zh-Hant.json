@@ -64,6 +64,7 @@
   "error.copy_diagnostics": "複製診斷資訊",
   "scope.title": "選擇要轉換的檔案",
   "scope.run_summary": "本次：{files} 個 XHTML · {direction}",
+  "scope.run_summary_empty": "未選取 XHTML 檔案，無法分析",
   "scope.run_summary_documents": "全書附加範圍：{items}",
   "scope.run_summary_nav_unavailable": "目前選取範圍不含導覽文件",
   "scope.run_summary_ncx": "NCX",

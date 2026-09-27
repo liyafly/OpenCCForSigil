@@ -508,6 +508,8 @@ def choose_scope(
         summary_text = translator.text(
             "scope.run_summary", files=data["file_count"], direction=direction)
         details = []
+        if not data["file_count"]:
+            details.append(translator.text("scope.run_summary_empty"))
         if data["nav_included"]:
             details.append(translator.text("options.include_nav"))
         elif not data["nav_available"]:
@@ -522,6 +524,15 @@ def choose_scope(
                 "scope.run_summary_risks", items=" · ".join(
                     translator.text(f"scope.run_summary_risk_{name}")
                     for name in data["risks"]))
+        capability = None
+        if config_dialog._probe_state == "pending":
+            capability = translator.text("config.jieba_checking")
+        elif config_dialog._probe_state == "unavailable" and config_dialog._preferred_jieba:
+            capability = translator.text("config.jieba_reselect")
+        elif config_dialog.jieba_checkbox.isChecked():
+            capability = translator.text("config.jieba_available")
+        if capability:
+            summary_text += "\n" + capability
         summary.setText(summary_text)
         analyze_button.setEnabled(
             scope_dialog._selection_is_valid() and config_dialog._continue_is_allowed())

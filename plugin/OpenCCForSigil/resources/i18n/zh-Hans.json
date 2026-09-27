@@ -64,6 +64,7 @@
   "error.copy_diagnostics": "复制诊断信息",
   "scope.title": "选择要转换的文件",
   "scope.run_summary": "本次：{files} 个 XHTML · {direction}",
+  "scope.run_summary_empty": "未选择 XHTML 文件，无法分析",
   "scope.run_summary_documents": "全书附加范围：{items}",
   "scope.run_summary_nav_unavailable": "当前选择不包含导航文档",
   "scope.run_summary_ncx": "NCX",

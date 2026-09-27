@@ -27,3 +27,9 @@ def test_run_summary_explains_unavailable_navigation_without_counting_it():
     assert summary["file_count"] == 2
     assert not summary["nav_available"]
     assert not summary["nav_included"]
+
+
+def test_run_summary_preserves_an_effective_optional_backend_configuration():
+    summary = run_summary_data(("one.xhtml",), None, "s2t_jieba", {})
+
+    assert summary["config"] == "s2t_jieba"

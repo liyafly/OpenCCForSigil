@@ -64,6 +64,7 @@
   "error.copy_diagnostics": "Copy diagnostics",
   "scope.title": "Choose files to convert",
   "scope.run_summary": "This run: {files} XHTML · {direction}",
+  "scope.run_summary_empty": "No XHTML files selected; analysis is disabled",
   "scope.run_summary_documents": "Whole-book additions: {items}",
   "scope.run_summary_nav_unavailable": "Navigation document is not included for this selection",
   "scope.run_summary_ncx": "NCX",
