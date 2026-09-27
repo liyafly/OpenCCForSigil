@@ -323,8 +323,8 @@ def test_rules_editor_labels_are_buddied_and_table_has_accessible_name():
     manager = RuleManagerDialog(make_with_table(), (), translator=Translator("en"))
 
     children = manager.editor_form.children
-    assert len(children) == 16
-    assert all(children[index].buddy() is children[index + 1] for index in range(0, 16, 2))
+    assert len(children) == 14
+    assert all(children[index].buddy() is children[index + 1] for index in range(0, 14, 2))
     assert manager.table.accessibleName()
 
 
@@ -686,3 +686,204 @@ def test_sandbox_lists_rule_id_source_target_and_match_location():
 
     assert "known-rule: 术语 → 专名 at 0–2" in manager.test_output.toPlainText()
     assert "Hits: 1" in manager.test_output.toPlainText().splitlines()
+
+
+def test_apply_saves_a_valid_unsubmitted_editor_draft():
+    manager = RuleManagerDialog(make_with_table(), (), translator=Translator("en"))
+    manager.source_edit.setText("draft source")
+    manager.target_edit.setText("draft target")
+
+    manager._apply()
+
+    assert [(rule.source, rule.target) for rule in manager.rules] == [
+        ("draft source", "draft target")]
+    assert manager.accepted
+    assert manager.dialog.result == 1
+
+
+def test_apply_saves_editor_draft_into_managed_ruleset_result():
+    manager = RuleManagerDialog(
+        make_with_table(), (), translator=Translator("en"),
+        rulesets=(RuleSet("terms"),), ruleset_id="terms")
+    manager.source_edit.setText("saved source")
+    manager.target_edit.setText("saved target")
+
+    manager._apply()
+
+    assert manager.result.rulesets[0].rules[0].source == "saved source"
+    assert manager.result.rulesets[0].rules[0].target == "saved target"
+
+
+def test_apply_keeps_an_invalid_editor_draft_open():
+    manager = RuleManagerDialog(make_with_table(), (), translator=Translator("en"))
+    manager.match_type_combo.setCurrentIndex(manager.match_type_combo.findData("regex"))
+    manager.source_edit.setText("(?=x)")
+    manager.target_edit.setText("bad")
+
+    manager._apply()
+
+    assert manager.rules == []
+    assert not manager.accepted
+    assert manager.dialog.result is None
+    assert manager._editor_dirty()
+
+
+def test_escape_returns_to_unsubmitted_rule_draft():
+    manager = RuleManagerDialog(make_with_table(), (), translator=Translator("en"))
+    manager.source_edit.setText("draft")
+    manager.target_edit.setText("target")
+    manager._ask_editor_draft_action = lambda: None
+
+    assert manager._guard_reject() is False
+    assert manager.source_edit.text() == "draft"
+    assert manager.target_edit.text() == "target"
+    assert manager.dialog.result is None
+
+
+@pytest.mark.parametrize("action", ["apply", "discard", None])
+def test_switching_table_rows_resolves_draft_without_changing_the_wrong_rule(action):
+    first = Rule(id="first", source="one", target="old one", direction="s2t")
+    second = Rule(id="second", source="two", target="old two", direction="s2t")
+    manager = RuleManagerDialog(
+        make_with_table(), (first, second), translator=Translator("en"))
+    manager.table.selectRow(0)
+    manager._selection_changed()
+    manager.target_edit.setText("draft target")
+    manager._ask_editor_draft_action = lambda: action
+    manager.table.selectRow(1)
+
+    manager._selection_changed()
+
+    if action is None:
+        assert manager._editing_rule_id == "first"
+        assert manager.table.currentRow() == 0
+        assert manager.target_edit.text() == "draft target"
+    else:
+        assert manager._editing_rule_id == "second"
+        assert manager.target_edit.text() == "old two"
+        assert manager.rules[1] == second
+        if action == "apply":
+            assert manager.rules[0].target == "draft target"
+        else:
+            assert manager.rules[0] == first
+
+
+@pytest.mark.parametrize("action", ["apply", "discard", None])
+def test_switching_rulesets_resolves_editor_draft(action):
+    first = Rule(id="first", source="a", target="b", direction="s2t")
+    manager = RuleManagerDialog(
+        make_with_table(), (), translator=Translator("en"),
+        rulesets=(RuleSet("one", (first,)), RuleSet("two")), ruleset_id="one")
+    manager.source_edit.setText("draft")
+    manager.target_edit.setText("target")
+    manager._ask_editor_draft_action = lambda: action
+
+    manager.ruleset_combo.setCurrentIndex(manager.ruleset_combo.findData("two"))
+
+    if action is None:
+        assert manager._ruleset_id == "one"
+        assert manager.source_edit.text() == "draft"
+    else:
+        assert manager._ruleset_id == "two"
+        assert manager.rules == []
+        if action == "apply":
+            assert [(rule.source, rule.target) for rule in manager._rulesets["one"].rules] == [
+                ("a", "b"), ("draft", "target")]
+        else:
+            assert manager._rulesets["one"].rules == (first,)
+
+
+def test_template_enter_adds_instead_of_overwriting_selected_rule():
+    existing = Rule(id="existing", source="old", target="old target", direction="s2t")
+    manager = RuleManagerDialog(make_with_table(), (existing,), translator=Translator("en"))
+    manager.table.selectRow(0)
+    manager._load_selected()
+    manager._qt.QInputDialog = SimpleNamespace(getItem=lambda *_args, **_kwargs: (
+        manager._labels["template_signature"], True))
+
+    manager._fill_template()
+    manager.source_edit.returnPressed.emit()
+
+    assert manager.rules[0] == existing
+    assert len(manager.rules) == 2
+    assert manager.rules[1].action == "protect"
+    assert manager._editing_rule_id is None
+
+
+def test_search_and_filter_update_the_stable_rule_id_in_a_large_set():
+    rules = tuple(Rule(
+        id=f"rule-{index}", source=f"term-{index}", target=f"target-{index}",
+        direction="s2t", comment=f"comment-{index}") for index in range(500))
+    manager = RuleManagerDialog(
+        make_with_table(), rules, translator=Translator("en"), ruleset_id="active",
+        rulesets=(RuleSet("active", rules),),
+        run_options={"ruleset_ids": ["active"]},
+    )
+    original = {rule.id: rule for rule in manager.rules}
+    manager.search_edit.setText("comment-497")
+    manager._filters_changed()
+
+    assert manager.table.rowCount() == 1
+    assert manager._visible_rule_ids == ["rule-497"]
+    assert manager.count_label.text() == "Showing 1 of 500"
+    manager.table.selectRow(0)
+    manager._selection_changed()
+    assert manager._editing_rule_id == "rule-497"
+    assert "Source: term-497" in manager.selection_details.toPlainText()
+    manager.target_edit.setText("updated")
+    manager._update_selected()
+    manager.search_edit.setText("")
+    manager._filters_changed()
+
+    assert manager.table.rowCount() == 500
+    changed = {rule.id: rule for rule in manager.rules}
+    assert changed["rule-497"].target == "updated"
+    assert all(changed[identifier] == original[identifier]
+               for identifier in original if identifier != "rule-497")
+
+
+def test_activity_filter_matches_rule_enabled_direction_scope_and_ruleset_state():
+    rules = (
+        Rule(id="active", source="a", target="b", direction="s2t"),
+        Rule(id="disabled", source="c", target="d", direction="s2t", enabled=False),
+        Rule(id="wrong-direction", source="e", target="f", direction="t2s"),
+        Rule(id="wrong-owner", source="g", target="h", direction="s2t",
+             scope="book", book_fingerprint="other-book"),
+    )
+    manager = RuleManagerDialog(
+        make_with_table(), rules, translator=Translator("en"), ruleset_id="active-set",
+        rulesets=(RuleSet("active-set", rules),),
+        run_options={"ruleset_ids": ["active-set"]}, profile_id="profile-A",
+        book_fingerprint="book-A",
+    )
+    manager.activity_filter.setCurrentIndex(manager.activity_filter.findData("active"))
+    manager._filters_changed()
+    assert manager._visible_rule_ids == ["active"]
+    manager.activity_filter.setCurrentIndex(manager.activity_filter.findData("inactive"))
+    manager._filters_changed()
+    assert set(manager._visible_rule_ids) == {
+        "disabled", "wrong-direction", "wrong-owner"}
+
+
+@pytest.mark.parametrize("stage", ["pre", "post"])
+def test_empty_target_is_displayed_as_deletion_and_roundtrips_unchanged(stage):
+    deletion = Rule(
+        id=f"delete-{stage}", semantic_version=2, action="replace", stage=stage,
+        source="term", target="", direction="s2t")
+    manager = RuleManagerDialog(make_with_table(), (deletion,), translator=Translator("en"))
+
+    assert manager.table.item(0, 3).text() == Translator("en").text("rules.deleted_target")
+    exported = export_rules(manager.rules)
+    imported = import_rules(exported, format="json")
+    assert imported.rules[0].target == ""
+
+
+def test_protect_and_whitespace_targets_are_visually_distinct_from_deletion():
+    protect = Rule(id="protect", type="protect", source="term", direction="s2t")
+    whitespace = Rule(id="spaces", source="space", target="  ", direction="s2t")
+    manager = RuleManagerDialog(
+        make_with_table(), (protect, whitespace), translator=Translator("en"))
+
+    assert manager.table.item(0, 3).text() == "term"
+    assert "whitespace-only (2 chars): ␠␠" in manager.table.item(1, 3).text()
+    assert "Whitespace-only targets: 1" in manager.target_warning_label.text()

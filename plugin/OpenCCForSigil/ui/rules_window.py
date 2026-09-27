@@ -10,7 +10,7 @@ from rules.conflicts import find_conflicts
 from rules.builtin import BUILTIN_RULES
 from rules.builtin import with_builtin_rules
 from rules.models import Rule, RuleSnapshot, SUPPORTED_DIRECTIONS
-from rules.precedence import base_direction
+from rules.precedence import applies_to, base_direction
 from rules.validators import RuleValidationError, validate_rules
 from core.converter import OfficialBackendConverter
 from core.models import ConvertRequest, RuleSnapshot as RequestRuleSnapshot
@@ -375,6 +375,11 @@ class RuleManagerDialog:
         self._ruleset_id = selected
         self._renamed: list[tuple[str, str]] = []
         self.rules = list(self._rulesets[selected].rules)
+        self._editing_rule_id: str | None = None
+        self._editor_baseline = None
+        self._visible_rule_ids: list[str] = []
+        self._last_search_text = ""
+        self._last_activity_filter = "all"
         self._initial_ruleset_snapshot = None
         self.result: RuleWindowResult | None = None
         self._official_convert = official_convert
@@ -396,9 +401,11 @@ class RuleManagerDialog:
         restore_window_size(
             self.dialog, self._ui_preferences, "rules_dialog_size", (840, 540))
         self._build()
+        _clamp_window_size_to_screen(self.dialog, self._qt)
         self._populate_rulesets()
         self._initial_ruleset_snapshot = self._ruleset_snapshot()
         self._refresh()
+        self._mark_editor_clean()
 
     def _store_ui_preferences(self, values) -> None:
         self._ui_preferences.update(values)
@@ -419,6 +426,14 @@ class RuleManagerDialog:
             notice.setWordWrap(True)
             layout.addWidget(notice)
 
+        self.content_widget = qt.QWidget()
+        content_layout = qt.QVBoxLayout(self.content_widget)
+        self.content_scroll = qt.QScrollArea()
+        self.content_scroll.setWidgetResizable(True)
+        self.content_scroll.setMinimumHeight(300)
+        self.content_scroll.setWidget(self.content_widget)
+        layout.addWidget(self.content_scroll, 1)
+
         ruleset_row = qt.QHBoxLayout()
         ruleset_row.addWidget(qt.QLabel(self._labels["ruleset"]))
         self.ruleset_combo = qt.QComboBox()
@@ -429,7 +444,7 @@ class RuleManagerDialog:
         ruleset_row.addWidget(self.ruleset_combo, 1)
         ruleset_row.addWidget(self.new_ruleset_button)
         ruleset_row.addWidget(self.rename_ruleset_button)
-        layout.addLayout(ruleset_row)
+        content_layout.addLayout(ruleset_row)
 
         metadata_form = qt.QFormLayout()
         self.ruleset_enabled_check = qt.QCheckBox(self._labels["ruleset_enabled"])
@@ -443,17 +458,50 @@ class RuleManagerDialog:
         for scope in ("global", "profile", "book"):
             self.default_scope_combo.addItem(self._labels[f"scope_{scope}"], scope)
         metadata_form.addRow(self.ruleset_enabled_check)
-        metadata_form.addRow(self._labels["default_direction"], self.default_direction_combo)
-        metadata_form.addRow(self._labels["default_scope"], self.default_scope_combo)
-        layout.addLayout(metadata_form)
+        content_layout.addLayout(metadata_form)
+        defaults_box = qt.QGroupBox(self._labels["default_settings"])
+        defaults_box.setCheckable(True)
+        defaults_box.setChecked(False)
+        defaults_content = qt.QWidget(defaults_box)
+        defaults_form = qt.QFormLayout(defaults_content)
+        defaults_form.addRow(self._labels["default_direction"], self.default_direction_combo)
+        defaults_form.addRow(self._labels["default_scope"], self.default_scope_combo)
+        defaults_box_layout = qt.QVBoxLayout(defaults_box)
+        defaults_box_layout.addWidget(defaults_content)
+        defaults_content.setVisible(False)
+        defaults_box.toggled.connect(defaults_content.setVisible)
+        content_layout.addWidget(defaults_box)
 
         self.help_label = qt.QLabel(self._labels["help"])
         self.help_label.setWordWrap(True)
-        layout.addWidget(self.help_label)
+        self.help_box = qt.QGroupBox(self._labels["help_details"])
+        self.help_box.setCheckable(True)
+        self.help_box.setChecked(False)
+        help_content = qt.QWidget(self.help_box)
+        help_layout = qt.QVBoxLayout(help_content)
+        help_layout.addWidget(self.help_label)
+        help_box_layout = qt.QVBoxLayout(self.help_box)
+        help_box_layout.addWidget(help_content)
+        help_content.setVisible(False)
+        self.help_box.toggled.connect(help_content.setVisible)
+        content_layout.addWidget(self.help_box)
         self.builtin_info_label = qt.QLabel()
         self.builtin_info_label.setWordWrap(True)
-        layout.addWidget(self.builtin_info_label)
+        content_layout.addWidget(self.builtin_info_label)
         self._refresh_builtin_info()
+
+        filter_row = qt.QHBoxLayout()
+        self.search_edit = qt.QLineEdit()
+        self.search_edit.setPlaceholderText(self._labels["search_rules"])
+        self.activity_filter = qt.QComboBox()
+        for label_key, value in (("filter_all", "all"), ("filter_active", "active"),
+                                 ("filter_inactive", "inactive")):
+            self.activity_filter.addItem(self._labels[label_key], value)
+        self.count_label = qt.QLabel()
+        filter_row.addWidget(self.search_edit, 1)
+        filter_row.addWidget(self.activity_filter)
+        filter_row.addWidget(self.count_label)
+        content_layout.addLayout(filter_row)
 
         self.table = qt.QTableWidget(0, 6)
         self.table.setHorizontalHeaderLabels(
@@ -464,13 +512,24 @@ class RuleManagerDialog:
         )
         self.table.setAccessibleName(self._translator.text("a11y.rules.table"))
         _configure_rule_table(self.table, qt)
-        layout.addWidget(self.table)
+        self.table.setMinimumHeight(150)
+        content_layout.addWidget(self.table, 1)
+        self.target_warning_label = qt.QLabel()
+        self.target_warning_label.setWordWrap(True)
+        content_layout.addWidget(self.target_warning_label)
+        self.selection_details = qt.QPlainTextEdit()
+        self.selection_details.setReadOnly(True)
+        self.selection_details.setMaximumHeight(100)
+        self.selection_details.setPlaceholderText(self._labels["select_rule_details"])
+        content_layout.addWidget(self.selection_details)
         self.conflict_list = qt.QListWidget()
         self.conflicts_label = qt.QLabel(self._labels["conflicts_title"])
-        layout.addWidget(self.conflicts_label)
+        content_layout.addWidget(self.conflicts_label)
         self.conflict_list.setMaximumHeight(120)
         self.conflict_list.itemClicked.connect(self._select_conflict_item)
-        layout.addWidget(self.conflict_list)
+        content_layout.addWidget(self.conflict_list)
+        self.conflicts_label.setVisible(False)
+        self.conflict_list.setVisible(False)
         form = qt.QGridLayout()
         self.type_combo = qt.QComboBox()
         self.type_combo.addItem(self._labels["exact"], "exact")
@@ -507,7 +566,6 @@ class RuleManagerDialog:
             ("source", self.source_edit),
             ("target", self.target_edit),
             ("scope", self.scope_combo),
-            ("priority", self.priority_edit),
             ("enabled", self.enabled_check),
         )
         for row, (key, widget) in enumerate(controls):
@@ -516,7 +574,20 @@ class RuleManagerDialog:
             form.addWidget(label, row // 3, (row % 3) * 2)
             form.addWidget(widget, row // 3, (row % 3) * 2 + 1)
         self.editor_form = form
-        layout.addLayout(form)
+        self.editor_mode_label = qt.QLabel(self._labels["editor_new_mode"])
+        content_layout.addWidget(self.editor_mode_label)
+        content_layout.addLayout(form)
+        priority_box = qt.QGroupBox(self._labels["advanced_rule_options"])
+        priority_box.setCheckable(True)
+        priority_box.setChecked(False)
+        priority_content = qt.QWidget(priority_box)
+        priority_form = qt.QFormLayout(priority_content)
+        priority_form.addRow(self._labels["priority"], self.priority_edit)
+        priority_box_layout = qt.QVBoxLayout(priority_box)
+        priority_box_layout.addWidget(priority_content)
+        priority_content.setVisible(False)
+        priority_box.toggled.connect(priority_content.setVisible)
+        content_layout.addWidget(priority_box)
         editor_box = qt.QGroupBox(self._labels["editor_group"])
         buttons = qt.QHBoxLayout(editor_box)
         self.add_button = qt.QPushButton(self._labels["add"])
@@ -529,7 +600,7 @@ class RuleManagerDialog:
         for button in (self.add_button, self.update_button, self.remove_button,
                        self.template_button):
             buttons.addWidget(button)
-        layout.addWidget(editor_box)
+        content_layout.addWidget(editor_box)
 
         transfer_box = qt.QGroupBox(self._labels["transfer_group"])
         transfer = qt.QHBoxLayout(transfer_box)
@@ -539,13 +610,15 @@ class RuleManagerDialog:
             button.setAutoDefault(False)
         transfer.addWidget(self.import_button)
         transfer.addWidget(self.export_button)
-        layout.addWidget(transfer_box)
+        content_layout.addWidget(transfer_box)
 
         test_box = qt.QGroupBox(self._labels["test_group"])
         test_box.setCheckable(True)
         test_box.setChecked(False)
         self.test_box = test_box
-        test_layout = qt.QVBoxLayout(test_box)
+        test_box_layout = qt.QVBoxLayout(test_box)
+        self.test_content = qt.QWidget(test_box)
+        test_layout = qt.QVBoxLayout(self.test_content)
         scope_row = qt.QHBoxLayout()
         scope_row.addWidget(qt.QLabel(self._labels["test_scope"]))
         self.test_scope_combo = qt.QComboBox()
@@ -571,7 +644,10 @@ class RuleManagerDialog:
         self.test_output.setReadOnly(True)
         self.test_output.setPlaceholderText(self._labels["output"])
         test_layout.addWidget(self.test_output)
-        layout.addWidget(test_box, 1)
+        test_box_layout.addWidget(self.test_content)
+        self.test_content.setVisible(False)
+        test_box.toggled.connect(self.test_content.setVisible)
+        content_layout.addWidget(test_box)
 
         actions = qt.QHBoxLayout()
         actions.addStretch(1)
@@ -603,6 +679,8 @@ class RuleManagerDialog:
         self.target_edit.returnPressed.connect(self._submit_editor)
         self.type_combo.currentIndexChanged.connect(self._type_changed)
         self.table.itemSelectionChanged.connect(self._selection_changed)
+        self.search_edit.textChanged.connect(self._filters_changed)
+        self.activity_filter.currentIndexChanged.connect(self._filters_changed)
 
     def _populate_rulesets(self) -> None:
         self.ruleset_combo.blockSignals(True)
@@ -695,7 +773,87 @@ class RuleManagerDialog:
             for identifier, ruleset in sorted(self._rulesets.items())
         )
 
+    def _editor_state(self):
+        if not all(hasattr(self, name) for name in (
+                "source_edit", "target_edit", "type_combo", "match_type_combo",
+                "direction_combo", "scope_combo", "priority_edit", "enabled_check")):
+            return None
+        return (
+            str(self.type_combo.currentData()),
+            str(self.match_type_combo.currentData()),
+            str(self.direction_combo.currentData()),
+            self.source_edit.text(),
+            self.target_edit.text(),
+            str(self.scope_combo.currentData()),
+            int(self.priority_edit.value()),
+            bool(self.enabled_check.isChecked()),
+        )
+
+    def _editor_dirty(self) -> bool:
+        current = self._editor_state()
+        return current is not None and self._editor_baseline is not None and current != self._editor_baseline
+
+    def _mark_editor_clean(self) -> None:
+        self._editor_baseline = self._editor_state()
+        self._refresh_editor_mode()
+
+    def _refresh_editor_mode(self) -> None:
+        if not hasattr(self, "editor_mode_label"):
+            return
+        if self._editing_rule_id:
+            self.editor_mode_label.setText(self._labels["editor_edit_mode"].format(
+                id=self._editing_rule_id))
+        else:
+            self.editor_mode_label.setText(self._labels["editor_new_mode"])
+        if hasattr(self, "update_button"):
+            self.update_button.setEnabled(bool(self._editing_rule_id))
+        if hasattr(self, "add_button"):
+            self.add_button.setEnabled(not self._editing_rule_id)
+
+    def _ask_editor_draft_action(self) -> str | None:
+        message_box = getattr(self._qt, "QMessageBox", None)
+        if not callable(message_box):
+            return None
+        box = message_box(self.dialog)
+        box.setWindowTitle(plugin_window_title(
+            self._translator, self._labels["editor_draft_title"]))
+        box.setText(self._labels["editor_draft_message"])
+        apply = box.addButton(
+            self._labels["editor_apply_draft"], message_box.AcceptRole)
+        discard_role = getattr(message_box, "DestructiveRole", message_box.ActionRole)
+        discard = box.addButton(self._labels["editor_discard_draft"], discard_role)
+        back = box.addButton(self._labels["editor_return"], message_box.RejectRole)
+        box.setDefaultButton(back)
+        box.setEscapeButton(back)
+        exec_dialog(box)
+        clicked = box.clickedButton()
+        if clicked is apply:
+            return "apply"
+        if clicked is discard:
+            return "discard"
+        return None
+
+    def _clear_editor(self) -> None:
+        self._editing_rule_id = None
+        self.source_edit.clear()
+        self.target_edit.clear()
+        self._mark_editor_clean()
+
+    def _resolve_editor_draft(self) -> bool:
+        if not self._editor_dirty():
+            return True
+        action = self._ask_editor_draft_action()
+        if action is None:
+            return False
+        if action == "discard":
+            self._clear_editor()
+            return True
+        self._submit_editor()
+        return not self._editor_dirty()
+
     def _guard_reject(self) -> bool:
+        if not self._resolve_editor_draft():
+            return False
         if self._ruleset_snapshot() == self._initial_ruleset_snapshot:
             return True
         return self._confirm_discard_rules()
@@ -721,6 +879,13 @@ class RuleManagerDialog:
         identifier = self.ruleset_combo.currentData()
         if not identifier or identifier == self._ruleset_id:
             return
+        if not self._resolve_editor_draft():
+            self.ruleset_combo.blockSignals(True)
+            previous = self.ruleset_combo.findData(self._ruleset_id)
+            if previous >= 0:
+                self.ruleset_combo.setCurrentIndex(previous)
+            self.ruleset_combo.blockSignals(False)
+            return
         self._stash_ruleset()
         if identifier not in self._rulesets:
             return
@@ -731,6 +896,8 @@ class RuleManagerDialog:
         self._refresh()
 
     def _new_ruleset(self) -> None:
+        if not self._resolve_editor_draft():
+            return
         translator = getattr(self, "_translator", None) or Translator("en")
         identifier, accepted = self._qt.QInputDialog.getText(
             self.dialog, plugin_window_title(translator, self._labels["title"]),
@@ -760,6 +927,8 @@ class RuleManagerDialog:
         self._refresh()
 
     def _rename_ruleset(self) -> None:
+        if not self._resolve_editor_draft():
+            return
         old = self._ruleset_id
         translator = getattr(self, "_translator", None) or Translator("en")
         identifier, accepted = self._qt.QInputDialog.getText(
@@ -806,8 +975,34 @@ class RuleManagerDialog:
             self.dialog, plugin_window_title(self._translator, self._labels["title"]), message)
 
     def _refresh(self) -> None:
+        selected_id = (self._rule_id_at_row(self.table.currentRow())
+                       or getattr(self, "_selected_rule_id", None))
+        search = str(self.search_edit.text()).casefold() if hasattr(self, "search_edit") else ""
+        activity_filter = (str(self.activity_filter.currentData())
+                           if hasattr(self, "activity_filter") else "all")
+        visible = [
+            rule for rule in self.rules
+            if self._rule_matches_search(rule, search)
+            and (activity_filter == "all" or
+                 self._rule_is_active(rule) == (activity_filter == "active"))
+        ]
+        self._visible_rule_ids = [rule.id for rule in visible]
+        if hasattr(self, "count_label"):
+            self.count_label.setText(self._labels["filter_count"].format(
+                visible=len(visible), total=len(self.rules)))
+        whitespace_targets = sum(
+            rule.action != "protect" and bool(rule.target) and rule.target.isspace()
+            for rule in self.rules)
+        if hasattr(self, "target_warning_label"):
+            self.target_warning_label.setText(
+                self._labels["whitespace_target_notice"].format(count=whitespace_targets)
+                if whitespace_targets else "")
+            self.target_warning_label.setVisible(bool(whitespace_targets))
+        blocker = getattr(self.table, "blockSignals", None)
+        previous_block = blocker(True) if callable(blocker) else False
         self.table.setRowCount(0)
-        for rule in self.rules:
+        role = getattr(self._qt.Qt, "UserRole", 32)
+        for rule in visible:
             row = self.table.rowCount()
             self.table.insertRow(row)
             action_key = (
@@ -826,14 +1021,32 @@ class RuleManagerDialog:
                     else configuration_label(self._translator, rule.direction)
                 ),
                 rule.source,
-                rule.target or rule.source,
+                _display_rule_target(rule, self._labels),
                 self._labels.get(f"scope_{rule.scope}", rule.scope),
                 str(rule.priority),
             )
             for column, value in enumerate(values):
-                self.table.setItem(row, column, self._qt.QTableWidgetItem(value))
+                item = self._qt.QTableWidgetItem(value)
+                if column == 0 and callable(getattr(item, "setData", None)):
+                    item.setData(role, rule.id)
+                self.table.setItem(row, column, item)
+        selected_row = self._visible_rule_ids.index(selected_id) if selected_id in self._visible_rule_ids else -1
+        if selected_row >= 0:
+            self.table.selectRow(selected_row)
+            self._selected_rule_id = selected_id
+        else:
+            clear_selection = getattr(self.table, "clearSelection", None)
+            if callable(clear_selection):
+                clear_selection()
+            self._selected_rule_id = None
         conflicts = find_conflicts(self.rules)
         self.apply_button.setEnabled(not any(conflict.blocking for conflict in conflicts))
+        set_visible = getattr(getattr(self, "conflicts_label", None), "setVisible", None)
+        if callable(set_visible):
+            set_visible(bool(conflicts))
+        set_visible = getattr(self.conflict_list, "setVisible", None)
+        if callable(set_visible):
+            set_visible(bool(conflicts))
         self.conflict_list.clear()
         translator = getattr(self, "_translator", Translator("en"))
         for conflict in conflicts:
@@ -841,23 +1054,150 @@ class RuleManagerDialog:
             item.setData(getattr(self._qt.Qt, "UserRole", 32),
                          tuple(rule.id for rule in conflict.rules))
             self.conflict_list.addItem(item)
+        if callable(blocker):
+            blocker(previous_block)
+        editing_rule_id = getattr(self, "_editing_rule_id", None)
+        if editing_rule_id and editing_rule_id not in self._visible_rule_ids:
+            self._clear_editor()
         self._update_selection_state()
+        self._refresh_selection_details()
+
+    def _rule_id_at_row(self, row: int) -> str | None:
+        if row < 0:
+            return None
+        try:
+            item = self.table.item(row, 0)
+        except (AttributeError, TypeError):
+            item = None
+        role = getattr(getattr(self, "_qt", None), "Qt", None)
+        role = getattr(role, "UserRole", 32)
+        identifier = item.data(role) if item is not None and hasattr(item, "data") else None
+        if identifier:
+            return str(identifier)
+        visible = getattr(self, "_visible_rule_ids", [rule.id for rule in self.rules])
+        if row < len(visible):
+            return visible[row]
+        return None
+
+    def _rule_index_at_row(self, row: int) -> int:
+        identifier = self._rule_id_at_row(row)
+        return next((index for index, rule in enumerate(self.rules)
+                     if rule.id == identifier), -1)
+
+    def _rule_matches_search(self, rule: Rule, search: str) -> bool:
+        if not search:
+            return True
+        return search in "\n".join((rule.id, rule.source, rule.target,
+                                   rule.comment, rule.source_note)).casefold()
+
+    def _rule_is_active(self, rule: Rule) -> bool:
+        ruleset = self._rulesets.get(self._ruleset_id)
+        if ruleset is None:
+            ruleset_enabled = True
+        else:
+            ruleset_enabled = ruleset.enabled
+        referenced = self._ruleset_id in tuple(
+            str(item) for item in self._run_options.get("ruleset_ids", ()))
+        return bool(
+            ruleset_enabled and referenced and applies_to(
+                rule, config=self._config, profile_id=self._profile_id,
+                book_fingerprint=self._book_fingerprint)
+        )
+
+    def _rule_activity_reason(self, rule: Rule) -> str:
+        ruleset = self._rulesets.get(self._ruleset_id)
+        if ruleset is not None and not ruleset.enabled:
+            return self._labels["reason_ruleset_disabled"]
+        if self._ruleset_id not in tuple(
+                str(item) for item in self._run_options.get("ruleset_ids", ())):
+            return self._labels["reason_ruleset_not_referenced"]
+        if not rule.enabled:
+            return self._labels["reason_rule_disabled"]
+        if rule.direction not in {"*", base_direction(self._config)}:
+            return self._labels["reason_direction"]
+        if not applies_to(rule, config=self._config, profile_id=self._profile_id,
+                          book_fingerprint=self._book_fingerprint):
+            return self._labels["reason_owner"]
+        return self._labels["reason_active"]
+
+    def _refresh_selection_details(self) -> None:
+        if not hasattr(self, "selection_details"):
+            return
+        row = self.table.currentRow()
+        identifier = self._rule_id_at_row(row)
+        rule = next((item for item in self.rules if item.id == identifier), None)
+        if rule is None:
+            self.selection_details.clear()
+            return
+        action_key = ("protect" if rule.action == "protect" else
+                      "replace_pre" if rule.action == "replace" and rule.stage == "pre" else
+                      "replace_post" if rule.action == "replace" else "exact")
+        target = _display_rule_target(rule, self._labels)
+        lines = (
+            self._labels["detail_id"].format(id=rule.id),
+            self._labels["detail_action"].format(
+                action=self._labels[action_key], match=self._labels.get(rule.match_type, rule.match_type)),
+            self._labels["detail_direction"].format(
+                direction=self._labels["direction_any"] if rule.direction == "*" else
+                configuration_label(self._translator, rule.direction)),
+            self._labels["detail_scope"].format(
+                scope=self._labels.get(f"scope_{rule.scope}", rule.scope),
+                owner=rule.profile_id if rule.scope == "profile" else
+                rule.book_fingerprint if rule.scope == "book" else ""),
+            self._labels["detail_activity"].format(status=self._rule_activity_reason(rule)),
+            self._labels["detail_source"].format(source=rule.source),
+            self._labels["detail_target"].format(target=target),
+        )
+        if rule.action != "protect" and (rule.target == "" or rule.target.isspace()):
+            lines += (self._labels["detail_target_raw"].format(target=repr(rule.target)),)
+        self.selection_details.setPlainText("\n".join(lines))
+
+    def _filters_changed(self, *_args) -> None:
+        if not self._resolve_editor_draft():
+            self.search_edit.blockSignals(True)
+            self.search_edit.setText(self._last_search_text)
+            self.search_edit.blockSignals(False)
+            self.activity_filter.blockSignals(True)
+            index = self.activity_filter.findData(self._last_activity_filter)
+            if index >= 0:
+                self.activity_filter.setCurrentIndex(index)
+            self.activity_filter.blockSignals(False)
+            return
+        self._last_search_text = str(self.search_edit.text())
+        self._last_activity_filter = str(self.activity_filter.currentData())
+        self._refresh()
 
     def _add(self) -> None:
         rule = self._rule_from_form()
         if rule is None:
             return
         self.rules.append(rule)
+        self._editing_rule_id = None
+        self._selected_rule_id = None
+        blocker = getattr(self.table, "blockSignals", None)
+        if callable(blocker):
+            blocker(True)
+        clear_selection = getattr(self.table, "clearSelection", None)
+        if callable(clear_selection):
+            clear_selection()
+        if callable(blocker):
+            blocker(False)
         self._refresh()
+        self.source_edit.clear()
+        self.target_edit.clear()
+        self._mark_editor_clean()
 
     def _submit_editor(self) -> None:
-        if self.update_button.isEnabled():
+        if self._editing_rule_id:
             self._update_selected()
         else:
             self._add()
 
     def _update_selected(self) -> None:
-        row = self.table.currentRow()
+        identifier = getattr(self, "_editing_rule_id", None)
+        row = next((index for index, rule in enumerate(self.rules)
+                    if rule.id == identifier), -1) if identifier else self._rule_index_at_row(
+                        self.table.currentRow())
         if row < 0 or row >= len(self.rules):
             return
         previous = self.rules[row]
@@ -869,7 +1209,9 @@ class RuleManagerDialog:
         self.rules[row] = replace(candidate, id=previous.id,
                                   created_at=previous.created_at, updated_at=updated_at,
                                   comment=previous.comment, source_note=previous.source_note)
+        self._editing_rule_id = previous.id
         self._refresh()
+        self._mark_editor_clean()
 
     def _rule_from_form(self, existing: Rule | None = None):
         editor_action = str(self.type_combo.currentData())
@@ -920,16 +1262,25 @@ class RuleManagerDialog:
             return None
 
     def _remove(self) -> None:
-        row = self.table.currentRow()
+        if not self._resolve_editor_draft():
+            return
+        identifier = getattr(self, "_editing_rule_id", None)
+        row = next((index for index, rule in enumerate(self.rules)
+                    if rule.id == identifier), -1) if identifier else self._rule_index_at_row(
+                        self.table.currentRow())
         if 0 <= row < len(self.rules):
             self.rules.pop(row)
+            self._editing_rule_id = None
             self._refresh()
+            self._clear_editor()
 
     def _load_selected(self) -> None:
-        row = self.table.currentRow()
-        if row < 0 or row >= len(self.rules):
+        identifier = self._rule_id_at_row(self.table.currentRow())
+        rule = next((item for item in self.rules if item.id == identifier), None)
+        if rule is None:
             return
-        rule = self.rules[row]
+        self._editing_rule_id = rule.id
+        self._selected_rule_id = rule.id
         editor_action = (
             "protect" if rule.action == "protect" else
             "replace_pre" if rule.action == "replace" and rule.stage == "pre" else
@@ -946,6 +1297,7 @@ class RuleManagerDialog:
         self._type_changed()
         if rule.action == "protect":
             self.target_edit.clear()
+        self._mark_editor_clean()
 
     def _type_changed(self, *_args):
         is_protect = self.type_combo.currentData() == "protect"
@@ -954,6 +1306,8 @@ class RuleManagerDialog:
             self.target_edit.clear()
 
     def _fill_template(self) -> None:
+        if not self._resolve_editor_draft():
+            return
         from rules.templates import (
             collapse_horizontal_spaces,
             contextual_replacement,
@@ -1016,28 +1370,54 @@ class RuleManagerDialog:
             "protect" if action == "protect" else
             "replace_pre" if stage == "pre" else "replace_post"
         )
+        self._editing_rule_id = None
         self.type_combo.setCurrentIndex(self.type_combo.findData(editor_action))
         self.match_type_combo.setCurrentIndex(self.match_type_combo.findData(values["match_type"]))
         self.source_edit.setText(str(values["source"]))
         self.target_edit.setText(str(values["target"]))
         self._type_changed()
+        self._refresh_editor_mode()
 
     def _selection_changed(self):
+        if not self._resolve_editor_draft():
+            identifier = getattr(self, "_editing_rule_id", None)
+            row = (self._visible_rule_ids.index(identifier)
+                   if identifier in self._visible_rule_ids else -1)
+            if row >= 0:
+                self.table.blockSignals(True)
+                self.table.selectRow(row)
+                self.table.blockSignals(False)
+            return
         self._load_selected()
         self._update_selection_state()
+        self._refresh_selection_details()
 
     def _update_selection_state(self):
-        row = self.table.currentRow()
-        self.update_button.setEnabled(0 <= row < len(self.rules))
+        self._refresh_editor_mode()
 
     def _select_conflict_item(self, item):
         rule_ids = item.data(getattr(self._qt.Qt, "UserRole", 32))
         if not rule_ids:
             return
-        row = next((index for index, rule in enumerate(self.rules)
-                    if rule.id in rule_ids), -1)
+        identifier = next((rule_id for rule_id in rule_ids
+                           if any(rule.id == rule_id for rule in self.rules)), None)
+        visible_ids = getattr(self, "_visible_rule_ids", [rule.id for rule in self.rules])
+        if identifier and identifier not in visible_ids and hasattr(self, "search_edit"):
+            self.search_edit.blockSignals(True)
+            self.search_edit.clear()
+            self.search_edit.blockSignals(False)
+            self.activity_filter.blockSignals(True)
+            self.activity_filter.setCurrentIndex(self.activity_filter.findData("all"))
+            self.activity_filter.blockSignals(False)
+            self._last_search_text = ""
+            self._last_activity_filter = "all"
+            self._refresh()
+            visible_ids = self._visible_rule_ids
+        row = visible_ids.index(identifier) if identifier in visible_ids else -1
         if row >= 0:
             self.table.selectRow(row)
+            if self._editor_state() is not None:
+                self._selection_changed()
 
     def _sandbox_snapshot(self):
         """Freeze the same enabled-set combination used by a conversion run."""
@@ -1089,6 +1469,8 @@ class RuleManagerDialog:
         if self._official_convert is None:
             self.test_output.setPlainText(self._labels["no_converter"])
             return
+        if not self._resolve_editor_draft():
+            return
         try:
             snapshot, context = self._sandbox_snapshot()
             self.test_context_label.setText(context)
@@ -1111,8 +1493,9 @@ class RuleManagerDialog:
                 f"{self._labels['patches_label']}: {len(inspection.changes)}",
             ]
             for hit in trace:
-                target = (self._labels["deleted_target"]
-                          if hit.action != "protect" and hit.target == "" else hit.target)
+                target = _display_target_value(
+                    hit.target, self._labels, protect=hit.action == "protect",
+                    source=hit.source)
                 detail = self._labels["rule_hit"].format(
                     id=hit.rule_id, source=hit.source, target=target,
                     start=hit.start, end=hit.end)
@@ -1132,6 +1515,8 @@ class RuleManagerDialog:
     def _inspect(self) -> None:
         if self._official_convert is None:
             self.test_output.setPlainText(self._labels["no_converter"])
+            return
+        if not self._resolve_editor_draft():
             return
         text = self.test_input.toPlainText()
         if not text:
@@ -1370,6 +1755,10 @@ class RuleManagerDialog:
             self._qt, self.dialog, self._labels["title"], summary, str(error))
 
     def _apply(self) -> None:
+        if self._editor_dirty():
+            self._submit_editor()
+            if self._editor_dirty():
+                return
         self._stash_ruleset()
         self.accepted = True
         if self._managed:
@@ -1388,14 +1777,72 @@ def _conflict_summary(conflict, translator: Translator) -> str:
     key = f"rules.conflict.{conflict.kind}"
     text = translator.text(key, source=conflict.source)
     if text == key:
-        return translator.text(
+        text = translator.text(
             "rules.conflict.unknown", kind=conflict.kind, source=conflict.source)
-    return text
+    labels = _labels(translator)
+    targets = "; ".join(
+        labels["conflict_rule_target"].format(
+            id=rule.id, target=_display_rule_target(rule, labels))
+        for rule in conflict.rules
+    )
+    return text + "\n" + labels["conflict_targets"].format(targets=targets)
+
+
+def _display_rule_target(rule: Rule, labels: CatalogView) -> str:
+    if rule.action == "protect":
+        return rule.source
+    return _display_target_value(rule.target, labels, source=rule.source)
+
+
+def _display_target_value(
+    target: str, labels: CatalogView, *, protect: bool = False, source: str = ""
+) -> str:
+    if protect:
+        return source
+    if target == "":
+        return labels["deleted_target"]
+    if target.isspace():
+        visible = "".join({
+            " ": "␠", "\t": "⇥", "\n": "↵", "\r": "↵",
+            "\u3000": "□", "\u00a0": "⍽",
+        }.get(character, "·") for character in target)
+        return labels["whitespace_target"].format(count=len(target), visible=visible)
+    return target
 
 
 def _configure_rule_table(table, qt):
     table.setEditTriggers(qt.QAbstractItemView.NoEditTriggers)
     table.setSelectionBehavior(qt.QAbstractItemView.SelectRows)
+    for column, width in enumerate((130, 100, 210, 210, 105, 70)):
+        setter = getattr(table, "setColumnWidth", None)
+        if callable(setter):
+            setter(column, width)
+    header_getter = getattr(table, "horizontalHeader", None)
+    header = header_getter() if callable(header_getter) else None
+    stretch = getattr(header, "setStretchLastSection", None)
+    if callable(stretch):
+        stretch(True)
+
+
+def _clamp_window_size_to_screen(window, qt) -> None:
+    application_type = getattr(qt, "QApplication", None)
+    instance = getattr(application_type, "instance", None)
+    app = instance() if callable(instance) else None
+    screen_getter = getattr(app, "primaryScreen", None)
+    screen = screen_getter() if callable(screen_getter) else None
+    geometry_getter = getattr(screen, "availableGeometry", None)
+    geometry = geometry_getter() if callable(geometry_getter) else None
+    width_getter = getattr(geometry, "width", None)
+    height_getter = getattr(geometry, "height", None)
+    if not callable(width_getter) or not callable(height_getter):
+        return
+    size_getter = getattr(window, "size", None)
+    size = size_getter() if callable(size_getter) else None
+    current_width = getattr(size, "width", lambda: width_getter())()
+    current_height = getattr(size, "height", lambda: height_getter())()
+    resize = getattr(window, "resize", None)
+    if callable(resize):
+        resize(min(current_width, width_getter()), min(current_height, height_getter()))
 
 
 def _select_default_direction(combo, config):

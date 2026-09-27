@@ -678,6 +678,9 @@ class TableWidget(Base):
     def selectRow(self, row):
         self._current_row = row
 
+    def clearSelection(self):
+        self._current_row = -1
+
     def horizontalHeader(self):
         return Base()
 
