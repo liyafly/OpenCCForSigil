@@ -1,0 +1,192 @@
+{
+  "head": "b9ffacfdffdebc16cbb1f8e42447f9cc0a1133aa",
+  "python": "3.14.7",
+  "qt_binding": "6.11.2",
+  "platform": "macOS-27.0-arm64-arm-64bit-Mach-O",
+  "qpa": "offscreen",
+  "results": [
+    {
+      "language": "en",
+      "builtin_summary": {
+        "saved_profile_value": true,
+        "effective_value": false,
+        "summary_text": "Rule sets: — · built-in package on",
+        "summary_matches_effective": false
+      },
+      "settings": {
+        "size": [
+          720,
+          720
+        ],
+        "minimum": [
+          488,
+          451
+        ]
+      },
+      "profiles_60_rulesets": {
+        "size": [
+          780,
+          1813
+        ],
+        "minimum": [
+          597,
+          1813
+        ],
+        "screen_available": [
+          800,
+          800
+        ]
+      },
+      "rules": {
+        "size": [
+          800,
+          540
+        ],
+        "minimum": [
+          188,
+          353
+        ],
+        "source_editor_visible_in_viewport": false,
+        "scroll_range": 413
+      },
+      "preview": {
+        "size": [
+          900,
+          620
+        ],
+        "minimum": [
+          707,
+          420
+        ],
+        "visible_pushbuttons": 17,
+        "table_height": 290
+      },
+      "oversized_restore_before_show": [
+        4000,
+        3000
+      ]
+    },
+    {
+      "language": "zh-Hans",
+      "builtin_summary": {
+        "saved_profile_value": true,
+        "effective_value": false,
+        "summary_text": "规则集：— · 内置规则包已启用",
+        "summary_matches_effective": false
+      },
+      "settings": {
+        "size": [
+          720,
+          720
+        ],
+        "minimum": [
+          364,
+          461
+        ]
+      },
+      "profiles_60_rulesets": {
+        "size": [
+          780,
+          1819
+        ],
+        "minimum": [
+          554,
+          1819
+        ],
+        "screen_available": [
+          800,
+          800
+        ]
+      },
+      "rules": {
+        "size": [
+          800,
+          540
+        ],
+        "minimum": [
+          188,
+          355
+        ],
+        "source_editor_visible_in_viewport": false,
+        "scroll_range": 409
+      },
+      "preview": {
+        "size": [
+          900,
+          620
+        ],
+        "minimum": [
+          660,
+          434
+        ],
+        "visible_pushbuttons": 17,
+        "table_height": 276
+      },
+      "oversized_restore_before_show": [
+        4000,
+        3000
+      ]
+    },
+    {
+      "language": "zh-Hant",
+      "builtin_summary": {
+        "saved_profile_value": true,
+        "effective_value": false,
+        "summary_text": "規則集：— · 內建規則包已啟用",
+        "summary_matches_effective": false
+      },
+      "settings": {
+        "size": [
+          720,
+          720
+        ],
+        "minimum": [
+          364,
+          461
+        ]
+      },
+      "profiles_60_rulesets": {
+        "size": [
+          780,
+          1819
+        ],
+        "minimum": [
+          554,
+          1819
+        ],
+        "screen_available": [
+          800,
+          800
+        ]
+      },
+      "rules": {
+        "size": [
+          800,
+          540
+        ],
+        "minimum": [
+          188,
+          355
+        ],
+        "source_editor_visible_in_viewport": false,
+        "scroll_range": 409
+      },
+      "preview": {
+        "size": [
+          900,
+          620
+        ],
+        "minimum": [
+          660,
+          434
+        ],
+        "visible_pushbuttons": 17,
+        "table_height": 276
+      },
+      "oversized_restore_before_show": [
+        4000,
+        3000
+      ]
+    }
+  ]
+}
