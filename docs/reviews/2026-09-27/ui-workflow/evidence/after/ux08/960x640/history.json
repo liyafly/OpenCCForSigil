@@ -1,0 +1,27 @@
+{
+  "PySide6": "6.11.2",
+  "python": "3.14.7",
+  "platform": "macOS-27.0-arm64-arm-64bit-Mach-O",
+  "qpa_platform": "offscreen",
+  "screen_geometry": [
+    800,
+    800
+  ],
+  "screen_device_pixel_ratio": 1.0,
+  "git_head": "6b90fcbd1991fee01fcb785e3ee8603f12b7e3b9",
+  "requested_window": [
+    960,
+    640
+  ],
+  "history_count": 1000,
+  "checks": {
+    "thousand_metadata_rows_loaded": true,
+    "actions_disabled_without_selection": true,
+    "anded_filters_match_exact_metadata": true,
+    "session_id_search_is_exact": true,
+    "sorted_row_actions_keep_session_id": true,
+    "empty_search_clears_selection_and_disables_actions": true,
+    "clear_restores_all_rows": true,
+    "cleanup_is_global_and_cancel_preserves_bytes": true
+  }
+}
