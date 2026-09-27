@@ -3,13 +3,15 @@ from types import SimpleNamespace
 
 import pytest
 
+from app.profiles import Profile
+from app.settings import tokenizer_policy
 from core.models import ConvertRequest, RuleSnapshot
 from core.preview import PreviewSession
 from core.staging import apply_changes
 from core.workflow import ConversionWorkflow, WorkflowError
+from document.tokenizer import TokenizerOptions
 from rules.models import Rule, RuleSnapshot as Rules
 from sigil.adapter import SigilBookAdapter
-from document.tokenizer import TokenizerOptions
 from ui.preview_window import _PreviewDialog
 
 
@@ -172,6 +174,40 @@ def test_numeric_reference_opt_in_outputs_characters_and_preserves_named_entitie
     assert staged[0].converted == '<p title="漢 &amp;">漢 &amp;漢</p>'
     assert all(change.risk == "HIGH" for change in staged[0].plan.changes
                if change.category == "numeric_reference")
+
+
+def test_mathml_profile_stages_only_mtext_and_preserves_protected_source_slices():
+    source = (
+        '<html xmlns="http://www.w3.org/1999/xhtml"><body>'
+        '<math xmlns="http://www.w3.org/1998/Math/MathML">'
+        '<mi id="identifier">汉</mi><mo>汉</mo><mn>汉</mn><ms>汉</ms>'
+        '<mtext title="label">汉<mi>汉</mi>汉</mtext>'
+        '<annotation encoding="text/plain">汉</annotation>'
+        '<annotation-xml encoding="application/xhtml+xml"><p>汉</p></annotation-xml>'
+        '</math></body></html>'
+    )
+    book = Book(source)
+    profile_data = Profile(name="MathML safety", mathml=True).to_dict()
+    profile = Profile.from_dict(profile_data)
+    flow = ConversionWorkflow(
+        SigilBookAdapter(book), Backend(), ConvertRequest("s2t"),
+        tokenizer_options=tokenizer_policy(profile),
+    )
+
+    planned, staged = stage_all(flow)
+
+    assert [change.source for change in planned[0].plan.changes] == ["汉", "汉"]
+    expected = source.replace(
+        '<mtext title="label">汉<mi>汉</mi>汉</mtext>',
+        '<mtext title="label">漢<mi>汉</mi>漢</mtext>',
+    )
+    assert staged[0].converted == expected
+    assert apply_changes(source, planned[0].plan.changes) == expected
+    assert book.writes == []
+
+    flow.commit(staged)
+
+    assert book.writes == [expected]
 
 
 def test_inline_boundary_stays_separate_and_has_diagnostic():
