@@ -1146,13 +1146,19 @@ class _PreviewDialog:
             item.source.file_id: index for index, item in enumerate(self._planned)
         }
         group_entries = {}
+        entries_by_group = {}
         groups_by_file = {}
-        for _preview, change in self._entries:
+        for entry in self._entries:
+            _preview, change = entry
             if change.group_id:
                 count, files = group_entries.get(change.group_id, (0, set()))
                 files.add(change.file_id)
                 group_entries[change.group_id] = (count + 1, files)
+                entries_by_group.setdefault(change.group_id, []).append(entry)
                 groups_by_file.setdefault(change.file_id, set()).add(change.group_id)
+        self._group_entries_by_id = {
+            group_id: tuple(entries) for group_id, entries in entries_by_group.items()
+        }
         self._group_ids_by_file = {
             file_id: frozenset(group_ids) for file_id, group_ids in groups_by_file.items()
         }
@@ -1887,10 +1893,16 @@ class _PreviewDialog:
 
     def _decide_group(self, group_id, accepted):
         count = 0
-        for preview, change in self._entries:
-            if change.group_id == group_id:
-                (preview.accept_this if accepted else preview.reject_this)(change.change_id)
-                count += 1
+        entries_by_group = getattr(self, "_group_entries_by_id", None)
+        entries = (
+            entries_by_group.get(group_id, ())
+            if entries_by_group is not None
+            else ((preview, change) for preview, change in self._entries
+                  if change.group_id == group_id)
+        )
+        for preview, change in entries:
+            (preview.accept_this if accepted else preview.reject_this)(change.change_id)
+            count += 1
         return count
 
     def _groups_for_file(self, file_id):

@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 import platform
 import sys
+from statistics import median
 from time import perf_counter
 from types import SimpleNamespace
 
@@ -88,18 +89,26 @@ def probe_group_semantics():
 
 
 def probe_group_scans(groups):
-    dialog, preview = dialog_for(
-        change(index, f"rules:occurrence-{index // 2}") for index in range(groups * 2))
-    counted = CountedEntries(dialog._entries)
-    dialog._entries = counted
-    # Isolate the decision operation; exclude table refresh/recount from this measurement.
-    dialog._refresh = lambda **_kwargs: None
-    started = perf_counter()
-    dialog._decide_filtered(True)
-    elapsed = perf_counter() - started
-    assert preview.summary()["accepted"] == groups * 2
-    return {"groups": groups, "changes": groups * 2,
-            "entry_visits": counted.visits, "decision_seconds": elapsed}
+    runs = []
+    for _attempt in range(3):
+        dialog, preview = dialog_for(
+            change(index, f"rules:occurrence-{index // 2}")
+            for index in range(groups * 2))
+        counted = CountedEntries(dialog._entries)
+        dialog._entries = counted
+        # Isolate the decision operation; exclude table refresh/recount from this measurement.
+        dialog._refresh = lambda **_kwargs: None
+        started = perf_counter()
+        dialog._decide_filtered(True)
+        elapsed = perf_counter() - started
+        assert preview.summary()["accepted"] == groups * 2
+        runs.append({"entry_visits": counted.visits, "decision_seconds": elapsed})
+    return {
+        "groups": groups, "changes": groups * 2,
+        "entry_visits": int(median(run["entry_visits"] for run in runs)),
+        "decision_seconds_median": median(run["decision_seconds"] for run in runs),
+        "runs": runs,
+    }
 
 
 def probe_mathml():
@@ -128,7 +137,7 @@ def main():
     result = {
         "python": platform.python_version(), "platform": platform.platform(),
         "group_semantics": probe_group_semantics(),
-        "group_scans": [probe_group_scans(size) for size in (100, 200, 400)],
+        "group_scans": [probe_group_scans(size) for size in (1_000, 2_000, 4_000)],
         "mathml_targets": probe_mathml(),
     }
     text = json.dumps(result, ensure_ascii=False, indent=2) + "\n"
