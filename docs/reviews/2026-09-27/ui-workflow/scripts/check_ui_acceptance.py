@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[5]
 SCRIPT_DIR = Path(__file__).resolve().parent
 SCRIPTS = (
     ("ux01_rule_summary_regression", None),
+    ("ux01_formal_tests", None),
     ("ux06_rules", ROOT / "docs/reviews/2026-09-26/scripts/check_rules_layout.py"),
     ("ux04_preview", ROOT / "docs/reviews/2026-09-27/scripts/check_preview_layout.py"),
 )
@@ -116,7 +117,7 @@ def main() -> int:
         "verify": args.verify,
         "scenarios": reports,
         "coverage": {
-            "UX-01": "run-options, profile rules, and i18n regression tests",
+            "UX-01": "real Qt state and frozen-rule snapshot probe plus focused run-options/profile/i18n tests",
             "UX-02": "profile real-Qt layout at requested geometry",
             "UX-03": "merged settings summary, detail table, read-only spies, Jieba states in 3 languages",
             "UX-04": "preview commands, filters, diagnostics, and export options in 3 languages",
