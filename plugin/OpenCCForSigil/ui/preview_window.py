@@ -1947,8 +1947,13 @@ class _PreviewDialog:
         self._refresh(recalculate_counts=True, refresh_statuses=True)
 
     def _decide_filtered(self, accepted: bool) -> None:
+        # Freeze the click-time selection before asking about any atomic-group
+        # members hidden by the active filters.  A declined confirmation must
+        # leave every preview decision untouched.
         visible_entries = self._visible_entries()
         groups = {change.group_id for _preview, change in visible_entries if change.group_id}
+        if not self._confirm_filtered_group_expansion(visible_entries, groups):
+            return
         for preview, change in visible_entries:
             if not change.group_id:
                 (preview.accept_this if accepted else preview.reject_this)(change.change_id)
@@ -1962,6 +1967,43 @@ class _PreviewDialog:
         else:
             self._last_group_feedback = ""
         self._refresh(recalculate_counts=True, refresh_statuses=True)
+
+    def _confirm_filtered_group_expansion(self, visible_entries, groups) -> bool:
+        visible_ids = {
+            (change.file_id, change.change_id) for _preview, change in visible_entries
+        }
+        expanded_entries = tuple(
+            entry
+            for group_id in groups
+            for entry in getattr(self, "_group_entries_by_id", {}).get(group_id, ())
+            if (entry[1].file_id, entry[1].change_id) not in visible_ids
+        )
+        if not expanded_entries:
+            return True
+        message_box = getattr(self._qt, "QMessageBox", None)
+        if not callable(message_box):
+            return False
+        affected_files = {
+            change.file_id for _preview, change in visible_entries
+        }
+        affected_files.update(change.file_id for _preview, change in expanded_entries)
+        box = message_box(self.dialog)
+        box.setWindowTitle(plugin_window_title(
+            self._translator, self._translator.text("preview.group_expansion_title")))
+        box.setText(self._translator.text(
+            "preview.group_expansion_confirm",
+            matched=len(visible_entries),
+            extra=len(expanded_entries),
+            files=len(affected_files),
+        ))
+        accept = box.addButton(
+            self._translator.text("preview.group_expansion_yes"), message_box.AcceptRole)
+        cancel = box.addButton(
+            self._translator.text("preview.group_expansion_cancel"), message_box.RejectRole)
+        box.setDefaultButton(cancel)
+        box.setEscapeButton(cancel)
+        exec_dialog(box)
+        return box.clickedButton() is accept
 
     def _refresh_current(self, *, rows=()) -> None:
         row = self._current_row()

@@ -3,8 +3,9 @@
   "platform": "macOS-27.0-arm64-arm-64bit-Mach-O",
   "group_semantics": {
     "rule_only_group_button_label": "Accept language tag group",
+    "rule_only_language_button_visible": false,
+    "rule_only_after_language_button": null,
     "rule_only_after_accept_file": "accept_this",
-    "rule_only_after_language_button": "accept_this",
     "mixed_language_button_decisions": {
       "change-0": "accept_this",
       "change-1": null
@@ -14,60 +15,60 @@
     {
       "groups": 1000,
       "changes": 2000,
-      "entry_visits": 4000,
-      "decision_seconds_median": 0.0007294170063687488,
+      "entry_visits": 6000,
+      "decision_seconds_median": 0.0012432500006980263,
       "runs": [
         {
-          "entry_visits": 4000,
-          "decision_seconds": 0.0007337499991990626
+          "entry_visits": 6000,
+          "decision_seconds": 0.001203792002343107
         },
         {
-          "entry_visits": 4000,
-          "decision_seconds": 0.0007140419984352775
+          "entry_visits": 6000,
+          "decision_seconds": 0.003377084001840558
         },
         {
-          "entry_visits": 4000,
-          "decision_seconds": 0.0007294170063687488
+          "entry_visits": 6000,
+          "decision_seconds": 0.0012432500006980263
         }
       ]
     },
     {
       "groups": 2000,
       "changes": 4000,
-      "entry_visits": 8000,
-      "decision_seconds_median": 0.0014699999956064858,
+      "entry_visits": 12000,
+      "decision_seconds_median": 0.0026642080047167838,
       "runs": [
         {
-          "entry_visits": 8000,
-          "decision_seconds": 0.001483749998442363
+          "entry_visits": 12000,
+          "decision_seconds": 0.0026642080047167838
         },
         {
-          "entry_visits": 8000,
-          "decision_seconds": 0.0014699999956064858
+          "entry_visits": 12000,
+          "decision_seconds": 0.0028176670020911843
         },
         {
-          "entry_visits": 8000,
-          "decision_seconds": 0.001468957998440601
+          "entry_visits": 12000,
+          "decision_seconds": 0.002477709000231698
         }
       ]
     },
     {
       "groups": 4000,
       "changes": 8000,
-      "entry_visits": 16000,
-      "decision_seconds_median": 0.0029264999975566752,
+      "entry_visits": 24000,
+      "decision_seconds_median": 0.0054747499962104484,
       "runs": [
         {
-          "entry_visits": 16000,
-          "decision_seconds": 0.0031005830023786984
+          "entry_visits": 24000,
+          "decision_seconds": 0.0054747499962104484
         },
         {
-          "entry_visits": 16000,
-          "decision_seconds": 0.0029155829979572445
+          "entry_visits": 24000,
+          "decision_seconds": 0.005120624999108259
         },
         {
-          "entry_visits": 16000,
-          "decision_seconds": 0.0029264999975566752
+          "entry_visits": 24000,
+          "decision_seconds": 0.006059499995899387
         }
       ]
     }

@@ -1,0 +1,53 @@
+{
+  "PySide6": "6.10.2",
+  "results": [
+    {
+      "language": "en",
+      "minimum_width": 821,
+      "minimum_height": 476,
+      "initial_width": 900,
+      "initial_height": 620,
+      "table_height": 218,
+      "group_actions": {
+        "language_group_label": "Accept language tag group",
+        "language_group_accepts_both_files": true,
+        "language_button_leaves_rule_group_pending": true,
+        "accept_file_completes_local_rule_group": true,
+        "rule_only_language_button_hidden_and_inert": true,
+        "hidden_group_prompt_cancel_preserves_and_confirm_expands": true
+      }
+    },
+    {
+      "language": "zh-Hans",
+      "minimum_width": 770,
+      "minimum_height": 476,
+      "initial_width": 900,
+      "initial_height": 620,
+      "table_height": 218,
+      "group_actions": {
+        "language_group_label": "接受语言标签组",
+        "language_group_accepts_both_files": true,
+        "language_button_leaves_rule_group_pending": true,
+        "accept_file_completes_local_rule_group": true,
+        "rule_only_language_button_hidden_and_inert": true,
+        "hidden_group_prompt_cancel_preserves_and_confirm_expands": true
+      }
+    },
+    {
+      "language": "zh-Hant",
+      "minimum_width": 796,
+      "minimum_height": 476,
+      "initial_width": 900,
+      "initial_height": 620,
+      "table_height": 218,
+      "group_actions": {
+        "language_group_label": "接受語言標籤組",
+        "language_group_accepts_both_files": true,
+        "language_button_leaves_rule_group_pending": true,
+        "accept_file_completes_local_rule_group": true,
+        "rule_only_language_button_hidden_and_inert": true,
+        "hidden_group_prompt_cancel_preserves_and_confirm_expands": true
+      }
+    }
+  ]
+}

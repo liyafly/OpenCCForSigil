@@ -770,6 +770,69 @@ def test_preview_exit_confirmation_protects_decisions_and_allows_empty_exit():
     assert empty_dialog._guard_reject() is True
 
 
+def _cross_file_language_group_dialog():
+    changes = (
+        TokenChange(
+            source="zh-CN", target="zh-TW", span=SourceSpan(0, 5),
+            rule_source="language_metadata", change_id="language-chapter",
+            file_id="chapter.xhtml", category="language_metadata", risk="HIGH",
+            group_id="language_metadata",
+        ),
+        TokenChange(
+            source="zh-CN", target="zh-TW", span=SourceSpan(0, 5),
+            rule_source="language_metadata", change_id="language-opf",
+            file_id="content.opf", category="language_metadata", risk="HIGH",
+            group_id="language_metadata",
+        ),
+    )
+    previews = tuple(
+        PreviewSession(ConversionPlan(source_sha256="", file_id=file_id,
+                                      changes=(change,)))
+        for file_id, change in zip(("chapter.xhtml", "content.opf"), changes)
+    )
+    planned = tuple(SimpleNamespace(
+        source=SimpleNamespace(file_id=file_id, href=file_id, document_kind="xhtml"),
+        plan=preview.plan,
+    ) for file_id, preview in zip(("chapter.xhtml", "content.opf"), previews))
+    dialog = _PreviewDialog(make_with_table(), planned, previews, Translator("en"))
+    dialog.file_filter.setCurrentIndex(dialog.file_filter.findData("chapter.xhtml"))
+    dialog._refresh()
+    return dialog, previews
+
+
+def test_filtered_group_expansion_requires_confirmation_and_cancel_is_atomic(monkeypatch):
+    dialog, previews = _cross_file_language_group_dialog()
+    calls = []
+
+    def cancel(box):
+        calls.append(box.text())
+        box._clicked_button = box.buttons[-1]
+
+    monkeypatch.setattr(preview_window, "exec_dialog", cancel)
+
+    dialog._decide_filtered(True)
+
+    assert len(calls) == 1
+    assert "1" in calls[0]
+    assert all(preview.decision(change.change_id) is None
+               for preview in previews for change in preview.changes)
+
+
+def test_filtered_group_expansion_confirmation_decides_the_full_linked_group(monkeypatch):
+    dialog, previews = _cross_file_language_group_dialog()
+
+    def confirm(box):
+        box._clicked_button = box.buttons[0]
+
+    monkeypatch.setattr(preview_window, "exec_dialog", confirm)
+
+    dialog._decide_filtered(True)
+
+    assert [preview.decision(preview.changes[0].change_id).value for preview in previews] == [
+        "accept_this", "accept_this",
+    ]
+
+
 def test_return_to_scope_confirms_discarded_decisions_once():
     dialog, preview, _items = _preview_dialog(change_count=1, current_row=0)
     preview.reject_this("change-0")

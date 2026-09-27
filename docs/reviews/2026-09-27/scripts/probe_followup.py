@@ -67,19 +67,21 @@ class CountedEntries:
 def probe_group_semantics():
     dialog, preview = dialog_for((change(0, "rules:occurrence-1"),))
     label = dialog.accept_group_button.text()
-    dialog._accept_file()
-    after_file = preview.decision("change-0")
     dialog.accept_group_button.click()
     after_language_button = preview.decision("change-0")
+    language_button_visible = dialog.accept_group_button.isVisible()
+    dialog._accept_file()
+    after_file = preview.decision("change-0")
     mixed, mixed_preview = dialog_for((
         change(0, "language_metadata", language=True), change(1, "rules:occurrence-2"),
     ))
     mixed.accept_group_button.click()
     return {
         "rule_only_group_button_label": label,
-        "rule_only_after_accept_file": after_file.value if after_file else None,
+        "rule_only_language_button_visible": language_button_visible,
         "rule_only_after_language_button": (
             after_language_button.value if after_language_button else None),
+        "rule_only_after_accept_file": after_file.value if after_file else None,
         "mixed_language_button_decisions": {
             item.change_id: (mixed_preview.decision(item.change_id).value
                              if mixed_preview.decision(item.change_id) else None)
