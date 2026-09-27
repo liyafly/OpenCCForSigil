@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.2.6 - 2026-09-27
+
+### Added
+
+- Add rule search, activity filters, full-text details, and explicit draft
+  handling with stable rule IDs.
+- Show the actual ruleset snapshot and stage trace used by sandbox tests, and
+  enforce replacement output budgets for every rule action.
+
+### Changed
+
+- Make the rules manager compact and scrollable, keep its save controls fixed,
+  and collapse advanced settings and sandbox content by default.
+- Show empty replacement targets as deletions and make whitespace-only targets
+  visible without changing their stored values.
+
+### Fixed
+
+- Persist empty default rule sets and preserve ownership, semantic version, and
+  annotations when editing an existing rule.
+- Keep distinct rule semantics during import, warn before lossy exports, and
+  skip invalid JSON records when lenient import is selected.
+- Limit preview grouping to one rule occurrence and report sandbox hits by
+  actual rule trace.
+
 ## 0.2.5 - 2026-09-26
 
 ### Added
