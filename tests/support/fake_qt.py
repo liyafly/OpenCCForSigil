@@ -630,6 +630,9 @@ class ListWidget(Base):
     def currentRow(self):
         return self.row
 
+    def currentItem(self):
+        return self.item(self.row)
+
     def setCurrentRow(self, r):
         if r != self.row:
             self.row = r

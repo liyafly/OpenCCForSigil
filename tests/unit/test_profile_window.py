@@ -281,3 +281,45 @@ def test_profile_summary_marks_unavailable_jieba_without_rewriting_it(tmp_path):
     assert "unavailable)" in manager.summary_text
     assert "s2twp_jieba" not in manager.summary_text
     assert manager._current().conversion == "s2twp_jieba"
+
+
+def test_profile_search_uses_stable_id_and_restores_hidden_selection():
+    profiles = tuple(Profile(id=f"profile-{index:03d}", name="同名 profile",
+                             conversion="s2twp" if index == 199 else "s2t")
+                     for index in range(200))
+    manager = ProfileManagerDialog(
+        make_fake_qt(), profiles, translator=Translator("en"),
+        selected_id="profile-199", current_profile=profiles[0])
+
+    manager.search_edit.setText("profile-199")
+    manager._filter_profiles()
+    assert manager.profile_list.count() == 1
+    assert manager._current().id == "profile-199"
+    manager._use()
+    assert manager.selected.id == "profile-199"
+
+    manager.accepted = False
+    manager.selected = None
+    manager.search_edit.setText("no such profile")
+    manager._filter_profiles()
+    assert manager._current() is None
+    assert manager.empty_label.isVisible()
+    assert not manager.use_button.isEnabled()
+    assert not manager.copy_button.isEnabled()
+    assert not manager.rename_button.isEnabled()
+    assert not manager.delete_button.isEnabled()
+
+    manager.search_edit.setText("")
+    manager._filter_profiles()
+    assert manager._current().id == "profile-199"
+
+
+def test_profile_all_settings_keeps_unknown_extras_visible():
+    profile = Profile(id="future", name="Future options",
+                      extras=(("future_toggle", True), ("unknown_label", "kept")))
+    manager = ProfileManagerDialog(
+        make_fake_qt(), (profile,), translator=Translator("en"))
+
+    summary = manager.summary.toPlainText()
+    assert "future_toggle: True" in summary
+    assert "unknown_label: kept" in summary

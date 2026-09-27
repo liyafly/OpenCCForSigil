@@ -19,6 +19,7 @@ from ui.i18n import (
 )
 from ui.qt import ask_confirmation, ensure_application, exec_dialog, load_qt
 from ui.window_state import restore_window_size, save_window_size
+from ui.profile_compare import compare_profile_settings
 
 
 
@@ -64,6 +65,11 @@ _PROFILE_SUMMARY_KEYS = {
 }
 
 _PROFILE_SUMMARY_NON_OPTIONS = {"schema_version", "id", "name", "extras"}
+_PROFILE_COMPARISON_PRIORITY = (
+    "conversion", "segmentation", "ruleset_ids", "scope", "force_pivot",
+    "pivot_chain", "regex_rules", "tofu_policy", "mathml",
+    "decode_numeric_cjk_refs", "numeric_cjk_char_refs", "builtin_rules_enabled",
+)
 
 
 def _profile_summary_value(profile: Profile, name: str, translator: Translator) -> str:
@@ -187,6 +193,7 @@ class ProfileManagerDialog:
             ("default", *available_rulesets,
              *(identifier for profile in self._profiles for identifier in profile.ruleset_ids))))
         self._selected_id = selected_id
+        self._restore_id = selected_id
         self.selected: Profile | None = None
         self.accepted = False
         self.dialog = qt_widgets.QDialog()
@@ -211,13 +218,29 @@ class ProfileManagerDialog:
             notice.setWordWrap(True)
             root.addWidget(notice)
         content = qt.QHBoxLayout()
+        self.search_edit = qt.QLineEdit()
+        self.search_edit.setPlaceholderText(self._labels["search_placeholder"])
+        root.addWidget(self.search_edit)
+        self.count_label = qt.QLabel()
+        root.addWidget(self.count_label)
+        self.empty_label = qt.QLabel()
+        self.empty_label.setWordWrap(True)
+        self.empty_label.setVisible(False)
+        root.addWidget(self.empty_label)
         self.profile_list = qt.QListWidget()
         content.addWidget(self.profile_list, 1)
         right = qt.QVBoxLayout()
         right.addWidget(qt.QLabel(self._labels["summary"]))
+        self.detail_tabs = qt.QTabWidget()
+        self.main_summary = qt.QPlainTextEdit()
+        self.comparison_summary = qt.QPlainTextEdit()
         self.summary = qt.QPlainTextEdit()
-        self.summary.setReadOnly(True)
-        right.addWidget(self.summary, 1)
+        for view in (self.main_summary, self.comparison_summary, self.summary):
+            view.setReadOnly(True)
+        self.detail_tabs.addTab(self.main_summary, self._labels["main_settings"])
+        self.detail_tabs.addTab(self.comparison_summary, self._labels["compare_settings"])
+        self.detail_tabs.addTab(self.summary, self._labels["all_settings"])
+        right.addWidget(self.detail_tabs, 1)
         self.rules_group = qt.QGroupBox(self._labels["rules"])
         self.rules_layout = qt.QVBoxLayout(self.rules_group)
         self.ruleset_note = qt.QLabel(self._translator.text("profile.rulesets_session_only"))
@@ -231,6 +254,7 @@ class ProfileManagerDialog:
         for identifier in self._available_rulesets:
             check = qt.QCheckBox(identifier, rules_content)
             check.setToolTip(identifier)
+            check.stateChanged.connect(self._refresh_summary)
             rules_content_layout.addWidget(check)
             self.rules_checks[identifier] = check
         rules_content_layout.addStretch(1)
@@ -257,7 +281,8 @@ class ProfileManagerDialog:
         actions.addWidget(self.use_button)
         self.actions_layout = actions
         root.addLayout(actions)
-        self.profile_list.currentRowChanged.connect(self._refresh_summary)
+        self.search_edit.textChanged.connect(self._filter_profiles)
+        self.profile_list.currentRowChanged.connect(self._selection_changed)
         self.use_button.clicked.connect(self._use)
         self.rename_button.clicked.connect(self._rename)
         self.copy_button.clicked.connect(self._copy)
@@ -266,65 +291,189 @@ class ProfileManagerDialog:
         self.close_button.clicked.connect(self.dialog.reject)
 
     def _refresh(self) -> None:
+        preferred_id = self._selected_id or self._restore_id
+        self._populate_visible_profiles(preferred_id)
+        self._set_ruleset_checks(self._current())
+        self._refresh_summary()
+
+    def _populate_visible_profiles(self, preferred_id: str | None = None) -> None:
+        previously_blocked = self.profile_list.blockSignals(True)
         self.profile_list.clear()
-        selected_row = -1
         role = getattr(self._qt.Qt, "UserRole", 32)
-        for row, profile in enumerate(self._profiles):
+        query = str(self.search_edit.text()).strip().casefold()
+        visible = [profile for profile in self._profiles
+                   if self._matches_search(profile, query)]
+        visible.sort(key=lambda profile: (
+            profile_display_name(profile, self._translator).casefold(), profile.id))
+        for profile in visible:
             display_name = profile_display_name(profile, self._translator)
             item = self._qt.QListWidgetItem(display_name)
             item.setToolTip(display_name)
             item.setData(role, profile.id)
             self.profile_list.addItem(item)
-            if profile.id == self._selected_id:
-                selected_row = row
-        if self._profiles:
-            self.profile_list.setCurrentRow(selected_row if selected_row >= 0 else 0)
+        visible_ids = {profile.id for profile in visible}
+        if preferred_id not in visible_ids:
+            preferred_id = None
+        if preferred_id is None and not query and visible:
+            preferred_id = visible[0].id
+        selected_row = next((row for row, profile in enumerate(visible)
+                             if profile.id == preferred_id), -1)
+        self.profile_list.setCurrentRow(selected_row)
+        self.profile_list.blockSignals(previously_blocked)
+        self._selected_id = preferred_id
+        self.count_label.setText(self._labels["count"].format(
+            visible=len(visible), total=len(self._profiles)))
+        empty = not visible
+        self.empty_label.setText(
+            self._labels["no_matches"] if query else self._labels["no_profiles"])
+        self.empty_label.setVisible(empty)
+
+    def _matches_search(self, profile: Profile, query: str) -> bool:
+        if not query:
+            return True
+        searchable = " ".join((
+            profile_display_name(profile, self._translator), profile.id,
+            profile.conversion,
+            configuration_label(self._translator, profile.conversion),
+        )).strip().casefold()
+        return query in searchable
+
+    def _filter_profiles(self, *_args) -> None:
+        current = self._current()
+        if current is not None:
+            self._restore_id = current.id
+        query = str(self.search_edit.text()).strip()
+        if query:
+            preferred_id = (current.id if current and self._matches_search(current, query)
+                            else None)
+        else:
+            preferred_id = self._restore_id
+        self._populate_visible_profiles(preferred_id)
+        self._set_ruleset_checks(self._current())
         self._refresh_summary()
 
+    def _item_profile_id(self, item):
+        if item is None:
+            return None
+        role = getattr(self._qt.Qt, "UserRole", 32)
+        return item.data(role)
+
     def _current(self) -> Profile | None:
+        current_item = getattr(self.profile_list, "currentItem", None)
+        item = current_item() if callable(current_item) else None
+        identifier = self._item_profile_id(item)
+        if identifier:
+            return next((profile for profile in self._profiles if profile.id == identifier), None)
+        # Keep compatibility with simple fake-list tests. Real Qt always takes the
+        # stable-ID branch above, so filtered row numbers never index _profiles.
         row = self.profile_list.currentRow()
         return self._profiles[row] if 0 <= row < len(self._profiles) else None
+
+    def _selection_changed(self, *_args) -> None:
+        profile = self._current()
+        self._selected_id = profile.id if profile is not None else None
+        if profile is not None:
+            self._restore_id = profile.id
+        self._set_ruleset_checks(profile)
+        self._refresh_summary()
+
+    def _set_ruleset_checks(self, profile: Profile | None) -> None:
+        for identifier, check in getattr(self, "rules_checks", {}).items():
+            previously_blocked = check.blockSignals(True)
+            check.setChecked(profile is not None and identifier in profile.ruleset_ids)
+            check.blockSignals(previously_blocked)
 
     def _refresh_summary(self, *_args) -> None:
         profile = self._current()
         if profile is None:
+            for name in ("main_summary", "comparison_summary"):
+                view = getattr(self, name, None)
+                if view is not None:
+                    view.clear()
             self.summary.clear()
-            self.use_button.setEnabled(False)
-            self.rename_button.setEnabled(False)
-            self.copy_button.setEnabled(False)
-            self.delete_button.setEnabled(False)
+            for button in (self.use_button, self.rename_button,
+                           self.copy_button, self.delete_button):
+                button.setEnabled(False)
             return
-        conversion = profile.conversion
-        unavailable = conversion.endswith("_jieba") and conversion not in self._available_config_ids
-        status_label = (
-            self._translator.text("config.jieba_checking")
-            if unavailable and self._jieba_pending
-            else self._labels["unavailable"] if unavailable else ""
-        )
-        status = self._translator.text("profile.status", status=status_label) if status_label else ""
-        options = []
-        for profile_field in fields(profile):
-            name = profile_field.name
-            if name in _PROFILE_SUMMARY_NON_OPTIONS:
-                continue
-            label = self._translator.text(_PROFILE_SUMMARY_KEYS[name])
-            value = _profile_summary_value(profile, name, self._translator)
-            if name == "conversion":
-                value += status
-            options.append(self._translator.text(
-                "profile.summary_option",
-                label=label,
-                separator=self._translator.text("common.label_separator"),
-                value=value,
-            ))
-        self.summary.setPlainText("\n".join(options))
-        for identifier, check in self.rules_checks.items():
-            check.setChecked(identifier in profile.ruleset_ids)
+
+        all_options = self._profile_options_text(profile)
+        main_names = ("conversion", "segmentation", "scope", "ruleset_ids",
+                      "builtin_rules_enabled", "force_pivot", "pivot_chain")
+        main_options = [self._profile_option_text(profile, name)
+                        for name in main_names if hasattr(profile, name)]
+        main_summary = getattr(self, "main_summary", None)
+        if main_summary is not None:
+            main_summary.setPlainText("\n".join(main_options))
+        self.summary.setPlainText("\n".join(all_options))
+        if profile.extras:
+            extra_rows = [f"{key}: {value}" for key, value in profile.extras]
+            self.summary.setPlainText("\n".join((*all_options, *extra_rows)))
+
+        candidate = replace(profile, ruleset_ids=self._edited_rulesets(profile))
+        changes = compare_profile_settings(self._current_profile or profile, candidate)
+        comparison_summary = getattr(self, "comparison_summary", None)
+        if comparison_summary is not None and changes:
+            priority = [name for name in _PROFILE_COMPARISON_PRIORITY
+                        if any(change[0] == name for change in changes)]
+            ordered = priority + [name for name, _old, _new in changes
+                                  if name not in priority]
+            by_name = {name: (old, new) for name, old, new in changes}
+            lines = [self._format_comparison(name, *by_name[name]) for name in ordered]
+            comparison_summary.setPlainText("\n".join(lines))
+        elif comparison_summary is not None:
+            comparison_summary.setPlainText(self._labels["same_config"])
+        if comparison_summary is not None:
+            if self._current_profile is not None:
+                comparison_summary.appendPlainText(self._labels["scope_boundary"])
+            comparison_summary.appendPlainText(self._labels["rulesets_session_only"])
         self.use_button.setEnabled(True)
         exists = self._profile_is_saved(profile)
         self.rename_button.setEnabled(exists and self._can_delete(profile))
         self.copy_button.setEnabled(True)
         self.delete_button.setEnabled(exists and self._can_delete(profile))
+
+    def _profile_options_text(self, profile: Profile) -> list[str]:
+        return [self._profile_option_text(profile, profile_field.name)
+                for profile_field in fields(profile)
+                if profile_field.name not in _PROFILE_SUMMARY_NON_OPTIONS]
+
+    def _profile_option_text(self, profile: Profile, name: str) -> str:
+        value = _profile_summary_value(profile, name, self._translator)
+        if name == "conversion":
+            if profile.conversion not in self._available_config_ids:
+                status = (self._labels["checking"] if profile.conversion.endswith("_jieba")
+                          and self._jieba_pending else self._labels["unavailable"])
+            else:
+                status = self._labels["available"]
+            value += self._translator.text("profile.status", status=status)
+        label_key = _PROFILE_SUMMARY_KEYS.get(name, f"profile.{name}")
+        label = self._translator.text(label_key)
+        return self._translator.text(
+            "profile.summary_option", label=label,
+            separator=self._translator.text("common.label_separator"), value=value)
+
+    def _format_comparison(self, name, old, new) -> str:
+        before = self._profile_value_text(name, old)
+        after = self._profile_value_text(name, new)
+        label_key = (f"options.{name}" if name in {"diagnose_mixed", "detailed_classification"}
+                     else _PROFILE_SUMMARY_KEYS.get(name, f"profile.{name}"))
+        label = self._translator.text(label_key)
+        return self._labels["comparison_change"].format(
+            label=label, before=before, after=after)
+
+    def _profile_value_text(self, name, value):
+        if name in {"diagnose_mixed", "detailed_classification"}:
+            return self._translator.text("profile.enabled" if value else "profile.disabled")
+        if name == "conversion":
+            label = configuration_label(self._translator, value).replace(" → ", " to ")
+            if value not in self._available_config_ids:
+                status = (self._labels["checking"] if value.endswith("_jieba")
+                          and self._jieba_pending else self._labels["unavailable"])
+            else:
+                status = self._labels["available"]
+            return f"{label} ({status})"
+        temporary = replace(Profile(id="compare", name="compare"), **{name: value})
+        return _profile_summary_value(temporary, name, self._translator)
 
     def _profile_is_saved(self, profile: Profile) -> bool:
         return bool(self._store and (self._store.directory / f"{profile.id}.json").is_file())
@@ -396,6 +545,7 @@ class ProfileManagerDialog:
             return
         self._profiles.append(copied)
         self._selected_id = copied.id
+        self._restore_id = copied.id
         self._refresh()
 
     def _from_current(self) -> None:
@@ -410,6 +560,7 @@ class ProfileManagerDialog:
             return
         self._profiles.append(created)
         self._selected_id = created.id
+        self._restore_id = created.id
         self._refresh()
 
     def _delete(self) -> None:
@@ -434,12 +585,14 @@ class ProfileManagerDialog:
         if callable(self._on_delete):
             self._on_delete(profile.id)
         self._selected_id = self._profiles[0].id if self._profiles else None
+        self._restore_id = self._selected_id
         self._refresh()
 
     def _replace_profile(self, old: Profile, new: Profile) -> None:
         index = self._profiles.index(old)
         self._profiles[index] = new
         self._selected_id = new.id
+        self._restore_id = new.id
         self._refresh()
 
     def _warn(self, message: str) -> None:
