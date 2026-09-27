@@ -1,0 +1,130 @@
+{
+  "head": "0b1c5f288463ece144e46ee16a6785ccfa13a082",
+  "PySide6": "6.11.2",
+  "os": "macOS-27.0-arm64-arm-64bit-Mach-O",
+  "qpa": "offscreen",
+  "screen_available": [
+    800,
+    800
+  ],
+  "device_pixel_ratio": 1.0,
+  "results": [
+    {
+      "language": "en",
+      "minimum_width": 547,
+      "minimum_height": 471,
+      "initial_width": 768,
+      "initial_height": 620,
+      "table_height": 239,
+      "group_actions": {
+        "language_group_label": "Accept language tag group",
+        "language_group_accepts_both_files": true,
+        "language_button_leaves_rule_group_pending": true,
+        "accept_file_completes_local_rule_group": true,
+        "rule_only_language_button_hidden_and_inert": true,
+        "hidden_group_prompt_cancel_preserves_and_confirm_expands": true
+      },
+      "batch_decisions": {
+        "B1": "real QAction, exact counts and one-step Undo",
+        "B3": "Cancel preserved decisions; filtered hit expanded group and Undo restored",
+        "B5": "file scope included local rules and excluded language group; all scope included it",
+        "B10": "stale decision revision refreshed and required a second confirmation"
+      },
+      "filter_interactions": {
+        "filter_controls_follow_tab_order": true,
+        "source_status_and_debounced_search_combine": true,
+        "decided_row_hides_and_focus_moves_to_next_change": true,
+        "preview_undo_redo_buttons_and_table_scoped_shortcuts": true,
+        "reset_current_restores_whole_group_and_is_undoable": true,
+        "global_apply_guard_and_empty_state": true,
+        "clear_filters_restores_all_rows": true
+      },
+      "diagnostic_interactions": {
+        "collapsed_by_default_and_expandable": true,
+        "file_filter_includes_no_change_diagnostics": true,
+        "click_and_keyboard_navigation_select_real_preview_rows": true,
+        "diagnostic_selection_does_not_change_decisions": true,
+        "zero_change_result_opens_and_closes_diagnostics": true
+      },
+      "export_interactions": {
+        "menu_action_opens_options": true,
+        "cancel_is_noop": true,
+        "full_diff_resets_off_and_is_opt_in": true
+      }
+    },
+    {
+      "language": "zh-Hans",
+      "minimum_width": 502,
+      "minimum_height": 485,
+      "initial_width": 768,
+      "initial_height": 620,
+      "table_height": 225,
+      "group_actions": {
+        "language_group_label": "接受语言标签组",
+        "language_group_accepts_both_files": true,
+        "language_button_leaves_rule_group_pending": true,
+        "accept_file_completes_local_rule_group": true,
+        "rule_only_language_button_hidden_and_inert": true,
+        "hidden_group_prompt_cancel_preserves_and_confirm_expands": true
+      },
+      "filter_interactions": {
+        "filter_controls_follow_tab_order": true,
+        "source_status_and_debounced_search_combine": true,
+        "decided_row_hides_and_focus_moves_to_next_change": true,
+        "preview_undo_redo_buttons_and_table_scoped_shortcuts": true,
+        "reset_current_restores_whole_group_and_is_undoable": true,
+        "global_apply_guard_and_empty_state": true,
+        "clear_filters_restores_all_rows": true
+      },
+      "diagnostic_interactions": {
+        "collapsed_by_default_and_expandable": true,
+        "file_filter_includes_no_change_diagnostics": true,
+        "click_and_keyboard_navigation_select_real_preview_rows": true,
+        "diagnostic_selection_does_not_change_decisions": true,
+        "zero_change_result_opens_and_closes_diagnostics": true
+      },
+      "export_interactions": {
+        "menu_action_opens_options": true,
+        "cancel_is_noop": true,
+        "full_diff_resets_off_and_is_opt_in": true
+      }
+    },
+    {
+      "language": "zh-Hant",
+      "minimum_width": 502,
+      "minimum_height": 485,
+      "initial_width": 768,
+      "initial_height": 620,
+      "table_height": 225,
+      "group_actions": {
+        "language_group_label": "接受語言標籤組",
+        "language_group_accepts_both_files": true,
+        "language_button_leaves_rule_group_pending": true,
+        "accept_file_completes_local_rule_group": true,
+        "rule_only_language_button_hidden_and_inert": true,
+        "hidden_group_prompt_cancel_preserves_and_confirm_expands": true
+      },
+      "filter_interactions": {
+        "filter_controls_follow_tab_order": true,
+        "source_status_and_debounced_search_combine": true,
+        "decided_row_hides_and_focus_moves_to_next_change": true,
+        "preview_undo_redo_buttons_and_table_scoped_shortcuts": true,
+        "reset_current_restores_whole_group_and_is_undoable": true,
+        "global_apply_guard_and_empty_state": true,
+        "clear_filters_restores_all_rows": true
+      },
+      "diagnostic_interactions": {
+        "collapsed_by_default_and_expandable": true,
+        "file_filter_includes_no_change_diagnostics": true,
+        "click_and_keyboard_navigation_select_real_preview_rows": true,
+        "diagnostic_selection_does_not_change_decisions": true,
+        "zero_change_result_opens_and_closes_diagnostics": true
+      },
+      "export_interactions": {
+        "menu_action_opens_options": true,
+        "cancel_is_noop": true,
+        "full_diff_resets_off_and_is_opt_in": true
+      }
+    }
+  ]
+}
