@@ -25,7 +25,7 @@ from ui.i18n import (
     rule_validation_message,
     show_error_details,
 )
-from ui.qt import ask_confirmation, ensure_application, exec_dialog, load_qt
+from ui.qt import ask_confirmation, ensure_application, enum_value as _enum_value, exec_dialog, load_qt
 from ui.window_state import restore_window_size, save_window_size
 
 
@@ -49,9 +49,18 @@ def _guarded_rule_dialog(qt_widgets, guard):
     base_dialog = qt_widgets.QDialog
 
     class GuardedRuleDialog(base_dialog):
+        resize_callback = None
+
         def reject(self):
             if guard():
                 super().reject()
+
+        def resizeEvent(self, event):
+            parent_handler = getattr(super(), "resizeEvent", None)
+            if callable(parent_handler):
+                parent_handler(event)
+            if callable(self.resize_callback):
+                self.resize_callback(self.width())
 
     return GuardedRuleDialog()
 
@@ -391,6 +400,7 @@ class RuleManagerDialog:
         self._storage_errors = tuple(storage_errors)
         self._run_options = dict(run_options or {})
         self._jieba_pending = bool(jieba_pending)
+        self._test_result_has_run = False
         self._ui_preferences = dict(ui_preferences or {})
         self._save_ui_preferences_callback = save_ui_preferences
         self._save_ui_preferences = self._store_ui_preferences
@@ -411,6 +421,69 @@ class RuleManagerDialog:
         if callable(self._save_ui_preferences_callback):
             self._save_ui_preferences_callback(values)
 
+    def _update_editor_split_orientation(self, width: int) -> None:
+        if not hasattr(self, "editor_splitter"):
+            return
+        is_wide = int(width) >= 1000
+        previous_wide = getattr(self, "_editor_split_is_wide", None)
+        if previous_wide == is_wide:
+            return
+        self._editor_split_is_wide = is_wide
+        orientation_name = "Horizontal" if is_wide else "Vertical"
+        self.editor_splitter.setOrientation(
+            _enum_value(self._qt.Qt, orientation_name))
+        self._layout_editor_form(narrow=not is_wide)
+        if is_wide:
+            available = max(self.editor_splitter.width(), 800)
+            self.editor_splitter.setSizes([int(available * 0.48),
+                                           int(available * 0.52)])
+        else:
+            available = max(self.editor_splitter.height(), 420)
+            self.editor_splitter.setSizes([int(available * 0.42),
+                                           int(available * 0.58)])
+
+    def _layout_editor_form(self, *, narrow: bool) -> None:
+        form = getattr(self, "editor_form", None)
+        controls = getattr(self, "_editor_controls", None)
+        if form is None or controls is None:
+            return
+        previous = getattr(self, "_editor_form_narrow", None)
+        if previous == narrow:
+            return
+        clear = getattr(form, "takeAt", None)
+        count_items = getattr(form, "count", None)
+        count = count_items() if callable(count_items) else None
+        if callable(clear) and isinstance(count, int):
+            while count:
+                item = clear(0)
+                widget = item.widget() if item is not None else None
+                if isinstance(widget, self._qt.QLabel):
+                    widget.deleteLater()
+                count -= 1
+        elif previous is not None:
+            return
+        keys = {key: widget for key, widget in controls}
+        if narrow:
+            pairs = (("source", "target"), ("type", "match_type"),
+                     ("direction", "scope"), ("enabled", "priority"))
+            for row, pair in enumerate(pairs):
+                for pair_index, key in enumerate(pair):
+                    widget = self.priority_edit if key == "priority" else keys[key]
+                    label = self._qt.QLabel(self._labels[key])
+                    label.setBuddy(widget)
+                    form.addWidget(label, row, pair_index * 2)
+                    form.addWidget(widget, row, pair_index * 2 + 1)
+        else:
+            order = ("source", "target", "type", "match_type", "direction",
+                     "scope", "enabled", "priority")
+            for row, key in enumerate(order):
+                widget = self.priority_edit if key == "priority" else keys[key]
+                label = self._qt.QLabel(self._labels[key])
+                label.setBuddy(widget)
+                form.addWidget(label, row, 0)
+                form.addWidget(widget, row, 1)
+        self._editor_form_narrow = narrow
+
     def _build(self) -> None:
         qt = self._qt
         layout = qt.QVBoxLayout(self.dialog)
@@ -425,14 +498,6 @@ class RuleManagerDialog:
             notice.setWordWrap(True)
             layout.addWidget(notice)
 
-        self.content_widget = qt.QWidget()
-        content_layout = qt.QVBoxLayout(self.content_widget)
-        self.content_scroll = qt.QScrollArea()
-        self.content_scroll.setWidgetResizable(True)
-        self.content_scroll.setMinimumHeight(300)
-        self.content_scroll.setWidget(self.content_widget)
-        layout.addWidget(self.content_scroll, 1)
-
         ruleset_row = qt.QHBoxLayout()
         ruleset_row.addWidget(qt.QLabel(self._labels["ruleset"]))
         self.ruleset_combo = qt.QComboBox()
@@ -443,11 +508,20 @@ class RuleManagerDialog:
         ruleset_row.addWidget(self.ruleset_combo, 1)
         ruleset_row.addWidget(self.new_ruleset_button)
         ruleset_row.addWidget(self.rename_ruleset_button)
-        content_layout.addLayout(ruleset_row)
-
-        metadata_form = qt.QFormLayout()
         self.ruleset_enabled_check = qt.QCheckBox(self._labels["ruleset_enabled"])
         self.ruleset_enabled_check.setChecked(True)
+        ruleset_row.addWidget(self.ruleset_enabled_check)
+        layout.addLayout(ruleset_row)
+
+        self.tabs = qt.QTabWidget()
+        self.rules_page = qt.QWidget()
+        self.test_page = qt.QWidget()
+        self.tabs.addTab(self.rules_page, self._labels["tab_rules"])
+        self.tabs.addTab(self.test_page, self._labels["tab_test"])
+        layout.addWidget(self.tabs, 1)
+        content_layout = qt.QVBoxLayout(self.rules_page)
+        self.test_page_layout = qt.QVBoxLayout(self.test_page)
+
         self.default_direction_combo = qt.QComboBox()
         for direction in (*sorted(SUPPORTED_DIRECTIONS - {"*"}), "*"):
             label = (self._labels["direction_any"] if direction == "*"
@@ -456,8 +530,6 @@ class RuleManagerDialog:
         self.default_scope_combo = qt.QComboBox()
         for scope in ("global", "profile", "book"):
             self.default_scope_combo.addItem(self._labels[f"scope_{scope}"], scope)
-        metadata_form.addRow(self.ruleset_enabled_check)
-        content_layout.addLayout(metadata_form)
         defaults_box = qt.QGroupBox(self._labels["default_settings"])
         defaults_box.setCheckable(True)
         defaults_box.setChecked(False)
@@ -489,6 +561,22 @@ class RuleManagerDialog:
         content_layout.addWidget(self.builtin_info_label)
         self._refresh_builtin_info()
 
+        self.editor_splitter = qt.QSplitter(_enum_value(qt.Qt, "Horizontal"))
+        self.rule_list_panel = qt.QWidget()
+        list_layout = qt.QVBoxLayout(self.rule_list_panel)
+        self.editor_scroll = qt.QScrollArea()
+        self.editor_scroll.setWidgetResizable(True)
+        self.editor_scroll.setHorizontalScrollBarPolicy(
+            _enum_value(qt.Qt, "ScrollBarAlwaysOff"))
+        self.editor_panel = qt.QWidget()
+        editor_layout = qt.QVBoxLayout(self.editor_panel)
+        self.editor_scroll.setWidget(self.editor_panel)
+        self.editor_splitter.addWidget(self.rule_list_panel)
+        self.editor_splitter.addWidget(self.editor_scroll)
+        content_layout.addWidget(self.editor_splitter, 1)
+        self.dialog.resize_callback = self._update_editor_split_orientation
+        self._update_editor_split_orientation(self.dialog.width())
+
         filter_row = qt.QHBoxLayout()
         self.search_edit = qt.QLineEdit()
         self.search_edit.setPlaceholderText(self._labels["search_rules"])
@@ -500,7 +588,7 @@ class RuleManagerDialog:
         filter_row.addWidget(self.search_edit, 1)
         filter_row.addWidget(self.activity_filter)
         filter_row.addWidget(self.count_label)
-        content_layout.addLayout(filter_row)
+        list_layout.addLayout(filter_row)
 
         self.table = qt.QTableWidget(0, 6)
         self.table.setHorizontalHeaderLabels(
@@ -511,22 +599,23 @@ class RuleManagerDialog:
         )
         self.table.setAccessibleName(self._translator.text("a11y.rules.table"))
         _configure_rule_table(self.table, qt)
-        self.table.setMinimumHeight(150)
-        content_layout.addWidget(self.table, 1)
+        self.table.setMinimumHeight(100)
+        list_layout.addWidget(self.table, 1)
         self.target_warning_label = qt.QLabel()
         self.target_warning_label.setWordWrap(True)
-        content_layout.addWidget(self.target_warning_label)
+        list_layout.addWidget(self.target_warning_label)
         self.selection_details = qt.QPlainTextEdit()
         self.selection_details.setReadOnly(True)
+        self.selection_details.setMinimumHeight(32)
         self.selection_details.setMaximumHeight(100)
         self.selection_details.setPlaceholderText(self._labels["select_rule_details"])
-        content_layout.addWidget(self.selection_details)
+        list_layout.addWidget(self.selection_details)
         self.conflict_list = qt.QListWidget()
         self.conflicts_label = qt.QLabel(self._labels["conflicts_title"])
-        content_layout.addWidget(self.conflicts_label)
+        list_layout.addWidget(self.conflicts_label)
         self.conflict_list.setMaximumHeight(120)
         self.conflict_list.itemClicked.connect(self._select_conflict_item)
-        content_layout.addWidget(self.conflict_list)
+        list_layout.addWidget(self.conflict_list)
         self.conflicts_label.setVisible(False)
         self.conflict_list.setVisible(False)
         form = qt.QGridLayout()
@@ -567,15 +656,12 @@ class RuleManagerDialog:
             ("scope", self.scope_combo),
             ("enabled", self.enabled_check),
         )
-        for row, (key, widget) in enumerate(controls):
-            label = qt.QLabel(self._labels[key])
-            label.setBuddy(widget)
-            form.addWidget(label, row // 3, (row % 3) * 2)
-            form.addWidget(widget, row // 3, (row % 3) * 2 + 1)
         self.editor_form = form
+        self._editor_controls = controls
+        self._layout_editor_form(narrow=True)
         self.editor_mode_label = qt.QLabel(self._labels["editor_new_mode"])
-        content_layout.addWidget(self.editor_mode_label)
-        content_layout.addLayout(form)
+        editor_layout.addWidget(self.editor_mode_label)
+        editor_layout.addLayout(form)
         priority_box = qt.QGroupBox(self._labels["advanced_rule_options"])
         priority_box.setCheckable(True)
         priority_box.setChecked(False)
@@ -586,7 +672,7 @@ class RuleManagerDialog:
         priority_box_layout.addWidget(priority_content)
         priority_content.setVisible(False)
         priority_box.toggled.connect(priority_content.setVisible)
-        content_layout.addWidget(priority_box)
+        editor_layout.addWidget(priority_box)
         editor_box = qt.QGroupBox(self._labels["editor_group"])
         buttons = qt.QHBoxLayout(editor_box)
         self.add_button = qt.QPushButton(self._labels["add"])
@@ -599,7 +685,7 @@ class RuleManagerDialog:
         for button in (self.add_button, self.update_button, self.remove_button,
                        self.template_button):
             buttons.addWidget(button)
-        content_layout.addWidget(editor_box)
+        editor_layout.addWidget(editor_box)
 
         transfer_box = qt.QGroupBox(self._labels["transfer_group"])
         transfer = qt.QHBoxLayout(transfer_box)
@@ -612,8 +698,6 @@ class RuleManagerDialog:
         content_layout.addWidget(transfer_box)
 
         test_box = qt.QGroupBox(self._labels["test_group"])
-        test_box.setCheckable(True)
-        test_box.setChecked(False)
         self.test_box = test_box
         test_box_layout = qt.QVBoxLayout(test_box)
         self.test_content = qt.QWidget(test_box)
@@ -638,15 +722,23 @@ class RuleManagerDialog:
         test_layout.addLayout(test_buttons)
         self.test_input = qt.QPlainTextEdit()
         self.test_input.setPlaceholderText(self._labels["input"])
+        self.test_input.setMinimumHeight(72)
+        self.test_input.setMaximumHeight(150)
         test_layout.addWidget(self.test_input)
+        self.test_result_status = qt.QLabel()
+        self.test_result_status.setWordWrap(True)
+        self.test_result_status.setVisible(False)
+        test_layout.addWidget(self.test_result_status)
         self.test_output = qt.QPlainTextEdit()
         self.test_output.setReadOnly(True)
         self.test_output.setPlaceholderText(self._labels["output"])
+        self.test_output.setMinimumHeight(80)
+        self.test_output.setMaximumHeight(190)
         test_layout.addWidget(self.test_output)
         test_box_layout.addWidget(self.test_content)
-        self.test_content.setVisible(False)
-        test_box.toggled.connect(self.test_content.setVisible)
-        content_layout.addWidget(test_box)
+        self.test_content.setVisible(True)
+        self.test_page_layout.addWidget(test_box)
+        self.test_page_layout.addStretch(1)
 
         actions = qt.QHBoxLayout()
         actions.addStretch(1)
@@ -680,6 +772,22 @@ class RuleManagerDialog:
         self.table.itemSelectionChanged.connect(self._selection_changed)
         self.search_edit.textChanged.connect(self._filters_changed)
         self.activity_filter.currentIndexChanged.connect(self._filters_changed)
+        self.test_input.textChanged.connect(self._mark_test_result_stale)
+        self.test_scope_combo.currentIndexChanged.connect(self._mark_test_result_stale)
+        for control, signal_name in (
+            (self.source_edit, "textChanged"),
+            (self.target_edit, "textChanged"),
+            (self.type_combo, "currentIndexChanged"),
+            (self.match_type_combo, "currentIndexChanged"),
+            (self.direction_combo, "currentIndexChanged"),
+            (self.scope_combo, "currentIndexChanged"),
+            (self.enabled_check, "toggled"),
+            (self.priority_edit, "valueChanged"),
+        ):
+            signal = getattr(control, signal_name, None)
+            connect = getattr(signal, "connect", None)
+            if callable(connect):
+                connect(self._mark_test_result_stale)
 
     def _populate_rulesets(self) -> None:
         self.ruleset_combo.blockSignals(True)
@@ -744,6 +852,7 @@ class RuleManagerDialog:
             default_direction=str(self.default_direction_combo.currentData()),
             default_scope=str(self.default_scope_combo.currentData()),
         )
+        self._mark_test_result_stale()
 
     def _apply_rule_defaults(self) -> None:
         current = self._rulesets.get(self._ruleset_id)
@@ -762,6 +871,18 @@ class RuleManagerDialog:
         sources = ", ".join(rule.source for rule in BUILTIN_RULES)
         self.builtin_info_label.setText(
             self._labels["builtin_info"].format(status=status, rules=sources))
+
+    def _mark_test_result_stale(self, *_args) -> None:
+        if not getattr(self, "_test_result_has_run", False) or not hasattr(
+                self, "test_result_status"):
+            return
+        self.test_result_status.setText(self._labels["test_result_stale"])
+        self.test_result_status.setVisible(True)
+
+    def _mark_test_result_current(self) -> None:
+        self._test_result_has_run = True
+        self.test_result_status.clear()
+        self.test_result_status.setVisible(False)
 
     def _ruleset_snapshot(self):
         self._stash_ruleset()
@@ -893,6 +1014,7 @@ class RuleManagerDialog:
         self._load_ruleset_metadata()
         self._apply_rule_defaults()
         self._refresh()
+        self._mark_test_result_stale()
 
     def _new_ruleset(self) -> None:
         if not self._resolve_editor_draft():
@@ -924,6 +1046,7 @@ class RuleManagerDialog:
         self._populate_rulesets()
         self._apply_rule_defaults()
         self._refresh()
+        self._mark_test_result_stale()
 
     def _rename_ruleset(self) -> None:
         if not self._resolve_editor_draft():
@@ -959,6 +1082,7 @@ class RuleManagerDialog:
         self.rules = list(ruleset.rules)
         self._populate_rulesets()
         self._refresh()
+        self._mark_test_result_stale()
 
     def _set_book_scope_enabled(self) -> None:
         index = self.scope_combo.findData("book")
@@ -1039,6 +1163,10 @@ class RuleManagerDialog:
                 clear_selection()
             self._selected_rule_id = None
         conflicts = find_conflicts(self.rules)
+        conflicts_label = getattr(self, "conflicts_label", None)
+        if conflicts_label is not None:
+            conflicts_label.setText(self._labels["conflicts_count"].format(
+                count=len(conflicts)))
         self.apply_button.setEnabled(not any(conflict.blocking for conflict in conflicts))
         set_visible = getattr(getattr(self, "conflicts_label", None), "setVisible", None)
         if callable(set_visible):
@@ -1185,6 +1313,7 @@ class RuleManagerDialog:
         self.source_edit.clear()
         self.target_edit.clear()
         self._mark_editor_clean()
+        self._mark_test_result_stale()
 
     def _submit_editor(self) -> None:
         if self._editing_rule_id:
@@ -1211,6 +1340,7 @@ class RuleManagerDialog:
         self._editing_rule_id = previous.id
         self._refresh()
         self._mark_editor_clean()
+        self._mark_test_result_stale()
 
     def _rule_from_form(self, existing: Rule | None = None):
         editor_action = str(self.type_combo.currentData())
@@ -1272,6 +1402,7 @@ class RuleManagerDialog:
             self._editing_rule_id = None
             self._refresh()
             self._clear_editor()
+            self._mark_test_result_stale()
 
     def _load_selected(self) -> None:
         identifier = self._rule_id_at_row(self.table.currentRow())
@@ -1505,6 +1636,7 @@ class RuleManagerDialog:
             if not trace:
                 lines.append(self._labels["no_hits"])
             self.test_output.setPlainText("\n".join(lines))
+            self._mark_test_result_current()
         except Exception as exc:
             show_error_details(
                 self._qt, self.dialog, self._labels["title"],
@@ -1593,6 +1725,7 @@ class RuleManagerDialog:
             if self._confirm_import(review):
                 self.rules.extend(review.additions)
                 self._refresh()
+                self._mark_test_result_stale()
         except Exception as exc:
             self._show_exception(exc)
 

@@ -310,20 +310,21 @@ def test_rule_table_and_default_ruleset_use_localized_labels():
     assert manager.help_label.text() == translator.text("rules.help")
 
 
-def test_rule_conflicts_have_a_bounded_section_and_test_box_starts_collapsed():
+def test_rule_conflicts_and_sandbox_have_dedicated_tabs():
     manager = RuleManagerDialog(make_with_table(), (), translator=Translator("en"))
 
-    assert manager.conflicts_label.text() == Translator("en").text("rules.conflicts_title")
+    assert manager.conflicts_label.text() == Translator("en").text(
+        "rules.conflicts_count", count=0)
     assert manager.conflict_list.maximumHeight() == 120
-    assert manager.test_box.isCheckable()
-    assert not manager.test_box.isChecked()
+    assert not manager.test_box.isCheckable()
+    assert any(call[0] == "addTab" for call in manager.tabs.calls)
 
 
 def test_rules_editor_labels_are_buddied_and_table_has_accessible_name():
     manager = RuleManagerDialog(make_with_table(), (), translator=Translator("en"))
 
     children = manager.editor_form.children
-    assert len(children) == 14
+    assert len(children) == 16
     assert all(children[index].buddy() is children[index + 1] for index in range(0, 14, 2))
     assert manager.table.accessibleName()
 
@@ -584,6 +585,28 @@ def test_sandbox_run_scope_uses_only_referenced_enabled_rulesets_and_current_con
     assert inspection.matched_rules == ("active",)
 
 
+def test_sandbox_result_is_marked_stale_after_input_or_scope_changes():
+    manager = RuleManagerDialog(
+        make_with_table(), (), translator=Translator("en"),
+        official_convert=lambda _config, value: value, config="s2t",
+    )
+    manager.test_input.setPlainText("first input")
+    manager._test()
+    assert manager._test_result_has_run
+    assert not manager.test_result_status.isVisible()
+
+    manager.test_input.setPlainText("changed input")
+    manager._mark_test_result_stale()
+    assert manager.test_result_status.isVisible()
+    assert "out of date" in manager.test_result_status.text()
+
+    manager._mark_test_result_current()
+    manager.test_scope_combo.setCurrentIndex(
+        manager.test_scope_combo.findData("run"))
+    manager._mark_test_result_stale()
+    assert manager.test_result_status.isVisible()
+
+
 def test_sandbox_scope_excludes_direction_and_owner_mismatches():
     rules = (
         Rule(id="direction", source="旧词", target="错向", direction="t2s"),
@@ -813,19 +836,19 @@ def test_template_enter_adds_instead_of_overwriting_selected_rule():
 def test_search_and_filter_update_the_stable_rule_id_in_a_large_set():
     rules = tuple(Rule(
         id=f"rule-{index}", source=f"term-{index}", target=f"target-{index}",
-        direction="s2t", comment=f"comment-{index}") for index in range(500))
+        direction="s2t", comment=f"comment-{index:05d}") for index in range(10_000))
     manager = RuleManagerDialog(
         make_with_table(), rules, translator=Translator("en"), ruleset_id="active",
         rulesets=(RuleSet("active", rules),),
         run_options={"ruleset_ids": ["active"]},
     )
     original = {rule.id: rule for rule in manager.rules}
-    manager.search_edit.setText("comment-497")
+    manager.search_edit.setText("comment-00497")
     manager._filters_changed()
 
     assert manager.table.rowCount() == 1
     assert manager._visible_rule_ids == ["rule-497"]
-    assert manager.count_label.text() == "Showing 1 of 500"
+    assert manager.count_label.text() == "Showing 1 of 10000"
     manager.table.selectRow(0)
     manager._selection_changed()
     assert manager._editing_rule_id == "rule-497"
@@ -835,7 +858,7 @@ def test_search_and_filter_update_the_stable_rule_id_in_a_large_set():
     manager.search_edit.setText("")
     manager._filters_changed()
 
-    assert manager.table.rowCount() == 500
+    assert manager.table.rowCount() == 10_000
     changed = {rule.id: rule for rule in manager.rules}
     assert changed["rule-497"].target == "updated"
     assert all(changed[identifier] == original[identifier]
