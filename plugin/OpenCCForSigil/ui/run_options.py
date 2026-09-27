@@ -59,6 +59,7 @@ class RunOptionsPanel:
         self.combo_labels = {}
         self._combo_values = {}
         self._option_groups = []
+        self._summary_changed_callback = None
         self._named_groups = []
         self._profile_buttons = []
         self.profile_label = qt.QLabel()
@@ -338,6 +339,9 @@ class RunOptionsPanel:
 
     def _option_changed(self, *_args):
         self.update_enablement()
+        callback = self._summary_changed_callback
+        if callable(callback):
+            callback()
 
     def _pivot_chain_changed(self, *_args):
         value = self.combos["pivot_chain"].currentData()
@@ -449,6 +453,9 @@ class RunOptionsPanel:
                 self.update_enablement(config)
             else:
                 self._services.open_tool(name, self._tr, self._qt, self._parent)
+            callback = self._summary_changed_callback
+            if callable(callback):
+                callback()
         except (ValueError, OSError) as exc:
             show_error_details(
                 self._qt, self._parent, self._tr.text("options.title"),

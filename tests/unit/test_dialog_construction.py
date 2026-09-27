@@ -121,8 +121,9 @@ def test_scope_and_conversion_configuration_share_one_dialog(monkeypatch):
 
     def execute(dialog):
         executed.append(dialog)
-        tabs, footer = dialog._layout.children
+        summary, tabs, footer = dialog._layout.children
         assert isinstance(tabs, qt.QTabWidget)
+        assert summary.text().startswith("This run: 1 XHTML")
         assert len(tabs.calls) == 2
         footer.children[-1].click()
 

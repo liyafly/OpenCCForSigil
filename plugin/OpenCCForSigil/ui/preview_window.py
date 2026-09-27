@@ -28,12 +28,14 @@ from ui.qt import ensure_application, enum_value as _enum_value, exec_dialog, lo
 from ui.i18n import (
     SUPPORTED_LANGUAGES,
     Translator,
+    configuration_label,
     diagnostic_summary,
     plugin_window_title,
     settings_error_message,
     show_error_details,
 )
 from ui.window_state import restore_window_size, save_window_size
+from ui.run_summary import run_summary_data
 
 
 class UIUnavailableError(RuntimeError):
@@ -482,6 +484,9 @@ def choose_scope(
     )
     tabs.addTab(scope_page, translator.text("scope.title"))
     tabs.addTab(config_page, translator.text("config.title"))
+    summary = qt_widgets.QLabel()
+    summary.setWordWrap(True)
+    outer_layout.addWidget(summary)
     outer_layout.addWidget(tabs)
     footer = qt_widgets.QHBoxLayout()
     cancel_button = qt_widgets.QPushButton(translator.text("common.cancel"))
@@ -491,11 +496,39 @@ def choose_scope(
     scope_dialog._analysis_button = analyze_button
 
     def update_analyze_enabled():
+        selected_ids = scope_dialog.selected_ids()
+        nav_available_now = bool(nav_id and nav_id in selected_ids)
+        if config_dialog.options_panel._nav_available != nav_available_now:
+            config_dialog.options_panel.set_nav_available(nav_available_now)
+        data = run_summary_data(
+            selected_ids, nav_id, config_dialog._get_config(),
+            config_dialog.options_panel.values(),
+        )
+        direction = configuration_label(translator, data["config"])
+        summary_text = translator.text(
+            "scope.run_summary", files=data["file_count"], direction=direction)
+        details = []
+        if data["nav_included"]:
+            details.append(translator.text("options.include_nav"))
+        elif not data["nav_available"]:
+            details.append(translator.text("scope.run_summary_nav_unavailable"))
+        details.extend(translator.text(f"scope.run_summary_{name}")
+                       for name in data["additions"])
+        if details:
+            summary_text += "\n" + translator.text(
+                "scope.run_summary_documents", items=" · ".join(details))
+        if data["risks"]:
+            summary_text += "\n" + translator.text(
+                "scope.run_summary_risks", items=" · ".join(
+                    translator.text(f"scope.run_summary_risk_{name}")
+                    for name in data["risks"]))
+        summary.setText(summary_text)
         analyze_button.setEnabled(
             scope_dialog._selection_is_valid() and config_dialog._continue_is_allowed())
 
     scope_dialog._analysis_enabled_callback = update_analyze_enabled
     config_dialog._completion_enabled_callback = update_analyze_enabled
+    config_dialog.options_panel._summary_changed_callback = update_analyze_enabled
     update_analyze_enabled()
     footer.addStretch(1)
     footer.addWidget(cancel_button)
@@ -3193,6 +3226,8 @@ class _ConversionConfigDialog:
         self.jieba_status.setText(status)
         self.jieba_details_button.setEnabled(bool(self._probe_error))
         self.jieba_details_button.setVisible(bool(self._probe_error))
+        if hasattr(self, "options_panel"):
+            self.options_panel.update_enablement(self._get_config())
         completion_button = getattr(
             self, "_completion_button", getattr(self, "continue_button", None))
         if completion_button is not None:
@@ -3201,8 +3236,6 @@ class _ConversionConfigDialog:
                 callback()
             else:
                 completion_button.setEnabled(self._continue_is_allowed())
-        if hasattr(self, "options_panel"):
-            self.options_panel.update_enablement(self._get_config())
 
     def _direction_changed(self, *_args):
         if str(self.combo.currentData()) != self._default_base:
