@@ -22,6 +22,24 @@ class PreviewDecision(str, Enum):
     CANCEL = "cancel"
 
 
+class PreviewGroupKind(str, Enum):
+    """The user-facing reason a set of preview changes must be decided together."""
+
+    LANGUAGE_METADATA = "language_metadata"
+    RULE_OCCURRENCE = "rule_occurrence"
+    LINKED = "linked"
+
+
+def preview_group_kind(group_id: str) -> PreviewGroupKind:
+    """Classify known atomic groups without labeling other changes as metadata."""
+
+    if group_id == "language_metadata":
+        return PreviewGroupKind.LANGUAGE_METADATA
+    if group_id.startswith("rules:"):
+        return PreviewGroupKind.RULE_OCCURRENCE
+    return PreviewGroupKind.LINKED
+
+
 @dataclass(frozen=True)
 class PreviewFilter:
     """Optional scope for bulk decisions."""
@@ -178,5 +196,7 @@ __all__ = [
     "PreviewDecision",
     "PreviewError",
     "PreviewFilter",
+    "PreviewGroupKind",
     "PreviewSession",
+    "preview_group_kind",
 ]

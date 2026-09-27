@@ -556,6 +556,111 @@ def test_accept_file_leaves_language_group_pending_until_separate_group_action()
     assert len(finalized) == 2
 
 
+def test_accept_file_includes_this_files_atomic_rule_occurrences():
+    changes = (
+        TokenChange(
+            source="旧", target="新", span=SourceSpan(0, 1),
+            rule_source="UserRule:local", change_id="rule-a-1",
+            file_id="a.xhtml", category="user_rule", risk="HIGH",
+            group_id="rules:occurrence-a",
+        ),
+        TokenChange(
+            source="甲", target="乙", span=SourceSpan(3, 4),
+            rule_source="UserRule:local", change_id="rule-a-2",
+            file_id="a.xhtml", category="user_rule", risk="HIGH",
+            group_id="rules:occurrence-a",
+        ),
+        TokenChange(
+            source="旧", target="新", span=SourceSpan(0, 1),
+            rule_source="UserRule:other", change_id="rule-b",
+            file_id="b.xhtml", category="user_rule", risk="HIGH",
+            group_id="custom-cross-file",
+        ),
+    )
+    first = PreviewSession(ConversionPlan(source_sha256="", changes=changes[:2]))
+    second = PreviewSession(ConversionPlan(source_sha256="", changes=changes[2:]))
+    entries = tuple((preview, change) for preview in (first, second)
+                    for change in preview.changes)
+    dialog = _table_dialog(entries, (first, second), current_row=0, file_id="a.xhtml")
+
+    dialog._accept_file()
+
+    assert first.decision("rule-a-1").value == "accept_this"
+    assert first.decision("rule-a-2").value == "accept_this"
+    assert second.decision("rule-b") is None
+
+
+def test_language_group_control_does_not_decide_rule_occurrences_in_the_same_file():
+    language = TokenChange(
+        source="zh-CN", target="zh-TW", span=SourceSpan(0, 5),
+        rule_source="language_metadata", change_id="language-a",
+        file_id="a.xhtml", category="language_metadata", risk="HIGH",
+        group_id="language_metadata",
+    )
+    hidden_language = TokenChange(
+        source="zh-CN", target="zh-TW", span=SourceSpan(0, 5),
+        rule_source="language_metadata", change_id="language-b",
+        file_id="content.opf", category="language_metadata", risk="HIGH",
+        group_id="language_metadata",
+    )
+    rule_first = TokenChange(
+        source="旧", target="新", span=SourceSpan(8, 9),
+        rule_source="UserRule:replace", change_id="rule-1",
+        file_id="a.xhtml", category="user_rule", risk="HIGH",
+        group_id="rules:occurrence-a",
+    )
+    rule_second = TokenChange(
+        source="甲", target="乙", span=SourceSpan(12, 13),
+        rule_source="UserRule:replace", change_id="rule-2",
+        file_id="a.xhtml", category="user_rule", risk="HIGH",
+        group_id="rules:occurrence-a",
+    )
+    first = PreviewSession(ConversionPlan(
+        source_sha256="", changes=(language, rule_first, rule_second)))
+    second = PreviewSession(ConversionPlan(source_sha256="", changes=(hidden_language,)))
+    entries = tuple((preview, change) for preview in (first, second)
+                    for change in preview.changes)
+    dialog = _table_dialog(entries, (first, second), current_row=0, file_id="a.xhtml")
+    dialog.accept_group_button = dialog._qt.QPushButton("Accept language tag group")
+    dialog.reject_group_button = dialog._qt.QPushButton("Skip language tag group")
+    dialog.group_guidance = dialog._qt.QLabel()
+    dialog._update_group_controls("a.xhtml")
+    dialog._refresh = lambda **_kwargs: None
+
+    dialog._decide_current_file_groups(True)
+
+    assert first.decision("language-a").value == "accept_this"
+    assert second.decision("language-b").value == "accept_this"
+    assert first.decision("rule-1") is None
+    assert first.decision("rule-2") is None
+
+
+def test_rule_occurrence_is_not_labeled_as_a_language_tag_group():
+    changes = tuple(TokenChange(
+        source=source, target=target, span=SourceSpan(index * 2, index * 2 + 1),
+        rule_source="UserRule:replace", change_id=f"rule-{index}",
+        file_id="a.xhtml", category="user_rule", risk="HIGH",
+        group_id="rules:occurrence-a",
+    ) for index, (source, target) in enumerate((("旧", "新"), ("甲", "乙"))))
+    preview = PreviewSession(ConversionPlan(source_sha256="", changes=changes))
+    entries = tuple((preview, change) for change in preview.changes)
+    dialog = _table_dialog(entries, (preview,), current_row=0)
+    dialog._group_stats = {"rules:occurrence-a": (2, 1)}
+    dialog.table_model.rows.group_stats = dialog._group_stats
+    dialog.accept_group_button = dialog._qt.QPushButton("Accept language tag group")
+    dialog.reject_group_button = dialog._qt.QPushButton("Skip language tag group")
+    dialog.group_guidance = dialog._qt.QLabel()
+
+    dialog._update_group_controls("a.xhtml")
+    dialog._show_current(0)
+    row = dialog.table_model.rows.row_values(0)
+
+    assert dialog.accept_group_button.isVisible() is False
+    assert "Language tag group" not in row[5]
+    assert "rule occurrence" in row[5].lower()
+    assert "language tag" not in dialog.detail.toPlainText().lower()
+
+
 def test_language_group_row_includes_change_and_file_counts():
     changes = (
         TokenChange(

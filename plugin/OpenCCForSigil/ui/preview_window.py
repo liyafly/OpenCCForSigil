@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from html import unescape
 from typing import Any, Sequence, Tuple
 
-from core.preview import PreviewFilter, PreviewSession
+from core.preview import PreviewFilter, PreviewGroupKind, PreviewSession, preview_group_kind
 from core.models import TokenChange
 from core.workflow import PlannedDocument
 from opencc_backend.configs import (
@@ -901,6 +901,33 @@ def format_change_row(change, href_by_id, translator, targets_by_id=None) -> Tup
         change, href_by_id, translator, trim_context=True, targets_by_id=targets_by_id)
 
 
+def _group_marker_key(group_id: str) -> str:
+    return {
+        PreviewGroupKind.LANGUAGE_METADATA: "preview.group_row_marker",
+        PreviewGroupKind.RULE_OCCURRENCE: "preview.rule_group_row_marker",
+        PreviewGroupKind.LINKED: "preview.linked_group_row_marker",
+    }[preview_group_kind(group_id)]
+
+
+def _group_explanation_key(group_id: str) -> str:
+    return {
+        PreviewGroupKind.LANGUAGE_METADATA: "preview.group_explanation",
+        PreviewGroupKind.RULE_OCCURRENCE: "preview.rule_group_explanation",
+        PreviewGroupKind.LINKED: "preview.linked_group_explanation",
+    }[preview_group_kind(group_id)]
+
+
+def _group_feedback_key(group_id_or_kind, accepted: bool) -> str:
+    kind = (group_id_or_kind if isinstance(group_id_or_kind, PreviewGroupKind)
+            else preview_group_kind(group_id_or_kind))
+    if kind is PreviewGroupKind.LANGUAGE_METADATA:
+        verb = "accepted" if accepted else "skipped"
+        return f"preview.group_{verb}"
+    group = "rule_group" if kind is PreviewGroupKind.RULE_OCCURRENCE else "linked_group"
+    verb = "accepted" if accepted else "skipped"
+    return f"preview.{group}_{verb}"
+
+
 class _PreviewTableData:
     """Qt-independent row formatting and filtering boundary for preview UI."""
 
@@ -927,8 +954,9 @@ class _PreviewTableData:
             change, self.href_by_id, self.translator, self.targets_by_id))
         if change.group_id and change.group_id in self.group_stats:
             count, files = self.group_stats[change.group_id]
+            marker_key = _group_marker_key(change.group_id)
             values[4] += " — " + self.translator.text(
-                "preview.group_row_marker", count=count, files=files)
+                marker_key, count=count, files=files)
         return tuple(values)
 
     def tooltip_values(self, row: int) -> Tuple[str, ...]:
@@ -938,8 +966,9 @@ class _PreviewTableData:
             targets_by_id=self.targets_by_id)
         if change.group_id and change.group_id in self.group_stats:
             count, files = self.group_stats[change.group_id]
+            marker_key = _group_marker_key(change.group_id)
             values = (*values[:4], values[4] + " — " + self.translator.text(
-                "preview.group_row_marker", count=count, files=files), values[5])
+                marker_key, count=count, files=files), values[5])
         href = str(
             self.translator.text("preview.file.metadata")
             if change.document_kind == "metadata"
@@ -1126,6 +1155,10 @@ class _PreviewDialog:
                 groups_by_file.setdefault(change.file_id, set()).add(change.group_id)
         self._group_ids_by_file = {
             file_id: frozenset(group_ids) for file_id, group_ids in groups_by_file.items()
+        }
+        self._group_file_ids = {
+            group_id: frozenset(files)
+            for group_id, (_count, files) in group_entries.items()
         }
         self._group_stats = {
             group_id: (count, len(files))
@@ -1772,8 +1805,9 @@ class _PreviewDialog:
         group_text = ""
         if change.group_id:
             count, files = getattr(self, "_group_stats", {}).get(change.group_id, (1, 1))
+            explanation_key = _group_explanation_key(change.group_id)
             group_text = "\n" + self._translator.text(
-                "preview.group_explanation", count=count, files=files)
+                explanation_key, count=count, files=files)
         separator = self._translator.text("common.label_separator")
         self.detail.setPlainText("\n".join((
             f"{self._translator.text('preview.rule')}{separator}{change.rule_source}",
@@ -1812,8 +1846,7 @@ class _PreviewDialog:
         preview, change = entry
         if change.group_id:
             count = self._decide_group(change.group_id, accepted)
-            feedback_key = (
-                "preview.group_accepted" if accepted else "preview.group_skipped")
+            feedback_key = _group_feedback_key(change.group_id, accepted)
             self._last_group_feedback = self._translator.text(
                 feedback_key, count=count)
             self._refresh(recalculate_counts=True, refresh_statuses=True)
@@ -1875,7 +1908,10 @@ class _PreviewDialog:
         reject = getattr(self, "reject_group_button", None)
         if guidance is None or accept is None or reject is None:
             return
-        visible = bool(self._groups_for_file(file_id))
+        visible = any(
+            preview_group_kind(group_id) is PreviewGroupKind.LANGUAGE_METADATA
+            for group_id in self._groups_for_file(file_id)
+        )
         guidance.setText(self._translator.text("preview.group_prompt"))
         guidance.setVisible(visible)
         accept.setVisible(visible)
@@ -1885,7 +1921,10 @@ class _PreviewDialog:
         entry = self._current_entry()
         if entry is None:
             return
-        groups = self._groups_for_file(entry[1].file_id)
+        groups = tuple(
+            group_id for group_id in self._groups_for_file(entry[1].file_id)
+            if preview_group_kind(group_id) is PreviewGroupKind.LANGUAGE_METADATA
+        )
         count = sum(self._decide_group(group_id, accepted) for group_id in groups)
         if count:
             feedback_key = (
@@ -1903,8 +1942,9 @@ class _PreviewDialog:
                 (preview.accept_this if accepted else preview.reject_this)(change.change_id)
         group_count = sum(self._decide_group(group_id, accepted) for group_id in groups)
         if group_count:
-            feedback_key = (
-                "preview.group_accepted" if accepted else "preview.group_skipped")
+            group_kinds = {preview_group_kind(group_id) for group_id in groups}
+            kind = next(iter(group_kinds)) if len(group_kinds) == 1 else PreviewGroupKind.LINKED
+            feedback_key = _group_feedback_key(kind, accepted)
             self._last_group_feedback = self._translator.text(
                 feedback_key, count=group_count)
         else:
@@ -1929,10 +1969,7 @@ class _PreviewDialog:
         if entry is None:
             return
         self._last_group_feedback = ""
-        preview = entry[0]
-        for change in preview.changes:
-            if not change.group_id:
-                preview.accept_this(change.change_id)
+        self._decide_file(entry[1].file_id, True)
         self._refresh(recalculate_counts=True, refresh_statuses=True)
 
     def _reject_file(self) -> None:
@@ -1940,11 +1977,29 @@ class _PreviewDialog:
         if entry is None:
             return
         self._last_group_feedback = ""
-        preview = entry[0]
-        for change in preview.changes:
-            if not change.group_id:
-                preview.reject_this(change.change_id)
+        self._decide_file(entry[1].file_id, False)
         self._refresh(recalculate_counts=True, refresh_statuses=True)
+
+    def _decide_file(self, file_id, accepted):
+        """Decide ordinary changes and complete local groups, leaving global metadata groups aside."""
+
+        decision = PreviewSession.accept_this if accepted else PreviewSession.reject_this
+        local_groups = tuple(
+            group_id for group_id in self._groups_for_file(file_id)
+            if len(getattr(self, "_group_file_ids", {}).get(group_id, (file_id,))) == 1
+            and preview_group_kind(group_id) is not PreviewGroupKind.LANGUAGE_METADATA
+        )
+        groups = set(local_groups)
+        for preview, change in self._entries:
+            if change.file_id != file_id:
+                continue
+            if change.group_id:
+                if change.group_id in groups:
+                    continue
+                continue
+            decision(preview, change.change_id)
+        for group_id in local_groups:
+            self._decide_group(group_id, accepted)
 
     def _accept_all(self) -> None:
         self._last_group_feedback = ""
