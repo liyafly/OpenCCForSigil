@@ -18,10 +18,36 @@ def restore_window_size(
     key: str,
     default: tuple[int, int],
 ) -> None:
-    """Resize ``window`` from a saved positive integer pair or use ``default``."""
+    """Restore a preferred size, bounded by the window's current screen."""
 
     saved = _valid_size(preferences.get(key)) if isinstance(preferences, Mapping) else None
-    window.resize(*(saved or default))
+    desired = saved or _valid_size(default) or (780, 500)
+    screen = None
+    screen_getter = getattr(window, "screen", None)
+    if callable(screen_getter):
+        screen = screen_getter()
+    if screen is None:
+        application = getattr(window, "windowHandle", None)
+        handle = application() if callable(application) else None
+        handle_screen = getattr(handle, "screen", None)
+        screen = handle_screen() if callable(handle_screen) else None
+    if screen is None:
+        # Fake widgets and pre-parented dialogs may not expose their screen.
+        qt = getattr(window, "_qt", None)
+        application_type = getattr(qt, "QApplication", None)
+        instance = getattr(application_type, "instance", None)
+        app = instance() if callable(instance) else None
+        primary = getattr(app, "primaryScreen", None)
+        screen = primary() if callable(primary) else None
+    geometry_getter = getattr(screen, "availableGeometry", None)
+    geometry = geometry_getter() if callable(geometry_getter) else None
+    width_getter = getattr(geometry, "width", None)
+    height_getter = getattr(geometry, "height", None)
+    if callable(width_getter) and callable(height_getter):
+        max_width = max(1, width_getter() - 32)
+        max_height = max(1, height_getter() - 32)
+        desired = min(desired[0], max_width), min(desired[1], max_height)
+    window.resize(*desired)
 
 
 def save_window_size(

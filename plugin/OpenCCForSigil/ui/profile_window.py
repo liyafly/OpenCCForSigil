@@ -223,11 +223,21 @@ class ProfileManagerDialog:
         self.ruleset_note = qt.QLabel(self._translator.text("profile.rulesets_session_only"))
         self.ruleset_note.setWordWrap(True)
         self.rules_layout.addWidget(self.ruleset_note)
+        self.rules_scroll = qt.QScrollArea()
+        self.rules_scroll.setWidgetResizable(True)
+        rules_content = qt.QWidget()
+        rules_content_layout = qt.QVBoxLayout(rules_content)
         self.rules_checks = {}
         for identifier in self._available_rulesets:
-            check = qt.QCheckBox(identifier, self.rules_group)
-            self.rules_layout.addWidget(check)
+            check = qt.QCheckBox(identifier, rules_content)
+            check.setToolTip(identifier)
+            rules_content_layout.addWidget(check)
             self.rules_checks[identifier] = check
+        rules_content_layout.addStretch(1)
+        self.rules_scroll.setWidget(rules_content)
+        self.rules_scroll.setMinimumHeight(100)
+        self.rules_scroll.setMaximumHeight(210)
+        self.rules_layout.addWidget(self.rules_scroll)
         right.addWidget(self.rules_group)
         content.addLayout(right, 2)
         root.addLayout(content, 1)

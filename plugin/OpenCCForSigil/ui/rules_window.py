@@ -401,7 +401,6 @@ class RuleManagerDialog:
         restore_window_size(
             self.dialog, self._ui_preferences, "rules_dialog_size", (840, 540))
         self._build()
-        _clamp_window_size_to_screen(self.dialog, self._qt)
         self._populate_rulesets()
         self._initial_ruleset_snapshot = self._ruleset_snapshot()
         self._refresh()
@@ -1822,27 +1821,6 @@ def _configure_rule_table(table, qt):
     stretch = getattr(header, "setStretchLastSection", None)
     if callable(stretch):
         stretch(True)
-
-
-def _clamp_window_size_to_screen(window, qt) -> None:
-    application_type = getattr(qt, "QApplication", None)
-    instance = getattr(application_type, "instance", None)
-    app = instance() if callable(instance) else None
-    screen_getter = getattr(app, "primaryScreen", None)
-    screen = screen_getter() if callable(screen_getter) else None
-    geometry_getter = getattr(screen, "availableGeometry", None)
-    geometry = geometry_getter() if callable(geometry_getter) else None
-    width_getter = getattr(geometry, "width", None)
-    height_getter = getattr(geometry, "height", None)
-    if not callable(width_getter) or not callable(height_getter):
-        return
-    size_getter = getattr(window, "size", None)
-    size = size_getter() if callable(size_getter) else None
-    current_width = getattr(size, "width", lambda: width_getter())()
-    current_height = getattr(size, "height", lambda: height_getter())()
-    resize = getattr(window, "resize", None)
-    if callable(resize):
-        resize(min(current_width, width_getter()), min(current_height, height_getter()))
 
 
 def _select_default_direction(combo, config):

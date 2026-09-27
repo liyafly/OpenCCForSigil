@@ -1584,16 +1584,8 @@ class _PreviewDialog:
         self.dialog = _guarded_preview_dialog(qt_widgets, self._guard_reject)
         self.dialog.setWindowTitle(plugin_window_title(
             self._translator, self._translator.text("preview.title")))
-        size = self._ui_preferences.get("preview_dialog_size")
-        if (
-            isinstance(size, (tuple, list))
-            and len(size) == 2
-            and all(isinstance(item, int) and not isinstance(item, bool) and item > 0
-                    for item in size)
-        ):
-            self.dialog.resize(int(size[0]), int(size[1]))
-        else:
-            self.dialog.resize(900, 620)
+        restore_window_size(
+            self.dialog, self._ui_preferences, "preview_dialog_size", (900, 620))
         self._build()
         self._refresh()
         self.table_view.setFocus()
