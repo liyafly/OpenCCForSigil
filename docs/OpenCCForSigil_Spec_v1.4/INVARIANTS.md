@@ -9,8 +9,8 @@
 3. **No direct FFI production path** — OpenCCForSigil MUST NOT use `ctypes.CDLL`、手工 C ABI wrapper、`opencc_open`/`opencc_close`/`opencc_convert_utf8*`、系统 `libopencc` 或自行维护 shared-library loader 作为 Production Backend。
 4. **No runtime installation** — Runtime MUST NOT invoke `pip`、`python -m pip`、系统 package manager、网络下载或联网更新依赖。
 5. **Vendored payload only** — Runtime MUST load only a manifest-approved extracted official wheel payload shipped inside the plugin ZIP; it MUST NOT mutate that payload with Python bytecode caches.
-6. **V1 Python compatibility** — 正式运行时只支持 CPython 3.14.x，wheel ABI 统一为 `cp314`；当前 Sigil bundled Python 3.14.2 是生产基准，3.14.7 仅为开发/CI 环境，且不得作为最低运行版本。
-7. **Exact payload match** — Python implementation、major/minor、ABI、OS、architecture 必须与 manifest payload exact match；`cp314` 不等于 `cp313` 或 `cp315`；3.14.x 的 patch 版本不参与 payload 选择。
+6. **V1 Python compatibility** — 发布矩阵包含五个 CPython 3.14.x/`cp314` 目标，以及一个独立的 Linux x86_64 CPython 3.12/`cp312` 平台包。Fat Plugin 仅含五个 `cp314` 目标；`cp312` 例外不扩展 Fat Plugin。当前 Sigil bundled Python 3.14.2 是 `cp314` 生产基准，3.14.7 仅为开发/CI 环境，且不得作为最低运行版本。
+7. **Exact payload match** — Python implementation、major/minor、ABI、OS、architecture 必须与 manifest payload exact match；`cp314` 不等于 `cp313`、`cp315` 或 `cp312`；3.14.x 的 patch 版本不参与 `cp314` payload 选择。
 8. **Import origin** — `opencc.__file__` 或等效 module origin 必须位于当前选中的 vendored payload；user site-packages、Homebrew、Conda、pyenv、system Python 和 PATH 都不可作为 fallback。
 9. **Provenance freeze** — Plan/Session 必须冻结 upstream tag/commit、binding version、Python full version（含 patch）、Python ABI、OS/architecture、wheel filename/hash、payload hash、config/data hash、tofu policy 与 import path id。
 10. **Version coherence** — Python Binding、OpenCC Core、configs、dictionaries 必须来自同一 pinned release；不允许混用版本。

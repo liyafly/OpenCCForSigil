@@ -45,14 +45,19 @@ BYVoid/OpenCC official Python Binding (`opencc.OpenCC`); the v1.2 direct
 | Reproduce the 2026-09-23 UI, logic, and packaging review | [`reviews/2026-09-23/README.md`](reviews/2026-09-23/README.md) |
 | Implement and verify the 2026-09-26 UI, rules, and regex review with Luna | [`reviews/2026-09-26/01-ui-rules-luna-plan.md`](reviews/2026-09-26/01-ui-rules-luna-plan.md) |
 | Plan the next preview optimizations, safety fixes, and features for Luna | [`reviews/2026-09-27/01-optimization-feature-luna-plan.md`](reviews/2026-09-27/01-optimization-feature-luna-plan.md) |
+| Review the implementation, test evidence, and acceptance limits for that plan | [`reviews/2026-09-27/02-implementation-results.md`](reviews/2026-09-27/02-implementation-results.md) |
 
 ## Release artifacts
 
-For future workflow runs, CI uploads one Actions artifact named
-`OpenCCForSigil-packages-${{ github.sha }}` containing the Fat Plugin, five
-platform ZIPs, and `SHA256SUMS.txt`. A tagged release verifies all six package
-versions and the checksum manifest, then publishes all seven assets after the
-five native package-smoke jobs pass. Older releases may contain fewer assets.
+The release source of truth is [`../tools/runtime_matrix.py`](../tools/runtime_matrix.py)
+and [`release.md`](release.md). CI uploads one Actions artifact named
+`OpenCCForSigil-packages-${{ github.sha }}` containing the Fat Plugin, six
+platform ZIPs, and `SHA256SUMS.txt` (eight assets total). The Fat Plugin has
+five CPython 3.14/cp314 runtimes; the separate Linux x86_64/cp312 target is
+available only in its platform ZIP. A tagged release validates seven plugin
+ZIPs and the checksum manifest, then publishes all eight assets after the six
+platform-package smoke jobs and attestation complete. Older releases may have
+fewer assets.
 GitHub may also expose automatically generated source archives for the tag;
 those are source snapshots rather than installable plugin assets. Each product
 ZIP has the single top-level `OpenCCForSigil/` directory required by Sigil.

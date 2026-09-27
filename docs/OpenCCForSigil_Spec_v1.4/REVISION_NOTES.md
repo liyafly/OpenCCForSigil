@@ -167,3 +167,26 @@ removed file. The wheel `RECORD` remains byte-identical and is explicitly
 marked as describing the source wheel. Validators check the allowlist, subset
 tree hash, retained config/resource hashes, and removal receipt. The subset
 does not change conversion algorithms, official configs, or dictionary bytes.
+
+## 9. Implementation-status correction (2026-09-27)
+
+This addendum records implementation changes after the 2026-09-05 v1.4
+architecture baseline; it does not revise the official OpenCC backend or its
+source-preserving safety rules.
+
+- The release runtime matrix is five CPython 3.14/`cp314` payloads in the Fat
+  Plugin plus one standalone Linux x86_64 CPython 3.12/`cp312` platform
+  package. The exact machine-readable matrix is `tools/runtime_matrix.py`.
+- Guarded literal and regex rule actions with pre/post phases were implemented
+  in v0.2.5. Numeric Han reference decoding is an opt-in run setting. Neither
+  capability permits regex-based XML parsing or broad reference decoding.
+- The optional MathML profile policy processes `mtext`; identifier elements
+  remain protected. MathML annotation and general SVG text conversion remain
+  unopened capabilities.
+- v0.2.8 work adds preview status/source/text filters, bounded Undo/Redo for
+  preview decisions, and a filterable diagnostic locator. These are review
+  surfaces over a frozen plan and source snapshot; they do not call OpenCC or
+  write the EPUB. Undo/Redo does not reverse an applied EPUB write.
+
+Detailed commit and verification evidence is in
+[`../reviews/2026-09-27/02-implementation-results.md`](../reviews/2026-09-27/02-implementation-results.md).

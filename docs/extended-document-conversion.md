@@ -19,6 +19,22 @@ Japanese directions do not propose Chinese tags. Missing language values are
 not synthesized. Every language change belongs to one indivisible preview
 group across the selected documents and metadata.
 
+## Preview review and diagnostics
+
+The preview can filter by decision status, file, change category, risk, and rule
+source. Its text search matches literal text in the original, proposed result,
+rule source, and file name; it does not rerun conversion. Accept/skip decisions
+can be undone, redone, or reset to pending while that preview remains open.
+These controls restore preview decisions only. They do not undo changes already
+applied to the EPUB; use a Sigil Checkpoint or backup for that.
+
+Expand **Plan diagnostics** to filter existing diagnostics by file and type.
+Selecting a diagnostic shows nearby original source as plain text, with the
+original line and column when available. A diagnostic with an associated change
+selects that real preview row; a diagnostic without one remains viewable and
+does not create a new change. When a run proposes no changes, the result window
+can still open the diagnostics from the frozen analysis plan.
+
 XML parsing locates source spans; it never serializes the document. Comments,
 processing instructions, CDATA delimiters, whitespace, and entity references
 remain in their original form. Malformed XML or custom entity declarations

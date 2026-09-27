@@ -1,10 +1,12 @@
 # Implementation status and acceptance boundaries
 
 The V1 document, rule/profile, transform, preview, and report services are
-connected to the Sigil controller. Guarded regex rules and pre/post replacement
-stages are implemented in the current release work. Vertical punctuation,
-broader SVG/MathML support, and review annotations remain deferred; saved V1
-rules retain their original meanings.
+connected to the Sigil controller. Guarded literal/regex rule actions and
+pre/post replacement stages are implemented in v0.2.5. Numeric Han character
+reference decoding is an opt-in run setting. MathML's low-level profile option
+converts `mtext` only and leaves identifiers protected; broader SVG/MathML
+support and review annotations remain deferred. The 2026-09-27 preview additions
+and their limits are recorded in the [implementation results](reviews/2026-09-27/02-implementation-results.md).
 
 ## Deliberate implementation choices
 

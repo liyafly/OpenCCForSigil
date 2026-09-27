@@ -183,7 +183,7 @@ V1/V1.x **不得**把项目扩张成通用 EPUB 清洗工具。
 已确认的运行时语义：
 
 - `run(bk)` 返回 `0` 视为成功，Sigil 才把插件写入的文件复制回书；返回非 `0` 时 Sigil 丢弃全部修改。§9.7 的事务边界建立在此语义上。
-- 插件写入的修改**不进入 Sigil 的 Undo 栈**。用户唯一的回滚手段是 Sigil 的 Checkpoint（Edit → Checkpoint）。插件无 API 创建 Checkpoint，因此 §9.5、§21.2 要求 Apply 前提示。
+- 已应用到 EPUB 的插件修改**不进入 Sigil 的 Undo 栈**。插件无 API 创建 Checkpoint，因此 §9.5、§21.2 要求 Apply 前提示用户用 Sigil 的 Checkpoint（Edit → Checkpoint）保存当前状态；预览决定的 Undo/Redo 仅适用于尚未 Apply 的本次预览。
 - Sigil 2.x 的 Windows/macOS 打包版自带 Python 3、`lxml`、`css-parser`、`regex`、Tk 与 PySide6；Linux 发行版包中 Tk/PySide6 为可选依赖。插件必须在启动时检测 UI 工具包是否可用（§21）。
 
 ---
@@ -238,14 +238,19 @@ opencc.OpenCC(
 | PyPI distribution | PyPI JSON 的项目名为 `OpenCC`，规范化安装/文件名为 `opencc`; release version `1.4.2` |
 | Python package | import name `opencc`; public class `opencc.OpenCC`; public methods `convert()`、`CONFIGS`、`__version__` |
 | Native implementation | upstream `src/py_opencc.cpp` uses pybind11 to expose the official C++ Core; this is an official CPython extension, not a pure-Python converter |
-| Official wheel tags observed | `cp310`, `cp311`, `cp312`, `cp313`, `cp314`；macOS x86_64/arm64、manylinux2014 x86_64/aarch64、Windows x86_64；每个 exact ABI/OS/architecture 必须单独入 manifest；V1 正式只纳入 `cp314` |
+| Official wheel tags observed | `cp310`, `cp311`, `cp312`, `cp313`, `cp314`；macOS x86_64/arm64、manylinux2014 x86_64/aarch64、Windows x86_64；每个 exact ABI/OS/architecture 必须单独入 manifest；2026-09-05 基线只纳入 `cp314` |
 | V1 configs | pinned upstream `data/config` contains the 16 configs：`s2t t2s s2tw tw2s s2twp tw2sp s2hk hk2s s2hkp hk2sp t2tw tw2t t2hk hk2t t2jp jp2t` |
-| V1 Python compatibility | **CPython 3.14.x / `cp314`**；当前 Sigil bundled Python **3.14.2** 是生产基准；**3.14.7** 仅为开发/CI 基线；patch 版本记录在 provenance，不参与 payload 选择 |
+| V1 Python compatibility | 2026-09-05 基线：**CPython 3.14.x / `cp314`**；当前 Sigil bundled Python **3.14.2** 是生产基准；**3.14.7** 仅为开发/CI 基线；patch 版本记录在 provenance，不参与 payload 选择 |
 | normalization | 官方 config 可含 normalization 阶段；它属于 canonical output，插件不得绕过 |
 | tofu-risk | 官方 Python API 默认 `include_tofu_risk_dictionaries=True`；V1 固定使用该默认值，不提供 UI 开关，provenance 记录 `native_default_include` |
 | Jieba | upstream 官方 `opencc-jieba` native plugin 作为可选、可检测的高级 payload；仅在每个目标 payload 完成构建/哈希/差分验证后暴露对应 `*_jieba` config，见 §4.4 |
 
 这些事实在 OpenCC 升级或 wheel 矩阵变化时必须按 §44 重新核验，不得从旧版本或模型记忆推断。
+
+实现状态补记（2026-09-27）：当前发布矩阵另含一个独立的 Linux x86_64
+CPython 3.12/`cp312` 平台 ZIP；它不进入 Fat Plugin。`tools/runtime_matrix.py`
+是当前发布矩阵的机器可读来源。此例外不改变上表作为 2026-09-05 规范基线
+记录的历史含义，也不允许推断支持其他 CPython minor/ABI。
 
 ## 4.2 版本、wheel 与 payload 锁定
 
@@ -319,7 +324,7 @@ OS + architecture
 }
 ```
 
-`wheel_sha256` 是下载 provenance；`payload_sha256` 是 Runtime 对实际导入目录执行的完整树 hash。manifest 中不得只写“最新版”，不得只从文件名推断 ABI 或版本。V1 manifest 必须固定 Python policy 为 `CPython 3.14.x / cp314`，并记录生产基准 `3.14.2` 与开发/CI 基线 `3.14.7`；patch 版本不得成为 payload key。Phase 0 可以没有 payload，但必须明确标记为空并在 Runtime fail fast。
+`wheel_sha256` 是下载 provenance；`payload_sha256` 是 Runtime 对实际导入目录执行的完整树 hash。manifest 中不得只写“最新版”，不得只从文件名推断 ABI 或版本。每条 V1 payload 记录都必须固定自己的 Python implementation/minor/ABI/OS/architecture。当前矩阵包含五条 `CPython 3.14.x / cp314` Fat Plugin payload，以及仅用于独立 Linux x86_64 平台包的一条 `CPython 3.12 / cp312` payload；3.14.2 是 `cp314` 生产基准，3.14.7 是开发/CI 基线，patch 不得成为 payload key。Phase 0 可以没有 payload，但必须明确标记为空并在 Runtime fail fast。
 
 每个 payload 必须独立记录其 `config_data.files` 与 `config_data.manifest_sha256`。不同平台的官方 wheel 即使来自同一 OpenCC release，也可能包含不同字节的 config JSON 或不同目录布局；Fat Plugin 不得用一个跨平台 data hash 代替逐 payload 校验。
 
@@ -340,9 +345,13 @@ vendor/opencc/
     └── linux-aarch64-cp314/
 ```
 
+当前 Fat Plugin 的五个 payload 均为 `cp314`。Linux x86_64/`cp312` 是单独
+平台 ZIP 的兼容目标，不得合并进 Fat Plugin 或据此声明其他 CPython 3.12
+平台受支持。
+
 这些目录名只是示例；最终 entries 必须由 pinned PyPI metadata 与 CI 实际验证结果生成，不得凭空声明不存在的 wheel。每个 payload 是官方 wheel 的原样 Python package 内容，不能被改写成另一套 converter。
 
-V1 正式支持范围是 **CPython 3.14.x / `cp314`**，当前 Sigil 官方发行版本自带的 Bundled Python **3.14.2** 是生产基准。Python **3.14.7** 只作为本仓库开发/CI 环境，不得写成最低运行版本。patch 版本只进入 session/backend provenance，不参与 payload selection；3.14.2 与 3.14.7 必须选择同一个 payload。非 Sigil Bundled Python 的 CPython 3.14.x 仅为 best-effort，必须仍然满足 exact OS/architecture/ABI；CPython 3.13、3.15、PyPy 或其他 ABI 必须 fail fast。
+V1 Fat Plugin 支持范围是 **CPython 3.14.x / `cp314`**，当前 Sigil 官方发行版本自带的 Bundled Python **3.14.2** 是生产基准。另有一个受限的独立平台包：**Linux x86_64 / CPython 3.12 / `cp312`**。Python **3.14.7** 只作为本仓库开发/CI 环境，不得写成最低运行版本。patch 版本只进入 session/backend provenance，不参与 payload selection；3.14.2 与 3.14.7 必须选择同一个 `cp314` payload。任何运行时均须匹配具体 OS/architecture/ABI；CPython 3.13、3.15、PyPy 及矩阵外平台/ABI 必须 fail fast。
 
 ### 4.3.2 Build / Release 约束
 
@@ -354,7 +363,7 @@ V1 正式支持范围是 **CPython 3.14.x / `cp314`**，当前 Sigil 官方发�
 - wheel 内部可能包含 `.pyd`/`.so` 等官方 extension 文件，但 OpenCCForSigil 不把它们当作独立 `libopencc` binary 管理，不直接用 `ctypes` 加载，也不自行维护其 ABI/DLL/dylib/so 生命周期；
 - 发布前必须在 clean process 中验证 exact import、version、config discovery、smoke conversion 与 payload integrity；
 - vendored payload integrity hash 对应原始 wheel 提取内容；Runtime 必须禁止在 payload 内写入 Python bytecode cache，避免 `__pycache__` 污染 hash；
-- 若官方 wheel 缺少 CPython 3.14.x 的某个正式支持 OS/architecture runtime，发布必须阻塞，不能静默换后端。
+- 若官方 wheel 缺少当前 `tools/runtime_matrix.py` 列出的任一正式支持 runtime，发布必须阻塞，不能静默换后端。
 
 若未来因体积改成 platform-specific ZIP，版本、Python 代码、wheel/data provenance 与行为必须相同，只允许 payload 集合不同。
 
@@ -533,7 +542,7 @@ The payload key is intentionally `CPython / 3.14 / cp314 / macos / arm64`, not
 production baseline or `3.14.7` in development/CI) is recorded only in
 provenance.
 
-`cp314` 不等于 `cp313` 或 `cp315`。V1 只接受 CPython 3.14.x 的 `cp314`；3.14.2 与 3.14.7 的 patch 差异不影响 payload selection，但必须记录在 provenance。free-threaded/debug ABI 也必须使用 manifest 中完全匹配的 tag。找不到 exact payload 时，External Python 必须 fail fast，并提示用户切回 Sigil Bundled Python。
+`cp314` 不等于 `cp313`、`cp315` 或 `cp312`。Fat Plugin 接受五个 CPython 3.14.x/`cp314` 目标；另有 Linux x86_64/CPython 3.12/`cp312` 独立平台包。3.14.2 与 3.14.7 的 patch 差异不影响 `cp314` payload selection，但必须记录在 provenance。free-threaded/debug ABI 也必须使用 manifest 中完全匹配的 tag。找不到 exact payload 时，External Python 必须 fail fast，并提示用户切回匹配的 Sigil Bundled Python。
 
 推荐的 blocking message：
 
@@ -1116,10 +1125,10 @@ class ConversionPlan:
 
 用户确认后把 Plan 应用于 staging buffer。
 
-确认对话框必须包含 Checkpoint 提示（插件修改不进入 Sigil Undo 栈，见 §3.1-C）：
+确认对话框必须包含 Checkpoint 提示（已应用到 EPUB 的修改不进入 Sigil Undo 栈，见 §3.1-C；预览中的接受/跳过决定有独立的预览 Undo/Redo）：
 
 ```text
-插件修改无法用 Ctrl+Z 撤销。建议先在 Sigil 中 Edit → Checkpoint 保存当前状态。
+已应用到 EPUB 的修改无法在此处用 Undo 撤销。建议先在 Sigil 中 Edit → Checkpoint 保存当前状态。
 [我已建立 Checkpoint，继续应用]   [取消]
 □ 以后不再提示
 ```
@@ -1582,7 +1591,7 @@ Schema：
   manifest 检测到对应官方 plugin config 时提供高级开关；
 - `language_metadata`：`keep | suggest | force`；`language_preset`：`legacy | bcp47`（§15）；
 - official Python Binding 的 tofu policy 不属于 Profile 参数，固定由 pinned API default 决定并记录在 provenance；
-- `decode_numeric_cjk_refs` 见 §7.5，V1.1 才在 UI 暴露。
+- `decode_numeric_cjk_refs` 见 §7.5，当前已作为可选运行设置暴露；默认关闭，只处理符合允许范围的数字汉字引用。
 
 # 14. 引号与标点
 
@@ -2245,7 +2254,7 @@ def run(bk):
 
 - Sigil 的 `engine` 标识 `python3.4` 是 plugin engine 名称，不代表本项目只能使用 Python 3.4 语法；
 - `<name>` 必须与 zip 内顶层目录名、`plugin.py` 所在目录名一致；
-- V1 正式运行时必须是 **CPython 3.14.x / `cp314`**；当前 Sigil Bundled Python **3.14.2** 是生产基准，启动必须拒绝非 CPython 3.14.x；不得把 3.14.7 当作最低运行版本；
+- Fat Plugin 的 V1 正式运行时包含五个 **CPython 3.14.x / `cp314`** 目标；当前 Sigil Bundled Python **3.14.2** 是生产基准。另支持一个独立 Linux x86_64 / CPython 3.12 / `cp312` 平台包；启动必须按 manifest exact match，且不得把 3.14.7 当作最低运行版本；
 - 仓库开发/CI 工具链由 `.mise.toml` 精确固定为 Python **3.14.7**、uv **0.12.9**、Ruff **0.16.6**；patch 版本只记录 provenance，发布 payload 仍按 major/minor、ABI、OS、architecture 选择；
 - `plugin.py` 只允许标准库 bootstrap + Controller 入口，不得直接加载 OpenCC library、解析 XHTML 或写业务逻辑；
 - official OpenCC Python Binding 由 `opencc_backend.runtime_selector` 在 runtime 通过 manifest 验证后选择；只有在 exact payload 验证完成后才允许把该 payload root 插入 `sys.path`。
@@ -3480,9 +3489,11 @@ V1.0 release = M1–M4 全部通过 §93 退出条件。M1 结束即可对外发
 
 独立实现，不影响普通转换 pipeline。
 
-## Phase 9 — regex 规则、SVG text、竖排标点、custom config（V1.1）
+## Phase 9 — 尚未实现的 V1.1 候选：SVG text、竖排标点、custom config
 
-各自独立 test suite；regex 规则按 §11.5/§34 的安全要求。
+受限的 pre/post literal 与 regex 规则动作已在 v0.2.5 实现，并按 §11.5/§34
+做超时、输出预算和匹配数保护。该交付不等于允许 regex 充当 XML parser。
+SVG text、竖排兼容标点和 custom config 仍需各自独立的实现规格与 test suite。
 
 ## 已移出路线图
 
@@ -3622,12 +3633,10 @@ V1.0 目标是**完整可用的专业版**，不是最小可用版；范围按 �
 ## V1.1
 
 - Review Annotation；
-- regex rules（pre/post phase）；
 - SVG text；
 - MathML annotation 选项；
 - 竖排兼容标点；
 - custom config（专业模式）；
-- `decode_numeric_cjk_refs`；
 - selector scope 规则。
 
 ## V2 候选

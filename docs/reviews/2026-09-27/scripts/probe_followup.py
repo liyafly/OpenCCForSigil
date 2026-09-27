@@ -65,28 +65,52 @@ class CountedEntries:
 
 
 def probe_group_semantics():
-    dialog, preview = dialog_for((change(0, "rules:occurrence-1"),))
-    label = dialog.accept_group_button.text()
-    dialog.accept_group_button.click()
-    after_language_button = preview.decision("change-0")
+    dialog, preview = dialog_for((
+        change(0, "rules:occurrence-1"), change(1, "rules:occurrence-1"),
+    ))
     language_button_visible = dialog.accept_group_button.isVisible()
+    dialog.accept_group_button.click()
+    after_hidden_language_button = {
+        item.change_id: preview.decision(item.change_id)
+        for item in preview.changes
+    }
     dialog._accept_file()
-    after_file = preview.decision("change-0")
+    after_file = {
+        item.change_id: preview.decision(item.change_id)
+        for item in preview.changes
+    }
     mixed, mixed_preview = dialog_for((
         change(0, "language_metadata", language=True), change(1, "rules:occurrence-2"),
     ))
     mixed.accept_group_button.click()
+    mixed_decisions = {
+        item.change_id: mixed_preview.decision(item.change_id)
+        for item in mixed_preview.changes
+    }
+    passed = (
+        not language_button_visible
+        and all(value is None for value in after_hidden_language_button.values())
+        and all(value is not None and value.value == "accept_this"
+                for value in after_file.values())
+        and mixed_decisions["change-0"] is not None
+        and mixed_decisions["change-0"].value == "accept_this"
+        and mixed_decisions["change-1"] is None
+    )
+    assert passed, "preview group actions do not match the frozen R-01 semantics"
     return {
-        "rule_only_group_button_label": label,
         "rule_only_language_button_visible": language_button_visible,
-        "rule_only_after_language_button": (
-            after_language_button.value if after_language_button else None),
-        "rule_only_after_accept_file": after_file.value if after_file else None,
-        "mixed_language_button_decisions": {
-            item.change_id: (mixed_preview.decision(item.change_id).value
-                             if mixed_preview.decision(item.change_id) else None)
-            for item in mixed_preview.changes
+        "rule_only_after_hidden_language_button": {
+            key: value.value if value else None
+            for key, value in after_hidden_language_button.items()
         },
+        "rule_only_after_accept_file": {
+            key: value.value if value else None for key, value in after_file.items()
+        },
+        "mixed_language_button_decisions": {
+            key: value.value if value else None
+            for key, value in mixed_decisions.items()
+        },
+        "assertions_passed": passed,
     }
 
 
@@ -104,9 +128,13 @@ def probe_group_scans(groups):
         dialog._decide_filtered(True)
         elapsed = perf_counter() - started
         assert preview.summary()["accepted"] == groups * 2
+        assert counted.visits <= 10 * groups * 2, (
+            f"bulk group decision scanned {counted.visits} entries for "
+            f"{groups * 2} changes (budget: {10 * groups * 2})")
         runs.append({"entry_visits": counted.visits, "decision_seconds": elapsed})
     return {
         "groups": groups, "changes": groups * 2,
+        "entry_visit_budget": groups * 2 * 10,
         "entry_visits": int(median(run["entry_visits"] for run in runs)),
         "decision_seconds_median": median(run["decision_seconds"] for run in runs),
         "runs": runs,
@@ -129,6 +157,8 @@ def probe_mathml():
             {"tag": target.tag_name, "text": target.source_text, "convert": target.convert}
             for target in tokenize_xhtml(source, tokenizer_policy(profile)).targets
         ]
+    assert result["false"] == []
+    assert [item["tag"] for item in result["true"]] == ["mtext"]
     return result
 
 
