@@ -10,6 +10,7 @@ from typing import Any, Sequence, Tuple
 
 from core.preview import (
     PreviewDecision,
+    PreviewDecisionSnapshot,
     PreviewFilter,
     PreviewGroupKind,
     PreviewSession,
@@ -59,6 +60,19 @@ class _DecisionHistoryChange:
 class _DecisionHistoryOperation:
     sequence: int
     changes: Tuple[_DecisionHistoryChange, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _BulkDecisionHistoryOperation:
+    sequence: int
+    before_snapshots: Tuple[Tuple[str, PreviewDecisionSnapshot], ...]
+    after: PreviewDecision
+    change_count: int
+
+    @property
+    def changes(self):
+        # Keep pruning and budget accounting shared with per-change operations.
+        return range(self.change_count)
 
 
 @dataclass(frozen=True, slots=True)
@@ -2121,33 +2135,48 @@ class _PreviewDialog:
                 unique.append(entry)
         return tuple(unique)
 
-    def _capture_decisions(self, entries):
+    def _capture_decisions(self, entries, *, deduplicate=True):
+        if deduplicate:
+            entries = self._unique_entries(entries)
         return tuple(
             (change.file_id, change.change_id, preview.decision(change.change_id))
-            for preview, change in self._unique_entries(entries)
+            for preview, change in entries
         )
 
     def _record_decision_action(self, before):
-        changes = tuple(
-            _DecisionHistoryChange(
-                file_id=file_id,
-                change_id=change_id,
-                before=decision,
-                after=self._preview_by_file_id[file_id].decision(change_id),
-            )
-            for file_id, change_id, decision in before
-            if decision != self._preview_by_file_id[file_id].decision(change_id)
-        )
+        changes = []
+        preview_by_file_id = self._preview_by_file_id
+        for file_id, change_id, previous in before:
+            current = preview_by_file_id[file_id].decision(change_id)
+            if previous != current:
+                changes.append(_DecisionHistoryChange(
+                    file_id=file_id,
+                    change_id=change_id,
+                    before=previous,
+                    after=current,
+                ))
+        changes = tuple(changes)
         if not changes:
             return
-        if self._redo_stack:
-            self._history_record_count -= sum(
-                len(operation.changes) for operation in self._redo_stack)
-            self._redo_stack.clear()
         self._history_sequence += 1
         operation = _DecisionHistoryOperation(self._history_sequence, changes)
+        self._push_decision_history(operation)
+
+    def _record_bulk_decision_action(self, before_snapshots, after, change_count):
+        if change_count <= 0:
+            return
+        self._history_sequence += 1
+        operation = _BulkDecisionHistoryOperation(
+            self._history_sequence, tuple(before_snapshots), after, change_count)
+        self._push_decision_history(operation)
+
+    def _push_decision_history(self, operation):
+        if self._redo_stack:
+            self._history_record_count -= sum(
+                len(item.changes) for item in self._redo_stack)
+            self._redo_stack.clear()
         self._undo_stack.append(operation)
-        self._history_record_count += len(changes)
+        self._history_record_count += len(operation.changes)
         self._prune_decision_history()
         if hasattr(self, "undo_button"):
             self._update_history_controls()
@@ -2220,6 +2249,20 @@ class _PreviewDialog:
         )
 
     def _apply_history_side(self, operation, side):
+        if isinstance(operation, _BulkDecisionHistoryOperation):
+            if side == "before":
+                for file_id, snapshot in operation.before_snapshots:
+                    self._preview_by_file_id[file_id].restore_decision_snapshot(snapshot)
+            else:
+                decision_all = (
+                    PreviewSession.accept_all
+                    if operation.after is PreviewDecision.ACCEPT_ALL
+                    else PreviewSession.reject_all
+                )
+                for preview in self._previews:
+                    decision_all(preview, overwrite=True)
+            self._recompute_counts()
+            return
         for change in operation.changes:
             preview = self._preview_by_file_id[change.file_id]
             before = preview.decision(change.change_id)
@@ -2831,19 +2874,31 @@ class _PreviewDialog:
 
     def _accept_all(self) -> None:
         self._last_group_feedback = ""
-        before = self._capture_decisions(self._entries)
+        change_count = self._totals["total"] - self._totals["accepted"]
+        before_snapshots = (
+            tuple((file_id, preview.decision_snapshot())
+                  for file_id, preview in self._preview_by_file_id.items())
+            if change_count else ()
+        )
         for preview in self._previews:
             preview.accept_all(overwrite=True)
-        self._record_decision_action(before)
+        self._record_bulk_decision_action(
+            before_snapshots, PreviewDecision.ACCEPT_ALL, change_count)
         self._set_all_decision_counts("accepted")
         self._refresh(refresh_statuses=True)
 
     def _reject_all(self) -> None:
         self._last_group_feedback = ""
-        before = self._capture_decisions(self._entries)
+        change_count = self._totals["total"] - self._totals["rejected"]
+        before_snapshots = (
+            tuple((file_id, preview.decision_snapshot())
+                  for file_id, preview in self._preview_by_file_id.items())
+            if change_count else ()
+        )
         for preview in self._previews:
             preview.reject_all(overwrite=True)
-        self._record_decision_action(before)
+        self._record_bulk_decision_action(
+            before_snapshots, PreviewDecision.REJECT_ALL, change_count)
         self._set_all_decision_counts("rejected")
         self._refresh(refresh_statuses=True)
 

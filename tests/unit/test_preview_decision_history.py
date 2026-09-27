@@ -62,6 +62,32 @@ def test_preview_session_can_restore_a_decision_and_return_to_undecided():
         raise AssertionError("unknown change id must be rejected")
 
 
+def test_decision_snapshot_is_read_only_and_cannot_cross_preview_sessions():
+    first = PreviewSession(ConversionPlan(
+        source_sha256="", changes=(_change("one"),)))
+    second = PreviewSession(ConversionPlan(
+        source_sha256="", changes=(_change("one"),)))
+    first.accept_this("one")
+    snapshot = first.decision_snapshot()
+
+    try:
+        snapshot._decisions["one"] = PreviewDecision.REJECT_THIS
+    except TypeError:
+        pass
+    else:
+        raise AssertionError("decision snapshots must be immutable")
+
+    first.reject_this("one")
+    first.restore_decision_snapshot(snapshot)
+    assert first.decision("one") == PreviewDecision.ACCEPT_THIS
+    try:
+        second.restore_decision_snapshot(snapshot)
+    except PreviewError:
+        pass
+    else:
+        raise AssertionError("a snapshot must not restore into another session")
+
+
 def test_single_decision_undo_redo_and_reset_current_are_one_operation_each():
     dialog, previews = _dialog((_change("one"), _change("two", source="丙")))
     dialog._set_current_row(0)
@@ -137,6 +163,31 @@ def test_file_filter_and_all_operations_can_be_undone_redone_and_new_action_clea
     }
     dialog._redo_preview_action()
     assert _decisions(previews) == all_accepted
+
+
+def test_bulk_history_snapshot_restores_mixed_prior_decisions_as_one_operation():
+    dialog, previews = _dialog((
+        _change("chapter-1"), _change("chapter-2", source="丙"),
+        _change("other-1", file_id="other.xhtml", source="丁"),
+    ))
+    dialog._decide_entry(dialog._entries[0], True)
+    dialog._decide_entry(dialog._entries[1], False)
+    dialog._clear_decision_history()
+    before = _decisions(previews)
+
+    dialog._accept_all()
+    after = _decisions(previews)
+    assert len(dialog._undo_stack) == 1
+    assert len(dialog._undo_stack[0].changes) == 2
+    assert dialog._totals["accepted"] == 3
+
+    dialog._undo_preview_action()
+    assert _decisions(previews) == before
+    assert dialog._totals == {"total": 3, "accepted": 1, "rejected": 1, "undecided": 1}
+
+    dialog._redo_preview_action()
+    assert _decisions(previews) == after
+    assert dialog._totals == {"total": 3, "accepted": 3, "rejected": 0, "undecided": 0}
 
 
 def test_filtered_decision_undo_restores_status_filter_visibility():

@@ -9,7 +9,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from enum import Enum
-from typing import Dict, Optional, Tuple
+from types import MappingProxyType
+from typing import Dict, Mapping, Optional, Tuple
 
 from core.models import ConversionPlan, TokenChange
 
@@ -62,6 +63,14 @@ class PreviewError(ValueError):
     """Raised when a plan cannot be finalized safely."""
 
 
+@dataclass(frozen=True, slots=True)
+class PreviewDecisionSnapshot:
+    """Opaque, immutable snapshot of one session's ID-to-decision mapping."""
+
+    _owner: object
+    _decisions: Mapping[str, PreviewDecision]
+
+
 class PreviewSession:
     """Collect explicit per-change decisions without mutating the plan."""
 
@@ -76,6 +85,7 @@ class PreviewSession:
                 change = replace(change, change_id=change_id)
             self._changes[change_id] = change
         self._decisions: Dict[str, PreviewDecision] = {}
+        self._snapshot_owner = object()
 
     @property
     def changes(self) -> Tuple[TokenChange, ...]:
@@ -111,6 +121,22 @@ class PreviewSession:
             self._decisions[change_id] = decision
         else:
             raise TypeError("decision must be a PreviewDecision or None")
+
+    def decision_snapshot(self) -> PreviewDecisionSnapshot:
+        """Capture decisions without retaining any change text or plan objects."""
+
+        return PreviewDecisionSnapshot(
+            self._snapshot_owner, MappingProxyType(self._decisions.copy()))
+
+    def restore_decision_snapshot(self, snapshot: PreviewDecisionSnapshot) -> None:
+        """Restore a snapshot created by this exact preview session."""
+
+        if not isinstance(snapshot, PreviewDecisionSnapshot):
+            raise TypeError("snapshot must be a PreviewDecisionSnapshot")
+        if snapshot._owner is not self._snapshot_owner:
+            raise PreviewError("decision snapshot belongs to a different preview session")
+        self._decisions.clear()
+        self._decisions.update(snapshot._decisions)
 
     def accept_all(
         self,
