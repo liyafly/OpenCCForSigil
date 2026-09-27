@@ -57,7 +57,8 @@ def main():
     manager = ProfileManagerDialog(
         qt, profiles, translator=translator, selected_id="profile-199",
         current_profile=current, available_configs=SUPPORTED_CONFIGS,
-        available_rulesets=("session", "candidate", "other"),
+        available_rulesets=("session", "candidate", "other",
+                            *(f"rules-{index:02d}" for index in range(60))),
     )
     manager.dialog.resize(options.width, options.height)
     manager.dialog.show()
@@ -199,6 +200,9 @@ def main():
         "requested_window": [options.width, options.height],
         "language": options.language,
         "profile_count": len(profiles),
+        "rule_set_choice_count": len(manager.rules_checks),
+        "rule_set_scroll_range": manager.rules_scroll.verticalScrollBar().maximum(),
+        "rule_set_scroll_height": manager.rules_scroll.height(),
         "filter_count": filter_count,
         "filtered_current_id": filtered_id,
         "comparison_has_direction": comparison_has_direction,
@@ -229,6 +233,9 @@ def main():
         assert filtered_id == "profile-199", report
         assert filter_count < len(profiles), report
         assert restored_id == "profile-199", report
+        assert report["rule_set_choice_count"] >= 60, report
+        assert report["rule_set_scroll_range"] > 0, report
+        assert report["rule_set_scroll_height"] <= 210, report
 
 
 if __name__ == "__main__":
