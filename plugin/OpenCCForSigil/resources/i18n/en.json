@@ -512,6 +512,7 @@
   "profile.attributes": "Converted attributes",
   "profile.protected_elements": "Protected elements",
   "profile.mathml": "Convert MathML text",
+  "profile.mathml_scope_enabled": "Enabled (mtext text only; identifiers and attributes stay unchanged)",
   "profile.numeric_cjk_char_refs": "Numeric CJK character references",
   "profile.tofu_policy": "Unmapped character policy",
   "profile.tofu_policy.native_default_include": "Include by default",

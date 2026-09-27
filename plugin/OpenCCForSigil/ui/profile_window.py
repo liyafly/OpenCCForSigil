@@ -68,6 +68,9 @@ _PROFILE_SUMMARY_NON_OPTIONS = {"schema_version", "id", "name", "extras"}
 
 def _profile_summary_value(profile: Profile, name: str, translator: Translator) -> str:
     value = getattr(profile, name)
+    if name == "mathml":
+        return translator.text(
+            "profile.mathml_scope_enabled" if value else "profile.disabled")
     if isinstance(value, bool):
         return translator.text("profile.enabled" if value else "profile.disabled")
     if name == "conversion":

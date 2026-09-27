@@ -258,6 +258,19 @@ def test_profile_summary_shows_quotation_mode_and_lists_full_profile_name():
     )
 
 
+def test_mathml_profile_summary_explains_the_protected_conversion_scope():
+    profile = Profile(id="mathml", name="Math", mathml=True)
+    for language, expected in (
+        ("en", "mtext text only"),
+        ("zh-Hans", "仅转换 mtext 文本"),
+        ("zh-Hant", "僅轉換 mtext 文字"),
+    ):
+        manager = ProfileManagerDialog(
+            make_fake_qt(), (profile,), translator=Translator(language))
+
+        assert expected in manager.summary.toPlainText()
+
+
 def test_profile_summary_marks_unavailable_jieba_without_rewriting_it(tmp_path):
     profile = Profile(id="jieba", name="Jieba", conversion="s2twp_jieba",
                       segmentation="jieba")

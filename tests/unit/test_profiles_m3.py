@@ -127,9 +127,45 @@ def test_profile_mathml_setting_controls_mathml_text_targets():
     from app.settings import tokenizer_policy
     from document.tokenizer import tokenize_xhtml
 
-    source = "<math><mtext>汉字</mtext></math>"
+    source = (
+        '<html xmlns="http://www.w3.org/1999/xhtml"><body>'
+        '<m:math xmlns:m="http://www.w3.org/1998/Math/MathML" id="formula">'
+        '<m:mi title="identifier">变量</m:mi><m:mo>+</m:mo><m:mn>2</m:mn>'
+        '<m:mtext title="annotation">说明<m:mi>符号</m:mi>文字</m:mtext>'
+        '<m:mtext xmlns:m="urn:unknown">不应转换</m:mtext>'
+        '<m:annotation encoding="text/plain">注释</m:annotation>'
+        '<m:annotation-xml encoding="application/xhtml+xml"><p>片段</p>'
+        '</m:annotation-xml>'
+        '</m:math></body></html>'
+    )
     disabled = tokenize_xhtml(source, tokenizer_policy(Profile(mathml=False)))
-    enabled = tokenize_xhtml(source, tokenizer_policy(Profile(mathml=True)))
+    payload = Profile(mathml=True, name="mathml safety").to_dict()
+    restored = Profile.from_dict(payload)
+    enabled = tokenize_xhtml(source, tokenizer_policy(restored))
 
     assert disabled.targets == ()
-    assert [target.source_text for target in enabled.targets] == ["汉字"]
+    assert [target.source_text for target in enabled.targets] == ["说明", "文字"]
+    assert all(target.attribute_name is None for target in enabled.targets)
+
+
+def test_profile_mathml_skips_unknown_mathml_namespace():
+    from app.settings import tokenizer_policy
+    from document.tokenizer import tokenize_xhtml
+
+    source = "<math xmlns='urn:unknown'><mtext>不应转换</mtext></math>"
+    document = tokenize_xhtml(source, tokenizer_policy(Profile(mathml=True)))
+
+    assert document.targets == ()
+
+
+def test_profile_mathml_without_namespace_only_opens_mtext_text():
+    from app.settings import tokenizer_policy
+    from document.tokenizer import tokenize_xhtml
+
+    source = (
+        "<math><mi>变量</mi><mtext>说明<mi>符号</mi>文字</mtext>"
+        "<annotation>批注</annotation></math>"
+    )
+    document = tokenize_xhtml(source, tokenizer_policy(Profile(mathml=True)))
+
+    assert [target.source_text for target in document.targets] == ["说明", "文字"]

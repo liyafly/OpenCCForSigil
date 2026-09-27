@@ -512,6 +512,7 @@
   "profile.attributes": "轉換的屬性",
   "profile.protected_elements": "受保護的元素",
   "profile.mathml": "轉換 MathML 文字",
+  "profile.mathml_scope_enabled": "已啟用（僅轉換 mtext 文字；識別符與屬性保持原樣）",
   "profile.numeric_cjk_char_refs": "CJK 數字字元參照",
   "profile.tofu_policy": "未映射字元策略",
   "profile.tofu_policy.native_default_include": "預設包含",

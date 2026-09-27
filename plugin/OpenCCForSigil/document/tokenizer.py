@@ -33,6 +33,7 @@ VOID_ELEMENTS = (
     "track",
     "wbr",
 )
+_MATHML_NAMESPACE = "http://www.w3.org/1998/Math/MathML"
 
 _CLOSING_TAG_PATTERNS: dict[str, re.Pattern[str]] = {}
 
@@ -141,6 +142,7 @@ def tokenize_xhtml(source: str, options: Optional[TokenizerOptions] = None) -> T
     tags = []
     stack = []
     language_stack: list[Optional[str]] = []
+    namespace_stack: list[dict[str, str | None]] = []
     target_ordinal = 0
     cursor = 0
 
@@ -157,7 +159,7 @@ def tokenize_xhtml(source: str, options: Optional[TokenizerOptions] = None) -> T
             text_end = source.find("<", cursor)
             if text_end < 0:
                 text_end = len(source)
-            if not _is_protected(stack, policy) and not _is_foreign_language(
+            if not _is_protected(stack, policy, namespace_stack) and not _is_foreign_language(
                 language_stack, policy
             ):
                 for start, end, numeric_reference in _split_text_boundaries(
@@ -205,6 +207,8 @@ def tokenize_xhtml(source: str, options: Optional[TokenizerOptions] = None) -> T
             cursor = max(cursor + 1, tag_end)
             continue
         tags.append(tag)
+        inherited_namespaces = namespace_stack[-1] if namespace_stack else {}
+        namespaces = _namespace_context(source, tag, inherited_namespaces)
 
         if not tag.closing:
             if _element_is_writable(tag.name, stack, policy):
@@ -238,8 +242,9 @@ def tokenize_xhtml(source: str, options: Optional[TokenizerOptions] = None) -> T
                 language_stack.append(
                     _language_for_tag(source, tag.attributes, inherited_language)
                 )
+                namespace_stack.append(namespaces)
         else:
-            _pop_element_stacks(stack, language_stack, tag.name)
+            _pop_element_stacks(stack, language_stack, namespace_stack, tag.name)
         cursor = tag_end
 
     return TokenizedDocument(source=source, targets=tuple(targets), tags=tuple(tags))
@@ -280,7 +285,35 @@ def _make_target(
     )
 
 
-def _is_protected(stack: Sequence[str], options: TokenizerOptions) -> bool:
+def _is_protected(
+    stack: Sequence[str],
+    options: TokenizerOptions,
+    namespace_stack: Sequence[dict[str, str | None]] = (),
+) -> bool:
+    math_index = next(
+        (index for index in range(len(stack) - 1, -1, -1)
+         if _local_name(stack[index]) == "math"),
+        None,
+    )
+    if math_index is not None:
+        if not options.mathml or not stack or _local_name(stack[-1]) != "mtext":
+            return True
+        math_namespace = (
+            _element_namespace(stack[math_index], namespace_stack[math_index])
+            if math_index < len(namespace_stack) else None
+        )
+        text_namespace = (
+            _element_namespace(stack[-1], namespace_stack[-1])
+            if namespace_stack else None
+        )
+        math_text = (
+            math_namespace == _MATHML_NAMESPACE
+            and text_namespace == _MATHML_NAMESPACE
+            or math_namespace is None and text_namespace is None
+        )
+        if not math_text:
+            return True
+
     for name in stack:
         local_name = _local_name(name)
         if name in options.protected_elements or local_name in options.protected_elements:
@@ -294,6 +327,8 @@ def _is_protected(stack: Sequence[str], options: TokenizerOptions) -> bool:
 
 def _element_is_writable(name: str, stack: Sequence[str], options: TokenizerOptions) -> bool:
     local_name = _local_name(name)
+    if local_name == "math" or any(_local_name(item) == "math" for item in stack):
+        return False
     if name in options.protected_elements or local_name in options.protected_elements:
         return False
     if local_name == "svg" and not options.svg_text:
@@ -301,6 +336,32 @@ def _element_is_writable(name: str, stack: Sequence[str], options: TokenizerOpti
     if local_name == "math" and not options.mathml:
         return False
     return not _is_protected(stack, options)
+
+
+def _namespace_context(
+    source: str,
+    tag: LexicalTag,
+    inherited: dict[str, str | None],
+) -> dict[str, str | None]:
+    namespaces = dict(inherited)
+    for attribute in tag.attributes:
+        if attribute.name == "xmlns":
+            prefix = ""
+        elif attribute.name.startswith("xmlns:"):
+            prefix = attribute.name.partition(":")[2]
+        else:
+            continue
+        value = source[attribute.value_start:attribute.value_end]
+        namespaces[prefix] = value or None
+    return namespaces
+
+
+def _element_namespace(name: str, namespaces: dict[str, str | None]) -> str | None:
+    if ":" in name:
+        prefix = name.partition(":")[0]
+        # A prefix that is not declared is not a no-namespace MathML element.
+        return namespaces.get(prefix, "")
+    return namespaces.get("")
 
 
 def _is_foreign_language(
@@ -481,12 +542,16 @@ def _parse_attributes(source: str, start: int, end: int) -> list[AttributeSpan]:
 
 
 def _pop_element_stacks(
-    stack: list[str], language_stack: list[Optional[str]], name: str
+    stack: list[str],
+    language_stack: list[Optional[str]],
+    namespace_stack: list[dict[str, str | None]],
+    name: str,
 ) -> None:
     for index in range(len(stack) - 1, -1, -1):
         if stack[index] == name:
             del stack[index:]
             del language_stack[index:]
+            del namespace_stack[index:]
             return
 
 
