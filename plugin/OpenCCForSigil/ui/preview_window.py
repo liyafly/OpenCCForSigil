@@ -7,7 +7,13 @@ from dataclasses import dataclass
 from html import unescape
 from typing import Any, Sequence, Tuple
 
-from core.preview import PreviewFilter, PreviewGroupKind, PreviewSession, preview_group_kind
+from core.preview import (
+    PreviewDecision,
+    PreviewFilter,
+    PreviewGroupKind,
+    PreviewSession,
+    preview_group_kind,
+)
 from core.models import TokenChange
 from core.workflow import PlannedDocument
 from opencc_backend.configs import (
@@ -38,6 +44,20 @@ class PreviewOutcome:
     previews: Tuple[PreviewSession, ...]
     back_to_settings: bool = False
     checkpoint_notice_shown: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class _DecisionHistoryChange:
+    file_id: str
+    change_id: str
+    before: PreviewDecision | None
+    after: PreviewDecision | None
+
+
+@dataclass(frozen=True, slots=True)
+class _DecisionHistoryOperation:
+    sequence: int
+    changes: Tuple[_DecisionHistoryChange, ...]
 
 
 @dataclass(frozen=True)
@@ -840,6 +860,9 @@ _PREVIEW_COLUMNS = (
     "risk",
 )
 
+_MAX_DECISION_HISTORY_OPERATIONS = 100
+_MAX_DECISION_HISTORY_CHANGES = 2_000_000
+
 
 def _single_line(value: object) -> str:
     return str(value).replace("\r\n", "\n").replace("\r", "\n").replace("\n", "↵").replace("\t", "⇥")
@@ -1170,6 +1193,14 @@ class _PreviewDialog:
             group_id: (count, len(files))
             for group_id, (count, files) in group_entries.items()
         }
+        self._preview_by_file_id = {}
+        for preview, change in self._entries:
+            self._preview_by_file_id.setdefault(change.file_id, preview)
+        self._undo_stack = []
+        self._redo_stack = []
+        self._history_sequence = 0
+        self._history_record_count = 0
+        self._history_feedback = ""
         self._recompute_counts()
         self._last_group_feedback = ""
         self._visible_entries_cache = self._entries
@@ -1410,6 +1441,18 @@ class _PreviewDialog:
         self.reject_all_button = qt.QPushButton(self._translator.text("preview.skip_all"))
         self.accept_filter_button = qt.QPushButton(self._translator.text("preview.accept_filter"))
         self.reject_filter_button = qt.QPushButton(self._translator.text("preview.skip_filter"))
+        self.undo_button = qt.QPushButton(self._translator.text("preview.undo"))
+        self.redo_button = qt.QPushButton(self._translator.text("preview.redo"))
+        self.reset_current_button = qt.QPushButton(
+            self._translator.text("preview.reset_current"))
+        self.undo_button.setToolTip(self._translator.text("preview.undo_tooltip"))
+        self.redo_button.setToolTip(self._translator.text("preview.redo_tooltip"))
+        self.reset_current_button.setToolTip(
+            self._translator.text("preview.reset_current_tooltip"))
+        self.undo_button.setAccessibleName(self._translator.text("a11y.preview.undo"))
+        self.redo_button.setAccessibleName(self._translator.text("a11y.preview.redo"))
+        self.reset_current_button.setAccessibleName(
+            self._translator.text("a11y.preview.reset_current"))
         self.export_button = qt.QPushButton(self._translator.text("preview.export"))
         self.export_full_diff = qt.QCheckBox(self._translator.text("preview.export_full_diff"))
         self.export_full_diff.setChecked(False)
@@ -1425,6 +1468,7 @@ class _PreviewDialog:
         layout.addLayout(buttons)
         tools = qt.QHBoxLayout()
         for button in (self.accept_all_button, self.reject_all_button,
+                       self.undo_button, self.redo_button, self.reset_current_button,
                        self.export_button, self.export_full_diff):
             tools.addWidget(button)
         layout.addLayout(tools)
@@ -1445,6 +1489,9 @@ class _PreviewDialog:
         self.reject_all_button.clicked.connect(self._reject_all)
         self.accept_filter_button.clicked.connect(lambda: self._decide_filtered(True))
         self.reject_filter_button.clicked.connect(lambda: self._decide_filtered(False))
+        self.undo_button.clicked.connect(self._undo_preview_action)
+        self.redo_button.clicked.connect(self._redo_preview_action)
+        self.reset_current_button.clicked.connect(self._reset_current_to_undecided)
         self.export_button.clicked.connect(self._export_preview)
         self.apply_button.clicked.connect(self._apply)
         self.back_settings_button.clicked.connect(self._back_to_settings)
@@ -1470,7 +1517,8 @@ class _PreviewDialog:
                     "accept_this_button", "reject_this_button", "next_undecided_button",
                     "accept_file_button", "reject_file_button", "accept_all_button",
                     "reject_all_button",
-                    "accept_filter_button", "reject_filter_button", "export_button",
+                    "accept_filter_button", "reject_filter_button", "undo_button",
+                    "redo_button", "reset_current_button", "export_button",
                     "apply_button", "back_settings_button", "cancel_button",
                 )
             )
@@ -1493,7 +1541,11 @@ class _PreviewDialog:
             key_sequence = key_sequence or getattr(gui, "QKeySequence", None)
         if shortcut_type is None or key_sequence is None:
             return
+        # Keep decision shortcuts inside the table subtree. Search and detail
+        # editors retain native typing and undo/redo commands.
         context = _enum_value(getattr(self._qt, "Qt", None), "WidgetWithChildrenShortcut")
+        if context is None:
+            return
         self._shortcuts = []
         for sequence, callback in (
             ("A", self._accept_this),
@@ -1501,9 +1553,21 @@ class _PreviewDialog:
             ("N", self._next_undecided),
             ("Shift+N", self._previous_undecided),
         ):
-            shortcut = shortcut_type(key_sequence(sequence), self.dialog)
-            if context is not None:
-                shortcut.setContext(context)
+            shortcut = shortcut_type(key_sequence(sequence), self.table_view)
+            shortcut.setContext(context)
+            shortcut.activated.connect(callback)
+            self._shortcuts.append(shortcut)
+        standard_keys = getattr(key_sequence, "StandardKey", None)
+        for name, fallback, callback in (
+            ("Undo", "Ctrl+Z", self._undo_preview_action),
+            ("Redo", "Ctrl+Shift+Z", self._redo_preview_action),
+        ):
+            standard = getattr(standard_keys, name, None)
+            if standard is None:
+                standard = getattr(key_sequence, name, None)
+            sequence = key_sequence(standard if standard is not None else fallback)
+            shortcut = shortcut_type(sequence, self.table_view)
+            shortcut.setContext(context)
             shortcut.activated.connect(callback)
             self._shortcuts.append(shortcut)
 
@@ -1679,6 +1743,156 @@ class _PreviewDialog:
         else:
             self._accepted_count_by_file.pop(file_id, None)
 
+    @staticmethod
+    def _unique_entries(entries):
+        unique = []
+        seen = set()
+        for entry in entries:
+            change = entry[1]
+            identity = (change.file_id, change.change_id)
+            if identity not in seen:
+                seen.add(identity)
+                unique.append(entry)
+        return tuple(unique)
+
+    def _capture_decisions(self, entries):
+        return tuple(
+            (change.file_id, change.change_id, preview.decision(change.change_id))
+            for preview, change in self._unique_entries(entries)
+        )
+
+    def _record_decision_action(self, before):
+        changes = tuple(
+            _DecisionHistoryChange(
+                file_id=file_id,
+                change_id=change_id,
+                before=decision,
+                after=self._preview_by_file_id[file_id].decision(change_id),
+            )
+            for file_id, change_id, decision in before
+            if decision != self._preview_by_file_id[file_id].decision(change_id)
+        )
+        if not changes:
+            return
+        if self._redo_stack:
+            self._history_record_count -= sum(
+                len(operation.changes) for operation in self._redo_stack)
+            self._redo_stack.clear()
+        self._history_sequence += 1
+        operation = _DecisionHistoryOperation(self._history_sequence, changes)
+        self._undo_stack.append(operation)
+        self._history_record_count += len(changes)
+        self._prune_decision_history()
+        if hasattr(self, "undo_button"):
+            self._update_history_controls()
+
+    def _prune_decision_history(self):
+        self._history_feedback = ""
+        while True:
+            operations = [
+                (operation.sequence, stack, operation)
+                for stack in (self._undo_stack, self._redo_stack)
+                for operation in stack
+            ]
+            if (
+                len(operations) <= _MAX_DECISION_HISTORY_OPERATIONS
+                and self._history_record_count <= _MAX_DECISION_HISTORY_CHANGES
+            ):
+                return
+            _sequence, stack, oldest = min(operations, key=lambda item: item[0])
+            if len(oldest.changes) > _MAX_DECISION_HISTORY_CHANGES:
+                self._undo_stack.clear()
+                self._redo_stack.clear()
+                self._undo_stack.append(oldest)
+                self._history_record_count = len(oldest.changes)
+                self._history_feedback = self._translator.text(
+                    "preview.history_large_operation")
+                return
+            stack.remove(oldest)
+            self._history_record_count -= len(oldest.changes)
+
+    def _clear_decision_history(self):
+        self._undo_stack.clear()
+        self._redo_stack.clear()
+        self._history_record_count = 0
+        self._history_feedback = ""
+        if hasattr(self, "undo_button"):
+            self._update_history_controls()
+
+    def _update_history_controls(self):
+        undo_button = getattr(self, "undo_button", None)
+        redo_button = getattr(self, "redo_button", None)
+        reset_button = getattr(self, "reset_current_button", None)
+        if undo_button is None or redo_button is None or reset_button is None:
+            return
+        undo_button.setEnabled(bool(getattr(self, "_undo_stack", ())))
+        redo_button.setEnabled(bool(getattr(self, "_redo_stack", ())))
+        entry = self._current_entry()
+        can_reset = bool(
+            entry is not None and entry[0].decision(entry[1].change_id) is not None
+        )
+        reset_button.setEnabled(can_reset)
+
+    def _history_entries_for_grouped_action(self, entries, groups):
+        expanded = list(entries)
+        group_entries = getattr(self, "_group_entries_by_id", {})
+        for group_id in groups:
+            expanded.extend(group_entries.get(group_id, ()))
+        return self._unique_entries(expanded)
+
+    def _file_decision_entries(self, file_id):
+        local_groups = {
+            group_id for group_id in self._groups_for_file(file_id)
+            if len(getattr(self, "_group_file_ids", {}).get(group_id, (file_id,))) == 1
+            and preview_group_kind(group_id) is not PreviewGroupKind.LANGUAGE_METADATA
+        }
+        return tuple(
+            entry for entry in self._entries
+            if entry[1].file_id == file_id and (
+                not entry[1].group_id or entry[1].group_id in local_groups
+            )
+        )
+
+    def _apply_history_side(self, operation, side):
+        for change in operation.changes:
+            preview = self._preview_by_file_id[change.file_id]
+            before = preview.decision(change.change_id)
+            after = getattr(change, side)
+            preview.restore_decision(change.change_id, after)
+            self._record_decision_change(change.file_id, before, after)
+
+    def _undo_preview_action(self):
+        if not self._undo_stack:
+            return
+        operation = self._undo_stack.pop()
+        self._apply_history_side(operation, "before")
+        self._redo_stack.append(operation)
+        self._refresh(refresh_statuses=True)
+
+    def _redo_preview_action(self):
+        if not self._redo_stack:
+            return
+        operation = self._redo_stack.pop()
+        self._apply_history_side(operation, "after")
+        self._undo_stack.append(operation)
+        self._refresh(refresh_statuses=True)
+
+    def _reset_current_to_undecided(self):
+        entry = self._current_entry()
+        if entry is None:
+            return
+        _preview, change = entry
+        entries = (
+            getattr(self, "_group_entries_by_id", {}).get(change.group_id, (entry,))
+            if change.group_id else (entry,)
+        )
+        before = self._capture_decisions(entries)
+        for preview, item in entries:
+            if preview.decision(item.change_id) is not None:
+                preview.restore_decision(item.change_id, None)
+        self._record_decision_action(before)
+        self._refresh(recalculate_counts=True, refresh_statuses=True)
+
     def _current_row(self) -> int:
         table = getattr(self, "table_view", None)
         if table is None:
@@ -1827,6 +2041,9 @@ class _PreviewDialog:
         group_feedback = getattr(self, "_last_group_feedback", "")
         if group_feedback:
             summary += "\n" + group_feedback
+        history_feedback = getattr(self, "_history_feedback", "")
+        if history_feedback:
+            summary += "\n" + history_feedback
         self.summary.setText(summary)
         self._refresh_file_filter_counts()
         has_current = bool(getattr(self, "_visible_entries_cache", ()))
@@ -1851,6 +2068,7 @@ class _PreviewDialog:
             button = getattr(self, name, None)
             if button is not None:
                 button.setEnabled(has_entries)
+        self._update_history_controls()
         accepted_files = self._accepted_count_by_file
         complete = totals["undecided"] == 0
         accepted_count = totals["accepted"]
@@ -1934,6 +2152,8 @@ class _PreviewDialog:
         if row < 0 or row >= len(visible_entries):
             self.detail.clear()
             self._update_group_controls(None)
+            if hasattr(self, "undo_button"):
+                self._update_history_controls()
             return
         preview, change = visible_entries[row]
         diagnostics = self._diagnostics_for_file(change.file_id)
@@ -1969,6 +2189,8 @@ class _PreviewDialog:
             f"{group_text}{diagnostic_text}",
         )))
         self._update_group_controls(change.file_id)
+        if hasattr(self, "undo_button"):
+            self._update_history_controls()
 
     def _current_entry(self):
         row = self._current_row()
@@ -1994,18 +2216,23 @@ class _PreviewDialog:
     def _decide_entry(self, entry, accepted):
         preview, change = entry
         if change.group_id:
+            before = self._capture_decisions(
+                getattr(self, "_group_entries_by_id", {}).get(change.group_id, (entry,)))
             count = self._decide_group(change.group_id, accepted)
             feedback_key = _group_feedback_key(change.group_id, accepted)
             self._last_group_feedback = self._translator.text(
                 feedback_key, count=count)
+            self._record_decision_action(before)
             self._refresh(recalculate_counts=True, refresh_statuses=True)
         else:
             self._last_group_feedback = ""
             row = self._current_row()
-            before = preview.decision(change.change_id)
+            before = self._capture_decisions((entry,))
+            old_decision = preview.decision(change.change_id)
             (preview.accept_this if accepted else preview.reject_this)(change.change_id)
             after = preview.decision(change.change_id)
-            self._record_decision_change(change.file_id, before, after)
+            self._record_decision_change(change.file_id, old_decision, after)
+            self._record_decision_action(before)
             if self._status_filter_value() is not None:
                 self._refresh(refresh_statuses=True)
             else:
@@ -2087,6 +2314,10 @@ class _PreviewDialog:
             group_id for group_id in self._groups_for_file(entry[1].file_id)
             if preview_group_kind(group_id) is PreviewGroupKind.LANGUAGE_METADATA
         )
+        before = self._capture_decisions(
+            entry for group_id in groups
+            for entry in getattr(self, "_group_entries_by_id", {}).get(group_id, ())
+        )
         count = sum(self._decide_group(group_id, accepted) for group_id in groups)
         if count:
             feedback_key = (
@@ -2094,6 +2325,7 @@ class _PreviewDialog:
             self._last_group_feedback = self._translator.text(feedback_key, count=count)
         else:
             self._last_group_feedback = ""
+        self._record_decision_action(before)
         self._refresh(recalculate_counts=True, refresh_statuses=True)
 
     def _decide_filtered(self, accepted: bool) -> None:
@@ -2104,6 +2336,8 @@ class _PreviewDialog:
         groups = {change.group_id for _preview, change in visible_entries if change.group_id}
         if not self._confirm_filtered_group_expansion(visible_entries, groups):
             return
+        before = self._capture_decisions(
+            self._history_entries_for_grouped_action(visible_entries, groups))
         for preview, change in visible_entries:
             if not change.group_id:
                 (preview.accept_this if accepted else preview.reject_this)(change.change_id)
@@ -2116,6 +2350,7 @@ class _PreviewDialog:
                 feedback_key, count=group_count)
         else:
             self._last_group_feedback = ""
+        self._record_decision_action(before)
         self._refresh(recalculate_counts=True, refresh_statuses=True)
 
     def _confirm_filtered_group_expansion(self, visible_entries, groups) -> bool:
@@ -2173,7 +2408,9 @@ class _PreviewDialog:
         if entry is None:
             return
         self._last_group_feedback = ""
+        before = self._capture_decisions(self._file_decision_entries(entry[1].file_id))
         self._decide_file(entry[1].file_id, True)
+        self._record_decision_action(before)
         self._refresh(recalculate_counts=True, refresh_statuses=True)
 
     def _reject_file(self) -> None:
@@ -2181,7 +2418,9 @@ class _PreviewDialog:
         if entry is None:
             return
         self._last_group_feedback = ""
+        before = self._capture_decisions(self._file_decision_entries(entry[1].file_id))
         self._decide_file(entry[1].file_id, False)
+        self._record_decision_action(before)
         self._refresh(recalculate_counts=True, refresh_statuses=True)
 
     def _decide_file(self, file_id, accepted):
@@ -2207,15 +2446,19 @@ class _PreviewDialog:
 
     def _accept_all(self) -> None:
         self._last_group_feedback = ""
+        before = self._capture_decisions(self._entries)
         for preview in self._previews:
             preview.accept_all(overwrite=True)
+        self._record_decision_action(before)
         self._set_all_decision_counts("accepted")
         self._refresh(refresh_statuses=True)
 
     def _reject_all(self) -> None:
         self._last_group_feedback = ""
+        before = self._capture_decisions(self._entries)
         for preview in self._previews:
             preview.reject_all(overwrite=True)
+        self._record_decision_action(before)
         self._set_all_decision_counts("rejected")
         self._refresh(refresh_statuses=True)
 
@@ -2251,8 +2494,12 @@ class _PreviewDialog:
     def _guard_reject(self) -> bool:
         if self._allow_reject:
             self._allow_reject = False
+            self._clear_decision_history()
             return True
-        return self._confirm_discard_decisions()
+        confirmed = self._confirm_discard_decisions()
+        if confirmed:
+            self._clear_decision_history()
+        return confirmed
 
     def _confirm_discard_decisions(self) -> bool:
         decided = sum(
@@ -2313,6 +2560,7 @@ class _PreviewDialog:
         if not self._checkpoint_confirm():
             return
         self.applied = True
+        self._clear_decision_history()
         # Disable before accepting the dialog so a queued/re-entrant click
         # cannot submit the same preview twice.
         self.apply_button.setEnabled(False)

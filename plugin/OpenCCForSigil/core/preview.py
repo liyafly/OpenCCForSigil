@@ -99,6 +99,19 @@ class PreviewSession:
     def reject_this(self, change_id: str) -> None:
         self._set(change_id, PreviewDecision.REJECT_THIS)
 
+    def restore_decision(
+        self, change_id: str, decision: Optional[PreviewDecision],
+    ) -> None:
+        """Restore one decision, including returning a change to undecided."""
+
+        self._require_change(change_id)
+        if decision is None:
+            self._decisions.pop(change_id, None)
+        elif isinstance(decision, PreviewDecision):
+            self._decisions[change_id] = decision
+        else:
+            raise TypeError("decision must be a PreviewDecision or None")
+
     def accept_all(
         self,
         scope: Optional[PreviewFilter] = None,

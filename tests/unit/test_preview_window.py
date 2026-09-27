@@ -207,6 +207,31 @@ def _table_dialog(entries, previews, *, current_row=0, category="all", file_id=N
     dialog._targets_by_id = {}
     dialog._kind_by_id = {}
     dialog._group_stats = {}
+    entries_by_group = {}
+    files_by_group = {}
+    groups_by_file = {}
+    dialog._preview_by_file_id = {}
+    for preview, change in entries:
+        dialog._preview_by_file_id.setdefault(change.file_id, preview)
+        if change.group_id:
+            entries_by_group.setdefault(change.group_id, []).append((preview, change))
+            files_by_group.setdefault(change.group_id, set()).add(change.file_id)
+            groups_by_file.setdefault(change.file_id, set()).add(change.group_id)
+    dialog._group_entries_by_id = {
+        group_id: tuple(group_entries)
+        for group_id, group_entries in entries_by_group.items()
+    }
+    dialog._group_file_ids = {
+        group_id: frozenset(file_ids) for group_id, file_ids in files_by_group.items()
+    }
+    dialog._group_ids_by_file = {
+        file_id: frozenset(group_ids) for file_id, group_ids in groups_by_file.items()
+    }
+    dialog._undo_stack = []
+    dialog._redo_stack = []
+    dialog._history_record_count = 0
+    dialog._history_sequence = 0
+    dialog._history_feedback = ""
     dialog.file_filter = qt.QComboBox()
     dialog.file_filter.addItem("All", None)
     for value in dict.fromkeys(change.file_id for _, change in entries):
@@ -224,6 +249,9 @@ def _table_dialog(entries, previews, *, current_row=0, category="all", file_id=N
     dialog.detail = qt.QPlainTextEdit()
     dialog.apply_button = qt.QPushButton()
     dialog.apply_status_label = qt.QLabel()
+    dialog.undo_button = qt.QPushButton()
+    dialog.redo_button = qt.QPushButton()
+    dialog.reset_current_button = qt.QPushButton()
     dialog.table_view = qt.QTableView()
     dialog.table_model = _create_preview_table_model(
         qt, entries, {}, translator=dialog._translator)(dialog.table_view)
@@ -245,6 +273,7 @@ def test_preview_dialog_buttons_are_never_default_or_auto_default():
         dialog.accept_file_button, dialog.reject_file_button,
         dialog.accept_all_button, dialog.reject_all_button,
         dialog.accept_filter_button, dialog.reject_filter_button,
+        dialog.undo_button, dialog.redo_button, dialog.reset_current_button,
         dialog.next_undecided_button,
         dialog.export_button, dialog.apply_button,
         dialog.back_settings_button, dialog.cancel_button,
@@ -499,6 +528,7 @@ def test_filtered_group_decision_reaches_hidden_language_metadata_entries():
     dialog = _table_dialog(
         tuple((preview, change) for preview in (first, second) for change in preview.changes),
         (first, second), current_row=0, file_id="chapter.xhtml")
+    dialog.dialog = dialog._qt.QDialog()
     dialog._refresh = lambda **_kwargs: None
     dialog._decide_filtered(True)
 

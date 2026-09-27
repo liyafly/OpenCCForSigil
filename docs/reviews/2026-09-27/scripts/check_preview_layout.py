@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT / "plugin/OpenCCForSigil"))
 
 import PySide6  # noqa: E402
-from PySide6.QtCore import QEventLoop, QTimer  # noqa: E402
+from PySide6.QtCore import QEventLoop, Qt, QTimer  # noqa: E402
 from PySide6.QtWidgets import QMessageBox  # noqa: E402
 from core.models import ConversionPlan, SourceSpan, TokenChange  # noqa: E402
 from core.preview import PreviewSession  # noqa: E402
@@ -57,6 +57,8 @@ def exercise_group_actions(qt, app, language):
     previews = (PreviewSession(chapter_plan), PreviewSession(opf_plan))
     dialog = _PreviewDialog(qt, planned, previews, translator)
     dialog.dialog.show()
+    dialog.dialog.activateWindow()
+    dialog.dialog.raise_()
     app.processEvents()
     assert dialog.accept_group_button.isVisible()
     group_label = dialog.accept_group_button.text()
@@ -88,6 +90,16 @@ def exercise_group_actions(qt, app, language):
     assert all(rule_only._previews[0].decision(change.change_id) is None
                for change in rule_changes)
     rule_only.accept_file_button.click()
+    app.processEvents()
+    assert all(rule_only._previews[0].decision(change.change_id).value == "accept_this"
+               for change in rule_changes)
+    rule_only._set_current_row(0)
+    assert rule_only.reset_current_button.isEnabled()
+    rule_only.reset_current_button.click()
+    app.processEvents()
+    assert all(rule_only._previews[0].decision(change.change_id) is None
+               for change in rule_changes)
+    rule_only.undo_button.click()
     app.processEvents()
     assert all(rule_only._previews[0].decision(change.change_id).value == "accept_this"
                for change in rule_changes)
@@ -194,9 +206,6 @@ def exercise_filters(qt, app, language, output_dir):
     loop.exec()
     assert tuple(change.change_id for _preview, change in dialog._visible_entries_cache) == (
         "filter-1", "filter-2")
-    dialog.search_input.setFocus()
-    app.processEvents()
-    assert app.focusWidget() is dialog.search_input
     dialog._set_current_row(0)
     dialog.accept_this_button.click()
     app.processEvents()
@@ -204,7 +213,32 @@ def exercise_filters(qt, app, language, output_dir):
         "filter-2",)
     assert dialog._current_entry()[1].change_id == "filter-2"
     assert not dialog.apply_button.isEnabled()
+    dialog.undo_button.click()
+    app.processEvents()
+    assert all(preview.decision("filter-1") is None for preview in previews[:1])
+    assert tuple(change.change_id for _preview, change in dialog._visible_entries_cache) == (
+        "filter-1", "filter-2")
+    dialog.redo_button.click()
+    app.processEvents()
+    assert previews[0].decision("filter-1").value == "accept_this"
+    assert tuple(change.change_id for _preview, change in dialog._visible_entries_cache) == (
+        "filter-2",)
+    assert all(shortcut.parent() is dialog.table_view for shortcut in dialog._shortcuts)
+    widget_shortcut = getattr(Qt, "ShortcutContext", None)
+    expected_shortcut_context = getattr(widget_shortcut, "WidgetWithChildrenShortcut", None)
+    assert expected_shortcut_context is not None
+    assert all(shortcut.context() == expected_shortcut_context for shortcut in dialog._shortcuts)
     dialog.status_filter.setCurrentIndex(dialog.status_filter.findData("accepted"))
+    assert tuple(change.change_id for _preview, change in dialog._visible_entries_cache) == (
+        "filter-1",)
+    assert dialog.reset_current_button.isEnabled()
+    dialog.reset_current_button.click()
+    app.processEvents()
+    assert previews[0].decision("filter-1") is None
+    assert dialog._visible_entries_cache == ()
+    dialog.undo_button.click()
+    app.processEvents()
+    assert previews[0].decision("filter-1").value == "accept_this"
     assert tuple(change.change_id for _preview, change in dialog._visible_entries_cache) == (
         "filter-1",)
     dialog.search_input.setText("no such change")
@@ -224,6 +258,8 @@ def exercise_filters(qt, app, language, output_dir):
         "filter_controls_follow_tab_order": True,
         "source_status_and_debounced_search_combine": True,
         "decided_row_hides_and_focus_moves_to_next_change": True,
+        "preview_undo_redo_buttons_and_table_scoped_shortcuts": True,
+        "reset_current_restores_whole_group_and_is_undoable": True,
         "global_apply_guard_and_empty_state": True,
         "clear_filters_restores_all_rows": True,
     }

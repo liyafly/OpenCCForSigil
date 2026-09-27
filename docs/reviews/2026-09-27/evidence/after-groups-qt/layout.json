@@ -20,6 +20,8 @@
         "filter_controls_follow_tab_order": true,
         "source_status_and_debounced_search_combine": true,
         "decided_row_hides_and_focus_moves_to_next_change": true,
+        "preview_undo_redo_buttons_and_table_scoped_shortcuts": true,
+        "reset_current_restores_whole_group_and_is_undoable": true,
         "global_apply_guard_and_empty_state": true,
         "clear_filters_restores_all_rows": true
       }
@@ -43,6 +45,8 @@
         "filter_controls_follow_tab_order": true,
         "source_status_and_debounced_search_combine": true,
         "decided_row_hides_and_focus_moves_to_next_change": true,
+        "preview_undo_redo_buttons_and_table_scoped_shortcuts": true,
+        "reset_current_restores_whole_group_and_is_undoable": true,
         "global_apply_guard_and_empty_state": true,
         "clear_filters_restores_all_rows": true
       }
@@ -66,6 +70,8 @@
         "filter_controls_follow_tab_order": true,
         "source_status_and_debounced_search_combine": true,
         "decided_row_hides_and_focus_moves_to_next_change": true,
+        "preview_undo_redo_buttons_and_table_scoped_shortcuts": true,
+        "reset_current_restores_whole_group_and_is_undoable": true,
         "global_apply_guard_and_empty_state": true,
         "clear_filters_restores_all_rows": true
       }

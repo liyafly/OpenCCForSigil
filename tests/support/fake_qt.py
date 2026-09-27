@@ -738,6 +738,7 @@ class Qt:
     ItemIsEditable = 2
     Horizontal = 1
     Vertical = 2
+    WidgetShortcut = 0
     WidgetWithChildrenShortcut = 1
     WindowCloseButtonHint = 0x8000000
     Key_Escape = 0x1000000
