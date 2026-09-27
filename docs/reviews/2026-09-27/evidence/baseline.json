@@ -1,0 +1,53 @@
+{
+  "python": "3.14.7",
+  "platform": "macOS-27.0-arm64-arm-64bit-Mach-O",
+  "group_semantics": {
+    "rule_only_group_button_label": "Accept language tag group",
+    "rule_only_after_accept_file": null,
+    "rule_only_after_language_button": "accept_this",
+    "mixed_language_button_decisions": {
+      "change-0": "accept_this",
+      "change-1": "accept_this"
+    }
+  },
+  "group_scans": [
+    {
+      "groups": 100,
+      "changes": 200,
+      "entry_visits": 20400,
+      "decision_seconds": 0.0008544159936718643
+    },
+    {
+      "groups": 200,
+      "changes": 400,
+      "entry_visits": 80800,
+      "decision_seconds": 0.003242666003643535
+    },
+    {
+      "groups": 400,
+      "changes": 800,
+      "entry_visits": 321600,
+      "decision_seconds": 0.012645042006624863
+    }
+  ],
+  "mathml_targets": {
+    "false": [],
+    "true": [
+      {
+        "tag": "mi",
+        "text": "变量",
+        "convert": true
+      },
+      {
+        "tag": "mtext",
+        "text": "说明",
+        "convert": true
+      },
+      {
+        "tag": "annotation",
+        "text": "备注",
+        "convert": true
+      }
+    ]
+  }
+}

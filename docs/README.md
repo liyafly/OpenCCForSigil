@@ -44,6 +44,7 @@ BYVoid/OpenCC official Python Binding (`opencc.OpenCC`); the v1.2 direct
 | Read the scoped UI design decisions | [`ui-interaction-optimization-plan.md`](ui-interaction-optimization-plan.md) |
 | Reproduce the 2026-09-23 UI, logic, and packaging review | [`reviews/2026-09-23/README.md`](reviews/2026-09-23/README.md) |
 | Implement and verify the 2026-09-26 UI, rules, and regex review with Luna | [`reviews/2026-09-26/01-ui-rules-luna-plan.md`](reviews/2026-09-26/01-ui-rules-luna-plan.md) |
+| Plan the next preview optimizations, safety fixes, and features for Luna | [`reviews/2026-09-27/01-optimization-feature-luna-plan.md`](reviews/2026-09-27/01-optimization-feature-luna-plan.md) |
 
 ## Release artifacts
 

@@ -1,0 +1,29 @@
+{
+  "PySide6": "6.11.2",
+  "results": [
+    {
+      "language": "en",
+      "minimum_width": 689,
+      "minimum_height": 420,
+      "initial_width": 900,
+      "initial_height": 620,
+      "table_height": 290
+    },
+    {
+      "language": "zh-Hans",
+      "minimum_width": 618,
+      "minimum_height": 434,
+      "initial_width": 900,
+      "initial_height": 620,
+      "table_height": 276
+    },
+    {
+      "language": "zh-Hant",
+      "minimum_width": 638,
+      "minimum_height": 434,
+      "initial_width": 900,
+      "initial_height": 620,
+      "table_height": 276
+    }
+  ]
+}

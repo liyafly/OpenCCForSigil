@@ -1,0 +1,92 @@
+mise exec -- ruff check .
+All checks passed!
+mise exec -- uv run pytest
+============================= test session starts ==============================
+platform darwin -- Python 3.14.7, pytest-8.4.2, pluggy-1.6.0
+rootdir: /Users/xiaoxiao/Developer/OpenCCForSigil
+configfile: pyproject.toml
+testpaths: tests
+collected 612 items
+
+tests/integration/test_error_reporting.py .........                      [  1%]
+tests/integration/test_extended_documents.py ......                      [  2%]
+tests/integration/test_jieba_probe_flow.py .....                         [  3%]
+tests/integration/test_package.py ......                                 [  4%]
+tests/integration/test_plugin_conversion.py ...............              [  6%]
+tests/integration/test_plugin_noop.py .                                  [  6%]
+tests/integration/test_rules_transform_workflow.py ..........            [  8%]
+tests/integration/test_ruleset_persistence.py ............               [ 10%]
+tests/integration/test_runtime_selection.py ..                           [ 10%]
+tests/integration/test_settings_history.py ...                           [ 11%]
+tests/unit/test_adapter_commit.py .                                      [ 11%]
+tests/unit/test_artifact_validator.py .................................. [ 16%]
+....                                                                     [ 17%]
+tests/unit/test_backend_manifest.py .........                            [ 19%]
+tests/unit/test_build_opencc_jieba.py ...                                [ 19%]
+tests/unit/test_character_references.py ......                           [ 20%]
+tests/unit/test_controller_reentry.py ..                                 [ 20%]
+tests/unit/test_conversion_dialog_jieba.py ........                      [ 22%]
+tests/unit/test_converter_construction.py .                              [ 22%]
+tests/unit/test_converter_diff.py .............                          [ 24%]
+tests/unit/test_diagnostics.py ....                                      [ 25%]
+tests/unit/test_dialog_construction.py .......                           [ 26%]
+tests/unit/test_history_report_self_test.py ..............               [ 28%]
+tests/unit/test_i18n.py ................                                 [ 31%]
+tests/unit/test_jieba_consistency.py ..                                  [ 31%]
+tests/unit/test_logging_schema.py .                                      [ 31%]
+tests/unit/test_m4_transforms.py .........                               [ 33%]
+tests/unit/test_merge_verified_payloads.py ..                            [ 33%]
+tests/unit/test_models.py ..                                             [ 33%]
+tests/unit/test_native_compatibility.py .............                    [ 35%]
+tests/unit/test_optional_jieba.py ......                                 [ 36%]
+tests/unit/test_package_smoke.py ..                                      [ 37%]
+tests/unit/test_payload_integrity.py ...                                 [ 37%]
+tests/unit/test_payload_lock.py ..                                       [ 38%]
+tests/unit/test_preview_model.py ............                            [ 40%]
+tests/unit/test_preview_window.py .............................          [ 44%]
+tests/unit/test_profile_window.py ...........                            [ 46%]
+tests/unit/test_profiles_m3.py .......                                   [ 47%]
+tests/unit/test_progress_reporter.py .......                             [ 48%]
+tests/unit/test_qt_application.py ....                                   [ 49%]
+tests/unit/test_quotation_pairing.py ............                        [ 51%]
+tests/unit/test_regex_rules.py ..............                            [ 53%]
+tests/unit/test_release_assets.py ..........                             [ 55%]
+tests/unit/test_result_counts.py ................................        [ 60%]
+tests/unit/test_rule_import_export_roundtrip.py ........                 [ 61%]
+tests/unit/test_rules_compiled.py ..........                             [ 63%]
+tests/unit/test_rules_m3.py ......................                       [ 67%]
+tests/unit/test_rules_window.py ..........s............................. [ 73%]
+...                                                                      [ 74%]
+tests/unit/test_run_options.py ............................              [ 78%]
+tests/unit/test_runtime_subset.py ...                                    [ 79%]
+tests/unit/test_scope_checkpoint_notice.py .                             [ 79%]
+tests/unit/test_scope_selection.py ................                      [ 82%]
+tests/unit/test_session.py ..                                            [ 82%]
+tests/unit/test_source_preserving_pipeline.py .........................  [ 86%]
+tests/unit/test_staging_apply.py .....                                   [ 87%]
+tests/unit/test_storage.py ....                                          [ 87%]
+tests/unit/test_storage_recovery.py .........                            [ 89%]
+tests/unit/test_third_party_notices.py ........                          [ 90%]
+tests/unit/test_upstream_provenance.py ....                              [ 91%]
+tests/unit/test_vendor_opencc.py .....                                   [ 92%]
+tests/unit/test_verified_source_import.py .............                  [ 94%]
+tests/unit/test_verifier_invariants.py ....                              [ 94%]
+tests/unit/test_window_state.py ..                                       [ 95%]
+tests/unit/test_worker_planning.py ...                                   [ 95%]
+tests/unit/test_xhtml_validation.py ...                                  [ 96%]
+tests/unit/test_xml_targets.py .......................                   [100%]
+
+=========================== short test summary info ============================
+SKIPPED [1] tests/unit/test_rules_window.py:335: fake Qt does not calculate widget layout sizes
+======================= 611 passed, 1 skipped in 42.76s ========================
+mise exec -- uv run python tools/verify_vendor.py
+official OpenCC payload manifest valid (phase1-payload-verified); payloads=1
+verified runtimes: macos/arm64
+mise exec -- uv run python tools/differential_test.py --corpus tests/fixtures/opencc_smoke.jsonl
+official CLI/Python Binding differential test passed (28 cases; 100% equality)
+mise exec -- uv run python tools/differential_jieba_test.py --corpus tests/fixtures/opencc_jieba_smoke.jsonl
+official native Jieba CLI/Python Binding differential test passed (10 cases; 100% equality)
+mise exec -- uv run python tools/build_plugin.py --check
+official OpenCC payload manifest valid (phase1-payload-verified); payloads=1
+verified runtimes: macos/arm64
+plugin metadata valid (0.2.6)
