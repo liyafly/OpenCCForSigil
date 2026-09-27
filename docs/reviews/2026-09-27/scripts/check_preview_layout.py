@@ -2,7 +2,10 @@
 
 import argparse
 import json
+import os
 from pathlib import Path
+import platform
+import subprocess
 import sys
 from types import SimpleNamespace
 
@@ -63,12 +66,14 @@ def exercise_group_actions(qt, app, language):
     app.processEvents()
     assert dialog.accept_group_button.isVisible()
     group_label = dialog.accept_group_button.text()
-    dialog.accept_group_button.click()
+    language_action = dialog._group_more_actions[0]
+    assert language_action.isVisible() and language_action.isEnabled()
+    language_action.trigger()
     app.processEvents()
     assert all(previews[index].decision(change.change_id).value == "accept_this"
                for index, change in enumerate((language_changes[0], language_changes[1])))
     assert all(previews[0].decision(change.change_id) is None for change in rule_changes)
-    dialog.accept_file_button.click()
+    dialog._more_action_by_button[dialog.accept_file_button].trigger()
     app.processEvents()
     assert all(previews[0].decision(change.change_id).value == "accept_this"
                for change in rule_changes)
@@ -86,11 +91,13 @@ def exercise_group_actions(qt, app, language):
     rule_only.dialog.show()
     app.processEvents()
     assert not rule_only.accept_group_button.isVisible()
-    rule_only.accept_group_button.click()
+    assert not rule_only._group_more_actions[0].isVisible()
+    assert not rule_only._group_more_actions[0].isEnabled()
+    rule_only._group_more_actions[0].trigger()
     app.processEvents()
     assert all(rule_only._previews[0].decision(change.change_id) is None
                for change in rule_changes)
-    rule_only.accept_file_button.click()
+    rule_only._more_action_by_button[rule_only.accept_file_button].trigger()
     app.processEvents()
     assert all(rule_only._previews[0].decision(change.change_id).value == "accept_this"
                for change in rule_changes)
@@ -184,18 +191,20 @@ def exercise_filters(qt, app, language, output_dir):
     dialog.dialog.show()
     app.processEvents()
     expected_focus_order = (
-        dialog.file_filter, dialog.category_filter, dialog.risk_filter,
-        dialog.source_filter, dialog.status_filter, dialog.search_input,
-        dialog.clear_filters_button, dialog.table_view,
+        dialog.status_filter, dialog.search_input, dialog.clear_filters_button,
+        dialog.more_filters_button, dialog.file_filter, dialog.category_filter,
+        dialog.risk_filter, dialog.source_filter, dialog.table_view,
     )
     focus_order = []
-    current = dialog.file_filter
-    for _index in range(100):
+    dialog.more_filters_button.click()
+    app.processEvents()
+    current = dialog.status_filter
+    for index in range(30):
+        if index and current is dialog.status_filter:
+            break
         if any(current is widget for widget in expected_focus_order):
             focus_order.append(current)
         current = current.nextInFocusChain()
-        if current is dialog.file_filter:
-            break
     assert focus_order == list(expected_focus_order), [
         type(widget).__name__ for widget in focus_order]
 
@@ -246,6 +255,7 @@ def exercise_filters(qt, app, language, output_dir):
     loop = QEventLoop()
     QTimer.singleShot(240, loop.quit)
     loop.exec()
+    assert not dialog._more_action_by_button[dialog.accept_filter_button].isEnabled()
     assert dialog.filter_count_label.text() == translator.text(
         "preview.visible_count", visible=0, total=3)
     assert dialog.detail.toPlainText() == translator.text("preview.no_filter_matches")
@@ -264,6 +274,47 @@ def exercise_filters(qt, app, language, output_dir):
         "global_apply_guard_and_empty_state": True,
         "clear_filters_restores_all_rows": True,
     }
+
+
+def exercise_export_options(qt, app, language):
+    translator = Translator(language)
+    change = TokenChange(
+        source="软件", target="軟體", span=SourceSpan(0, 2),
+        rule_source="OpenCC:s2t", change_id="export-change", file_id="chapter",
+    )
+    plan = ConversionPlan(source_sha256="", file_id="chapter", changes=(change,))
+    planned = (SimpleNamespace(
+        source=SimpleNamespace(file_id="chapter", href="Text/chapter.xhtml",
+                               document_kind="xhtml"), plan=plan),)
+    calls = []
+    services = SimpleNamespace(export_preview=lambda *_args: calls.append(_args[2]))
+    dialog = _PreviewDialog(qt, planned, (PreviewSession(plan),), translator, services)
+    export_action = dialog._more_action_by_button[dialog.export_button]
+    assert export_action.isEnabled()
+
+    def answer(mode):
+        modal = app.activeModalWidget()
+        assert modal is not None
+        checkbox = modal.findChild(qt.QCheckBox)
+        assert checkbox is not None and not checkbox.isChecked()
+        if mode == "cancel":
+            button = next(item for item in modal.findChildren(qt.QPushButton)
+                          if item.text() == translator.text("common.cancel"))
+            button.click()
+        else:
+            checkbox.setChecked(True)
+            button = next(item for item in modal.findChildren(qt.QPushButton)
+                          if item.text() == translator.text("preview.export"))
+            button.click()
+
+    QTimer.singleShot(0, lambda: answer("cancel"))
+    export_action.trigger()
+    assert calls == []
+    QTimer.singleShot(0, lambda: answer("export"))
+    export_action.trigger()
+    assert calls == [True]
+    return {"menu_action_opens_options": True, "cancel_is_noop": True,
+            "full_diff_resets_off_and_is_opt_in": True}
 
 
 def exercise_diagnostics(qt, app, language, output_dir):
@@ -304,6 +355,7 @@ def exercise_diagnostics(qt, app, language, output_dir):
     assert panel is not None
     dialog.dialog.show()
     app.processEvents()
+    dialog.detail_tabs.setCurrentIndex(1)
     assert not panel.content.isVisible()
     panel.toggle.click()
     app.processEvents()
@@ -335,6 +387,8 @@ def exercise_diagnostics(qt, app, language, output_dir):
     panel.table.cellClicked.emit(0, 0)
     assert dialog._selected_change_identity() == ("changed", "diagnostic-second")
     assert "【plain】 source" in panel.context.toPlainText()
+    dialog.detail_tabs.setCurrentIndex(1)
+    app.processEvents()
     dialog.dialog.grab().save(str(output_dir / f"preview-diagnostics-{language}.png"))
     panel.toggle.click()
     app.processEvents()
@@ -424,9 +478,23 @@ def main():
         item["filter_interactions"] = exercise_filters(qt, app, language, args.output)
         item["diagnostic_interactions"] = exercise_diagnostics(
             qt, app, language, args.output)
+        item["export_interactions"] = exercise_export_options(qt, app, language)
         results.append(item)
         window.dialog.hide()
-    report = {"PySide6": PySide6.__version__, "results": results}
+    screen = app.primaryScreen()
+    geometry = screen.availableGeometry() if screen is not None else None
+    report = {
+        "head": subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=ROOT, check=True,
+            capture_output=True, text=True).stdout.strip(),
+        "PySide6": PySide6.__version__,
+        "os": platform.platform(),
+        "qpa": os.environ.get("QT_QPA_PLATFORM", "default"),
+        "screen_available": ([geometry.width(), geometry.height()]
+                             if geometry is not None else None),
+        "device_pixel_ratio": screen.devicePixelRatio() if screen is not None else None,
+        "results": results,
+    }
     text = json.dumps(report, ensure_ascii=False, indent=2) + "\n"
     (args.output / "layout.json").write_text(text, encoding="utf-8")
     print(text, end="")
@@ -440,6 +508,7 @@ def main():
             assert all(item["group_actions"].values()), item
             assert all(item["filter_interactions"].values()), item
             assert all(item["diagnostic_interactions"].values()), item
+            assert all(item["export_interactions"].values()), item
 
 
 if __name__ == "__main__":

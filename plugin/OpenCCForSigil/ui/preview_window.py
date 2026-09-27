@@ -818,6 +818,8 @@ class _DiagnosticPanel:
             combo.setMinimumContentsLength(10)
             filter_row.addWidget(combo)
             combo.currentIndexChanged.connect(self._refresh)
+        self.count_label = qt.QLabel()
+        filter_row.addWidget(self.count_label)
         content_layout.addLayout(filter_row)
 
         self.table = qt.QTableWidget(0, 4)
@@ -897,6 +899,8 @@ class _DiagnosticPanel:
             and (code is None or record.code == code)
         )
         self._visible_records = records
+        self.count_label.setText(self._translator.text(
+            "preview.diagnostics_visible", visible=len(records), total=len(self._records)))
         blocked = self.table.blockSignals(True)
         try:
             self.table.setRowCount(0)
@@ -1733,7 +1737,6 @@ class _PreviewDialog:
             set_minimum_length = getattr(widget, "setMinimumContentsLength", None)
             if callable(set_minimum_length):
                 set_minimum_length(10)
-            filter_row.addWidget(widget)
             widget.currentIndexChanged.connect(lambda *_args: self._refresh())
         for widget, key in (
             (self.file_filter, "a11y.preview.file_filter"),
@@ -1757,9 +1760,22 @@ class _PreviewDialog:
         self.clear_filters_button.setAccessibleName(
             self._translator.text("a11y.preview.clear_filters"))
         search_row.addWidget(self.clear_filters_button)
+        self.more_filters_button = qt.QToolButton()
+        self.more_filters_button.setText(
+            self._translator.text("preview.more_filters", count=0))
+        self.more_filters_button.setCheckable(True)
+        search_row.addWidget(self.more_filters_button)
         self.filter_count_label = qt.QLabel()
         search_row.addWidget(self.filter_count_label)
         layout.addLayout(search_row)
+        self.extra_filters = qt.QWidget()
+        extra_filter_layout = qt.QHBoxLayout(self.extra_filters)
+        for widget in (self.file_filter, self.category_filter,
+                       self.risk_filter, self.source_filter):
+            extra_filter_layout.addWidget(widget)
+        layout.addWidget(self.extra_filters)
+        self.extra_filters.setVisible(False)
+        self.more_filters_button.toggled.connect(self.extra_filters.setVisible)
         self.status_filter.currentIndexChanged.connect(lambda *_args: self._refresh())
         self.clear_filters_button.clicked.connect(self._clear_filters)
         self.search_input.textChanged.connect(self._schedule_filter_refresh)
@@ -1785,24 +1801,19 @@ class _PreviewDialog:
         header = self.table_view.horizontalHeader()
         interactive = _enum_value(qt.QHeaderView, "Interactive")
         stretch = _enum_value(qt.QHeaderView, "Stretch")
-        if interactive is not None and stretch is not None:
-            for column in (0, 1, 2, 5, 6):
+        if interactive is not None:
+            for column in range(7):
                 header.setSectionResizeMode(column, interactive)
-            for column in (3, 4):
-                header.setSectionResizeMode(column, stretch)
         set_precision = getattr(header, "setResizeContentsPrecision", None)
         if callable(set_precision):
             set_precision(50)
         self.table_view.setAlternatingRowColors(True)
         self.table_view.setAccessibleName(
             self._translator.text("a11y.preview.changes_table"))
-        resize_columns = getattr(self.table_view, "resizeColumnsToContents", None)
-        if callable(resize_columns):
-            resize_columns()
         set_column_width = getattr(self.table_view, "setColumnWidth", None)
         if callable(set_column_width):
-            # Leave room for the widest decision label after rows change state.
-            set_column_width(0, 96)
+            for column, width in enumerate((84, 96, 64, 142, 142, 126, 64)):
+                set_column_width(column, width)
 
         self.show_source_context = qt.QCheckBox(
             self._translator.text("preview.show_source_context"))
@@ -1813,12 +1824,33 @@ class _PreviewDialog:
 
         self.detail = qt.QPlainTextEdit()
         self.detail.setReadOnly(True)
-        self.detail.setMinimumHeight(80)
+        self.detail.setMinimumHeight(48)
         detail_layout.addWidget(self.detail)
+        comparison = qt.QWidget()
+        comparison_layout = qt.QHBoxLayout(comparison)
+        self.source_detail = qt.QPlainTextEdit()
+        self.target_detail = qt.QPlainTextEdit()
+        for editor in (self.source_detail, self.target_detail):
+            editor.setReadOnly(True)
+            editor.setMinimumHeight(64)
+        self.source_detail.setAccessibleName(self._translator.text("preview.before"))
+        self.target_detail.setAccessibleName(self._translator.text("preview.after"))
+        source_column = qt.QVBoxLayout()
+        source_column.addWidget(qt.QLabel(self._translator.text("preview.before")))
+        source_column.addWidget(self.source_detail, 1)
+        target_column = qt.QVBoxLayout()
+        target_column.addWidget(qt.QLabel(self._translator.text("preview.after")))
+        target_column.addWidget(self.target_detail, 1)
+        comparison_layout.addLayout(source_column, 1)
+        comparison_layout.addLayout(target_column, 1)
+        detail_layout.addWidget(comparison, 1)
 
+        self.detail_tabs = qt.QTabWidget()
+        self.detail_tabs.addTab(
+            self.detail_panel, self._translator.text("preview.current_item"))
         self.splitter = qt.QSplitter(_enum_value(qt.Qt, "Vertical"))
         self.splitter.addWidget(self.table_view)
-        self.splitter.addWidget(self.detail_panel)
+        self.splitter.addWidget(self.detail_tabs)
         self.splitter.setStretchFactor(0, 3)
         self.splitter.setStretchFactor(1, 1)
         saved_splitter_sizes = self._ui_preferences.get("preview_splitter_sizes")
@@ -1838,7 +1870,10 @@ class _PreviewDialog:
                 qt, self._diagnostic_records, self._translator,
                 on_related_change=self._navigate_to_related_change,
             )
-            layout.addWidget(self.diagnostic_panel.widget)
+            self.detail_tabs.addTab(
+                self.diagnostic_panel.widget,
+                self._translator.text(
+                    "preview.diagnostics_count", count=len(self._diagnostic_records)))
 
         buttons = qt.QHBoxLayout()
         self.accept_this_button = qt.QPushButton(self._translator.text("preview.accept_this"))
@@ -1872,22 +1907,48 @@ class _PreviewDialog:
         self.export_button = qt.QPushButton(self._translator.text("preview.export"))
         self.export_full_diff = qt.QCheckBox(self._translator.text("preview.export_full_diff"))
         self.export_full_diff.setChecked(False)
+        self.export_full_diff.setVisible(False)
         self.apply_button = qt.QPushButton(self._translator.text("preview.apply"))
         self.apply_status_label = qt.QLabel()
         self.back_settings_button = qt.QPushButton(self._translator.text("preview.back_settings"))
         self.cancel_button = qt.QPushButton(self._translator.text("common.cancel"))
         for button in (self.accept_this_button, self.reject_this_button,
-                       self.next_undecided_button, self.accept_file_button,
-                       self.reject_file_button,
-                       self.accept_filter_button, self.reject_filter_button):
+                       self.next_undecided_button, self.undo_button, self.redo_button):
             buttons.addWidget(button)
+        self.more_button = qt.QToolButton()
+        self.more_button.setText(self._translator.text("preview.more_actions"))
+        self.more_menu = qt.QMenu(self.more_button)
+        self.more_button.setMenu(self.more_menu)
+        popup_mode = _enum_value(qt.QToolButton, "InstantPopup")
+        if popup_mode is not None:
+            self.more_button.setPopupMode(popup_mode)
+        action_type = getattr(getattr(qt, "QtGui", None), "QAction", None)
+        action_type = action_type or getattr(qt, "QAction", None)
+        self._more_actions = []
+        self._group_more_actions = []
+        self._more_action_by_button = {}
+        for button in (self.accept_file_button, self.reject_file_button,
+                       self.accept_filter_button, self.reject_filter_button,
+                       self.accept_all_button, self.reject_all_button,
+                       self.reset_current_button, self.export_button):
+            button.setVisible(False)
+            if action_type is not None:
+                action = action_type(button.text(), self.more_menu)
+                action.triggered.connect(lambda _checked=False, target=button: target.click())
+                action.setEnabled(button.isEnabled())
+                self.more_menu.addAction(action)
+                self._more_actions.append(action)
+                self._more_action_by_button[button] = action
+        for button in (self.accept_group_button, self.reject_group_button):
+            button.setVisible(False)
+            action = action_type(button.text(), self.more_menu) if action_type is not None else None
+            if action is not None:
+                action.triggered.connect(lambda _checked=False, target=button: target.click())
+                self.more_menu.addAction(action)
+                self._more_actions.append(action)
+                self._group_more_actions.append(action)
+        buttons.addWidget(self.more_button)
         layout.addLayout(buttons)
-        tools = qt.QHBoxLayout()
-        for button in (self.accept_all_button, self.reject_all_button,
-                       self.undo_button, self.redo_button, self.reset_current_button,
-                       self.export_button, self.export_full_diff):
-            tools.addWidget(button)
-        layout.addLayout(tools)
         actions = qt.QHBoxLayout()
         actions.addWidget(self.apply_status_label)
         actions.addStretch(1)
@@ -1912,9 +1973,10 @@ class _PreviewDialog:
         self.apply_button.clicked.connect(self._apply)
         self.back_settings_button.clicked.connect(self._back_to_settings)
         self.cancel_button.clicked.connect(self.dialog.reject)
-        self.export_button.setEnabled(
-            getattr(self._services, "export_preview", None) is not None
-        )
+        self.export_button.setEnabled(getattr(self._services, "export_preview", None) is not None)
+        export_action = self._more_action_by_button.get(self.export_button)
+        if export_action is not None:
+            export_action.setEnabled(self.export_button.isEnabled())
         self._bind_shortcuts()
 
     def _disable_default_buttons(self) -> None:
@@ -1994,8 +2056,24 @@ class _PreviewDialog:
         )
         if export is None:
             return
-        checkbox = getattr(self, "export_full_diff", None)
-        include_full_diff = bool(checkbox is not None and checkbox.isChecked())
+        dialog = self._qt.QDialog(self.dialog)
+        dialog.setWindowTitle(self._translator.text("preview.export_options_title"))
+        layout = self._qt.QVBoxLayout(dialog)
+        checkbox = self._qt.QCheckBox(self._translator.text("preview.export_full_diff"))
+        checkbox.setChecked(False)
+        layout.addWidget(checkbox)
+        actions = self._qt.QHBoxLayout()
+        actions.addStretch(1)
+        cancel = self._qt.QPushButton(self._translator.text("common.cancel"))
+        confirm = self._qt.QPushButton(self._translator.text("preview.export"))
+        actions.addWidget(cancel)
+        actions.addWidget(confirm)
+        layout.addLayout(actions)
+        cancel.clicked.connect(dialog.reject)
+        confirm.clicked.connect(dialog.accept)
+        if exec_dialog(dialog) != 1:
+            return
+        include_full_diff = checkbox.isChecked()
         try:
             export(self._planned, self._previews, include_full_diff, self._qt, self.dialog)
         except Exception as error:
@@ -2377,6 +2455,7 @@ class _PreviewDialog:
         )
         if row is not None:
             self._set_current_row(row)
+            self.detail_tabs.setCurrentIndex(0)
 
     def _set_current_row(self, row: int) -> None:
         table = getattr(self, "table_view", None)
@@ -2475,6 +2554,11 @@ class _PreviewDialog:
         if count_label is not None:
             count_label.setText(self._translator.text(
                 "preview.visible_count", visible=len(visible_entries), total=len(self._entries)))
+        more_filters = getattr(self, "more_filters_button", None)
+        if more_filters is not None:
+            active = sum(getattr(self, name).currentData() is not None for name in (
+                "file_filter", "category_filter", "risk_filter", "source_filter"))
+            more_filters.setText(self._translator.text("preview.more_filters", count=active))
         self._update_summary()
 
     def _update_summary(self) -> None:
@@ -2523,6 +2607,9 @@ class _PreviewDialog:
             button = getattr(self, name, None)
             if button is not None:
                 button.setEnabled(has_current)
+                action = getattr(self, "_more_action_by_button", {}).get(button)
+                if action is not None:
+                    action.setEnabled(has_current)
         # An explicit repeat of a bulk action is allowed to reverse prior
         # per-item decisions, so both global buttons stay available while the
         # preview contains changes.  Applying remains blocked until every
@@ -2532,6 +2619,9 @@ class _PreviewDialog:
             button = getattr(self, name, None)
             if button is not None:
                 button.setEnabled(has_entries)
+                action = getattr(self, "_more_action_by_button", {}).get(button)
+                if action is not None:
+                    action.setEnabled(has_entries)
         self._update_history_controls()
         accepted_files = self._accepted_count_by_file
         complete = totals["undecided"] == 0
@@ -2615,6 +2705,8 @@ class _PreviewDialog:
             visible_entries = self._visible_entries()
         if row < 0 or row >= len(visible_entries):
             self.detail.clear()
+            self.source_detail.clear()
+            self.target_detail.clear()
             self._update_group_controls(None)
             if hasattr(self, "undo_button"):
                 self._update_history_controls()
@@ -2642,16 +2734,23 @@ class _PreviewDialog:
             group_text = "\n" + self._translator.text(
                 explanation_key, count=count, files=files)
         separator = self._translator.text("common.label_separator")
+        decision = preview.decision(change.change_id)
+        decision_state = (
+            "accepted" if decision is not None and decision.value.startswith("accept")
+            else "skipped" if decision is not None and decision.value.startswith("reject")
+            else "pending"
+        )
         self.detail.setPlainText("\n".join((
             f"{self._translator.text('preview.rule')}{separator}{change.rule_source}",
             f"{self._translator.text('preview.category')}{separator}"
             f"{self._translator.text(f'preview.category_value.{change.category}')}    "
             f"{self._translator.text('preview.risk')}{separator}"
             f"{self._translator.text(f'preview.risk_value.{change.risk.lower()}')}",
-            f"{self._translator.text('preview.before')}{separator}{source_line}",
-            f"{self._translator.text('preview.after')}{separator}{target_line}"
+            f"{self._translator.text('preview.status.' + decision_state)}"
             f"{group_text}{diagnostic_text}",
         )))
+        self.source_detail.setPlainText(source_line)
+        self.target_detail.setPlainText(target_line)
         self._update_group_controls(change.file_id)
         if hasattr(self, "undo_button"):
             self._update_history_controls()
@@ -2769,6 +2868,9 @@ class _PreviewDialog:
         guidance.setVisible(visible)
         accept.setVisible(visible)
         reject.setVisible(visible)
+        for action in getattr(self, "_group_more_actions", ()):
+            action.setVisible(visible)
+            action.setEnabled(visible)
 
     def _decide_current_file_groups(self, accepted):
         entry = self._current_entry()

@@ -61,6 +61,11 @@ def _preview_dialog(
     return dialog, preview, dialog.table_model
 
 
+def _detail_text(dialog):
+    return "\n".join((dialog.detail.toPlainText(), dialog.source_detail.toPlainText(),
+                      dialog.target_detail.toPlainText()))
+
+
 def test_apply_button_uses_singular_for_one_change():
     dialog, _preview, _model = _preview_dialog(change_count=1, current_row=0)
 
@@ -69,12 +74,28 @@ def test_apply_button_uses_singular_for_one_change():
     assert dialog.apply_button.text() == "Apply 1 change to 1 file"
 
 
+def test_preview_keeps_primary_review_actions_visible_and_collapses_secondary_filters():
+    dialog, _preview, _model = _preview_dialog(change_count=1, current_row=0)
+
+    assert dialog.accept_this_button.isVisible()
+    assert dialog.reject_this_button.isVisible()
+    assert dialog.next_undecided_button.isVisible()
+    assert dialog.undo_button.isVisible()
+    assert dialog.redo_button.isVisible()
+    assert dialog.more_button.isVisible()
+    assert not dialog.accept_all_button.isVisible()
+    assert not dialog.accept_file_button.isVisible()
+    assert not dialog.export_button.isVisible()
+    assert not dialog.extra_filters.isVisible()
+    assert dialog.more_filters_button.text() == "More filters (0)"
+
+
 def test_preview_detail_uses_translated_label_separator():
     translator = Translator("zh-Hans")
     dialog, _preview, _model = _preview_dialog(
         change_count=1, current_row=0, language="zh-Hans")
 
-    detail = dialog.detail.toPlainText()
+    detail = _detail_text(dialog)
     label = translator.text("preview.rule")
     assert f"{label}: " not in detail
     assert (
@@ -105,10 +126,10 @@ def test_preview_context_is_sliced_from_source_only_when_requested():
     dialog = _PreviewDialog(
         make_with_table(), planned, (preview,), Translator("en"), None)
 
-    detail = dialog.detail.toPlainText()
+    detail = _detail_text(dialog)
     assert "前【漢字】后" in detail
     dialog.show_source_context.setChecked(True)
-    detail = dialog.detail.toPlainText()
+    detail = _detail_text(dialog)
     assert "<p>前【漢字】后</p>" in detail
 
 
@@ -126,7 +147,7 @@ def test_preview_window_splitter_and_size_preferences_restore():
     assert dialog.splitter.widgets[0] is dialog.table_view
     assert dialog.splitter.stretch_factors == {0: 3, 1: 1}
     assert dialog.splitter.sizes() == [600, 200]
-    assert dialog.detail.minimumHeight() == 80
+    assert dialog.detail.minimumHeight() == 48
 
 
 def test_preview_window_saves_size_and_splitter_preferences(monkeypatch):
@@ -247,6 +268,8 @@ def _table_dialog(entries, previews, *, current_row=0, category="all", file_id=N
     dialog.risk_filter = qt.QComboBox()
     dialog.summary = qt.QLabel()
     dialog.detail = qt.QPlainTextEdit()
+    dialog.source_detail = qt.QPlainTextEdit()
+    dialog.target_detail = qt.QPlainTextEdit()
     dialog.apply_button = qt.QPushButton()
     dialog.apply_status_label = qt.QLabel()
     dialog.undo_button = qt.QPushButton()
@@ -318,22 +341,19 @@ def test_single_decision_refreshes_only_its_status_cell():
     assert ranges == [(1, 1, 0, 0)]
 
 
-def test_preview_table_uses_interactive_columns_and_resizes_once():
+def test_preview_table_uses_interactive_columns_with_readable_initial_widths():
     dialog, _preview, _model = _preview_dialog()
     header = dialog.table_view.horizontalHeader()
 
     assert [args for name, args in header.calls if name == "setSectionResizeMode"] == [
-        (0, dialog._qt.QHeaderView.Interactive),
-        (1, dialog._qt.QHeaderView.Interactive),
-        (2, dialog._qt.QHeaderView.Interactive),
-        (5, dialog._qt.QHeaderView.Interactive),
-        (6, dialog._qt.QHeaderView.Interactive),
-        (3, dialog._qt.QHeaderView.Stretch),
-        (4, dialog._qt.QHeaderView.Stretch),
+        (column, dialog._qt.QHeaderView.Interactive) for column in range(7)
     ]
     assert ("setResizeContentsPrecision", (50,)) in header.calls
     assert not any(name == "setStretchLastSection" for name, _args in header.calls)
-    assert dialog.table_view.calls.count(("resizeColumnsToContents", ())) == 1
+    assert [args for name, args in dialog.table_view.calls if name == "setColumnWidth"] == [
+        (column, width) for column, width in enumerate((84, 96, 64, 142, 142, 126, 64))
+    ]
+    assert not any(name == "resizeColumnsToContents" for name, _args in dialog.table_view.calls)
 
 
 def test_preview_filters_use_minimum_contents_length():
@@ -357,7 +377,7 @@ def test_preview_dialog_single_decisions_update_only_selected_row_and_summary():
     assert dialog.apply_status_label.text() == (
         "Remaining: 2\n" + dialog._translator.text("preview.shortcut_hint")
     )
-    assert "己" in dialog.detail.toPlainText()
+    assert "己" in _detail_text(dialog)
     assert dialog.apply_button.isEnabled() is False
 
     dialog._reject_this()
@@ -366,7 +386,7 @@ def test_preview_dialog_single_decisions_update_only_selected_row_and_summary():
     assert "Accepted: 1" in dialog.summary.text()
     assert "Skipped: 1" in dialog.summary.text()
     assert "Undecided: 1" in dialog.summary.text()
-    assert "乙" in dialog.detail.toPlainText()
+    assert "乙" in _detail_text(dialog)
     dialog._accept_this()
     assert dialog.apply_status_label.text() == (
         "Ready to apply.\n" + dialog._translator.text("preview.shortcut_hint")
@@ -494,8 +514,8 @@ def test_preview_decoding_is_display_only_and_group_feedback_clears_on_normal_ac
     row = dialog.table_model.rows.row_values(1)
 
     assert row[4] == "【A&B】"
-    assert "A&B" in dialog.detail.toPlainText()
-    assert "A&amp;B" not in dialog.detail.toPlainText()
+    assert "A&B" in _detail_text(dialog)
+    assert "A&amp;B" not in _detail_text(dialog)
     assert change.target == "A&amp;B"
 
     dialog._reject_this()
@@ -689,7 +709,7 @@ def test_rule_occurrence_is_not_labeled_as_a_language_tag_group():
     assert dialog.accept_group_button.isVisible() is False
     assert "Language tag group" not in row[5]
     assert "rule occurrence" in row[5].lower()
-    assert "language tag" not in dialog.detail.toPlainText().lower()
+    assert "language tag" not in _detail_text(dialog).lower()
 
 
 def test_language_group_row_includes_change_and_file_counts():
@@ -755,8 +775,8 @@ def test_plan_diagnostics_are_visible_in_summary_and_detail():
     translator = Translator("en")
     assert translator.text("diagnostic.mixed_script", count=1) in dialog.summary.text()
     assert translator.text("diagnostic.inline_boundary", count=1) in dialog.summary.text()
-    assert translator.text("diagnostic.mixed_script", count=1) in dialog.detail.toPlainText()
-    assert "mixed script input" not in dialog.detail.toPlainText()
+    assert translator.text("diagnostic.mixed_script", count=1) in _detail_text(dialog)
+    assert "mixed script input" not in _detail_text(dialog)
 
 
 def test_summary_lists_skipped_source_href_with_original_line_and_column():
@@ -915,8 +935,36 @@ def test_preview_export_failure_is_shown_to_the_user(monkeypatch):
         "warning",
         staticmethod(lambda parent, title, message: warnings.append((parent, title, message))),
     )
+    def accept_options(export_dialog):
+        export_dialog.accept()
+        return 1
+    monkeypatch.setattr(preview_window, "exec_dialog", accept_options)
 
     dialog._export_preview()
 
     assert len(warnings) == 1
     assert "disk full" in warnings[0][2]
+
+
+def test_export_options_are_per_export_and_cancel_has_no_effect(monkeypatch):
+    dialog, _preview, _model = _preview_dialog()
+    calls = []
+    dialog._services = SimpleNamespace(export_preview=lambda *args: calls.append(args[2]))
+
+    def choose_full_diff(export_dialog):
+        checkbox = export_dialog._layout.children[0]
+        checkbox.setChecked(True)
+        export_dialog.accept()
+        return 1
+
+    monkeypatch.setattr(preview_window, "exec_dialog", choose_full_diff)
+    dialog._export_preview()
+    assert calls == [True]
+
+    def cancel(export_dialog):
+        export_dialog.reject()
+        return 0
+
+    monkeypatch.setattr(preview_window, "exec_dialog", cancel)
+    dialog._export_preview()
+    assert calls == [True]
