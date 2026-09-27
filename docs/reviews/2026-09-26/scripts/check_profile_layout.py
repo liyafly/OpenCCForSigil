@@ -44,12 +44,13 @@ def main():
     parser.add_argument("--verify", action="store_true")
     parser.add_argument("--width", type=int, default=960)
     parser.add_argument("--height", type=int, default=640)
+    parser.add_argument("--language", choices=("en", "zh-Hans", "zh-Hant"), default="en")
     options = parser.parse_args()
     options.output.mkdir(parents=True, exist_ok=True)
     qt = load_qt()
     app = ensure_application(qt)
     profiles = _profiles()
-    translator = Translator("en")
+    translator = Translator(options.language)
     current = Profile(id="current-run", name="Current settings", conversion="s2t",
                       scope="selected", ruleset_ids=("default", "session"),
                       extras=(("diagnose_mixed", True),))
@@ -67,12 +68,13 @@ def main():
     filtered_id = manager._current().id if manager._current() else None
     filter_count = manager.profile_list.count()
     compare_text = manager.comparison_summary.toPlainText()
-    comparison_has_direction = "Direction" in compare_text and "→" in compare_text
-    comparison_has_rules = "session" in compare_text and "candidate" in compare_text
-    comparison_has_panel_option = "Diagnose mixed scripts" in compare_text
-    comparison_has_force_pivot = "Force pivot" in compare_text
+    comparison_has_direction = translator.text("profile.conversion") in compare_text and "→" in compare_text
+    comparison_has_rules = (translator.text("profile.rules") in compare_text
+                            and "candidate" in compare_text)
+    comparison_has_panel_option = translator.text("options.diagnose_mixed") in compare_text
+    comparison_has_force_pivot = translator.text("options.force_pivot") in compare_text
     manager.detail_tabs.setCurrentIndex(1)
-    manager.dialog.grab().save(str(options.output / "profiles-compare.png"))
+    manager.dialog.grab().save(str(options.output / f"profiles-compare-{options.language}.png"))
     manager.rules_checks["candidate"].setChecked(False)
     manager.rules_checks["session"].setChecked(True)
     app.processEvents()
@@ -180,7 +182,7 @@ def main():
     unavailable_view_kept = (
         unavailable_manager._current().conversion == "s2twp_jieba"
         and unavailable_manager.use_button.isEnabled()
-        and "checking availability" in unavailable_text
+        and translator.text("profile.checking") in unavailable_text
     )
 
     screen = app.primaryScreen()
@@ -195,6 +197,7 @@ def main():
         "git_head": subprocess.run(["git", "rev-parse", "HEAD"], check=True,
                                     capture_output=True, text=True).stdout.strip(),
         "requested_window": [options.width, options.height],
+        "language": options.language,
         "profile_count": len(profiles),
         "filter_count": filter_count,
         "filtered_current_id": filtered_id,

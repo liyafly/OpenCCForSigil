@@ -5,6 +5,7 @@ import json
 import os
 import platform
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 import uuid
@@ -14,6 +15,7 @@ import PySide6
 
 from logging_ext.history import HistoryStore
 from ui import history_window
+from ui.i18n import Translator
 from ui.qt import ensure_application, load_qt
 
 
@@ -50,10 +52,12 @@ def main():
     parser.add_argument("--verify", action="store_true")
     parser.add_argument("--width", type=int, default=960)
     parser.add_argument("--height", type=int, default=640)
+    parser.add_argument("--language", choices=("en", "zh-Hans", "zh-Hant"), default="en")
     options = parser.parse_args()
     options.output.mkdir(parents=True, exist_ok=True)
-    app = ensure_application(load_qt(), language="en")
+    app = ensure_application(load_qt(), language=options.language)
     qt = load_qt()
+    translator = Translator(options.language)
     checks = {}
     with tempfile.TemporaryDirectory(prefix="opencc-history-") as temporary:
         root = Path(temporary) / "history"
@@ -61,7 +65,7 @@ def main():
         HistoryStore(root).replace_sessions(records)
         opened, exported = [], []
         dialog = history_window.show_history(
-            root, language="en", on_inspect=opened.append,
+            root, language=options.language, on_inspect=opened.append,
             on_export=lambda record, _full, _path: exported.append(record), qt_widgets=qt)
         dialog.resize(options.width, options.height)
         app.processEvents()
@@ -126,14 +130,17 @@ def main():
         prompts = []
         history_window.ask_confirmation = lambda _qt, _parent, _title, prompt, _tr: (
             prompts.append(prompt) or False)
+        prompt_template = translator.text(
+            "history.cleanup_prompt", sessions="__SESSION__", logs="__LOGS__")
+        expected_prompt = re.escape(prompt_template).replace(
+            re.escape("__SESSION__"), r"\d+").replace(re.escape("__LOGS__"), r"\d+")
         before = (root / "index.json").read_bytes()
         dialog.cleanup_button.click()
         app.processEvents()
         checks["cleanup_is_global_and_cancel_preserves_bytes"] = (
-            len(prompts) == 1 and "full history" in prompts[0].casefold()
-            and "1 old sessions" in prompts[0].casefold()
+            len(prompts) == 1 and re.fullmatch(expected_prompt, prompts[0]) is not None
             and (root / "index.json").read_bytes() == before)
-        dialog.grab().save(str(options.output / "history-en.png"))
+        dialog.grab().save(str(options.output / f"history-{options.language}.png"))
         dialog.close()
 
     report = {
@@ -144,7 +151,10 @@ def main():
         "screen_device_pixel_ratio": app.primaryScreen().devicePixelRatio(),
         "git_head": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
         "requested_window": [options.width, options.height], "history_count": 1000,
+        "language": options.language,
         "checks": checks,
+        "cleanup_prompt": prompts,
+        "cleanup_prompt_pattern": expected_prompt,
     }
     (options.output / "history.json").write_text(
         json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

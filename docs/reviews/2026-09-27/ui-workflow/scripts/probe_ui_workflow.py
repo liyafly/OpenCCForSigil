@@ -5,6 +5,7 @@ No EPUB or installed plugin preferences are read or changed.
 """
 
 import argparse
+from dataclasses import replace
 import json
 import platform
 from pathlib import Path
@@ -58,15 +59,41 @@ def probe(qt, app, output, language, storage_root):
     )
     panel = config.options_panel
     panel.checks["builtin_rules_enabled"].setChecked(False)
-    actual = services.current_profile("s2t", panel.values())
-    label = panel.ruleset_label.text()
+    panel._update_profile_label("s2t")
+    off_label = panel.ruleset_label.text()
+    off_profile = services.current_profile("s2t", panel.values())
+    panel.checks["builtin_rules_enabled"].setChecked(True)
+    panel._update_profile_label("s2t")
+    on_label = panel.ruleset_label.text()
+    on_profile = services.current_profile("s2t", panel.values())
+    panel._update_profile_label("tw2sp")
+    tw2sp_label = panel.ruleset_label.text()
+    tw2sp_on = services.current_profile("tw2sp", panel.values())
+    enabled_snapshot = services.freeze_rules(replace(
+        services.active, conversion="tw2sp", builtin_rules_enabled=True))
+    disabled_snapshot = services.freeze_rules(replace(
+        services.active, conversion="tw2sp", builtin_rules_enabled=False))
+    standard_snapshot = services.freeze_rules(replace(
+        services.active, conversion="s2t", builtin_rules_enabled=True))
     result = {
         "language": language,
         "builtin_summary": {
             "saved_profile_value": services.active.builtin_rules_enabled,
-            "effective_value": actual.builtin_rules_enabled,
-            "summary_text": label,
-            "summary_matches_effective": tr.text("options.builtin_off") in label,
+            "off_effective_value": off_profile.builtin_rules_enabled,
+            "off_summary": off_label,
+            "off_summary_matches_effective": tr.text("options.builtin_off") in off_label,
+            "on_effective_value": on_profile.builtin_rules_enabled,
+            "on_summary": on_label,
+            "on_summary_matches_effective": tr.text("options.builtin_on") in on_label,
+            "tw2sp_summary": tw2sp_label,
+            "tw2sp_summary_enabled": tr.text("options.builtin_on") in tw2sp_label,
+            "tw2sp_effective_value": tw2sp_on.builtin_rules_enabled,
+            "enabled_tw2sp_builtin_rules": [
+                rule.id for rule in enabled_snapshot.rules if rule.id.startswith("builtin-")],
+            "disabled_tw2sp_builtin_rules": [
+                rule.id for rule in disabled_snapshot.rules if rule.id.startswith("builtin-")],
+            "enabled_s2t_builtin_rules": [
+                rule.id for rule in standard_snapshot.rules if rule.id.startswith("builtin-")],
         },
     }
     result["settings"] = capture(config.dialog, app, output, f"settings-{language}")
@@ -87,12 +114,12 @@ def probe(qt, app, output, language, storage_root):
         translator=tr,
     )
     result["rules"] = capture(rules.dialog, app, output, f"rules-{language}")
-    viewport = rules.content_scroll.viewport()
+    viewport = rules.editor_scroll.viewport()
     position = rules.source_edit.mapTo(viewport, QPoint(0, 0))
     result["rules"]["source_editor_visible_in_viewport"] = viewport.rect().contains(
         position) and viewport.rect().contains(
             position + QPoint(rules.source_edit.width() - 1, rules.source_edit.height() - 1))
-    result["rules"]["scroll_range"] = rules.content_scroll.verticalScrollBar().maximum()
+    result["rules"]["scroll_range"] = rules.editor_scroll.verticalScrollBar().maximum()
     rules.dialog.hide()
 
     change = TokenChange(
@@ -120,6 +147,7 @@ def probe(qt, app, output, language, storage_root):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--verify", action="store_true")
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     qt = load_qt()
@@ -133,6 +161,19 @@ def main():
             "results": [probe(qt, app, args.output, language, Path(temporary) / language)
                         for language in ("en", "zh-Hans", "zh-Hant")],
         }
+    if args.verify:
+        for item in report["results"]:
+            summary = item["builtin_summary"]
+            assert summary["saved_profile_value"] is True
+            assert summary["off_effective_value"] is False
+            assert summary["off_summary_matches_effective"]
+            assert summary["on_effective_value"] is True
+            assert summary["on_summary_matches_effective"]
+            assert summary["tw2sp_summary_enabled"]
+            assert summary["tw2sp_effective_value"] is True
+            assert len(summary["enabled_tw2sp_builtin_rules"]) == 4
+            assert not summary["disabled_tw2sp_builtin_rules"]
+            assert not summary["enabled_s2t_builtin_rules"]
     text = json.dumps(report, ensure_ascii=False, indent=2) + "\n"
     (args.output / "baseline.json").write_text(text, encoding="utf-8")
     print(text, end="")

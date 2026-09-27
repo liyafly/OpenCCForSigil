@@ -59,10 +59,9 @@ def exercise_batch_decisions(qt, app, language, output_dir):
             if scope is not None:
                 combo = combos[0]
                 combo.setCurrentIndex(combo.findData(scope))
+            summary_prefix = translator.text("preview.batch_summary").split("{")[0].strip()
             details["summary"] = next(label.text() for label in labels
-                                       if "Will change" in label.text()
-                                       or "将更改" in label.text()
-                                       or "將變更" in label.text())
+                                       if label.text().startswith(summary_prefix))
             confirm_button = next(button for button in buttons
                                   if button.text().startswith(
                                       translator.text("preview.batch_confirm").split("{")[0])
@@ -87,7 +86,7 @@ def exercise_batch_decisions(qt, app, language, output_dir):
     for change in plain[2:5]:
         previews[0].reject_this(change.change_id)
     dialog._recompute_counts()
-    b1 = complete(dialog, screenshot="batch-b1-dialog-en.png")
+    b1 = complete(dialog, screenshot=f"batch-b1-dialog-{language}.png")
     assert b1["enabled"] and "5" in b1["summary"]
     assert sum((decision := previews[0].decision(change.change_id)) is not None
                and decision.value.startswith("accept") for change in plain) == 7
@@ -160,7 +159,10 @@ def exercise_batch_decisions(qt, app, language, output_dir):
             translator.text("preview.batch_stale") in label.text() for label in labels)
         confirm_button = next(
             button for button in buttons
-            if button.text().startswith("Apply to "))
+            if button.text().startswith(
+                translator.text("preview.batch_confirm").split("{")[0])
+            or button.text().startswith(
+                translator.text("preview.batch_confirm_overwrite").split("{")[0]))
         assert confirm_button.isEnabled()
         assert stale_details["stale_visible"] is expect_stale
         confirm_button.click()
@@ -611,6 +613,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--verify", action="store_true")
+    parser.add_argument("--width", type=int, default=960)
+    parser.add_argument("--height", type=int, default=640)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     qt = load_qt()
@@ -627,6 +631,7 @@ def main():
     results = []
     for language in ("en", "zh-Hans", "zh-Hant"):
         window = _PreviewDialog(qt, planned, (PreviewSession(plan),), Translator(language))
+        window.dialog.resize(args.width, args.height)
         window.dialog.show()
         app.processEvents()
         minimum = window.dialog.minimumSizeHint()
@@ -638,9 +643,8 @@ def main():
         }
         window.dialog.grab().save(str(args.output / f"preview-{language}.png"))
         item["group_actions"] = exercise_group_actions(qt, app, language)
-        if language == "en":
-            item["batch_decisions"] = exercise_batch_decisions(
-                qt, app, language, args.output)
+        item["batch_decisions"] = exercise_batch_decisions(
+            qt, app, language, args.output)
         item["filter_interactions"] = exercise_filters(qt, app, language, args.output)
         item["diagnostic_interactions"] = exercise_diagnostics(
             qt, app, language, args.output)
@@ -668,8 +672,11 @@ def main():
         for item in results:
             assert item["minimum_width"] <= 1000, item
             assert item["minimum_height"] < 600, item
-            assert item["initial_width"] <= 1200, item
-            assert item["initial_height"] <= 720, item
+            # A requested 1280×800 logical size is intentionally retained in
+            # offscreen tests even when the synthetic screen reports 800×800;
+            # it is not evidence of physical-screen clamping.
+            assert item["initial_width"] <= max(1200, args.width), item
+            assert item["initial_height"] <= max(720, args.height), item
             assert item["table_height"] >= 150, item
             assert all(item["group_actions"].values()), item
             assert all(item["filter_interactions"].values()), item
