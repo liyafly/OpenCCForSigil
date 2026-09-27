@@ -359,9 +359,9 @@ class RunOptionsPanel:
             "options.current_profile", name=profile_display_name(active, self._tr), status=status))
         self.ruleset_label.setText(self._tr.text(
             "options.active_rulesets",
-            ids=", ".join(active.ruleset_ids) or "—",
+            ids=", ".join(current.ruleset_ids) or "—",
             builtin=(self._tr.text("options.builtin_on")
-                     if getattr(active, "builtin_rules_enabled", True)
+                     if current.builtin_rules_enabled
                      else self._tr.text("options.builtin_off")),
         ))
 

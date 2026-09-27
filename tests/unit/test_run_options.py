@@ -407,6 +407,32 @@ def test_profile_label_marks_changed_settings(tmp_path):
     assert panel.label == "Current: Conservative (modified)"
 
 
+def test_profile_label_reports_effective_builtin_setting_without_saving(tmp_path):
+    storage = SimpleNamespace(paths=SimpleNamespace(
+        root=tmp_path, profiles=tmp_path / "profiles", rules=tmp_path / "rules"))
+    settings = RunSettings(
+        storage, SimpleNamespace(), {}, language="en", session_id="test-session")
+    settings.active = Profile(id="saved", name="Saved", builtin_rules_enabled=True)
+    panel = object.__new__(RunOptionsPanel)
+    panel._services = settings
+    panel._tr = SimpleNamespace(text=lambda key, **values: {
+        "profile.default_name": "Conservative",
+        "options.profile_modified": " (modified)",
+        "options.current_profile": "Current: {name}{status}",
+        "options.active_rulesets": "Rules: {ids} · built-in {builtin}",
+        "options.builtin_on": "on",
+        "options.builtin_off": "off",
+    }[key].format(**values))
+    panel.profile_label = SimpleNamespace(setText=lambda value: setattr(panel, "label", value))
+    panel.ruleset_label = SimpleNamespace(setText=lambda value: setattr(panel, "rules", value))
+    panel.values = lambda: {"builtin_rules_enabled": False, "ruleset_ids": ["default"]}
+
+    panel._update_profile_label("tw2sp")
+
+    assert panel.rules == "Rules: default · built-in off"
+    assert settings.active.builtin_rules_enabled is True
+
+
 def test_profile_label_does_not_mark_an_untouched_profile_modified(tmp_path):
     from app.settings import profile_options
 
