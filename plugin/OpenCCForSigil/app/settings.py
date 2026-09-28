@@ -9,6 +9,7 @@ from uuid import uuid4
 from app.profiles import Profile, ProfileFutureSchemaError, ProfileStore
 from core.models import RuleSnapshot
 from rules.builtin import with_builtin_rules
+from rules.precedence import base_direction
 from rules.store import RuleSet, RuleSetFutureSchemaError, RuleStore
 from opencc_backend.configs import comparison_configs
 from ui.i18n import Translator, plugin_window_title, profile_display_name, show_error_details
@@ -292,12 +293,14 @@ class RunSettings:
         rulesets, errors = self.rules.list()
         previous = {item.id: item for item in rulesets}
         values = {item.id: item for item in rulesets}
-        values.setdefault("default", RuleSet("default"))
+        values.setdefault(
+            "default", RuleSet("default", default_direction=base_direction(config)))
         identifiers = tuple(dict.fromkeys((*self.active.ruleset_ids, *values)))
         initial_id = next((item for item in self.active.ruleset_ids if item in values),
                           identifiers[0] if identifiers else "default")
         for identifier in identifiers:
-            values.setdefault(identifier, RuleSet(identifier))
+            values.setdefault(
+                identifier, RuleSet(identifier, default_direction=base_direction(config)))
         available_configs, jieba_pending = self._available_config_options()
         result = show_rules_window(
             values[initial_id].rules, translator=translator, official_convert=self.backend,

@@ -769,6 +769,7 @@ class RuleManagerDialog:
         self.source_edit.returnPressed.connect(self._submit_editor)
         self.target_edit.returnPressed.connect(self._submit_editor)
         self.type_combo.currentIndexChanged.connect(self._type_changed)
+        self.direction_combo.currentIndexChanged.connect(self._update_direction_warning)
         self.table.itemSelectionChanged.connect(self._selection_changed)
         self.search_edit.textChanged.connect(self._filters_changed)
         self.activity_filter.currentIndexChanged.connect(self._filters_changed)
@@ -858,12 +859,19 @@ class RuleManagerDialog:
         current = self._rulesets.get(self._ruleset_id)
         if current is None or not hasattr(self, "direction_combo"):
             return
-        direction = self.direction_combo.findData(current.default_direction)
+        default_direction = current.default_direction
+        if default_direction == "*":
+            default_direction = base_direction(self._config)
+        direction = self.direction_combo.findData(default_direction)
         if direction >= 0:
             self.direction_combo.setCurrentIndex(direction)
+        self._update_direction_warning()
         scope = self.scope_combo.findData(current.default_scope)
         if scope >= 0:
             self.scope_combo.setCurrentIndex(scope)
+
+    def _update_direction_warning(self, *_args) -> None:
+        self._refresh_editor_mode()
 
     def _refresh_builtin_info(self) -> None:
         active = bool(self._run_options.get("builtin_rules_enabled", True))
@@ -921,10 +929,13 @@ class RuleManagerDialog:
         if not hasattr(self, "editor_mode_label"):
             return
         if self._editing_rule_id:
-            self.editor_mode_label.setText(self._labels["editor_edit_mode"].format(
-                id=self._editing_rule_id))
+            mode = self._labels["editor_edit_mode"].format(id=self._editing_rule_id)
         else:
-            self.editor_mode_label.setText(self._labels["editor_new_mode"])
+            mode = self._labels["editor_new_mode"]
+        if (hasattr(self, "direction_combo")
+                and str(self.direction_combo.currentData()) == "*"):
+            mode += " · " + self._labels["wildcard_direction_warning"]
+        self.editor_mode_label.setText(mode)
         if hasattr(self, "update_button"):
             self.update_button.setEnabled(bool(self._editing_rule_id))
         if hasattr(self, "add_button"):
@@ -1275,6 +1286,8 @@ class RuleManagerDialog:
             self._labels["detail_source"].format(source=rule.source),
             self._labels["detail_target"].format(target=target),
         )
+        if rule.direction == "*":
+            lines += (self._labels["wildcard_direction_warning"],)
         if rule.action != "protect" and (rule.target == "" or rule.target.isspace()):
             lines += (self._labels["detail_target_raw"].format(target=repr(rule.target)),)
         self.selection_details.setPlainText("\n".join(lines))

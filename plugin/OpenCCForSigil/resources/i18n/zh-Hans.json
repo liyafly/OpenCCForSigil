@@ -451,6 +451,7 @@
   "rules.conflicts_title": "规则冲突",
   "rules.conflicts_count": "规则冲突（{count}）",
   "rules.direction_any": "任意方向",
+  "rules.wildcard_direction_warning": "此规则也会用于其他方向（包括繁→简）",
   "rules.default_set_name": "默认规则集",
   "rules.ruleset": "规则集",
   "rules.new_ruleset": "新建",

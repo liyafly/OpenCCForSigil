@@ -355,6 +355,38 @@ def test_direction_default_is_selected_from_current_config():
     assert combo.selected == "t2s"
 
 
+def test_new_rule_in_fresh_default_set_uses_current_direction():
+    manager = RuleManagerDialog(
+        make_with_table(), (), translator=Translator("en"), config="s2t",
+        rulesets=(RuleSet("default"),), ruleset_id="default",
+    )
+
+    assert manager.direction_combo.currentData() == "s2t"
+    manager.source_edit.setText("里")
+    manager.target_edit.setText("裡")
+    manager._add()
+
+    assert manager.rules[-1].direction == "s2t"
+
+
+def test_wildcard_direction_shows_reverse_warning():
+    wildcard = Rule(id="wildcard", source="里", target="裡", direction="*")
+    manager = RuleManagerDialog(
+        make_with_table(), (wildcard,), translator=Translator("en"), config="s2t",
+        rulesets=(RuleSet("default", (wildcard,)),), ruleset_id="default",
+    )
+    manager.table.selectRow(0)
+    manager._load_selected()
+    manager._refresh_selection_details()
+
+    warning = Translator("en").text("rules.wildcard_direction_warning")
+    assert warning in manager.editor_mode_label.text()
+    assert warning in manager.selection_details.toPlainText()
+
+    manager.direction_combo.setCurrentIndex(manager.direction_combo.findData("s2t"))
+    assert warning not in manager.editor_mode_label.text()
+
+
 def test_rule_table_is_not_editable_and_conflict_can_select_a_rule():
     class View:
         NoEditTriggers = 0
