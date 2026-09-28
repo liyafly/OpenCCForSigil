@@ -180,6 +180,23 @@ def _run_summary(qt, app, language, output_dir, width, height):
                         summary.text().split("\n", 1)[0]
                     assert translator.text("scope.run_summary_nav_unavailable") in summary.text()
                     assert detail["summary_lines"] <= 2
+                    analyze_button = config._completion_button
+                    assert dialog.windowTitle() == (
+                        f"{translator.text('app.title')} — {translator.text('main.title')}")
+                    assert analyze_button.text() == translator.text("config.continue")
+                    assert config.direction_label.isVisible() and config.combo.isVisible()
+                    alternate_language = "zh-Hans" if language != "zh-Hans" else "en"
+                    scope.language_combo.setCurrentIndex(
+                        scope.language_combo.findData(alternate_language))
+                    app.processEvents()
+                    detail["translated_main_title"] = dialog.windowTitle()
+                    detail["translated_analyze_label"] = analyze_button.text()
+                    assert dialog.windowTitle() == (
+                        f"{translator.text('app.title')} — {translator.text('main.title')}")
+                    assert analyze_button.text() == translator.text("config.continue")
+                    assert config.direction_label.text() == translator.text("config.direction")
+                    scope.language_combo.setCurrentIndex(scope.language_combo.findData(language))
+                    app.processEvents()
                     scope.filter_edit.setText("nav")
                     app.processEvents()
                     QTest.keyClick(scope.filter_edit, Qt.Key.Key_Return)

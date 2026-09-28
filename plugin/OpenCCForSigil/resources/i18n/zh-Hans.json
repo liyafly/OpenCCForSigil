@@ -1,5 +1,6 @@
 {
   "app.title": "OpenCCForSigil",
+  "main.title": "简繁转换",
   "config.title": "转换设置",
   "config.direction": "转换方向",
   "config.explanation": "请明确选择转换方向，插件不会猜测或自动反向转换。",

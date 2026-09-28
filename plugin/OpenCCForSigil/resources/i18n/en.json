@@ -1,5 +1,6 @@
 {
   "app.title": "OpenCCForSigil",
+  "main.title": "Chinese conversion",
   "config.title": "Conversion settings",
   "config.direction": "Conversion direction",
   "config.explanation": "Choose the direction explicitly. The plugin will not guess or reverse it.",

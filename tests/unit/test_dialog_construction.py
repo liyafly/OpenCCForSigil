@@ -121,10 +121,14 @@ def test_scope_and_conversion_configuration_share_one_dialog(monkeypatch):
 
     def execute(dialog):
         executed.append(dialog)
-        summary, tabs, footer = dialog._layout.children
+        summary, direction_row, tabs, footer = dialog._layout.children
         assert isinstance(tabs, qt.QTabWidget)
         assert summary.text().startswith("This run: 1 XHTML")
+        assert direction_row.children[0].text() == "Conversion direction"
+        assert direction_row.children[1].currentData() == "s2t"
         assert len(tabs.calls) == 2
+        assert footer.children[-1].text() == "Analyze and preview"
+        assert dialog.windowTitle() == "OpenCCForSigil — Chinese conversion"
         footer.children[-1].click()
 
     monkeypatch.setattr(preview_window, "exec_dialog", execute)
@@ -137,6 +141,73 @@ def test_scope_and_conversion_configuration_share_one_dialog(monkeypatch):
     assert outcome.accepted is True
     assert outcome.selection.file_ids == ("chapter",)
     assert str(outcome.configuration) == "s2t"
+
+
+def test_merged_dialog_language_change_keeps_analyze_label(monkeypatch):
+    qt = fake_qt.make()
+    monkeypatch.setattr(preview_window, "_load_ui_qt", lambda _translator: qt)
+    monkeypatch.setattr(preview_window, "ensure_application", lambda *_args, **_kwargs: None)
+    captured = {}
+    original_scope_init = preview_window._ScopeDialog.__init__
+    original_config_init = preview_window._ConversionConfigDialog.__init__
+
+    def capture_scope_init(self, *args, **kwargs):
+        original_scope_init(self, *args, **kwargs)
+        captured["scope"] = self
+
+    def capture_config_init(self, *args, **kwargs):
+        original_config_init(self, *args, **kwargs)
+        captured["config"] = self
+        captured["config_page"] = kwargs["container"]
+
+    monkeypatch.setattr(preview_window._ScopeDialog, "__init__", capture_scope_init)
+    monkeypatch.setattr(
+        preview_window._ConversionConfigDialog, "__init__", capture_config_init)
+    translator = Translator("en")
+
+    class Adapter:
+        def text_file_inventory(self):
+            return (TextFile("chapter", "Text/chapter.xhtml"),)
+
+        def selected_ids(self):
+            return ("chapter",)
+
+        def text_files(self, scope):
+            assert scope is Scope.SPINE
+            return (("chapter", "Text/chapter.xhtml"),)
+
+        def nav_id(self):
+            return None
+
+    def execute(dialog):
+        summary, direction_row, _tabs, footer = dialog._layout.children
+        analyze_button = footer.children[-1]
+        scope = captured["scope"]
+        config = captured["config"]
+        assert config.combo not in captured["config_page"]._layout.children
+        assert config.direction_label not in captured["config_page"]._layout.children
+        assert direction_row.children[1] is config.combo
+
+        scope.language_combo.setCurrentIndex(scope.language_combo.findData("zh-Hans"))
+
+        assert dialog.windowTitle() == "OpenCCForSigil — 简繁转换"
+        assert direction_row.children[0].text() == translator.text("config.direction")
+        assert config.combo.currentText() == translator.text("config.s2t")
+        assert analyze_button.text() == translator.text("config.continue")
+
+        config.combo.setCurrentIndex(config.combo.findData("t2s"))
+        assert "繁体中文 → 简体中文" in summary.text()
+        assert analyze_button.text() == translator.text("config.continue")
+        analyze_button.click()
+
+    monkeypatch.setattr(preview_window, "exec_dialog", execute)
+    outcome = preview_window.choose_scope(
+        Adapter(), initial_language="en", translator=translator,
+        available_configs=("s2t", "t2s"),
+    )
+
+    assert outcome.accepted is True
+    assert str(outcome.configuration) == "t2s"
 
 
 def test_conversion_profile_rule_and_history_dialogs_construct(monkeypatch, tmp_path):

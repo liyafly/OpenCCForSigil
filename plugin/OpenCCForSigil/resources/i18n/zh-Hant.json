@@ -1,5 +1,6 @@
 {
   "app.title": "OpenCCForSigil",
+  "main.title": "簡繁轉換",
   "config.title": "轉換設定",
   "config.direction": "轉換方向",
   "config.explanation": "請明確選擇轉換方向，外掛程式不會猜測或自動反向轉換。",

@@ -469,7 +469,7 @@ def choose_scope(
     }
     outer = qt_widgets.QDialog()
     outer.setWindowTitle(plugin_window_title(
-        translator, translator.text("scope.title")))
+        translator, translator.text("main.title")))
     restore_window_size(outer, ui_preferences, "main_dialog_size", (1080, 760))
     outer_layout = qt_widgets.QVBoxLayout(outer)
     tabs = qt_widgets.QTabWidget()
@@ -505,10 +505,15 @@ def choose_scope(
     summary = qt_widgets.QLabel()
     summary.setWordWrap(True)
     outer_layout.addWidget(summary)
+    direction_row = qt_widgets.QHBoxLayout()
+    direction_row.addWidget(config_dialog.direction_label)
+    direction_row.addWidget(config_dialog.combo, 1)
+    direction_row.addStretch(1)
+    outer_layout.addLayout(direction_row)
     outer_layout.addWidget(tabs)
     footer = qt_widgets.QHBoxLayout()
     cancel_button = qt_widgets.QPushButton(translator.text("common.cancel"))
-    analyze_button = qt_widgets.QPushButton(translator.text("scope.analyze"))
+    analyze_button = qt_widgets.QPushButton(translator.text("config.continue"))
     analyze_button.setDefault(True)
     config_dialog._completion_button = analyze_button
     scope_dialog._analysis_button = analyze_button
@@ -582,7 +587,7 @@ def choose_scope(
         tabs.setTabText(0, translator.text("scope.title"))
         tabs.setTabText(1, translator.text("config.title"))
         cancel_button.setText(translator.text("common.cancel"))
-        analyze_button.setText(translator.text("scope.analyze"))
+        analyze_button.setText(translator.text("config.continue"))
         config_dialog._retranslate()
 
     scope_dialog._language_changed_callback = retranslate_combined_controls
@@ -3391,9 +3396,10 @@ class _ConversionConfigDialog:
 
         self.direction_label = qt_widgets.QLabel(
             self._translator.text("config.direction"))
-        layout.addWidget(self.direction_label)
         self.combo = qt_widgets.QComboBox()
         self.direction_label.setBuddy(self.combo)
+        if not self._embedded:
+            layout.addWidget(self.direction_label)
         config_groups = (
             ("general", ("s2t", "t2s")),
             ("regional", ("s2tw", "s2twp", "s2hk", "s2hkp", "tw2s", "tw2sp",
@@ -3414,7 +3420,8 @@ class _ConversionConfigDialog:
                 label = self._translator.text(f"config.{config}")
                 self.combo.addItem(label, config)
             groups_added += 1
-        layout.addWidget(self.combo)
+        if not self._embedded:
+            layout.addWidget(self.combo)
 
         self.jieba_status = qt_widgets.QLabel()
         self.jieba_status.setWordWrap(True)
@@ -3619,7 +3626,8 @@ class _ConversionConfigDialog:
     def _retranslate(self) -> None:
         """Refresh visible text after the shared language selector changes."""
         self.dialog.setWindowTitle(plugin_window_title(
-            self._translator, self._translator.text("scope.title")))
+            self._translator,
+            self._translator.text("main.title" if self._embedded else "scope.title")))
         self.explanation_label.setText(self._translator.text("config.explanation"))
         self.direction_label.setText(self._translator.text("config.direction"))
         selected = self.combo.currentData()
@@ -3949,7 +3957,8 @@ class _ScopeDialog:
         self.language = code
         self._translator.set_language(code)
         self.dialog.setWindowTitle(plugin_window_title(
-            self._translator, self._translator.text("scope.title")))
+            self._translator,
+            self._translator.text("main.title" if self._embedded else "scope.title")))
         self.language_label.setText(self._translator.text("language.label"))
         self.language_label.setAccessibleName(self._translator.text("a11y.scope.language"))
         self.guide_label.setText(self._translator.text("scope.selection_guide"))
