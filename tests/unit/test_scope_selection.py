@@ -1,5 +1,3 @@
-from types import SimpleNamespace
-
 import pytest
 
 from sigil.scope import Scope, ScopeSelectionError, TargetSelection, TextFile, resolve_target_selection
@@ -129,49 +127,58 @@ def test_scope_inventory_uses_spine_order_then_path_order():
 
 
 def test_single_scope_uses_one_row_selection_and_manual_selection_is_independent():
-    class Radio:
-        def __init__(self, checked):
-            self.checked = checked
+    inventory = (
+        TextFile("one", "Text/one.xhtml"),
+        TextFile("two", "Text/two.xhtml"),
+    )
+    dialog = _ScopeDialog(
+        make_with_table(), inventory, ("one",), "en", Translator("en"),
+        initial_scope=Scope.SINGLE,
+    )
 
-        def isChecked(self):
-            return self.checked
-
-    class Item:
-        def __init__(self, identifier):
-            self.identifier = identifier
-
-        def data(self, _role):
-            return self.identifier
-
-    class List:
-        def __init__(self):
-            self.row = 1
-
-        def currentRow(self):
-            return self.row
-
-        def item(self, row):
-            return (Item("one"), Item("two"))[row]
-
-        def count(self):
-            return 2
-
-    dialog = object.__new__(_ScopeDialog)
-    dialog.single_radio = Radio(True)
-    dialog.selected_radio = Radio(False)
-    dialog.spine_radio = Radio(False)
-    dialog.all_radio = Radio(False)
-    dialog.list_widget = List()
-    dialog._inventory = (TextFile("one", "Text/one.xhtml"),
-                        TextFile("two", "Text/two.xhtml"))
-    dialog._qt = SimpleNamespace(Qt=SimpleNamespace(UserRole=32))
-    dialog._manual_selection_ids = {"one"}
-    dialog._single_selected_id = "one"
-
-    assert dialog.selected_ids() == ("two",)
-    dialog.single_radio.checked = False
-    dialog.selected_radio.checked = True
+    assert not dialog.single_radio.isVisible()
+    assert dialog.selected_radio.isChecked()
+    assert sum(radio.isVisible() for radio in (
+        dialog.single_radio, dialog.selected_radio, dialog.spine_radio, dialog.all_radio,
+    )) == 3
+    assert dialog.list_widget.item(0).checkState() == dialog._qt.Qt.Checked
     assert dialog.selected_ids() == ("one",)
+
+    dialog.list_widget.setCurrentRow(1)
+    assert dialog.selected_ids() == ("one",)
+    dialog.list_widget.item(1).setCheckState(dialog._qt.Qt.Checked)
+    assert dialog.selected_ids() == ("one", "two")
+    dialog._accept(close=False)
+
+    assert dialog.scope is Scope.SELECTED
+    assert dialog.selection.file_ids == ("one", "two")
+
+
+def test_fixed_scope_modes_make_list_read_only():
+    dialog = _ScopeDialog(
+        make_with_table(), FILES, ("a",), "en", Translator("en"),
+        spine_ids=("a", "b"),
+    )
+    checkable = dialog._qt.Qt.ItemIsUserCheckable
+
+    for radio, checked_ids in (
+        (dialog.spine_radio, {"a", "b"}),
+        (dialog.all_radio, {"a", "nested-a", "b"}),
+    ):
+        radio.setChecked(True)
+        for index, file_id in enumerate(("a", "nested-a", "b")):
+            item = dialog.list_widget.item(index)
+            assert item.flags() & checkable == 0
+            original = item.checkState()
+            attempt = (dialog._qt.Qt.Unchecked if original == dialog._qt.Qt.Checked
+                       else dialog._qt.Qt.Checked)
+            item.setCheckState(attempt)
+            assert item.checkState() == original
+            assert (original == dialog._qt.Qt.Checked) is (file_id in checked_ids)
+
+    dialog.selected_radio.setChecked(True)
+    assert all(dialog.list_widget.item(index).flags() & checkable
+               for index in range(dialog.list_widget.count()))
 
 
 def test_scope_filter_enter_focuses_first_visible_row_without_accepting():
@@ -279,7 +286,7 @@ def test_scope_notice_banners_use_information_icons_and_palette_surface():
     assert ("setFlat", (True,)) in dialog.checkpoint_close_button.calls
 
 
-def test_single_file_count_remains_visible_when_filter_hides_selected_item():
+def test_selected_file_count_remains_visible_when_filter_hides_it():
     dialog = _ScopeDialog(
         make_with_table(), FILES, ("a",), "en", Translator("en"),
         initial_scope=Scope.SINGLE,
@@ -287,6 +294,6 @@ def test_single_file_count_remains_visible_when_filter_hides_selected_item():
     dialog.filter_edit.setText("nested/a.xhtml")
     dialog.filter_edit.textChanged.emit("nested/a.xhtml")
 
-    assert dialog.count_label.text() == "Selected: Text/a.xhtml"
+    assert dialog.count_label.text() == "Selected 1 / 3 XHTML files (visible after filter: 1)"
     assert dialog.selected_ids() == ("a",)
     assert dialog.list_widget.item(0).isHidden()

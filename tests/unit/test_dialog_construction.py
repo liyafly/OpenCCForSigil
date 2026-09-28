@@ -83,20 +83,26 @@ def test_scope_dialog_constructs_and_single_file_can_continue_after_row_change()
     assert (dialog.dialog.width(), dialog.dialog.height()) == (820, 620)
     assert dialog.dialog.windowTitle() == "OpenCCForSigil — Choose files to convert"
     assert dialog.analyze_button.isEnabled()
+    assert not dialog.single_radio.isVisible()
+    assert dialog.selected_radio.isChecked()
     assert dialog.selected_ids() == ("a",)
-    assert [dialog.list_widget.item(i).data(qt.Qt.CheckStateRole) for i in range(3)] == [
-        None,
-        None,
-        None,
+    assert [dialog.list_widget.item(i).checkState() for i in range(3)] == [
+        qt.Qt.Checked,
+        qt.Qt.Unchecked,
+        qt.Qt.Unchecked,
     ]
 
     dialog.list_widget.setCurrentRow(1)
     assert dialog.analyze_button.isEnabled()
-    assert dialog.selected_ids() == ("b",)
+    assert dialog.selected_ids() == ("a",)
+    dialog.list_widget.item(1).setCheckState(qt.Qt.Checked)
+    assert dialog.selected_ids() == ("a", "b")
     dialog.all_radio.setChecked(True)
-    dialog.single_radio.setChecked(True)
     assert dialog.analyze_button.isEnabled()
-    assert dialog.selected_ids() == ("b",)
+    dialog.selected_radio.setChecked(True)
+    dialog._accept(close=False)
+    assert dialog.selection.scope is Scope.SELECTED
+    assert dialog.selection.file_ids == ("a", "b")
 
 
 def test_scope_and_conversion_configuration_share_one_dialog(monkeypatch):

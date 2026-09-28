@@ -4064,7 +4064,6 @@ class _ScopeDialog:
         self.spine_ids = tuple(file_id for file_id in spine_ids if file_id)
         self.nav_id = nav_id
         self._manual_selection_ids = set(initial_ids)
-        self._single_selected_id = next(iter(initial_ids), None)
         self._recovery_notices = tuple(recovery_notices)
         self._updating_items = False
         self.checkpoint_notice_shown = bool(checkpoint_notice_enabled)
@@ -4113,14 +4112,16 @@ class _ScopeDialog:
         layout.addLayout(language_row)
 
         self.single_radio = qt_widgets.QRadioButton(translator.text("scope.single"))
+        self.single_radio.setVisible(False)
         self.selected_radio = qt_widgets.QRadioButton(translator.text("scope.selected"))
         self.spine_radio = qt_widgets.QRadioButton(translator.text("scope.spine"))
         self.all_radio = qt_widgets.QRadioButton(translator.text("scope.all"))
         self.selected_radio.setChecked(True)
         radio_row = qt_widgets.QHBoxLayout()
-        for radio in (self.single_radio, self.selected_radio, self.spine_radio, self.all_radio):
+        for radio in (self.selected_radio, self.spine_radio, self.all_radio):
             radio_row.addWidget(radio)
             radio.toggled.connect(self._refresh_enabled)
+        self.single_radio.toggled.connect(self._refresh_enabled)
         layout.addLayout(radio_row)
 
         self.filter_edit = qt_widgets.QLineEdit()
@@ -4193,17 +4194,11 @@ class _ScopeDialog:
         current_row_changed = getattr(self.list_widget, "currentRowChanged", None)
         if current_row_changed is not None:
             current_row_changed.connect(self._current_row_changed)
-        if initial_scope is Scope.SINGLE:
-            self.single_radio.setChecked(True)
-        elif initial_scope is Scope.SELECTED:
-            self.selected_radio.setChecked(True)
-        elif initial_scope is Scope.SPINE:
+        if initial_scope is Scope.SPINE:
             self.spine_radio.setChecked(True)
         elif initial_scope is Scope.ALL_XHTML:
             self.all_radio.setChecked(True)
-        elif len(initial_ids) == 1:
-            self.single_radio.setChecked(True)
-        elif not initial_ids:
+        else:
             self.selected_radio.setChecked(True)
         self._refresh_enabled()
         self._refresh_count()
@@ -4258,9 +4253,6 @@ class _ScopeDialog:
         self._update_analyze_enabled()
 
     def _current_row_changed(self, row: int) -> None:
-        if self.single_radio.isChecked() and row >= 0:
-            item = self.list_widget.item(row)
-            self._single_selected_id = item.data(self._qt.Qt.UserRole)
         self._refresh_count()
         self._update_analyze_enabled()
 
@@ -4381,12 +4373,6 @@ class _ScopeDialog:
         )
 
     def selected_ids(self) -> Tuple[str, ...]:
-        if self.single_radio.isChecked():
-            row = self.list_widget.currentRow()
-            if row < 0:
-                return ()
-            item = self.list_widget.item(row)
-            return (item.data(self._qt.Qt.UserRole),)
         if self.all_radio.isChecked():
             return tuple(item.file_id for item in self._inventory)
         if self.spine_radio.isChecked():
@@ -4423,17 +4409,8 @@ class _ScopeDialog:
         selected = len(self.selected_ids()) if hasattr(self, "list_widget") else 0
         visible = sum(not self.list_widget.item(index).isHidden()
                       for index in range(total))
-        if self.single_radio.isChecked():
-            selected_id = next(iter(self.selected_ids()), None)
-            selected_file = next(
-                (item.href for item in self._inventory if item.file_id == selected_id), None)
-            self.count_label.setText(
-                self._translator.text("scope.selected_file", file=selected_file)
-                if selected_file else self._translator.text("scope.none")
-            )
-        else:
-            self.count_label.setText(self._translator.text(
-                "scope.selection_count", selected=selected, total=total, visible=visible))
+        self.count_label.setText(self._translator.text(
+            "scope.selection_count", selected=selected, total=total, visible=visible))
         if self.ignored_non_xhtml:
             self.ignored_label.setText(
                 self._translator.text(
@@ -4461,8 +4438,7 @@ class _ScopeDialog:
     def _refresh_mode_items(self) -> None:
         if not hasattr(self, "list_widget"):
             return
-        mode = ("single" if self.single_radio.isChecked() else
-                "spine" if self.spine_radio.isChecked() else
+        mode = ("spine" if self.spine_radio.isChecked() else
                 "all" if self.all_radio.isChecked() else "selected")
         qt = self._qt.Qt
         checkable = getattr(qt, "ItemIsUserCheckable", 16)
@@ -4472,35 +4448,21 @@ class _ScopeDialog:
             available = {item.file_id for item in self._inventory}
             fixed_ids = (set(self.spine_ids) & available if mode == "spine" else
                          available if mode == "all" else set())
-            if mode == "single":
-                if self._single_selected_id not in available:
-                    self._single_selected_id = next(
-                        (file_id for file_id in self._inventory_ids()
-                         if file_id in self._manual_selection_ids), None)
-                for index in range(self.list_widget.count()):
-                    item = self.list_widget.item(index)
-                    item.setFlags(item.flags() & ~checkable)
-                    item.setData(qt.CheckStateRole, None)
-                row = next((index for index in range(self.list_widget.count())
-                            if self.list_widget.item(index).data(qt.UserRole)
-                            == self._single_selected_id), -1)
-                self.list_widget.setCurrentRow(row)
-            else:
-                for index in range(self.list_widget.count()):
-                    item = self.list_widget.item(index)
+            for index in range(self.list_widget.count()):
+                item = self.list_widget.item(index)
+                file_id = item.data(qt.UserRole)
+                if mode == "selected":
                     item.setFlags(item.flags() | checkable)
-                    file_id = item.data(qt.UserRole)
-                    checked = (file_id in self._manual_selection_ids if mode == "selected"
-                               else file_id in fixed_ids)
-                    item.setCheckState(qt.Checked if checked else qt.Unchecked)
+                    checked = file_id in self._manual_selection_ids
+                else:
+                    item.setFlags(item.flags() & ~checkable)
+                    checked = file_id in fixed_ids
+                item.setCheckState(qt.Checked if checked else qt.Unchecked)
             self.guide_label.setVisible(
-                mode in {"selected", "single"} and not self._manual_selection_ids)
+                mode == "selected" and not self._manual_selection_ids)
         finally:
             self.list_widget.blockSignals(False)
             self._updating_items = False
-
-    def _inventory_ids(self) -> Tuple[str, ...]:
-        return tuple(item.file_id for item in self._inventory)
 
     def _update_analyze_enabled(self) -> None:
         callback = getattr(self, "_analysis_enabled_callback", None)
@@ -4515,22 +4477,17 @@ class _ScopeDialog:
     def _selection_is_valid(self) -> bool:
         count = len(self.selected_ids())
         valid = bool(self._inventory)
-        if self.single_radio.isChecked():
-            valid = count == 1
-        elif self.selected_radio.isChecked():
+        if self.selected_radio.isChecked():
             valid = count > 0
         elif self.spine_radio.isChecked():
             valid = bool(self.spine_ids)
         return valid
 
     def _accept(self, *, close=True) -> None:
-        checked_count = len(self.selected_ids())
         try:
-            scope = Scope.SINGLE if self.single_radio.isChecked() else (
-                Scope.ALL_XHTML
-                if self.all_radio.isChecked()
-                else Scope.SPINE
-                if self.spine_radio.isChecked()
+            scope = (
+                Scope.ALL_XHTML if self.all_radio.isChecked()
+                else Scope.SPINE if self.spine_radio.isChecked()
                 else Scope.SELECTED
             )
             ids = self.spine_ids if scope is Scope.SPINE else self.selected_ids()
@@ -4538,16 +4495,11 @@ class _ScopeDialog:
             if selection.empty:
                 raise ScopeSelectionError(self._translator.text("scope.none"))
         except ScopeSelectionError:
-            message_key = (
-                "error.scope_exactly_one"
-                if self.single_radio.isChecked() and checked_count != 1
-                else "scope.none"
-            )
             self._qt.QMessageBox.warning(
                 self.dialog,
                 plugin_window_title(
                     self._translator, self._translator.text("scope.title")),
-                self._translator.text(message_key),
+                self._translator.text("scope.none"),
             )
             return
         self.scope = scope
