@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.2.10 - 2026-09-28
+
+### Added
+
+- Add a conversion setup flow with clear file-scope controls, direction choice,
+  and a translated summary before analysis.
+- Resolve all remaining preview decisions in one undoable action while keeping
+  manual accepts and skips; preserve the selected file scope and saved profile.
+- Add explicit rule matching and protection scope, cross-ruleset conflict
+  feedback, rule ownership review, and broader TSV/CSV/JSON import handling.
+- Filter profiles and history, compare saved profiles with the current run, and
+  keep long rule and preview content available in accessible details.
+
+### Changed
+
+- Clarify which rule and profile switches are persistent and which apply only
+  to the current run. Hide unavailable NAV and Jieba choices without discarding
+  saved preferences.
+- Use one term for undecided preview items, checkpoint reminders, built-in
+  author-credit protection, rule testing, and saved profiles across locales.
+- Improve large-book planning and preview decisions by reducing repeated rule
+  scans and retaining compact preview history.
+
+### Fixed
+
+- Keep direction-specific rules, versioned rule behavior, linked preview rows,
+  and source-preserving edits consistent when rules overlap or files are filtered.
+- Preserve TSV rows with literal quotes, report physical import line numbers,
+  and skip zero-width runtime matches without blocking later valid matches.
+- Keep cancellation and empty result summaries clear, preserve files outside
+  the selected scope, and avoid adding unavailable rule sets to the run.
+
 ## 0.2.8 - 2026-09-27
 
 ### Added
