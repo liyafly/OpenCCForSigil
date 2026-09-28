@@ -919,6 +919,8 @@ class AbstractTableModel:
         self.dataChanged = Signal()
         self.resets = 0
         self.data_changed = 0
+        self.removed_ranges = []
+        self._pending_remove = None
         self.dataChanged.connect(lambda *a: setattr(self, "data_changed", self.data_changed + 1))
 
     def beginResetModel(self):
@@ -929,6 +931,14 @@ class AbstractTableModel:
         view = getattr(self, "_view", None)
         if view is not None:
             view._reset()
+
+    def beginRemoveRows(self, _parent, first, last):
+        self._pending_remove = (int(first), int(last))
+
+    def endRemoveRows(self):
+        if self._pending_remove is not None:
+            self.removed_ranges.append(self._pending_remove)
+            self._pending_remove = None
 
     def index(self, r, c, parent=None):
         if 0 <= r < self.rowCount() and 0 <= c < self.columnCount():
@@ -986,6 +996,7 @@ class TableView(Base):
 def make_with_table():
     qt = make()
     qt.QtCore.QAbstractTableModel = AbstractTableModel
+    qt.QtCore.QModelIndex = ModelIndex
     qt.QTableView = TableView
     return qt
 

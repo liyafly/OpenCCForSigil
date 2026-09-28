@@ -1610,6 +1610,19 @@ def _create_preview_table_model(
                 next_entries, href_by_id, translator, group_stats, display_cache, targets_by_id)
             self.endResetModel()
 
+        def remove_rows(self, ranges):
+            entries = self.rows.entries
+            for first, last in ranges:
+                if first < 0 or last < first or last >= len(entries):
+                    continue
+                self.beginRemoveRows(qt_core.QModelIndex(), first, last)
+                entries = entries[:first] + entries[last + 1:]
+                self.rows = _PreviewTableData(
+                    entries, href_by_id, translator, group_stats,
+                    display_cache, targets_by_id)
+                self.endRemoveRows()
+            return entries
+
         def refresh(self, rows=None):
             if not self.rowCount() or not self.columnCount():
                 return
@@ -1674,8 +1687,10 @@ class _PreviewDialog:
         group_entries = {}
         entries_by_group = {}
         groups_by_file = {}
+        entries_by_file = {}
         for entry in self._entries:
             _preview, change = entry
+            entries_by_file.setdefault(change.file_id, []).append(entry)
             if change.group_id:
                 count, files = group_entries.get(change.group_id, (0, set()))
                 files.add(change.file_id)
@@ -1684,6 +1699,9 @@ class _PreviewDialog:
                 groups_by_file.setdefault(change.file_id, set()).add(change.group_id)
         self._group_entries_by_id = {
             group_id: tuple(entries) for group_id, entries in entries_by_group.items()
+        }
+        self._entries_by_file = {
+            file_id: tuple(entries) for file_id, entries in entries_by_file.items()
         }
         self._group_ids_by_file = {
             file_id: frozenset(group_ids) for file_id, group_ids in groups_by_file.items()
@@ -1719,6 +1737,8 @@ class _PreviewDialog:
         self._recompute_counts()
         self._last_group_feedback = ""
         self._visible_entries_cache = self._entries
+        self._visible_identity_to_row = None
+        self._visible_identity_to_row_entries = None
         self.applied = False
         self.back_to_settings = False
         self.checkpoint_notice_shown = False
@@ -2447,21 +2467,41 @@ class _PreviewDialog:
             return self._entries
         visible = []
         for preview, change in self._entries:
-            if not current.matches(change):
+            if not self._matches_non_status_filters(change, current=current, query=query):
                 continue
             if status and self._decision_bucket(
                     preview.decision(change.change_id)) != status:
                 continue
-            if query:
-                href = self._href_by_id.get(change.file_id, change.file_id)
-                searchable = "\n".join((
-                    unescape(change.source), unescape(change.target),
-                    change.rule_source, href,
-                )).casefold()
-                if query not in searchable:
-                    continue
             visible.append((preview, change))
         return tuple(visible)
+
+    def _matches_non_status_filters(self, change, *, current=None, query=None):
+        current = self._current_filter() if current is None else current
+        if not current.matches(change):
+            return False
+        if query is None:
+            search_input = getattr(self, "search_input", None)
+            query = (search_input.text() if search_input is not None
+                     and callable(getattr(search_input, "text", None)) else "")
+            query = str(query).strip().casefold()
+        if not query:
+            return True
+        href = self._href_by_id.get(change.file_id, change.file_id)
+        searchable = "\n".join((
+            unescape(change.source), unescape(change.target), change.rule_source, href,
+        )).casefold()
+        return query in searchable
+
+    def _visible_row_map(self, entries):
+        if (self._visible_identity_to_row is not None
+                and self._visible_identity_to_row_entries is entries):
+            return self._visible_identity_to_row
+        self._visible_identity_to_row = {
+            (change.file_id, change.change_id): row
+            for row, (_preview, change) in enumerate(entries)
+        }
+        self._visible_identity_to_row_entries = entries
+        return self._visible_identity_to_row
 
     def _status_filter_value(self) -> str | None:
         combo = getattr(self, "status_filter", None)
@@ -2516,6 +2556,8 @@ class _PreviewDialog:
                 )
 
     def _record_decision_change(self, file_id, before, after) -> None:
+        if not hasattr(self, "_totals"):
+            self._recompute_counts()
         old_bucket = self._decision_bucket(before)
         new_bucket = self._decision_bucket(after)
         if old_bucket == new_bucket:
@@ -2539,6 +2581,115 @@ class _PreviewDialog:
             self._accepted_count_by_file[file_id] = accepted
         else:
             self._accepted_count_by_file.pop(file_id, None)
+
+    def _record_decision_changes(self, before) -> None:
+        for file_id, change_id, previous in before:
+            preview = self._preview_by_file_id[file_id]
+            self._record_decision_change(
+                file_id, previous, preview.decision(change_id))
+
+    def _refresh_after_decision(self, affected, *, preferred_row=None) -> None:
+        """Refresh changed rows without rescanning a large status-filtered preview."""
+
+        self._selection_advanced_scan_start = None
+        status = self._status_filter_value()
+        if status is None:
+            self._refresh(refresh_statuses=True)
+            return
+
+        visible = getattr(self, "_visible_entries_cache", None)
+        if visible is None:
+            self._refresh()
+            visible = self._visible_entries_cache
+        affected = tuple(affected)
+        current_row = self._current_row()
+        row_map = None
+        if preferred_row is None or len(affected) != 1:
+            row_map = self._visible_row_map(visible)
+
+        removed_rows = []
+        refreshed_rows = []
+        current_filter = self._current_filter()
+        search_input = getattr(self, "search_input", None)
+        query = (search_input.text() if search_input is not None
+                 and callable(getattr(search_input, "text", None)) else "")
+        query = str(query).strip().casefold()
+
+        for preview, change in affected:
+            identity = (change.file_id, change.change_id)
+            if (preferred_row is not None and len(affected) == 1
+                    and 0 <= preferred_row < len(visible)
+                    and (visible[preferred_row][1].file_id,
+                         visible[preferred_row][1].change_id) == identity):
+                row = preferred_row
+            else:
+                row = row_map.get(identity) if row_map is not None else None
+            non_status_match = self._matches_non_status_filters(
+                change, current=current_filter, query=query)
+            now_visible = (
+                non_status_match
+                and self._decision_bucket(preview.decision(change.change_id)) == status
+            )
+            if row is None:
+                if now_visible:
+                    self._refresh(refresh_statuses=True)
+                    return
+                continue
+            if now_visible:
+                refreshed_rows.append(row)
+            else:
+                removed_rows.append(row)
+
+        removed_rows = sorted(set(removed_rows))
+        ranges = []
+        for row in removed_rows:
+            if ranges and row == ranges[-1][1] + 1:
+                ranges[-1] = (ranges[-1][0], row)
+            else:
+                ranges.append((row, row))
+
+        if ranges:
+            next_entries = visible
+            for first, last in reversed(ranges):
+                next_entries = next_entries[:first] + next_entries[last + 1:]
+                model = getattr(self, "table_model", None)
+                if model is not None:
+                    model.remove_rows(((first, last),))
+            self._visible_entries_cache = next_entries
+            self._visible_identity_to_row = None
+            self._visible_identity_to_row_entries = None
+            if current_row in removed_rows:
+                self._selection_advanced_scan_start = current_row - 1
+            current_row -= sum(row < current_row for row in removed_rows)
+            if next_entries:
+                current_row = min(max(current_row, 0), len(next_entries) - 1)
+                self._set_current_row(current_row)
+                if model is not None and refreshed_rows:
+                    shifted_rows = tuple(
+                        row - sum(removed < row for removed in removed_rows)
+                        for row in refreshed_rows
+                    )
+                    model.refresh(rows=shifted_rows)
+                self._show_current(current_row)
+            else:
+                self._set_current_row(-1)
+                empty_key = "preview.no_filter_matches" if self._entries else "preview.no_changes"
+                self.detail.setPlainText(self._translator.text(empty_key))
+                self._update_group_controls(None)
+        else:
+            model = getattr(self, "table_model", None)
+            if model is not None and refreshed_rows:
+                model.refresh(rows=refreshed_rows)
+            if 0 <= current_row < len(visible):
+                self._show_current(current_row)
+
+        count_label = getattr(self, "filter_count_label", None)
+        if count_label is not None:
+            count_label.setText(self._translator.text(
+                "preview.visible_count", visible=len(self._visible_entries_cache),
+                total=len(self._entries)))
+        self._refresh_file_filter_counts()
+        self._update_summary()
 
     @staticmethod
     def _unique_entries(entries):
@@ -2678,8 +2829,11 @@ class _PreviewDialog:
             if len(getattr(self, "_group_file_ids", {}).get(group_id, (file_id,))) == 1
             and preview_group_kind(group_id) is not PreviewGroupKind.LANGUAGE_METADATA
         }
+        entries_by_file = getattr(self, "_entries_by_file", None)
+        entries = (entries_by_file.get(file_id, ()) if entries_by_file is not None
+                   else self._entries)
         return tuple(
-            entry for entry in self._entries
+            entry for entry in entries
             if entry[1].file_id == file_id and (
                 not entry[1].group_id or entry[1].group_id in local_groups
             )
@@ -2750,8 +2904,10 @@ class _PreviewDialog:
         for preview, item in entries:
             if preview.decision(item.change_id) is not None:
                 preview.restore_decision(item.change_id, None)
+        self._record_decision_changes(before)
         self._record_decision_action(before)
-        self._refresh(recalculate_counts=True, refresh_statuses=True)
+        self._refresh_after_decision(
+            entries, preferred_row=self._current_row() if len(entries) == 1 else None)
 
     def _current_row(self) -> int:
         table = getattr(self, "table_view", None)
@@ -2874,6 +3030,9 @@ class _PreviewDialog:
                     self._selection_advanced_scan_start = previous_row - 1
             else:
                 row = 0 if visible_entries else -1
+        if visible_entries is not cached_entries:
+            self._visible_identity_to_row = None
+            self._visible_identity_to_row_entries = None
         self._visible_entries_cache = visible_entries
         if getattr(self, "table_model", None) is not None:
             prior_entries = self.table_model.rows.entries
@@ -3123,14 +3282,15 @@ class _PreviewDialog:
     def _decide_entry(self, entry, accepted):
         preview, change = entry
         if change.group_id:
-            before = self._capture_decisions(
-                getattr(self, "_group_entries_by_id", {}).get(change.group_id, (entry,)))
+            affected = getattr(self, "_group_entries_by_id", {}).get(change.group_id, (entry,))
+            before = self._capture_decisions(affected)
             count = self._decide_group(change.group_id, accepted)
             feedback_key = _group_feedback_key(change.group_id, accepted)
             self._last_group_feedback = self._translator.text(
                 feedback_key, count=count)
+            self._record_decision_changes(before)
             self._record_decision_action(before)
-            self._refresh(recalculate_counts=True, refresh_statuses=True)
+            self._refresh_after_decision(affected)
         else:
             self._last_group_feedback = ""
             row = self._current_row()
@@ -3141,7 +3301,7 @@ class _PreviewDialog:
             self._record_decision_change(change.file_id, old_decision, after)
             self._record_decision_action(before)
             if self._status_filter_value() is not None:
-                self._refresh(refresh_statuses=True)
+                self._refresh_after_decision((entry,), preferred_row=row)
             else:
                 self._refresh_current(rows=(row,))
         scan_start = self._selection_advanced_scan_start
@@ -3224,10 +3384,11 @@ class _PreviewDialog:
             group_id for group_id in self._groups_for_file(entry[1].file_id)
             if preview_group_kind(group_id) is PreviewGroupKind.LANGUAGE_METADATA
         )
-        before = self._capture_decisions(
+        affected = tuple(
             entry for group_id in groups
             for entry in getattr(self, "_group_entries_by_id", {}).get(group_id, ())
         )
+        before = self._capture_decisions(affected)
         count = sum(self._decide_group(group_id, accepted) for group_id in groups)
         if count:
             feedback_key = (
@@ -3235,8 +3396,9 @@ class _PreviewDialog:
             self._last_group_feedback = self._translator.text(feedback_key, count=count)
         else:
             self._last_group_feedback = ""
+        self._record_decision_changes(before)
         self._record_decision_action(before)
-        self._refresh(recalculate_counts=True, refresh_statuses=True)
+        self._refresh_after_decision(affected)
 
     def _decide_filtered(self, accepted: bool) -> None:
         # Freeze the click-time selection before asking about any atomic-group
@@ -3246,8 +3408,8 @@ class _PreviewDialog:
         groups = {change.group_id for _preview, change in visible_entries if change.group_id}
         if not self._confirm_filtered_group_expansion(visible_entries, groups):
             return
-        before = self._capture_decisions(
-            self._history_entries_for_grouped_action(visible_entries, groups))
+        affected = self._history_entries_for_grouped_action(visible_entries, groups)
+        before = self._capture_decisions(affected)
         for preview, change in visible_entries:
             if not change.group_id:
                 (preview.accept_this if accepted else preview.reject_this)(change.change_id)
@@ -3260,8 +3422,9 @@ class _PreviewDialog:
                 feedback_key, count=group_count)
         else:
             self._last_group_feedback = ""
+        self._record_decision_changes(before)
         self._record_decision_action(before)
-        self._refresh(recalculate_counts=True, refresh_statuses=True)
+        self._refresh_after_decision(affected)
 
     def _confirm_filtered_group_expansion(self, visible_entries, groups) -> bool:
         visible_ids = {
@@ -3318,20 +3481,24 @@ class _PreviewDialog:
         if entry is None:
             return
         self._last_group_feedback = ""
-        before = self._capture_decisions(self._file_decision_entries(entry[1].file_id))
+        affected = self._file_decision_entries(entry[1].file_id)
+        before = self._capture_decisions(affected)
         self._decide_file(entry[1].file_id, True)
+        self._record_decision_changes(before)
         self._record_decision_action(before)
-        self._refresh(recalculate_counts=True, refresh_statuses=True)
+        self._refresh_after_decision(affected)
 
     def _reject_file(self) -> None:
         entry = self._current_entry()
         if entry is None:
             return
         self._last_group_feedback = ""
-        before = self._capture_decisions(self._file_decision_entries(entry[1].file_id))
+        affected = self._file_decision_entries(entry[1].file_id)
+        before = self._capture_decisions(affected)
         self._decide_file(entry[1].file_id, False)
+        self._record_decision_changes(before)
         self._record_decision_action(before)
-        self._refresh(recalculate_counts=True, refresh_statuses=True)
+        self._refresh_after_decision(affected)
 
     def _decide_file(self, file_id, accepted):
         """Decide ordinary changes and complete local groups, leaving global metadata groups aside."""
@@ -3343,9 +3510,10 @@ class _PreviewDialog:
             and preview_group_kind(group_id) is not PreviewGroupKind.LANGUAGE_METADATA
         )
         groups = set(local_groups)
-        for preview, change in self._entries:
-            if change.file_id != file_id:
-                continue
+        entries_by_file = getattr(self, "_entries_by_file", None)
+        entries = (entries_by_file.get(file_id, ()) if entries_by_file is not None
+                   else self._entries)
+        for preview, change in entries:
             if change.group_id:
                 if change.group_id in groups:
                     continue

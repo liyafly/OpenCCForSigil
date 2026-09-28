@@ -76,3 +76,63 @@ def test_deciding_one_occurrence_does_not_visit_unrelated_preview_entries():
     assert preview.decision("change-1000").value == "accept_this"
     assert preview.decision("change-1001").value == "accept_this"
     assert preview.decision("change-0") is None
+
+
+def test_accept_file_visits_only_that_file_and_incremental_counts_match_recompute(
+    monkeypatch,
+):
+    file_count = 100
+    changes_per_file = 200
+    previews = []
+    planned = []
+    for file_index in range(file_count):
+        file_id = f"chapter-{file_index}.xhtml"
+        changes = tuple(
+            TokenChange(
+                source="旧", target="新",
+                span=SourceSpan(change_index * 2, change_index * 2 + 1),
+                rule_source="UserRule:alpha",
+                change_id=f"{file_index}-{change_index}", file_id=file_id,
+                category="user_rule", risk="HIGH",
+            )
+            for change_index in range(changes_per_file)
+        )
+        preview = PreviewSession(ConversionPlan(
+            source_sha256="", file_id=file_id, changes=changes))
+        previews.append(preview)
+        planned.append(SimpleNamespace(
+            source=SimpleNamespace(
+                file_id=file_id, href=f"Text/{file_id}", document_kind="xhtml"),
+            plan=preview.plan,
+        ))
+    dialog = _PreviewDialog(
+        make_with_table(), tuple(planned), tuple(previews), Translator("en"))
+    dialog._entries = VisitCountingEntries(dialog._entries)
+    decision_calls = 0
+    original_decision = PreviewSession.decision
+
+    def counted_decision(preview, change_id):
+        nonlocal decision_calls
+        decision_calls += 1
+        return original_decision(preview, change_id)
+
+    monkeypatch.setattr(PreviewSession, "decision", counted_decision)
+    dialog._accept_file()
+
+    assert decision_calls <= 10_000
+    assert dialog._entries.visits <= 3 * changes_per_file + 50
+    assert dialog._totals == {
+        "total": file_count * changes_per_file,
+        "accepted": changes_per_file,
+        "rejected": 0,
+        "undecided": (file_count - 1) * changes_per_file,
+    }
+    incremental_totals = dialog._totals.copy()
+    incremental_file_counts = dialog._file_filter_counts.copy()
+    incremental_accepted_by_file = dialog._accepted_count_by_file.copy()
+
+    dialog._recompute_counts()
+
+    assert dialog._totals == incremental_totals
+    assert dialog._file_filter_counts == incremental_file_counts
+    assert dialog._accepted_count_by_file == incremental_accepted_by_file

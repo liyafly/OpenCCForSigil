@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from core.models import ConversionPlan, SourceSpan, TextTarget, TokenChange
 from core.preview import PreviewSession
 from tests.support.fake_qt import make_with_table
+from tests.unit.test_preview_group_scaling import VisitCountingEntries
 from ui.i18n import Translator
 from ui import preview_window
 from ui.preview_window import _PreviewDialog
@@ -141,6 +142,33 @@ def test_pending_filter_hides_decided_row_preserves_next_identity_and_apply_guar
     assert dialog._current_entry()[1].change_id == "change-2"
     assert dialog.filter_count_label.text() == "Visible 2 / 3"
     assert not dialog.apply_button.isEnabled()
+
+
+def test_undecided_filter_accept_updates_only_the_affected_row(monkeypatch):
+    dialog, _previews = _dialog(tuple(
+        _change(f"change-{index}") for index in range(20_000)
+    ))
+    _filter(dialog, "status_filter", "undecided")
+    dialog._entries = VisitCountingEntries(dialog._entries)
+    dialog._set_current_row(500)
+    before_count = len(dialog._visible_entries_cache)
+
+    decision_calls = 0
+    original_decision = PreviewSession.decision
+
+    def counted_decision(preview, change_id):
+        nonlocal decision_calls
+        decision_calls += 1
+        return original_decision(preview, change_id)
+
+    monkeypatch.setattr(PreviewSession, "decision", counted_decision)
+    dialog._accept_this()
+
+    assert decision_calls <= 1_000
+    assert dialog._entries.visits <= 1_000
+    assert len(dialog._visible_entries_cache) == before_count - 1
+    assert dialog._current_entry()[1].change_id == "change-501"
+    assert dialog.table_model.removed_ranges[-1] == (500, 500)
 
 
 def test_skipped_status_filter_matches_rejected_decisions():
