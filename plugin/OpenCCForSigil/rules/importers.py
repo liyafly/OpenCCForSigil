@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Iterable, TextIO
 
 from .conflicts import RuleConflict, find_conflicts
-from .models import Rule, new_rule_id
+from .models import Rule, SUPPORTED_DIRECTIONS, new_rule_id
 from .validators import RuleValidationError, validate_rule, validate_rules
 
 
@@ -20,6 +20,7 @@ class ImportDiagnostic:
     message: str
     severity: str = "warning"
     location: str = "line"
+    message_key: str = ""
 
 
 @dataclass(frozen=True)
@@ -197,12 +198,30 @@ def _rows_to_rules(
         if not row or not any(value.strip() for value in row):
             continue
         try:
-            if len(row) < 3:
-                raise RuleValidationError("expected direction, source, target, comment", index=line)
+            first = row[0].strip() if row else ""
+            has_direction = first in SUPPORTED_DIRECTIONS
+            keep_legacy_blank_direction = len(row) >= 4 and not first
+            if len(row) == 2:
+                if not direction:
+                    error = RuleValidationError(
+                        "rules.import_needs_direction", field="direction", index=line)
+                    error.message_key = "rules.import_needs_direction"
+                    raise error
+                row_direction, source, target = direction, row[0], row[1]
+                comment = ""
+            elif len(row) >= 3 and not has_direction and direction and not keep_legacy_blank_direction:
+                row_direction, source, target = direction, row[0], row[1]
+                comment = row[2]
+            elif len(row) >= 3:
+                row_direction, source, target = first or (direction or ""), row[1], row[2]
+                comment = row[3] if len(row) > 3 else ""
+            else:
+                raise RuleValidationError(
+                    "expected direction, source, target, comment", index=line)
             values = {
-                "direction": row[0].strip() or (direction or ""),
-                "source": row[1],
-                "target": row[2],
+                "direction": row_direction,
+                "source": source,
+                "target": target,
                 "scope": scope,
                 "profile_id": profile_id,
                 "book_fingerprint": book_fingerprint,
@@ -211,13 +230,16 @@ def _rows_to_rules(
                 "match_type": "literal",
                 "stage": "source",
             }
-            if len(row) > 3:
-                values["comment"] = row[3]
+            if comment:
+                values["comment"] = comment
             result.append(Rule.from_dict(values))
         except RuleValidationError as exc:
             if strict:
                 raise
-            diagnostics.append(ImportDiagnostic(line, str(exc), "error"))
+            diagnostics.append(ImportDiagnostic(
+                line, str(exc), "error", "line",
+                getattr(exc, "message_key", ""),
+            ))
     return result
 
 
@@ -308,8 +330,12 @@ def _json_rules(
 
 
 def _is_header(row: list[str]) -> bool:
-    normalized = {item.strip().lower() for item in row}
-    return bool(normalized & {"direction", "source", "target"}) and "source" in normalized
+    if not row:
+        return False
+    return row[0].strip().casefold() in {
+        "方向", "源", "源文本", "原文", "目标", "目标文本", "目標", "目標文字",
+        "來源文字", "备注", "備註", "comment", "direction", "source", "target",
+    }
 
 
 __all__ = [

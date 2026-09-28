@@ -692,10 +692,12 @@ class RuleManagerDialog:
         transfer_box = qt.QGroupBox(self._labels["transfer_group"])
         transfer = qt.QHBoxLayout(transfer_box)
         self.import_button = qt.QPushButton(self._labels["import"])
+        self.bulk_add_button = qt.QPushButton(self._translator.text("rules.bulk_add"))
         self.export_button = qt.QPushButton(self._labels["export"])
-        for button in (self.import_button, self.export_button):
+        for button in (self.import_button, self.bulk_add_button, self.export_button):
             button.setAutoDefault(False)
         transfer.addWidget(self.import_button)
+        transfer.addWidget(self.bulk_add_button)
         transfer.addWidget(self.export_button)
         content_layout.addWidget(transfer_box)
 
@@ -765,6 +767,7 @@ class RuleManagerDialog:
         self.test_button.clicked.connect(self._test)
         self.inspect_button.clicked.connect(self._inspect)
         self.import_button.clicked.connect(self._import)
+        self.bulk_add_button.clicked.connect(self._bulk_add)
         self.export_button.clicked.connect(self._export)
         self.apply_button.clicked.connect(self._apply)
         self.cancel_button.clicked.connect(self.dialog.reject)
@@ -1751,6 +1754,91 @@ class RuleManagerDialog:
                 self._labels["operation_failed"], str(exc),
             )
 
+    def _bulk_add(self) -> None:
+        from rules.importers import import_rules
+
+        qt = self._qt
+        dialog = qt.QDialog(self.dialog)
+        dialog.setWindowTitle(plugin_window_title(
+            self._translator, self._translator.text("rules.bulk_add_title")))
+        layout = qt.QVBoxLayout(dialog)
+        instruction = qt.QLabel(self._translator.text("rules.bulk_add_instruction"))
+        instruction.setWordWrap(True)
+        layout.addWidget(instruction)
+        editor = qt.QPlainTextEdit()
+        editor.setMinimumHeight(180)
+        layout.addWidget(editor, 1)
+        buttons = qt.QHBoxLayout()
+        cancel = qt.QPushButton(self._labels["import_cancel"])
+        accept = qt.QPushButton(self._labels["import_add"])
+        for button in (cancel, accept):
+            button.setAutoDefault(False)
+        buttons.addStretch(1)
+        buttons.addWidget(cancel)
+        buttons.addWidget(accept)
+        layout.addLayout(buttons)
+        state = {"accepted": False}
+        cancel.clicked.connect(dialog.reject)
+        accept.clicked.connect(lambda: (state.update(accepted=True), dialog.accept()))
+        exec_dialog(dialog)
+        if not state["accepted"]:
+            return
+
+        rows = []
+        for line in editor.toPlainText().splitlines():
+            if "\t" not in line:
+                separators = [index for index in (line.find("="), line.find("→"))
+                              if index >= 0]
+                if separators:
+                    index = min(separators)
+                    line = line[:index] + "\t" + line[index + 1:]
+            rows.append(line)
+        text = "\n".join(rows)
+        if not text.strip():
+            return
+        try:
+            ruleset = self._rulesets[self._ruleset_id]
+            result = import_rules(
+                text,
+                format="tsv",
+                direction=str(self.direction_combo.currentData() or ""),
+                scope=str(self.scope_combo.currentData() or "global"),
+                profile_id=self._profile_id or "",
+                book_fingerprint=self._book_fingerprint or "",
+                semantic_version=ruleset.semantic_version,
+                strict=False,
+            )
+            self._review_import_result(result)
+        except Exception as exc:
+            self._show_exception(exc)
+
+    def _review_import_result(self, result: ImportResult) -> None:
+        self._stash_ruleset()
+        existing_ids = {
+            rule.id
+            for ruleset in self._rulesets.values()
+            for rule in ruleset.rules
+        }
+        if self._rule_store is not None:
+            saved_rulesets, _errors = self._rule_store.list()
+            existing_ids.update(
+                rule.id for ruleset in saved_rulesets for rule in ruleset.rules
+            )
+        reassigned_rules = reassign_colliding_ids(result.rules, existing_ids)
+        id_reassigned_count = sum(
+            before.id != after.id for before, after in zip(result.rules, reassigned_rules)
+        )
+        result = replace(result, rules=reassigned_rules)
+        review = review_import(
+            self.rules, result,
+            other_run_rules=self._run_candidates(exclude_ruleset_id=self._ruleset_id),
+            id_reassigned_count=id_reassigned_count,
+        )
+        if self._confirm_import(review):
+            self.rules.extend(review.additions)
+            self._refresh()
+            self._mark_test_result_stale()
+
     def _import(self) -> None:
         from rules.importers import import_rules
 
@@ -1776,32 +1864,7 @@ class RuleManagerDialog:
                 semantic_version=self._rulesets[self._ruleset_id].semantic_version,
                 strict=options["strict"],
             )
-            self._stash_ruleset()
-            existing_ids = {
-                rule.id
-                for ruleset in self._rulesets.values()
-                for rule in ruleset.rules
-            }
-            if self._rule_store is not None:
-                saved_rulesets, _errors = self._rule_store.list()
-                existing_ids.update(
-                    rule.id for ruleset in saved_rulesets for rule in ruleset.rules
-                )
-            reassigned_rules = reassign_colliding_ids(result.rules, existing_ids)
-            id_reassigned_count = sum(
-                before.id != after.id for before, after in zip(result.rules, reassigned_rules)
-            )
-            result = replace(result, rules=reassigned_rules)
-            review = review_import(
-                self.rules, result,
-                other_run_rules=self._run_candidates(
-                    exclude_ruleset_id=self._ruleset_id),
-                id_reassigned_count=id_reassigned_count,
-            )
-            if self._confirm_import(review):
-                self.rules.extend(review.additions)
-                self._refresh()
-                self._mark_test_result_stale()
+            self._review_import_result(result)
         except Exception as exc:
             self._show_exception(exc)
 
@@ -1879,8 +1942,11 @@ class RuleManagerDialog:
             )
         detail_lines = [self._labels[
             "import_record" if getattr(item, "location", "line") == "record"
-            else "import_line"].format(line=item.line, message=item.message)
-                        for item in diagnostics]
+            else "import_line"].format(
+                line=item.line,
+                message=(self._translator.text(item.message_key)
+                         if getattr(item, "message_key", "") else item.message),
+            ) for item in diagnostics]
         detail_lines.extend(
             _conflict_summary(conflict, self._translator) for conflict in review.conflicts)
         detail = "\n".join(detail_lines)
@@ -1954,10 +2020,10 @@ class RuleManagerDialog:
             self._show_exception(exc)
 
     def _show_exception(self, error: BaseException) -> None:
-        summary = (
+        message_key = str(getattr(error, "message_key", "") or "")
+        summary = self._translator.text(message_key) if message_key else (
             rule_validation_message(self._translator, error)
-            if isinstance(error, RuleValidationError)
-            else self._labels["operation_failed"]
+            if isinstance(error, RuleValidationError) else self._labels["operation_failed"]
         )
         show_error_details(
             self._qt, self.dialog, self._labels["title"], summary, str(error))

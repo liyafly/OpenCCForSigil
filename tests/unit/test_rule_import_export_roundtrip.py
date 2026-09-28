@@ -73,6 +73,39 @@ def test_tsv_import_uses_target_ruleset_semantic_version():
     assert v1_rule.semantic_version == 1
 
 
+def test_two_column_tsv_uses_selected_direction():
+    result = import_rules(
+        "软件\t軟件\n詞語\t詞彙\n", format="tsv", direction="s2t")
+
+    assert [(rule.direction, rule.source, rule.target) for rule in result.rules] == [
+        ("s2t", "软件", "軟件"), ("s2t", "詞語", "詞彙")]
+
+
+def test_two_column_tsv_requires_an_explicit_direction():
+    with pytest.raises(RuleValidationError) as captured:
+        import_rules("软件\t軟件\n", format="tsv")
+
+    assert captured.value.message_key == "rules.import_needs_direction"
+
+
+def test_three_columns_without_direction_are_source_target_comment():
+    result = import_rules(
+        "软件\t軟件\tCommon term\n", format="tsv", direction="s2t")
+
+    assert len(result.rules) == 1
+    assert (result.rules[0].direction, result.rules[0].source,
+            result.rules[0].target, result.rules[0].comment) == (
+                "s2t", "软件", "軟件", "Common term")
+
+
+def test_chinese_tsv_header_is_skipped():
+    result = import_rules(" 源文本 \t目标文本\n软件\t軟件\n", format="tsv", direction="s2t")
+
+    assert len(result.rules) == 1
+    assert result.rules[0].source == "软件"
+    assert result.diagnostics == ()
+
+
 def test_lenient_json_import_skips_bad_records_and_preserves_record_numbers():
     payload = [
         replacement_rule(id="first").to_dict(),

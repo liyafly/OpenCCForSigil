@@ -540,6 +540,53 @@ def test_import_tsv_uses_target_ruleset_semantic_version(tmp_path, semantic_vers
             manager.rules[0].stage) == ("override", "literal", "source")
 
 
+def test_bulk_paste_adds_rules_through_import_review(monkeypatch):
+    manager = RuleManagerDialog(
+        make_with_table(), (), translator=Translator("en"), config="s2t",
+        profile_id="profile-A", book_fingerprint="book-A")
+    manager.scope_combo.setCurrentIndex(manager.scope_combo.findData("book"))
+    reviews = []
+    manager._confirm_import = lambda review: (reviews.append(review), True)[1]
+
+    def accept_bulk_dialog(dialog):
+        editor = next(
+            child for child in dialog._layout.children
+            if isinstance(child, manager._qt.QPlainTextEdit))
+        editor.setPlainText("软件=軟件\n詞語→詞彙\n软件=軟件")
+        dialog._layout.children[-1].children[-1].clicked.emit()
+
+    monkeypatch.setattr(rules_window, "exec_dialog", accept_bulk_dialog)
+    manager._bulk_add()
+
+    assert len(reviews) == 1
+    assert len(reviews[0].additions) == 2
+    assert reviews[0].duplicate_count == 1
+    assert [(rule.direction, rule.scope, rule.source, rule.target)
+            for rule in manager.rules] == [
+                ("s2t", "book", "软件", "軟件"),
+                ("s2t", "book", "詞語", "詞彙"),
+            ]
+
+
+def test_bulk_paste_cancel_keeps_rules_unchanged(monkeypatch):
+    original = Rule(id="existing", source="旧词", target="新词", direction="s2t")
+    manager = RuleManagerDialog(
+        make_with_table(), (original,), translator=Translator("en"), config="s2t")
+    before = tuple(manager.rules)
+
+    def cancel_bulk_dialog(dialog):
+        editor = next(
+            child for child in dialog._layout.children
+            if isinstance(child, manager._qt.QPlainTextEdit))
+        editor.setPlainText("another=rule")
+        dialog._layout.children[-1].children[-2].clicked.emit()
+
+    monkeypatch.setattr(rules_window, "exec_dialog", cancel_bulk_dialog)
+    manager._bulk_add()
+
+    assert tuple(manager.rules) == before
+
+
 def test_rule_details_show_legacy_precedence_version():
     translator = Translator("zh-Hans")
     legacy_rule = Rule(

@@ -4,6 +4,18 @@
 
 在转换设置中打开“规则 / 沙箱”，可以管理规则集并试跑规则。旧规则会保留原来的语义；新规则可选择动作、匹配方式和阶段。
 
+### 批量粘贴
+
+在规则页选择方向和范围，点击“批量添加…”。每行写一条规则，可用制表符、等号或箭头分隔源文本和目标文本：
+
+```text
+软件<Tab>軟件
+软件=軟件
+软件→軟件
+```
+
+确认后仍会先显示导入预览，供你检查重复项、冲突和错误行。
+
 ### 动作和匹配方式
 
 - **指定最终写法**：在原文上匹配，完整命中直接使用目标文本，并跳过后续转换。
@@ -54,6 +66,18 @@
 
 在轉換設定中開啟「規則 / 沙箱」，即可管理規則集並試跑規則。舊規則會保留原有語義；新規則可選擇動作、比對方式和階段。
 
+### 批次貼上
+
+在規則頁選擇方向和範圍，點擊「批次新增…」。每列輸入一條規則，可用定位字元、等號或箭頭分隔來源文字和目標文字：
+
+```text
+软件<Tab>軟件
+软件=軟件
+软件→軟件
+```
+
+確認後仍會先顯示匯入預覽，供你檢查重複項、衝突和錯誤列。
+
 ### 動作和比對方式
 
 - **指定最終寫法**：在原文比對，完整命中直接使用目標文字，並略過後續轉換。
@@ -103,6 +127,18 @@
 ## English
 
 Open **Rules / sandbox** from the conversion settings to manage rule sets and try rules. Existing rules keep their semantics; new rules choose an action, match type, and stage.
+
+### Bulk paste
+
+Choose a direction and scope on the Rules page, then select **Bulk add…**. Enter one rule per line and separate source and target with a tab, equals sign, or arrow:
+
+```text
+软件<Tab>軟件
+软件=軟件
+软件→軟件
+```
+
+The import review still appears so you can check duplicates, conflicts, and invalid rows before adding anything.
 
 ### Actions and match types
 
