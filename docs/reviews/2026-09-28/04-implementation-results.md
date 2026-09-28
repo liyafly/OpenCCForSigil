@@ -14,3 +14,4 @@
 | Batch | Items | Implementation commit(s) | `make check` | 960×640 Qt acceptance | Benchmarks and digest | Remaining work / host |
 | --- | --- | --- | --- | --- | --- | --- |
 | 1 | RULE-10 | `8699302` | PASS: 684 passed, 1 skipped; vendor, OpenCC/Jieba differential, and package checks passed | PASS: `check_ui_acceptance.py --verify`; RULE-10 real Qt probe defaults to `s2t` and does not apply the rule to `t2s` | Existing wildcard rules remain `*`; no conversion output change outside the direction boundary | Complete; Sigil host **Not verified** |
+| 2 | RULE-01, PERF-04 | `691f1e1` | PASS: 689 passed, 1 skipped; vendor, OpenCC (28 cases), Jieba (10 cases), and package checks passed | PASS: `check_ui_acceptance.py --verify` | RULE-01: 600 matches across 60 files planned; PERF-04: 200 files 10.59 s, 400 files 21.15 s, ratio 2.00 (limit 2.2); 19 regex tests passed | Complete; Sigil host **Not verified** |
