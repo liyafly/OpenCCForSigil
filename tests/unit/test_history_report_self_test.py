@@ -60,6 +60,27 @@ def test_history_persists_metadata_hashes_and_rejects_text(tmp_path: Path):
     assert json.loads((tmp_path / "history" / "index.json").read_text(encoding="utf-8"))["schema_version"] == 1
 
 
+def test_history_index_is_compact_and_round_trips(tmp_path: Path):
+    store = HistoryStore(tmp_path / "history")
+    first_time = datetime(2026, 9, 28, 12, tzinfo=timezone.utc)
+    second_time = first_time + timedelta(minutes=1)
+    first = store.record_session(
+        SUMMARY, MANIFEST, PROVENANCE, recorded_at=first_time)
+    second_id = "123e4567-e89b-12d3-a456-426614174099"
+    second = store.record_session(
+        {**SUMMARY, "session_id": second_id},
+        {**MANIFEST, "session_id": second_id},
+        PROVENANCE,
+        recorded_at=second_time,
+    )
+    encoded = store.index_path.read_text(encoding="utf-8")
+
+    assert "\n  " not in encoded
+    assert encoded.endswith("\n")
+    assert "should not be persisted" not in encoded
+    assert store.load() == [second, first]
+
+
 def test_history_corruption_is_visible_and_not_reset(tmp_path: Path):
     root = tmp_path / "history"
     root.mkdir()

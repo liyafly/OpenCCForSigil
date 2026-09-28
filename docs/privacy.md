@@ -8,7 +8,8 @@ Persisted history contains completed-session summaries, counts, file IDs,
 source/result hashes, backend provenance, and the EPUB filename basename when
 the host supplies a path. It does not store the full path, EPUB title metadata,
 book bodies, or full diff. Cancelled/failed runs retain their structured
-session log and status.
+session log and status. The `history/index.json` metadata index uses compact
+JSON encoding.
 
 Markdown/JSON reports default to the same metadata. During Preview, the user
 may explicitly check **Include full diff** and choose an export path; that

@@ -40,8 +40,9 @@ def _atomic_json(path: Path, payload: Mapping[str, Any]) -> None:
             delete=False,
         ) as handle:
             temporary = Path(handle.name)
-            json.dump(payload, handle, ensure_ascii=False, indent=2, sort_keys=True)
-            handle.write("\n")
+            text = json.dumps(
+                payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+            handle.write(text + "\n")
             handle.flush()
         temporary.replace(path)
     except (OSError, TypeError, ValueError) as exc:
