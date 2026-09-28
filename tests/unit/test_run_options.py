@@ -504,10 +504,12 @@ def test_conversion_dialog_keeps_direction_panel_and_footer_in_order():
     footer = outer[7]
     assert footer is dialog.options_panel.tool_layout
     scroll_body = outer[6].widget()
-    assert [type(item).__name__ for item in scroll_body._layout.children] == [
-        "QHBoxLayout", "QHBoxLayout", "QCheckBox", "QGroupBox", "QToolButton",
-        "QWidget", "str",
+    scroll_children = scroll_body._layout.children
+    assert [type(item).__name__ for item in scroll_children[:4]] == [
+        "QHBoxLayout", "QHBoxLayout", "QCheckBox", "QGroupBox",
     ]
+    assert isinstance(scroll_children[4], qt.QToolButton)
+    assert [type(item).__name__ for item in scroll_children[5:]] == ["QWidget", "str"]
     assert scroll_body._layout.children[-1] == "<stretch>"
     assert footer.children[0]._text == Translator("en").text("settings.tools")
     assert footer.children[-1] is dialog.button_layout
