@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from bisect import bisect_right
+from bisect import bisect_left, bisect_right
 from collections import Counter
 from dataclasses import dataclass
 from html import unescape
+import re
 from typing import Any, Sequence, Tuple
 
 from core.preview import (
@@ -41,6 +42,7 @@ from ui.preview_batch import plan_batch_decision
 _DECISION_VALUES = tuple(PreviewDecision)
 _DECISION_TO_CODE = {decision: index + 1
                      for index, decision in enumerate(_DECISION_VALUES)}
+_LINE_BREAK = re.compile(r"\r\n?|\n")
 
 
 class UIUnavailableError(RuntimeError):
@@ -675,24 +677,45 @@ def _spine_ids(adapter: Any) -> Tuple[str, ...]:
 def _source_line_starts(source: str) -> Tuple[int, ...]:
     """Index original-source lines, treating CRLF as one newline."""
 
-    starts = [0]
-    index = 0
-    while index < len(source):
-        character = source[index]
-        if character == "\r":
-            index += 2 if index + 1 < len(source) and source[index + 1] == "\n" else 1
-            starts.append(index)
-        elif character == "\n":
-            index += 1
-            starts.append(index)
-        else:
-            index += 1
-    return tuple(starts)
+    return (0, *(match.end() for match in _LINE_BREAK.finditer(source)))
 
 
 def _line_column_for_offset(starts: Tuple[int, ...], offset: int) -> Tuple[int, int]:
     line_index = max(0, bisect_right(starts, offset) - 1)
     return line_index + 1, offset - starts[line_index] + 1
+
+
+def _index_change_spans(file_id: str, changes: Tuple[Any, ...]):
+    """Index eligible change spans while retaining plan order for review rows."""
+
+    indexed = []
+    for original_index, change in enumerate(changes):
+        if isinstance(change, TokenChange):
+            if change.file_id != file_id:
+                continue
+            change_span = change.span
+            change_start = change_span.start
+            change_end = change_span.end
+        else:
+            change_span = getattr(change, "span", None)
+            change_start = getattr(change_span, "start", None)
+            change_end = getattr(change_span, "end", None)
+            if (getattr(change, "file_id", file_id) != file_id
+                    or not isinstance(change_start, int)
+                    or not isinstance(change_end, int)):
+                continue
+        if not isinstance(change_start, int) or not isinstance(change_end, int):
+            continue
+        indexed.append((change_start, change_end, original_index))
+    indexed.sort()
+    starts = [start for start, _end, _original_index in indexed]
+    prefix_max_end = []
+    maximum_end = None
+    for _start, end, _original_index in indexed:
+        if maximum_end is None or end > maximum_end:
+            maximum_end = end
+        prefix_max_end.append(maximum_end)
+    return indexed, starts, prefix_max_end
 
 
 def _diagnostic_excerpt(
@@ -737,8 +760,16 @@ def _diagnostic_records(
         source_value = getattr(source_document, "source", None)
         has_source = isinstance(source_value, str)
         source = source_value if has_source else ""
-        line_starts = _source_line_starts(source)
+        line_starts = None
+
+        def get_line_starts():
+            nonlocal line_starts
+            if line_starts is None:
+                line_starts = _source_line_starts(source)
+            return line_starts
+
         changes = tuple(getattr(plan, "changes", ()) or ())
+        change_index = None
         for diagnostic in getattr(plan, "diagnostics", ()) or ():
             code = str(getattr(diagnostic, "code", "") or "")
             if not code:
@@ -760,7 +791,7 @@ def _diagnostic_records(
                     and isinstance(column, int) and column > 0):
                 line = column = None
                 if has_source and start is not None and 0 <= start <= len(source):
-                    line, column = _line_column_for_offset(line_starts, start)
+                    line, column = _line_column_for_offset(get_line_starts(), start)
             if line is None or column is None:
                 location = translator.text("preview.diagnostic_position_unavailable")
             else:
@@ -769,14 +800,14 @@ def _diagnostic_records(
 
             related = []
             if (start is not None and end is not None and 0 <= start <= end <= len(source)):
-                for change in changes:
-                    change_span = getattr(change, "span", None)
-                    change_start = getattr(change_span, "start", None)
-                    change_end = getattr(change_span, "end", None)
-                    if (getattr(change, "file_id", file_id) != file_id
-                            or not isinstance(change_start, int)
-                            or not isinstance(change_end, int)):
-                        continue
+                if change_index is None:
+                    change_index = _index_change_spans(file_id, changes)
+                indexed, starts, prefix_max_end = change_index
+                lo = bisect_left(prefix_max_end, start)
+                hi = bisect_right(starts, end)
+                related_hits = []
+                for change_start, change_end, original_index in indexed[lo:hi]:
+                    change = changes[original_index]
                     if code == "INLINE_BOUNDARY":
                         # The boundary span contains markup, while the affected
                         # text changes sit exactly on either side. The planner
@@ -790,11 +821,21 @@ def _diagnostic_records(
                         )
                     if overlaps:
                         identity = (file_id, str(getattr(change, "change_id", "")))
-                        if identity not in related:
-                            related.append(identity)
+                        related_hits.append((original_index, identity))
+                related_seen = set()
+                for _original_index, identity in sorted(related_hits):
+                    if identity not in related_seen:
+                        related_seen.add(identity)
+                        related.append(identity)
             diagnostic_name = translator.text(f"diagnostic.name.{code}", code=code)
             if diagnostic_name == f"diagnostic.name.{code}":
                 diagnostic_name = translator.text("diagnostic.name.unknown", code=code)
+            if (source and (start is None or end is None
+                            or not (0 <= start <= end <= len(source)))
+                    and line is not None and column is not None):
+                excerpt_starts = get_line_starts()
+            else:
+                excerpt_starts = line_starts or ()
             records.append(_DiagnosticRecord(
                 file_id=file_id,
                 href=href,
@@ -802,7 +843,7 @@ def _diagnostic_records(
                 name=diagnostic_name,
                 description=diagnostic_summary(translator, code, 1),
                 location=location,
-                excerpt=_diagnostic_excerpt(source, start, end, line, column, line_starts),
+                excerpt=_diagnostic_excerpt(source, start, end, line, column, excerpt_starts),
                 related_changes=tuple(related),
             ))
     return tuple(records)
@@ -1600,10 +1641,11 @@ class _PreviewDialog:
         # Plans are immutable, so the preview rows never change identity.  A
         # cached change object avoids doing a linear ``next(...)`` lookup for
         # every row every time a bulk decision refreshes the list.
+        preview_changes = tuple((preview, preview.changes) for preview in previews)
         self._entries: Tuple[Tuple[PreviewSession, TokenChange], ...] = tuple(
             (preview, change)
-            for preview in previews
-            for change in preview.changes
+            for preview, changes in preview_changes
+            for change in changes
         )
         self._href_by_id = {
             item.source.file_id: item.source.href for item in self._planned
@@ -1613,7 +1655,11 @@ class _PreviewDialog:
             for item in self._planned
             if isinstance(getattr(item.source, "source", None), str)
         }
-        self._diagnostic_records = _diagnostic_records(self._planned, translator)
+        self._diagnostic_records = None
+        self._has_diagnostics = any(
+            bool(getattr(getattr(item, "plan", None), "diagnostics", ()) or ())
+            for item in self._planned
+        )
         self._targets_by_id = {
             (item.source.file_id, target.node_id): target
             for item in self._planned
@@ -1651,8 +1697,20 @@ class _PreviewDialog:
             for group_id, (count, files) in group_entries.items()
         }
         self._preview_by_file_id = {}
-        for preview, change in self._entries:
-            self._preview_by_file_id.setdefault(change.file_id, preview)
+        self._initial_file_change_counts = {}
+        self._one_file_per_preview = True
+        for preview, changes in preview_changes:
+            file_ids = dict.fromkeys(change.file_id for change in changes)
+            for file_id in file_ids:
+                self._preview_by_file_id.setdefault(file_id, preview)
+            if len(file_ids) > 1:
+                self._one_file_per_preview = False
+            elif file_ids:
+                file_id = next(iter(file_ids))
+                self._initial_file_change_counts[file_id] = (
+                    self._initial_file_change_counts.get(file_id, 0) + len(changes)
+                )
+        del preview_changes
         self._undo_stack = []
         self._redo_stack = []
         self._history_sequence = 0
@@ -1674,6 +1732,30 @@ class _PreviewDialog:
         self._build()
         self._refresh()
         self.table_view.setFocus()
+
+    def _ensure_diagnostics_panel(self, index=None) -> None:
+        """Build the secondary diagnostics view only when the user opens it."""
+
+        tab_index = self._diagnostic_tab_index
+        if tab_index is None or (index is not None and index != tab_index):
+            return
+        if self.diagnostic_panel is not None:
+            return
+        records = _diagnostic_records(self._planned, self._translator)
+        self._diagnostic_records = records
+        if not records:
+            self.detail_tabs.removeTab(tab_index)
+            self._diagnostic_tab_index = None
+            return
+        self.diagnostic_panel = _DiagnosticPanel(
+            self._qt, records, self._translator,
+            on_related_change=self._navigate_to_related_change,
+        )
+        self._diagnostic_tab_layout.addWidget(self.diagnostic_panel.widget)
+        self.detail_tabs.setTabText(
+            tab_index,
+            self._translator.text("preview.diagnostics_count", count=len(records)),
+        )
 
     def _build(self) -> None:
         qt = self._qt
@@ -1901,15 +1983,18 @@ class _PreviewDialog:
         layout.addWidget(self.splitter, 1)
 
         self.diagnostic_panel = None
-        if self._diagnostic_records:
-            self.diagnostic_panel = _DiagnosticPanel(
-                qt, self._diagnostic_records, self._translator,
-                on_related_change=self._navigate_to_related_change,
-            )
-            self.detail_tabs.addTab(
-                self.diagnostic_panel.widget,
-                self._translator.text(
-                    "preview.diagnostics_count", count=len(self._diagnostic_records)))
+        self._diagnostic_tab_index = None
+        self._diagnostic_tab_layout = None
+        if self._has_diagnostics:
+            diagnostic_tab = qt.QWidget()
+            self._diagnostic_tab_layout = qt.QVBoxLayout(diagnostic_tab)
+            self._diagnostic_tab_index = self.detail_tabs.addTab(
+                diagnostic_tab, self._translator.text("preview.diagnostics_title"))
+            if self._diagnostic_tab_index is None:
+                self._diagnostic_tab_index = 1
+            tab_changed = getattr(self.detail_tabs, "currentChanged", None)
+            if callable(getattr(tab_changed, "connect", None)):
+                tab_changed.connect(self._ensure_diagnostics_panel)
 
         buttons = qt.QHBoxLayout()
         self.accept_this_button = qt.QPushButton(self._translator.text("preview.accept_this"))
@@ -2361,13 +2446,33 @@ class _PreviewDialog:
 
     def _recompute_counts(self) -> None:
         entries = getattr(self, "_entries", ())
+        all_undecided = all(
+            preview.decision_revision == 0 for preview in getattr(self, "_previews", ()))
+        initial_counts = getattr(self, "_initial_file_change_counts", None)
+        if (all_undecided and initial_counts is not None
+                and getattr(self, "_one_file_per_preview", False)):
+            self._totals = {
+                "total": sum(initial_counts.values()),
+                "accepted": 0,
+                "rejected": 0,
+                "undecided": sum(initial_counts.values()),
+            }
+            self._file_filter_counts = {
+                file_id: (count, count)
+                for file_id, count in initial_counts.items()
+            }
+            self._accepted_count_by_file = {}
+            return
         self._totals = {
             "total": len(entries), "accepted": 0, "rejected": 0, "undecided": 0,
         }
         self._file_filter_counts = {}
         self._accepted_count_by_file = {}
         for preview, change in entries:
-            bucket = self._decision_bucket(preview.decision(change.change_id))
+            bucket = (
+                "undecided" if all_undecided
+                else self._decision_bucket(preview.decision(change.change_id))
+            )
             self._totals[bucket] += 1
             total, pending = self._file_filter_counts.get(change.file_id, (0, 0))
             self._file_filter_counts[change.file_id] = (

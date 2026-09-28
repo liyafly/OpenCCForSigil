@@ -516,11 +516,14 @@ def exercise_diagnostics(qt, app, language, output_dir):
     ))
     previews = (PreviewSession(changed_plan), PreviewSession(no_change_plan))
     dialog = _PreviewDialog(qt, planned, previews, translator)
-    panel = dialog.diagnostic_panel
-    assert panel is not None
     dialog.dialog.show()
     app.processEvents()
-    dialog.detail_tabs.setCurrentIndex(1)
+    diagnostics_tab = dialog._diagnostic_tab_index
+    assert diagnostics_tab is not None
+    dialog.detail_tabs.setCurrentIndex(diagnostics_tab)
+    app.processEvents()
+    panel = dialog.diagnostic_panel
+    assert panel is not None
     assert not panel.content.isVisible()
     panel.toggle.click()
     app.processEvents()
