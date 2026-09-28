@@ -20,11 +20,15 @@ context by the source-preserving planner.
 Regex patterns use the bundled `regex` VERSION1 dialect. They match only one
 extracted text fragment or an explicitly allowed attribute value. The
 runtime rejects zero-length matches and enforces a 512-character pattern cap,
-512 hits per rule, 4096 hits per analysis, a 2,000,000-character replacement
-output cap, 50 ms per regex call, and a 3 s total regex budget. These limits
-are centralized in `rules/matching.py` for adjustment from representative
-book and host measurements. A timeout or exceeded limit aborts planning; it
-does not return a partial plan.
+512 applied hits per rule per text fragment and stage, and 100,000 applied hits
+per analysis. Overlapping candidates do not count as applied hits; candidate
+enumeration is separately capped at 20,000 per rule per text fragment to bound
+memory. Per analysis, the selected replacement output cap and the combined
+candidate expansion output cap are each 2,000,000 characters. Each regex call is limited to 50 ms, and
+the total runtime allowance is 3 seconds plus 2 seconds per million characters
+scanned. These limits are centralized in
+`rules/matching.py`. A timeout or exceeded limit aborts planning; it does not
+return a partial plan.
 
 JSON preserves every field. Delimited import/export and OpenCC TXT are useful
 for exchanging terms; TXT requires the direction to be selected explicitly.

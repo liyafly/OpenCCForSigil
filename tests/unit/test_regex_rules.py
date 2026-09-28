@@ -1,17 +1,21 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from types import SimpleNamespace
 
 import pytest
 
 from core.converter import OfficialBackendConverter
 from core.models import ConvertRequest, RuleSnapshot as RequestRuleSnapshot
+from core.workflow import ConversionWorkflow
 from core.staging import apply_changes
 from rules.compiled import CompiledOverlay, lock_spans_compiled
-from rules.matching import RegexBudget, RuleExecutionError
+from rules.matching import RegexBudget, RuleExecutionError, collect_matches, replace_stage
 from rules.models import Rule, RuleSnapshot
-from rules.templates import signature_protection
+from rules.regex_runtime import load_regex_module
+from rules.templates import collapse_horizontal_spaces, signature_protection
 from rules.validators import RuleValidationError, validate_rules
+from sigil.adapter import SigilBookAdapter
 
 
 class _Backend:
@@ -29,6 +33,23 @@ class _Backend:
 
     def convert_for_config(self, _config, text):
         return self.convert(text)
+
+    def provenance(self):
+        return SimpleNamespace(as_dict=lambda: {"backend": "test"})
+
+
+class _Book:
+    def __init__(self, sources):
+        self.sources = dict(sources)
+
+    def text_iter(self):
+        return iter((identifier, f"{identifier}.xhtml") for identifier in self.sources)
+
+    def readfile(self, identifier):
+        return self.sources[identifier]
+
+    def writefile(self, _identifier, _text):
+        raise AssertionError("planning must not write files")
 
 
 def _rule(**values):
@@ -152,6 +173,94 @@ def test_expired_regex_budget_stops_with_rule_identity():
 
     with pytest.raises(RuleExecutionError, match="bounded.*budget"):
         budget.timeout_for(rule, 17)
+
+
+def test_overlapping_regex_candidates_do_not_count_as_hits():
+    rule = _rule(id="overlap", source=r"\p{Han}+", target="X")
+    regex = load_regex_module()
+    budget = RegexBudget()
+
+    result, hits = replace_stage(
+        "你好世界再见", (rule,), {rule.id: regex.compile(rule.source, regex.VERSION1)}, budget)
+
+    assert result == "X"
+    assert len(hits) == 1
+    assert budget.regex_hits == 1
+
+
+def test_collapse_spaces_template_plans_600_matches_across_60_files():
+    values = collapse_horizontal_spaces(1)
+    values.update(id="collapse-spaces", direction="*", scope="global")
+    rule = Rule.from_dict(values)
+    snapshot = RuleSnapshot.freeze((rule,))
+    request = ConvertRequest(
+        "s2t",
+        rules_snapshot=RequestRuleSnapshot(
+            rules_hash=snapshot.sha256, rules=snapshot.rules),
+        quotation_mode="keep",
+        diagnose_mixed=False,
+        detailed_classification=False,
+    )
+    sources = {
+        f"chapter-{index:03d}": (
+            "<html><body>" + "".join("<p>甲  乙</p>" for _ in range(10))
+            + "</body></html>")
+        for index in range(60)
+    }
+
+    planned = ConversionWorkflow(SigilBookAdapter(_Book(sources)), _Backend(), request).plan()
+
+    assert len(planned) == 60
+    assert sum(len(item.plan.changes) for item in planned) == 600
+
+
+def test_runaway_regex_in_one_fragment_still_stops(monkeypatch):
+    monkeypatch.setattr("rules.matching.REGEX_MAX_HITS_PER_RULE", 3)
+    rule = _rule(id="runaway", source=r"\p{Han}", target="X")
+    regex = load_regex_module()
+
+    with pytest.raises(RuleExecutionError, match="runaway.*exceeded 3 hits"):
+        replace_stage(
+            "甲乙丙丁", (rule,), {rule.id: regex.compile(rule.source, regex.VERSION1)}, RegexBudget())
+
+
+def test_regex_candidate_budget_is_per_rule_and_fragment(monkeypatch):
+    monkeypatch.setattr("rules.matching.REGEX_MAX_CANDIDATES_PER_FRAGMENT", 2)
+    rule = _rule(id="candidates", source=r".", target="X")
+    regex = load_regex_module()
+
+    with pytest.raises(RuleExecutionError, match="candidates.*more than 2 candidates"):
+        collect_matches(
+            "abc", (rule,), {rule.id: regex.compile(rule.source, regex.VERSION1)}, RegexBudget())
+
+
+def test_regex_budget_allowance_grows_with_scanned_text(monkeypatch):
+    class Clock:
+        value = 0.0
+
+    class Pattern:
+        def __init__(self, elapsed):
+            self.elapsed = elapsed
+
+        def search(self, _text, _position, *, timeout):
+            assert timeout <= 0.05
+            Clock.value += self.elapsed
+            return None
+
+    monkeypatch.setattr("rules.matching.time.monotonic", lambda: Clock.value)
+    rule = _rule(id="scaled", source="never", target="x")
+    budget = RegexBudget()
+
+    collect_matches("x" * 1_000_000, (rule,), {rule.id: Pattern(4.9)}, budget)
+
+    assert budget.scanned_chars == 1_000_000
+    assert budget.allowance() == 5.0
+    assert budget.regex_seconds == pytest.approx(4.9)
+
+    Clock.value = 0.0
+    slow = replace(rule, id="slow")
+    with pytest.raises(RuleExecutionError, match="slow.*exceeded its 3 second budget"):
+        collect_matches("x", (slow,), {"slow": Pattern(3.1)}, RegexBudget())
 
 
 @pytest.mark.parametrize("stage,action", [

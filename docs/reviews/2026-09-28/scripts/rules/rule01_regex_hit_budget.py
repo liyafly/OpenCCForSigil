@@ -9,7 +9,7 @@ sys.path.insert(0, str(REPO / "plugin" / "OpenCCForSigil"))
 
 from core.models import ConvertRequest, RuleSnapshot as ReqSnap
 from core.workflow import ConversionWorkflow
-from rules.matching import RegexBudget, collect_matches, RuleExecutionError
+from rules.matching import RegexBudget, collect_matches, replace_stage, RuleExecutionError
 from rules.models import Rule, RuleSnapshot
 from rules.regex_runtime import load_regex_module
 from rules.templates import collapse_horizontal_spaces
@@ -42,8 +42,12 @@ regex = load_regex_module()
 r = rule(id="han", source=r"\p{Han}+", target="X")
 budget = RegexBudget()
 cands = collect_matches("你好世界再见", (r,), {"han": regex.compile(r.source, regex.VERSION1)}, budget)
+applied_budget = RegexBudget()
+_result, applied = replace_stage(
+    "你好世界再见", (r,), {"han": regex.compile(r.source, regex.VERSION1)}, applied_budget)
 print("(a) text='你好世界再见' pattern=\\p{Han}+ -> candidates:", len(cands),
-      "budget.regex_hits:", budget.regex_hits, "(only 1 replacement is applied)")
+      "budget.regex_hits:", applied_budget.regex_hits,
+      "(only", len(applied), "replacement is applied)")
 
 # (b) a single 600-character paragraph aborts the analysis.
 try:

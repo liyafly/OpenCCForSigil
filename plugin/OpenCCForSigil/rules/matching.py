@@ -15,7 +15,9 @@ REGEX_RUN_BUDGET_SECONDS = 3.0
 REGEX_MAX_RULES = 128
 REGEX_MAX_PATTERN_CHARS = 512
 REGEX_MAX_HITS_PER_RULE = 512
-REGEX_MAX_HITS_PER_RUN = 4096
+REGEX_MAX_HITS_PER_RUN = 100_000
+REGEX_MAX_CANDIDATES_PER_FRAGMENT = 20_000
+REGEX_SECONDS_PER_MILLION_CHARS = 2.0
 REGEX_MAX_OUTPUT_CHARS_PER_RUN = 2_000_000
 REGEX_MAX_CANDIDATE_OUTPUT_CHARS_PER_RUN = 2_000_000
 
@@ -46,30 +48,41 @@ class RegexBudget:
 
     def __init__(self) -> None:
         self.regex_seconds = 0.0
+        self.scanned_chars = 0
         self.regex_hits = 0
         self.output_chars = 0
         self.candidate_output_chars = 0
-        self._hits_by_rule: dict[str, int] = {}
+
+    def allowance(self) -> float:
+        return (REGEX_RUN_BUDGET_SECONDS
+                + REGEX_SECONDS_PER_MILLION_CHARS * self.scanned_chars / 1_000_000)
+
+    def note_scan(self, length: int) -> None:
+        self.scanned_chars += max(0, int(length))
 
     def timeout_for(self, rule: Rule, position: int) -> float:
-        remaining = REGEX_RUN_BUDGET_SECONDS - self.regex_seconds
+        allowance = self.allowance()
+        remaining = allowance - self.regex_seconds
         if remaining <= 0:
             raise RuleExecutionError(
                 f"rule {rule.id}: regular-expression run exceeded its "
-                f"{REGEX_RUN_BUDGET_SECONDS:g} second budget near offset {position}")
+                f"{allowance:g} second budget near offset {position}")
         return min(REGEX_MATCH_TIMEOUT_SECONDS, remaining)
 
     def note_regex_time(self, rule: Rule, elapsed: float, position: int) -> None:
         self.regex_seconds += max(0.0, elapsed)
-        if self.regex_seconds > REGEX_RUN_BUDGET_SECONDS:
+        allowance = self.allowance()
+        if self.regex_seconds > allowance:
             raise RuleExecutionError(
                 f"rule {rule.id}: regular-expression run exceeded its "
-                f"{REGEX_RUN_BUDGET_SECONDS:g} second budget near offset {position}")
+                f"{allowance:g} second budget near offset {position}")
 
-    def note_regex_hit(self, rule: Rule, position: int) -> None:
+    def note_regex_hit(
+        self, rule: Rule, position: int, fragment_hits: dict[str, int]
+    ) -> None:
         self.regex_hits += 1
-        count = self._hits_by_rule.get(rule.id, 0) + 1
-        self._hits_by_rule[rule.id] = count
+        count = fragment_hits.get(rule.id, 0) + 1
+        fragment_hits[rule.id] = count
         if count > REGEX_MAX_HITS_PER_RULE:
             raise RuleExecutionError(
                 f"rule {rule.id}: regular expression exceeded {REGEX_MAX_HITS_PER_RULE} "
@@ -121,6 +134,8 @@ def collect_matches(
     """Collect candidates from one immutable stage input; matches may overlap."""
 
     matches: list[RuleMatch] = []
+    if any(rule.match_type == "regex" for rule in rules):
+        budget.note_scan(len(text))
     for rule in rules:
         if rule.match_type == "literal":
             cursor = 0
@@ -138,6 +153,7 @@ def collect_matches(
         if pattern is None:
             raise RuleExecutionError(f"rule {rule.id}: compiled regular expression is missing")
         cursor = 0
+        candidates = 0
         while cursor <= len(text):
             timeout = budget.timeout_for(rule, cursor)
             started = time.monotonic()
@@ -160,7 +176,12 @@ def collect_matches(
                 raise RuleExecutionError(
                     f"rule {rule.id}: zero-length regular-expression match at "
                     f"offset {found.start()} is not allowed")
-            budget.note_regex_hit(rule, found.start())
+            candidates += 1
+            if candidates > REGEX_MAX_CANDIDATES_PER_FRAGMENT:
+                raise RuleExecutionError(
+                    f"rule {rule.id}: regular expression produced more than "
+                    f"{REGEX_MAX_CANDIDATES_PER_FRAGMENT} candidates near offset "
+                    f"{found.start()}")
             matched_text = text[found.start():found.end()]
             if rule.action == "protect":
                 target = matched_text
@@ -194,6 +215,7 @@ def source_matches(
     """Reserve protections first, then choose final-wording matches."""
 
     candidates = collect_matches(text, rules, regex_patterns, budget)
+    fragment_hits: dict[str, int] = {}
     protected_candidates: dict[int, list[RuleMatch]] = {}
     override_candidates: dict[int, list[RuleMatch]] = {}
     for candidate in candidates:
@@ -206,6 +228,8 @@ def source_matches(
         if start < cursor:
             continue
         chosen = _resolve_same_start(protected_candidates[start])
+        if chosen.rule.match_type == "regex":
+            budget.note_regex_hit(chosen.rule, chosen.start, fragment_hits)
         protected.append(chosen)
         cursor = chosen.end
 
@@ -221,6 +245,8 @@ def source_matches(
         if (protected_index < len(protected)
                 and protected[protected_index].start < chosen.end):
             continue
+        if chosen.rule.match_type == "regex":
+            budget.note_regex_hit(chosen.rule, chosen.start, fragment_hits)
         budget.note_output(chosen.rule, len(chosen.target), chosen.start, stage="source")
         spans.append(chosen)
         cursor = chosen.end
@@ -242,6 +268,7 @@ def replace_stage(
     for candidate in candidates:
         by_start.setdefault(candidate.start, []).append(candidate)
     selected = []
+    fragment_hits: dict[str, int] = {}
     cursor = 0
     for start in sorted(by_start):
         if start < cursor:
@@ -256,6 +283,8 @@ def replace_stage(
     for match in selected:
         output.append(text[cursor:match.start])
         output.append(match.target)
+        if match.rule.match_type == "regex":
+            budget.note_regex_hit(match.rule, match.start, fragment_hits)
         budget.note_output(match.rule, len(match.target), match.start,
                            stage=f"{match.rule.stage} stage")
         hits.append(StageHit(match.rule, match.start, match.end,
@@ -272,6 +301,8 @@ __all__ = [
     "REGEX_MAX_PATTERN_CHARS",
     "REGEX_MAX_HITS_PER_RULE",
     "REGEX_MAX_HITS_PER_RUN",
+    "REGEX_MAX_CANDIDATES_PER_FRAGMENT",
+    "REGEX_SECONDS_PER_MILLION_CHARS",
     "REGEX_MAX_OUTPUT_CHARS_PER_RUN",
     "RegexBudget",
     "RuleExecutionError",
