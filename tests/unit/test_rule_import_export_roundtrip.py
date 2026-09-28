@@ -166,6 +166,19 @@ def test_csv_quotes_and_multiline_fields_keep_csv_behavior():
     assert result.rules[0].comment == "第一行\n第二行"
 
 
+@pytest.mark.parametrize(("payload", "format", "direction"), [
+    ("direction\tsource\ttarget\n\n\n\n\nbad\t源\t目标\n", "tsv", None),
+    ("direction,source,target\n\n\n\n\nbad,源,目标\n", "csv", None),
+    ("#1\n#2\n#3\n#4\n#5\n\t目标\n", "txt", "s2t"),
+])
+def test_delimited_validation_errors_report_physical_line(payload, format, direction):
+    result = import_rules(payload, format=format, direction=direction, strict=False)
+
+    assert len(result.diagnostics) == 1
+    assert result.diagnostics[0].line == 6
+    assert "rule 0" not in result.diagnostics[0].message
+
+
 def test_lenient_json_import_skips_bad_records_and_preserves_record_numbers():
     payload = [
         replacement_rule(id="first").to_dict(),

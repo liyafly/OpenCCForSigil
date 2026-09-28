@@ -11,7 +11,7 @@ from typing import Any, Iterable, TextIO
 
 from .conflicts import RuleConflict, find_conflicts
 from .models import Rule, SUPPORTED_DIRECTIONS, new_rule_id
-from .validators import RuleValidationError, validate_rule, validate_rules
+from .validators import RuleValidationError, validate_rule
 
 
 @dataclass(frozen=True)
@@ -119,14 +119,14 @@ def import_rules(
     else:
         raise ValueError(f"unsupported rule import format: {fmt}")
     valid: list[Rule] = []
-    for index, value in enumerate(values, 1):
+    for line, value in values:
         try:
-            valid.extend(validate_rules((value,)))
+            valid.append(validate_rule(value, index=None))
         except RuleValidationError as exc:
             if strict:
                 raise
             diagnostics.append(ImportDiagnostic(
-                index, str(exc), "error", "record" if fmt == "json" else "line"))
+                line, str(exc), "error", "record" if fmt == "json" else "line"))
     unique: list[Rule] = []
     duplicates: list[Rule] = []
     seen: set[tuple] = set()
@@ -182,7 +182,10 @@ def _delimited_rows(text: str, delimiter: str) -> list[tuple[int, list[str]]]:
             for line, row in enumerate(text.lstrip("\ufeff").splitlines(), 1)
         ]
     reader = csv.reader(io.StringIO(text), delimiter=delimiter)
-    return [(index, list(row)) for index, row in enumerate(reader, 1)]
+    result = []
+    for row in reader:
+        result.append((reader.line_num, list(row)))
+    return result
 
 
 def _rows_to_rules(
@@ -196,11 +199,11 @@ def _rows_to_rules(
     diagnostics: list[ImportDiagnostic],
     strict: bool,
     tsv: bool = False,
-) -> list[Rule]:
+) -> list[tuple[int, Rule]]:
     rows = list(rows)
     if rows and _is_header(rows[0][1]):
         rows.pop(0)
-    result: list[Rule] = []
+    result: list[tuple[int, Rule]] = []
     for line, row in rows:
         if not row or not any(value.strip() for value in row):
             continue
@@ -239,7 +242,7 @@ def _rows_to_rules(
             }
             if comment:
                 values["comment"] = comment
-            result.append(Rule.from_dict(values))
+            result.append((line, Rule.from_dict(values)))
             if tsv and any(_is_legacy_quoted_tsv_field(value) for value in row):
                 diagnostics.append(ImportDiagnostic(
                     line,
@@ -275,8 +278,8 @@ def _opencc_rows(
     *,
     semantic_version: int,
     strict: bool,
-) -> list[Rule]:
-    result: list[Rule] = []
+) -> list[tuple[int, Rule]]:
+    result: list[tuple[int, Rule]] = []
     for line, raw in enumerate(text.splitlines(), 1):
         if not raw.strip() or raw.lstrip().startswith("#"):
             continue
@@ -292,7 +295,7 @@ def _opencc_rows(
                     ImportDiagnostic(line, "discarded candidates: " + " ".join(candidates[1:]))
                 )
             result.append(
-                Rule.from_dict(
+                (line, Rule.from_dict(
                     {
                         "direction": direction,
                         "source": fields[0],
@@ -305,7 +308,7 @@ def _opencc_rows(
                         "match_type": "literal",
                         "stage": "source",
                     }
-                )
+                ))
             )
         except RuleValidationError as exc:
             if strict:
@@ -317,7 +320,7 @@ def _opencc_rows(
 def _json_rules(
     text: str, *, direction: str | None, scope: str, profile_id: str,
     book_fingerprint: str, diagnostics: list[ImportDiagnostic], strict: bool,
-) -> list[Rule]:
+) -> list[tuple[int, Rule]]:
     payload = json.loads(text)
     if isinstance(payload, dict):
         values = payload.get("rules")
@@ -341,7 +344,7 @@ def _json_rules(
                 profile_id=profile_id,
                 book_fingerprint=book_fingerprint,
             )
-            result.append(validate_rule(rule, index=index))
+            result.append((index, rule))
         except (TypeError, ValueError) as exc:
             error = (exc if isinstance(exc, RuleValidationError) else
                      RuleValidationError(str(exc), index=index))
