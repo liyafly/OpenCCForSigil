@@ -113,6 +113,7 @@ class DictionaryInspection:
     after_opencc: str = ""
     rule_trace: tuple[object, ...] = ()
     zero_width_skips: tuple[tuple[str, int], ...] = ()
+    skipped_rule_trace: tuple[object, ...] = ()
 
 
 def inspect_dictionary(
@@ -174,6 +175,7 @@ def inspect_dictionary(
         converted.after_opencc,
         converted.rule_trace,
         converted.zero_width_skips,
+        converted.skipped_rule_trace,
     )
 
 
@@ -1951,6 +1953,10 @@ class RuleManagerDialog:
             for rule_id, count in inspection.zero_width_skips:
                 lines.append(self._labels["zero_width_skipped"].format(
                     id=rule_id, count=count))
+            for skipped in inspection.skipped_rule_trace:
+                lines.append(self._labels["rule_skipped_overlap"].format(
+                    id=skipped.rule_id, winner=skipped.winner_id,
+                    start=skipped.start, end=skipped.end))
             if not trace:
                 lines.append(self._labels["no_hits"])
             self.test_output.setPlainText("\n".join(lines))

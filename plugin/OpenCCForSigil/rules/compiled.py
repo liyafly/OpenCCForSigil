@@ -17,6 +17,7 @@ from .matching import (
     REGEX_MAX_RULES,
     RegexBudget,
     RuleExecutionError,
+    SkippedRuleMatch,
     _indexed_stage_candidates,
     source_matches,
 )
@@ -174,6 +175,7 @@ def lock_spans_compiled(
     budget: RegexBudget | None = None,
     *,
     candidate_cache: OrderedDict[str, tuple[Rule, ...]] | None = None,
+    skipped: list[SkippedRuleMatch] | None = None,
 ):
     """Return deterministic matches after reserving all protected ranges."""
 
@@ -204,7 +206,8 @@ def lock_spans_compiled(
             match.target,
             match.rule,
         )
-        for match in source_matches(text, source_rules, overlay.regex_patterns, budget)
+        for match in source_matches(
+            text, source_rules, overlay.regex_patterns, budget, skipped=skipped)
     )
 
 

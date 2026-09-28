@@ -30,8 +30,10 @@ once, so replacements do not cascade within that stage. Provenance is
 `UserRule:<id>`.
 
 Regular expressions only match one extracted text fragment or allowed
-attribute value; they do not cross markup or operate on whole XHTML. The plugin
-rejects zero-length matches and bounds pattern size, per-rule and total hits,
+attribute value; they do not cross markup or operate on whole XHTML. Saving
+rejects patterns that match empty input; at runtime, zero-width matches found
+in text are skipped and counted in a diagnostic that contains only the rule ID
+and count. The plugin also bounds pattern size, per-rule and total hits,
 replacement output, and total matching time. A timeout or exceeded limit stops
 the entire analysis before it can produce a partial writeback plan. The rule
 manager includes templates for author-credit protection, marked text,
@@ -55,7 +57,10 @@ Protection wins first. V1 retains its book, global, profile ordering; V2 uses
 book, current profile, global, then built-in scope. At the same source position,
 if any candidate is V2, all candidates use the V2 scope order; otherwise all
 candidates use the V1 order. At the same precedence, longer actual matches win
-before the advanced priority. Conflicting
+before the advanced priority. Rules take effect from left to right by their
+occurrence position; scope and priority are compared only among candidates
+with the same start. A later-starting candidate that overlaps an earlier
+selected rule is skipped. Conflicting
 same-source targets at the same precedence block planning; ambiguous dynamic
 regex matches with different outputs stop at that text position. Owners of
 separate profile/book scopes are independent.

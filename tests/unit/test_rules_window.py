@@ -1291,6 +1291,25 @@ def test_sandbox_reports_zero_width_skips_without_input_text():
     assert "zero: 好 → 善 at 7–8" in output
 
 
+def test_sandbox_lists_candidates_skipped_by_an_earlier_overlap():
+    earlier = Rule(
+        id="g", source="大乾", target="G", direction="s2t", scope="global")
+    later = Rule(
+        id="b", source="乾隆帝", target="B", direction="s2t", scope="book",
+        book_fingerprint="book-hash", priority=100_000)
+    manager = RuleManagerDialog(
+        make_with_table(), (earlier, later), translator=Translator("zh-Hans"),
+        official_convert=lambda _config, text: text, config="s2t",
+        profile_id="profile", book_fingerprint="book-hash")
+    manager.test_input.setPlainText("大乾隆帝")
+
+    manager._test()
+
+    output = manager.test_output.toPlainText()
+    assert "b 未采用" in output
+    assert "与 g" in output
+
+
 def test_apply_saves_a_valid_unsubmitted_editor_draft():
     manager = RuleManagerDialog(make_with_table(), (), translator=Translator("en"))
     manager.source_edit.setText("draft source")

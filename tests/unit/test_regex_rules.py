@@ -186,6 +186,26 @@ def test_zero_width_runtime_match_is_skipped_not_fatal():
     assert "好" not in diagnostic.message
 
 
+def test_skipped_candidate_trace_does_not_change_patches():
+    earlier = Rule(
+        id="g", source="大乾", target="G", direction="s2t", scope="global")
+    later = Rule(
+        id="b", source="乾隆帝", target="B", direction="s2t", scope="book",
+        book_fingerprint="book-hash", priority=100_000)
+    request = replace(
+        _request((earlier, later)), book_fingerprint="book-hash")
+    source = "大乾隆帝"
+
+    plain = OfficialBackendConverter(_Backend()).convert(source, request)
+    traced = OfficialBackendConverter(_Backend()).convert(
+        source, replace(request, include_rule_trace=True))
+
+    assert (traced.target, traced.changes) == (plain.target, plain.changes)
+    assert plain.skipped_rule_trace == ()
+    assert [(item.rule_id, item.winner_id, item.start, item.end)
+            for item in traced.skipped_rule_trace] == [("b", "g", 1, 4)]
+
+
 def test_expired_regex_budget_stops_with_rule_identity():
     rule = _rule(id="bounded", source="x", target="y")
     budget = RegexBudget()

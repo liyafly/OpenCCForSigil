@@ -118,6 +118,17 @@ class RuleTrace:
 
 
 @dataclass(frozen=True)
+class SkippedRuleTrace:
+    """One overlapping candidate skipped by an earlier selected rule."""
+
+    rule_id: str
+    winner_id: str
+    stage: str
+    start: int
+    end: int
+
+
+@dataclass(frozen=True)
 class ConvertResult:
     source: str
     target: str
@@ -128,6 +139,7 @@ class ConvertResult:
     after_opencc: str = ""
     after_post_rules: str = ""
     zero_width_skips: Tuple[Tuple[str, int], ...] = ()
+    skipped_rule_trace: Tuple[SkippedRuleTrace, ...] = ()
 
 
 @dataclass(frozen=True)

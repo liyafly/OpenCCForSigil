@@ -12,8 +12,8 @@ import json
 from typing import Protocol
 
 from core.diff import bounded_opcodes
-from core.models import (ConvertRequest, ConvertResult, Diagnostic, RuleTrace, SourceSpan,
-                         TokenChange)
+from core.models import (ConvertRequest, ConvertResult, Diagnostic, RuleTrace,
+                         SkippedRuleTrace, SourceSpan, TokenChange)
 from opencc_backend.backend import OpenCCBackend
 
 
@@ -153,12 +153,17 @@ class OfficialBackendConverter:
             self._regex_budget = RegexBudget()
         budget = self._regex_budget or RegexBudget()
         zero_width_before = dict(budget.zero_width_skips)
+        skipped_matches = [] if request.include_rule_trace else None
         candidate_cache = self._source_candidate_cache
         if candidate_cache is None or candidate_cache[0] is not overlay:
             candidate_cache = (overlay, OrderedDict())
             self._source_candidate_cache = candidate_cache
         spans = lock_spans_compiled(
-            text, overlay, budget, candidate_cache=candidate_cache[1])
+            text, overlay, budget, candidate_cache=candidate_cache[1],
+            skipped=skipped_matches)
+        skipped_rule_trace = [SkippedRuleTrace(
+            item.rule_id, item.winner_id, "source", item.start, item.end)
+            for item in skipped_matches or ()]
         pairer = quotation_pairer or QuotationPairer(request.quotation_mode)
         # Reuse the complete unlocked pipeline while avoiding a second rule pass.
         cached_unlocked = getattr(self, "_unlocked_request", None)
@@ -180,13 +185,16 @@ class OfficialBackendConverter:
             end = span.start if span is not None else len(text)
             if end > cursor:
                 segment = text[cursor:end]
+                pre_skipped = [] if request.include_rule_trace else None
+                post_skipped = [] if request.include_rule_trace else None
                 try:
                     before_opencc, pre_hits = replace_stage(
                         segment, pre_rules, regex_patterns, budget,
                         literal_index=overlay.pre_literal_index,
                         order=overlay.pre_rule_order,
                         regex_rules=overlay.pre_regex_rules,
-                        include_single_char_rules=overlay.pre_has_single_char_literals)
+                        include_single_char_rules=overlay.pre_has_single_char_literals,
+                        skipped=pre_skipped)
                     converted = self.convert(
                         before_opencc, unlocked, quotation_pairer=pairer)
                     final_segment, post_hits = replace_stage(
@@ -194,11 +202,20 @@ class OfficialBackendConverter:
                         literal_index=overlay.post_literal_index,
                         order=overlay.post_rule_order,
                         regex_rules=overlay.post_regex_rules,
-                        include_single_char_rules=overlay.post_has_single_char_literals)
+                        include_single_char_rules=overlay.post_has_single_char_literals,
+                        skipped=post_skipped)
                 except RuleExecutionError:
                     raise
                 output.append(final_segment)
                 if request.include_rule_trace:
+                    skipped_rule_trace.extend(SkippedRuleTrace(
+                        item.rule_id, item.winner_id, "pre",
+                        pre_offset + item.start, pre_offset + item.end)
+                        for item in pre_skipped or ())
+                    skipped_rule_trace.extend(SkippedRuleTrace(
+                        item.rule_id, item.winner_id, "post",
+                        opencc_offset + item.start, opencc_offset + item.end)
+                        for item in post_skipped or ())
                     after_pre.append(before_opencc)
                     after_opencc.append(converted.target)
                     after_post.append(final_segment)
@@ -276,6 +293,7 @@ class OfficialBackendConverter:
             "".join(after_opencc) if request.include_rule_trace else "",
             "".join(after_post) if request.include_rule_trace else "",
             zero_width_skips,
+            tuple(skipped_rule_trace),
         )
 
 

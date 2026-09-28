@@ -44,6 +44,14 @@ class StageHit:
     target: str
 
 
+@dataclass(frozen=True)
+class SkippedRuleMatch:
+    rule_id: str
+    winner_id: str
+    start: int
+    end: int
+
+
 class RegexBudget:
     """Cumulative work limit shared by all text targets in one conversion plan."""
 
@@ -261,6 +269,8 @@ def source_matches(
     rules: tuple[Rule, ...],
     regex_patterns: Mapping[str, object],
     budget: RegexBudget,
+    *,
+    skipped: list[SkippedRuleMatch] | None = None,
 ) -> tuple[RuleMatch, ...]:
     """Reserve protections first, then choose final-wording matches."""
 
@@ -280,8 +290,16 @@ def source_matches(
 
     protected = []
     cursor = 0
+    protected_winner: RuleMatch | None = None
     for start in sorted(protected_candidates):
         if start < cursor:
+            if skipped is not None and protected_winner is not None:
+                same_start = protected_candidates[start]
+                candidates_at_start = (same_start if isinstance(same_start, list)
+                                       else [same_start])
+                skipped.extend(SkippedRuleMatch(
+                    candidate.rule.id, protected_winner.rule.id,
+                    candidate.start, candidate.end) for candidate in candidates_at_start)
             continue
         same_start = protected_candidates[start]
         chosen = _resolve_same_start(same_start) if isinstance(same_start, list) else same_start
@@ -289,12 +307,21 @@ def source_matches(
             budget.note_regex_hit(chosen.rule, chosen.start, fragment_hits)
         protected.append(chosen)
         cursor = chosen.end
+        protected_winner = chosen
 
     if not protected:
         spans = []
         cursor = 0
+        cursor_winner: RuleMatch | None = None
         for start in sorted(override_candidates):
             if start < cursor:
+                if skipped is not None and cursor_winner is not None:
+                    same_start = override_candidates[start]
+                    candidates_at_start = (same_start if isinstance(same_start, list)
+                                           else [same_start])
+                    skipped.extend(SkippedRuleMatch(
+                        candidate.rule.id, cursor_winner.rule.id,
+                        candidate.start, candidate.end) for candidate in candidates_at_start)
                 continue
             same_start = override_candidates[start]
             chosen = _resolve_same_start(same_start) if isinstance(same_start, list) else same_start
@@ -303,24 +330,36 @@ def source_matches(
             budget.note_output(chosen.rule, len(chosen.target), chosen.start, stage="source")
             spans.append(chosen)
             cursor = chosen.end
+            cursor_winner = chosen
         return tuple(spans)
 
     spans = list(protected)
     cursor = 0
+    cursor_winner = None
     protected_index = 0
     for start in sorted(override_candidates):
         while protected_index < len(protected) and protected[protected_index].end <= start:
             protected_index += 1
         if start < cursor:
+            if skipped is not None and cursor_winner is not None:
+                same_start = override_candidates[start]
+                candidates_at_start = (same_start if isinstance(same_start, list)
+                                       else [same_start])
+                skipped.extend(SkippedRuleMatch(
+                    candidate.rule.id, cursor_winner.rule.id,
+                    candidate.start, candidate.end) for candidate in candidates_at_start)
             continue
         same_start = override_candidates[start]
         blocker = (protected[protected_index]
                    if protected_index < len(protected) else None)
-        if blocker is not None and blocker.start <= start:
-            continue
         candidates_at_start = same_start if isinstance(same_start, list) else [same_start]
         allowed = [candidate for candidate in candidates_at_start
                    if blocker is None or candidate.end <= blocker.start]
+        if skipped is not None and blocker is not None:
+            skipped.extend(SkippedRuleMatch(
+                candidate.rule.id, blocker.rule.id, candidate.start, candidate.end)
+                for candidate in candidates_at_start
+                if candidate.end > blocker.start)
         if not allowed:
             continue
         chosen = _resolve_same_start(allowed) if len(allowed) > 1 else allowed[0]
@@ -329,6 +368,7 @@ def source_matches(
         budget.note_output(chosen.rule, len(chosen.target), chosen.start, stage="source")
         spans.append(chosen)
         cursor = chosen.end
+        cursor_winner = chosen
     return tuple(sorted(spans, key=lambda item: (item.start, item.end)))
 
 
@@ -342,6 +382,7 @@ def replace_stage(
     order: Mapping[str, int] | None = None,
     regex_rules: tuple[Rule, ...] | None = None,
     include_single_char_rules: bool = True,
+    skipped: list[SkippedRuleMatch] | None = None,
 ) -> tuple[str, tuple[StageHit, ...]]:
     """Apply one stage's non-cascading replacements from a single input value."""
 
@@ -376,13 +417,21 @@ def replace_stage(
     selected = []
     fragment_hits: dict[str, int] = {}
     cursor = 0
+    cursor_winner: RuleMatch | None = None
     for start in sorted(by_start):
         if start < cursor:
+            if skipped is not None and cursor_winner is not None:
+                same_start = by_start[start]
+                candidates_at_start = same_start if isinstance(same_start, list) else [same_start]
+                skipped.extend(SkippedRuleMatch(
+                    candidate.rule.id, cursor_winner.rule.id,
+                    candidate.start, candidate.end) for candidate in candidates_at_start)
             continue
         same_start = by_start[start]
         chosen = _resolve_same_start(same_start) if isinstance(same_start, list) else same_start
         selected.append(chosen)
         cursor = chosen.end
+        cursor_winner = chosen
 
     output = []
     hits = []
