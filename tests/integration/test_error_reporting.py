@@ -2,12 +2,14 @@ import json
 
 import pytest
 
-from app.controller import Controller
+from app.controller import Controller, _rule_conflict_summary
+from app.errors import RuleConflictError
 from core.models import Diagnostic, VerificationResult
 from core.workflow import WorkflowCommitError, WorkflowError
 from logging_ext.logger import SessionLogger
 from sigil.scope import Scope, TargetSelection
 from ui.preview_window import PreviewOutcome, ScopeOutcome
+from ui.i18n import Translator
 
 
 class Book:
@@ -122,6 +124,16 @@ def test_settings_changed_after_preview_is_reported(monkeypatch, tmp_path):
 
     _assert_one_prewrite_error(
         monkeypatch, tmp_path, book, "SETTINGS_CHANGED", preview_callback=mutate)
+
+
+def test_rule_conflict_error_has_localized_summary_with_set_and_rule_ids():
+    error = RuleConflictError(((('a1', 'A'), ('b1', 'B')),))
+
+    for language in ("en", "zh-Hans", "zh-Hant"):
+        summary = _rule_conflict_summary(error, Translator(language))
+        assert "a1 (A)" in summary
+        assert "b1 (B)" in summary
+        assert "conflict" in summary.casefold() or "冲突" in summary or "衝突" in summary
 
 
 def test_partial_write_uses_partial_result_and_not_error_dialog(monkeypatch, tmp_path):

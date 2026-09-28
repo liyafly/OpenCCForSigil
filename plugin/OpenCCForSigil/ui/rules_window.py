@@ -6,7 +6,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from typing import Any, Callable, Iterable
 
-from rules.conflicts import find_conflicts
+from rules.conflicts import blocking_conflicts, find_conflicts
 from rules.builtin import BUILTIN_RULES
 from rules.builtin import with_builtin_rules
 from rules.models import Rule, RuleSnapshot, SUPPORTED_DIRECTIONS
@@ -66,7 +66,8 @@ def _guarded_rule_dialog(qt_widgets, guard):
 
 
 def review_import(
-    existing: Iterable[Rule], imported: ImportResult, *, id_reassigned_count: int = 0
+    existing: Iterable[Rule], imported: ImportResult, *,
+    other_run_rules: Iterable[Rule] = (), id_reassigned_count: int = 0,
 ) -> RuleImportReview:
     """Prepare additions without changing the current rule list."""
 
@@ -81,7 +82,8 @@ def review_import(
         else:
             known.add(key)
             additions.append(rule)
-    conflicts = tuple(find_conflicts((*existing_rules, *additions)))
+    conflicts = tuple(find_conflicts((
+        *existing_rules, *additions, *tuple(other_run_rules))))
     return RuleImportReview(
         tuple(additions), duplicates, imported.diagnostics, conflicts, id_reassigned_count
     )
@@ -1174,6 +1176,32 @@ class RuleManagerDialog:
                 clear_selection()
             self._selected_rule_id = None
         conflicts = find_conflicts(self.rules)
+        run_candidates = self._run_candidates()
+        run_owners = getattr(self, "_run_candidate_rule_sets", {})
+        current_rule_objects = {id(rule) for rule in self.rules}
+        other_conflicts = []
+        for conflict in blocking_conflicts(run_candidates):
+            if not any(id(rule) in current_rule_objects for rule in conflict.rules):
+                continue
+            other_rule_sets = {
+                run_owners[id(rule)] for rule in conflict.rules
+                if id(rule) in run_owners and run_owners[id(rule)] != self._ruleset_id
+            }
+            if not other_rule_sets:
+                continue
+            names = tuple(dict.fromkeys(
+                self._rulesets[item].name or item
+                for item in sorted(other_rule_sets) if item in self._rulesets
+            ))
+            other_conflicts.append((
+                conflict,
+                self._labels["conflict_other_ruleset"].format(
+                    ruleset=", ".join(names),
+                    detail=_conflict_summary(conflict, self._translator),
+                ),
+            ))
+        conflicts = (*conflicts, *(item[0] for item in other_conflicts))
+        other_summaries = {id(conflict): summary for conflict, summary in other_conflicts}
         conflicts_label = getattr(self, "conflicts_label", None)
         if conflicts_label is not None:
             conflicts_label.setText(self._labels["conflicts_count"].format(
@@ -1188,7 +1216,8 @@ class RuleManagerDialog:
         self.conflict_list.clear()
         translator = getattr(self, "_translator", Translator("en"))
         for conflict in conflicts:
-            item = self._qt.QListWidgetItem(_conflict_summary(conflict, translator))
+            item = self._qt.QListWidgetItem(
+                other_summaries.get(id(conflict), _conflict_summary(conflict, translator)))
             item.setData(getattr(self._qt.Qt, "UserRole", 32),
                          tuple(rule.id for rule in conflict.rules))
             self.conflict_list.addItem(item)
@@ -1241,6 +1270,34 @@ class RuleManagerDialog:
                 rule, config=self._config, profile_id=self._profile_id,
                 book_fingerprint=self._book_fingerprint)
         )
+
+    def _run_candidates(self, *, exclude_ruleset_id: str | None = None) -> tuple[Rule, ...]:
+        """Return rules that the current conversion will actually apply."""
+
+        if not all(hasattr(self, name) for name in ("_rulesets", "_ruleset_id")):
+            self._run_candidate_rule_sets = {}
+            return ()
+        self._stash_ruleset()
+        identifiers = tuple(dict.fromkeys(
+            str(item) for item in getattr(self, "_run_options", {}).get("ruleset_ids", ())
+        ))
+        candidates = []
+        owners = {}
+        for identifier in identifiers:
+            if identifier == exclude_ruleset_id:
+                continue
+            ruleset = self._rulesets.get(identifier)
+            if ruleset is None or not ruleset.enabled:
+                continue
+            for rule in ruleset.rules:
+                if applies_to(
+                    rule, config=self._config, profile_id=self._profile_id,
+                    book_fingerprint=self._book_fingerprint,
+                ):
+                    candidates.append(rule)
+                    owners[id(rule)] = identifier
+        self._run_candidate_rule_sets = owners
+        return tuple(candidates)
 
     def _rule_activity_reason(self, rule: Rule) -> str:
         ruleset = self._rulesets.get(self._ruleset_id)
@@ -1733,7 +1790,10 @@ class RuleManagerDialog:
             )
             result = replace(result, rules=reassigned_rules)
             review = review_import(
-                self.rules, result, id_reassigned_count=id_reassigned_count
+                self.rules, result,
+                other_run_rules=self._run_candidates(
+                    exclude_ruleset_id=self._ruleset_id),
+                id_reassigned_count=id_reassigned_count,
             )
             if self._confirm_import(review):
                 self.rules.extend(review.additions)

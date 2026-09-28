@@ -465,6 +465,40 @@ def test_rule_conflict_summary_localizes_kind_and_preserves_source():
         assert "SAME_SOURCE_DIFFERENT_TARGET" not in summary
 
 
+def test_conflict_with_another_run_ruleset_is_listed_and_blocks_save():
+    current = Rule(id="a1", source="软件", target="軟體", direction="s2t")
+    other = Rule(id="b1", source="软件", target="軟件", direction="s2t")
+    manager = RuleManagerDialog(
+        make_with_table(), (current,), translator=Translator("en"),
+        run_options={"ruleset_ids": ["A", "B"]},
+        rulesets=(
+            RuleSet("A", (current,), name="Current terms"),
+            RuleSet("B", (other,), name="Other terms"),
+        ),
+        ruleset_id="A",
+    )
+
+    assert manager.conflict_list.count() == 1
+    assert "Other terms" in manager.conflict_list.item(0).text()
+    assert "a1" in manager.conflict_list.item(0).text()
+    assert "b1" in manager.conflict_list.item(0).text()
+    assert not manager.apply_button.isEnabled()
+
+
+def test_unselected_ruleset_conflict_does_not_block_save():
+    current = Rule(id="a1", source="软件", target="軟體", direction="s2t")
+    other = Rule(id="b1", source="软件", target="軟件", direction="s2t")
+    manager = RuleManagerDialog(
+        make_with_table(), (current,), translator=Translator("en"),
+        run_options={"ruleset_ids": ["A"]},
+        rulesets=(RuleSet("A", (current,)), RuleSet("B", (other,))),
+        ruleset_id="A",
+    )
+
+    assert manager.conflict_list.count() == 0
+    assert manager.apply_button.isEnabled()
+
+
 def test_nonstrict_txt_import_reports_candidates_and_invalid_rows_with_scope():
     imported = import_rules(
         "术语\t专名 其他候选\n空目标\t\n",
@@ -520,6 +554,10 @@ def test_import_reassigns_ids_colliding_with_any_saved_ruleset(tmp_path):
     manager._rulesets = {item.id: item for item in saved}
     manager._rulesets["B"] = RuleSet("B")
     manager._ruleset_id = "B"
+    manager._run_options = {}
+    manager._config = "s2t"
+    manager._book_fingerprint = None
+    manager._profile_id = None
     manager.rules = []
     manager.dialog = object()
     manager._profile_id = None
@@ -537,6 +575,52 @@ def test_import_reassigns_ids_colliding_with_any_saved_ruleset(tmp_path):
     assert len(manager.rules) == 1
     assert manager.rules[0].id != "shared"
     assert reviews[0].id_reassigned_count == 1
+
+
+def test_import_review_includes_conflicts_from_other_run_rulesets(tmp_path):
+    existing = Rule(id="a1", source="软件", target="軟體", direction="s2t")
+    imported_rule = Rule(id="b1", source="软件", target="軟件", direction="s2t")
+    store = RuleStore(tmp_path / "rules")
+    store.save(RuleSet("A", (existing,), name="Other terms"))
+    store.save(RuleSet("B", name="Current terms"))
+    imported_path = tmp_path / "conflicting.json"
+    imported_path.write_text(export_rules((imported_rule,), format="json"), encoding="utf-8")
+
+    manager = object.__new__(RuleManagerDialog)
+    manager._translator = Translator("en")
+    manager._qt = SimpleNamespace(
+        QFileDialog=SimpleNamespace(getOpenFileName=lambda *_args: (str(imported_path), "")),
+    )
+    manager._labels = {"import": "Import"}
+    manager._rule_store = store
+    saved, errors = store.list()
+    assert errors == ()
+    manager._rulesets = {item.id: item for item in saved}
+    manager._ruleset_id = "B"
+    manager.rules = []
+    manager._run_options = {"ruleset_ids": ["A", "B"]}
+    manager._config = "s2t"
+    manager._profile_id = None
+    manager._book_fingerprint = None
+    manager.dialog = object()
+    manager._ui_preferences = {}
+    manager._save_ui_preferences = None
+    manager._import_options = lambda _path: {
+        "format": "json", "direction": "s2t", "scope": "global", "strict": True,
+    }
+    reviews = []
+    manager._confirm_import = lambda review: (reviews.append(review), False)[1]
+    manager._refresh = lambda: None
+    manager._show_exception = lambda error: (_ for _ in ()).throw(error)
+
+    manager._import()
+
+    assert manager.rules == []
+    assert len(reviews) == 1
+    assert any(
+        {rule.id for rule in conflict.rules} == {"a1", "b1"} and conflict.blocking
+        for conflict in reviews[0].conflicts
+    )
 
 
 def test_export_confirms_before_writing_a_lossy_format(monkeypatch, tmp_path):

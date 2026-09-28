@@ -26,6 +26,20 @@ class RuleValidationError(PluginError):
 class RuleConflictError(PluginError):
     code = "RULE_CONFLICT_ERROR"
 
+    def __init__(self, conflict_groups=()):
+        self.conflict_groups = tuple(
+            tuple((str(rule_id), str(ruleset_id)) for rule_id, ruleset_id in group)
+            for group in conflict_groups
+        )
+        details = "; ".join(
+            ", ".join(f"{rule_id} ({ruleset_id})" for rule_id, ruleset_id in group)
+            for group in self.conflict_groups
+        )
+        message = "blocking rule conflicts"
+        if details:
+            message += ": " + details
+        super().__init__(message)
+
 
 class ConversionError(PluginError):
     code = "CONVERSION_ERROR"

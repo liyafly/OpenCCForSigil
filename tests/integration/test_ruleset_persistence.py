@@ -1,6 +1,9 @@
 import json
 from types import SimpleNamespace
 
+import pytest
+
+from app.errors import RuleConflictError
 from app.controller import Controller
 from app.settings import RunSettings
 from app.profiles import Profile, ProfileStore
@@ -37,6 +40,53 @@ def test_unsaved_default_profile_restores_existing_rulesets_from_run_options(tmp
     assert [rule.id for rule in frozen.rules] == ["custom"]
     assert settings.take_missing_rulesets_notice() == ("deleted",)
     assert settings.take_missing_rulesets_notice() == ()
+
+
+def test_freeze_rules_reports_cross_ruleset_conflict_with_ruleset_ids(tmp_path):
+    store = RuleStore(tmp_path / "rules")
+    store.save(RuleSet("A", (Rule(
+        id="a1", source="软件", target="軟體", direction="s2t"),)))
+    store.save(RuleSet("B", (Rule(
+        id="b1", source="软件", target="軟件", direction="s2t"),)))
+    settings = RunSettings(
+        Storage(tmp_path), SimpleNamespace(), {}, language="en", session_id="test-session")
+    profile = Profile(
+        id="profile", conversion="s2t", ruleset_ids=("A", "B"),
+        builtin_rules_enabled=False,
+    )
+
+    with pytest.raises(RuleConflictError) as caught:
+        settings.freeze_rules(profile)
+
+    assert caught.value.conflict_groups == ((('a1', 'A'), ('b1', 'B')) ,)
+    assert "a1 (A)" in str(caught.value)
+    assert "b1 (B)" in str(caught.value)
+
+
+def test_freeze_rules_ignores_rules_owned_by_another_book_or_profile(tmp_path):
+    store = RuleStore(tmp_path / "rules")
+    store.save(RuleSet("A", (
+        Rule(id="book-a", source="term", target="book A", direction="s2t",
+             scope="book", book_fingerprint="other-book"),
+        Rule(id="profile-a", source="term", target="profile A", direction="s2t",
+             scope="profile", profile_id="other-profile"),
+    )))
+    store.save(RuleSet("B", (
+        Rule(id="book-b", source="term", target="book B", direction="s2t",
+             scope="book", book_fingerprint="other-book"),
+        Rule(id="profile-b", source="term", target="profile B", direction="s2t",
+             scope="profile", profile_id="other-profile"),
+    )))
+    settings = RunSettings(
+        Storage(tmp_path), SimpleNamespace(), {}, language="en", session_id="test-session")
+    profile = Profile(
+        id="current-profile", conversion="s2t", ruleset_ids=("A", "B"),
+        builtin_rules_enabled=False,
+    )
+
+    frozen = settings.freeze_rules(profile)
+
+    assert frozen.rules == ()
 
 
 def test_builtin_tw2sp_protection_covers_bracketed_and_unbracketed_credits(tmp_path):

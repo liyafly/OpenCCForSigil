@@ -8,7 +8,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from app.errors import UserCancelled
+from app.errors import RuleConflictError, UserCancelled
 from app.session import Session, SessionState
 from app.settings import RunSettings, profile_options, settings_hash, tokenizer_policy
 from app.version import PLUGIN_VERSION
@@ -706,6 +706,8 @@ class Controller:
                 "log_path": str(self.logger.log_path),
                 "affected_files": affected_files,
             }
+            if isinstance(exc, RuleConflictError):
+                error_values["summary"] = _rule_conflict_summary(exc, translator)
             if isinstance(exc, RuntimeSelectionError):
                 error_values["summary"] = _runtime_selection_summary(exc, translator)
             _show_error_safely(
@@ -876,6 +878,14 @@ def _error_kind(error: BaseException) -> str:
     if "profiles or rules changed after preview" in str(error):
         return "SETTINGS_CHANGED"
     return "UNEXPECTED_ERROR"
+
+
+def _rule_conflict_summary(error: RuleConflictError, translator: Translator) -> str:
+    groups = "; ".join(
+        ", ".join(f"{rule_id} ({ruleset_id})" for rule_id, ruleset_id in group)
+        for group in error.conflict_groups
+    )
+    return translator.text("error.rule_conflict", rules=groups)
 
 
 def _runtime_selection_summary(error: RuntimeSelectionError, translator: Translator) -> str:

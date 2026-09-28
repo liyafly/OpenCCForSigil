@@ -6,10 +6,12 @@ import json
 from pathlib import Path
 from uuid import uuid4
 
+from app.errors import RuleConflictError
 from app.profiles import Profile, ProfileFutureSchemaError, ProfileStore
 from core.models import RuleSnapshot
+from rules.conflicts import BlockingRuleConflict, validate_no_blocking_conflicts
 from rules.builtin import with_builtin_rules
-from rules.precedence import base_direction
+from rules.precedence import applies_to, base_direction
 from rules.store import RuleSet, RuleSetFutureSchemaError, RuleStore
 from opencc_backend.configs import comparison_configs
 from ui.i18n import Translator, plugin_window_title, profile_display_name, show_error_details
@@ -383,7 +385,8 @@ class RunSettings:
 
     def freeze_rules(self, profile):
         identifiers = self._existing_ruleset_ids(profile.ruleset_ids)
-        rules = []
+        selected_rules = []
+        owners = {}
         for identifier in identifiers:
             # The built-in empty set does not need an on-disk file.
             if identifier == "default" and not (self.rules.directory / "default.json").exists():
@@ -391,7 +394,7 @@ class RunSettings:
             try:
                 ruleset = self.rules.load(identifier)
                 if ruleset.enabled:
-                    rules.extend(ruleset.rules)
+                    selected_rules.extend((identifier, rule) for rule in ruleset.rules)
             except RuleSetFutureSchemaError:
                 self._add_recovery_notice(("rulesets_future_schema", identifier))
             except (OSError, ValueError):
@@ -406,10 +409,34 @@ class RunSettings:
                     self._add_recovery_notice(("rulesets_recovered", backup_name))
                 self._pending_missing_rulesets = tuple(dict.fromkeys(
                     (*self._pending_missing_rulesets, identifier)))
+        book_fingerprint = self._book_fingerprint
+        if book_fingerprint is None and any(
+                rule.scope == "book" for _identifier, rule in selected_rules):
+            getter = getattr(self.adapter, "book_fingerprint", None)
+            if callable(getter):
+                book_fingerprint = getter()
+                self._book_fingerprint = book_fingerprint
+        rules = []
+        for identifier, rule in selected_rules:
+            if applies_to(
+                rule, config=profile.conversion, profile_id=profile.id,
+                book_fingerprint=book_fingerprint,
+            ):
+                rules.append(rule)
+                owners[id(rule)] = identifier
         rules = list(with_builtin_rules(
             rules, config=profile.conversion,
             enabled=profile.builtin_rules_enabled,
         ))
+        try:
+            validate_no_blocking_conflicts(rules)
+        except BlockingRuleConflict as error:
+            conflict_groups = tuple(
+                tuple((rule.id, owners.get(id(rule), "builtin"))
+                      for rule in conflict.rules)
+                for conflict in error.conflicts
+            )
+            raise RuleConflictError(conflict_groups) from error
         from rules.models import RuleSnapshot as Snapshot
         frozen = Snapshot.freeze(rules)
         return RuleSnapshot(rules_hash=frozen.sha256, rules=frozen.rules)
