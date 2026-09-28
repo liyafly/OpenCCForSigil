@@ -87,6 +87,14 @@ def test_ruleset_enabled_label_describes_global_scope_not_this_run():
     assert "this run" not in catalogs["en"]["rules.ruleset_enabled"].lower()
 
 
+def test_rules_help_does_not_reference_below_sandbox():
+    catalogs = load_catalogs()
+    for catalog in catalogs.values():
+        help_text = catalog["rules.help"].lower()
+        assert "下方" not in help_text
+        assert "below" not in help_text
+
+
 def test_profile_summary_uses_locale_label_separator():
     for language, separator in (("en", ": "), ("zh-Hans", "："), ("zh-Hant", "：")):
         translator = Translator(language)

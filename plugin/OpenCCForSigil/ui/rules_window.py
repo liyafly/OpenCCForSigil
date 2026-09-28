@@ -423,9 +423,9 @@ class RuleManagerDialog:
         self.accepted = False
         self.dialog = _guarded_rule_dialog(qt_widgets, self._guard_reject)
         self.dialog.setWindowTitle(
-            plugin_window_title(self._translator, self._labels["title"]))
+        plugin_window_title(self._translator, self._labels["title"]))
         restore_window_size(
-            self.dialog, self._ui_preferences, "rules_dialog_size", (840, 540))
+            self.dialog, self._ui_preferences, "rules_dialog_size", (960, 640))
         self._build()
         self._populate_rulesets()
         self._initial_ruleset_snapshot = self._ruleset_snapshot()
@@ -440,23 +440,29 @@ class RuleManagerDialog:
     def _update_editor_split_orientation(self, width: int) -> None:
         if not hasattr(self, "editor_splitter"):
             return
-        is_wide = int(width) >= 1000
-        previous_wide = getattr(self, "_editor_split_is_wide", None)
-        if previous_wide == is_wide:
+        width = int(width)
+        horizontal = width >= 760
+        wide_form = width >= 1000
+        previous_horizontal = getattr(self, "_editor_split_horizontal", None)
+        previous_wide_form = getattr(self, "_editor_split_is_wide", None)
+        if previous_horizontal == horizontal and previous_wide_form == wide_form:
             return
-        self._editor_split_is_wide = is_wide
-        orientation_name = "Horizontal" if is_wide else "Vertical"
-        self.editor_splitter.setOrientation(
-            _enum_value(self._qt.Qt, orientation_name))
-        self._layout_editor_form(narrow=not is_wide)
-        if is_wide:
-            available = max(self.editor_splitter.width(), 800)
-            self.editor_splitter.setSizes([int(available * 0.48),
-                                           int(available * 0.52)])
-        else:
-            available = max(self.editor_splitter.height(), 420)
-            self.editor_splitter.setSizes([int(available * 0.42),
-                                           int(available * 0.58)])
+        if previous_horizontal != horizontal:
+            orientation_name = "Horizontal" if horizontal else "Vertical"
+            self.editor_splitter.setOrientation(
+                _enum_value(self._qt.Qt, orientation_name))
+            if horizontal:
+                available = max(self.editor_splitter.width(), width)
+                self.editor_splitter.setSizes([int(available * 0.48),
+                                               int(available * 0.52)])
+            else:
+                available = max(self.editor_splitter.height(), 420)
+                self.editor_splitter.setSizes([int(available * 0.42),
+                                               int(available * 0.58)])
+        if previous_wide_form != wide_form:
+            self._layout_editor_form(narrow=not wide_form)
+        self._editor_split_horizontal = horizontal
+        self._editor_split_is_wide = wide_form
 
     def _layout_editor_form(self, *, narrow: bool) -> None:
         form = getattr(self, "editor_form", None)
@@ -519,17 +525,39 @@ class RuleManagerDialog:
         self.ruleset_combo = qt.QComboBox()
         self.new_ruleset_button = qt.QPushButton(self._labels["new_set"])
         self.rename_ruleset_button = qt.QPushButton(self._labels["rename_ruleset"])
-        self.delete_ruleset_button = qt.QPushButton(self._labels["delete_ruleset"])
-        for button in (self.new_ruleset_button, self.rename_ruleset_button,
-                       self.delete_ruleset_button):
+        for button in (self.new_ruleset_button, self.rename_ruleset_button):
             button.setAutoDefault(False)
         ruleset_row.addWidget(self.ruleset_combo, 1)
         ruleset_row.addWidget(self.new_ruleset_button)
         ruleset_row.addWidget(self.rename_ruleset_button)
-        ruleset_row.addWidget(self.delete_ruleset_button)
+        self.ruleset_more_button = qt.QToolButton()
+        self.ruleset_more_button.setText(self._translator.text("preview.more_actions"))
+        popup_mode = _enum_value(qt.QToolButton, "InstantPopup")
+        if popup_mode is not None:
+            self.ruleset_more_button.setPopupMode(popup_mode)
+        self.ruleset_menu = qt.QMenu(self.ruleset_more_button)
+        self.ruleset_more_button.setMenu(self.ruleset_menu)
+        self._ruleset_menu_actions = {}
+        action_type = getattr(getattr(qt, "QtGui", None), "QAction", None)
+        action_type = action_type or getattr(qt, "QAction", None)
+        menu_items = (
+            ("settings", "rules.ruleset_settings", self._open_ruleset_settings),
+            ("help", "rules.help_details", self._show_ruleset_help),
+            ("import", "rules.import", self._import),
+            ("bulk_add", "rules.bulk_add", self._bulk_add),
+            ("export", "rules.export", self._export),
+            ("delete", "rules.delete_ruleset", self._delete_ruleset),
+        )
+        if action_type is not None:
+            for name, label_key, callback in menu_items:
+                action = action_type(self._translator.text(label_key), self.ruleset_menu)
+                action.triggered.connect(
+                    lambda _checked=False, handler=callback: handler())
+                self.ruleset_menu.addAction(action)
+                self._ruleset_menu_actions[name] = action
+        ruleset_row.addWidget(self.ruleset_more_button)
         self.ruleset_enabled_check = qt.QCheckBox(self._labels["ruleset_enabled"])
         self.ruleset_enabled_check.setChecked(True)
-        ruleset_row.addWidget(self.ruleset_enabled_check)
         self.use_in_run_check = qt.QCheckBox(self._translator.text("rules.use_in_run"))
         ruleset_row.addWidget(self.use_in_run_check)
         layout.addLayout(ruleset_row)
@@ -551,36 +579,23 @@ class RuleManagerDialog:
         self.default_scope_combo = qt.QComboBox()
         for scope in ("global", "profile", "book"):
             self.default_scope_combo.addItem(self._labels[f"scope_{scope}"], scope)
-        defaults_box = qt.QGroupBox(self._labels["default_settings"])
-        defaults_box.setCheckable(True)
-        defaults_box.setChecked(False)
-        defaults_content = qt.QWidget(defaults_box)
-        defaults_form = qt.QFormLayout(defaults_content)
-        defaults_form.addRow(self._labels["default_direction"], self.default_direction_combo)
-        defaults_form.addRow(self._labels["default_scope"], self.default_scope_combo)
-        defaults_box_layout = qt.QVBoxLayout(defaults_box)
-        defaults_box_layout.addWidget(defaults_content)
-        defaults_content.setVisible(False)
-        defaults_box.toggled.connect(defaults_content.setVisible)
-        content_layout.addWidget(defaults_box)
-
-        self.help_label = qt.QLabel(self._labels["help"])
-        self.help_label.setWordWrap(True)
-        self.help_box = qt.QGroupBox(self._labels["help_details"])
-        self.help_box.setCheckable(True)
-        self.help_box.setChecked(False)
-        help_content = qt.QWidget(self.help_box)
-        help_layout = qt.QVBoxLayout(help_content)
-        help_layout.addWidget(self.help_label)
-        help_box_layout = qt.QVBoxLayout(self.help_box)
-        help_box_layout.addWidget(help_content)
-        help_content.setVisible(False)
-        self.help_box.toggled.connect(help_content.setVisible)
-        content_layout.addWidget(self.help_box)
-        self.builtin_info_label = qt.QLabel()
-        self.builtin_info_label.setWordWrap(True)
-        content_layout.addWidget(self.builtin_info_label)
-        self._refresh_builtin_info()
+        self.ruleset_settings_dialog = qt.QDialog(self.dialog)
+        self.ruleset_settings_dialog.setWindowTitle(plugin_window_title(
+            self._translator, self._translator.text("rules.ruleset_settings")))
+        settings_layout = qt.QVBoxLayout(self.ruleset_settings_dialog)
+        settings_form = qt.QFormLayout()
+        settings_form.addRow(self._labels["default_direction"], self.default_direction_combo)
+        settings_form.addRow(self._labels["default_scope"], self.default_scope_combo)
+        settings_form.addRow(self.ruleset_enabled_check)
+        settings_layout.addLayout(settings_form)
+        settings_actions = qt.QHBoxLayout()
+        settings_actions.addStretch(1)
+        self.ruleset_settings_close_button = qt.QPushButton(self._labels["close"])
+        self.ruleset_settings_close_button.setAutoDefault(False)
+        self.ruleset_settings_close_button.clicked.connect(
+            self.ruleset_settings_dialog.accept)
+        settings_actions.addWidget(self.ruleset_settings_close_button)
+        settings_layout.addLayout(settings_actions)
 
         self.editor_splitter = qt.QSplitter(_enum_value(qt.Qt, "Horizontal"))
         self.rule_list_panel = qt.QWidget()
@@ -630,6 +645,7 @@ class RuleManagerDialog:
         self.selection_details.setMinimumHeight(32)
         self.selection_details.setMaximumHeight(100)
         self.selection_details.setPlaceholderText(self._labels["select_rule_details"])
+        self._refresh_builtin_info()
         list_layout.addWidget(self.selection_details)
         self.conflict_list = qt.QListWidget()
         self.conflicts_label = qt.QLabel(self._labels["conflicts_title"])
@@ -683,17 +699,22 @@ class RuleManagerDialog:
         self.editor_mode_label = qt.QLabel(self._labels["editor_new_mode"])
         editor_layout.addWidget(self.editor_mode_label)
         editor_layout.addLayout(form)
-        priority_box = qt.QGroupBox(self._labels["advanced_rule_options"])
-        priority_box.setCheckable(True)
-        priority_box.setChecked(False)
-        priority_content = qt.QWidget(priority_box)
+        self.priority_button = qt.QToolButton()
+        self.priority_button.setText(self._labels["advanced_rule_options"])
+        self.priority_button.setCheckable(True)
+        self.priority_button.setChecked(False)
+        button_style = _enum_value(qt.Qt, "ToolButtonTextBesideIcon")
+        if button_style is not None:
+            self.priority_button.setToolButtonStyle(button_style)
+        priority_content = qt.QWidget()
+        self.priority_content = priority_content
         priority_form = qt.QFormLayout(priority_content)
         priority_form.addRow(self._labels["priority"], self.priority_edit)
-        priority_box_layout = qt.QVBoxLayout(priority_box)
-        priority_box_layout.addWidget(priority_content)
         priority_content.setVisible(False)
-        priority_box.toggled.connect(priority_content.setVisible)
-        editor_layout.addWidget(priority_box)
+        self.priority_button.toggled.connect(self._priority_toggled)
+        self._priority_toggled(False)
+        editor_layout.addWidget(self.priority_button)
+        editor_layout.addWidget(priority_content)
         editor_box = qt.QGroupBox(self._labels["editor_group"])
         buttons = qt.QHBoxLayout(editor_box)
         self.add_button = qt.QPushButton(self._labels["add"])
@@ -707,18 +728,6 @@ class RuleManagerDialog:
                        self.template_button):
             buttons.addWidget(button)
         editor_layout.addWidget(editor_box)
-
-        transfer_box = qt.QGroupBox(self._labels["transfer_group"])
-        transfer = qt.QHBoxLayout(transfer_box)
-        self.import_button = qt.QPushButton(self._labels["import"])
-        self.bulk_add_button = qt.QPushButton(self._translator.text("rules.bulk_add"))
-        self.export_button = qt.QPushButton(self._labels["export"])
-        for button in (self.import_button, self.bulk_add_button, self.export_button):
-            button.setAutoDefault(False)
-        transfer.addWidget(self.import_button)
-        transfer.addWidget(self.bulk_add_button)
-        transfer.addWidget(self.export_button)
-        content_layout.addWidget(transfer_box)
 
         test_box = qt.QGroupBox(self._labels["test_group"])
         self.test_box = test_box
@@ -742,12 +751,12 @@ class RuleManagerDialog:
             button.setAutoDefault(False)
         test_buttons.addWidget(self.test_button)
         test_buttons.addWidget(self.inspect_button)
-        test_layout.addLayout(test_buttons)
         self.test_input = qt.QPlainTextEdit()
         self.test_input.setPlaceholderText(self._labels["input"])
         self.test_input.setMinimumHeight(72)
         self.test_input.setMaximumHeight(150)
         test_layout.addWidget(self.test_input)
+        test_layout.addLayout(test_buttons)
         self.test_result_status = qt.QLabel()
         self.test_result_status.setWordWrap(True)
         self.test_result_status.setVisible(False)
@@ -776,7 +785,6 @@ class RuleManagerDialog:
         self.ruleset_combo.currentIndexChanged.connect(self._ruleset_changed)
         self.new_ruleset_button.clicked.connect(self._new_ruleset)
         self.rename_ruleset_button.clicked.connect(self._rename_ruleset)
-        self.delete_ruleset_button.clicked.connect(self._delete_ruleset)
         self.ruleset_enabled_check.stateChanged.connect(self._ruleset_enabled_changed)
         self.use_in_run_check.toggled.connect(self._use_in_run_changed)
         self.default_direction_combo.currentIndexChanged.connect(self._ruleset_metadata_changed)
@@ -787,9 +795,6 @@ class RuleManagerDialog:
         self.template_button.clicked.connect(self._fill_template)
         self.test_button.clicked.connect(self._test)
         self.inspect_button.clicked.connect(self._inspect)
-        self.import_button.clicked.connect(self._import)
-        self.bulk_add_button.clicked.connect(self._bulk_add)
-        self.export_button.clicked.connect(self._export)
         self.apply_button.clicked.connect(self._apply)
         self.cancel_button.clicked.connect(self.dialog.reject)
         self.source_edit.returnPressed.connect(self._submit_editor)
@@ -816,6 +821,22 @@ class RuleManagerDialog:
             if callable(connect):
                 connect(self._mark_test_result_stale)
 
+    def _open_ruleset_settings(self) -> None:
+        exec_dialog(self.ruleset_settings_dialog)
+
+    def _show_ruleset_help(self) -> None:
+        self._qt.QMessageBox.information(
+            self.dialog,
+            plugin_window_title(self._translator, self._labels["help_details"]),
+            self._labels["help"],
+        )
+
+    def _priority_toggled(self, expanded: bool) -> None:
+        self.priority_content.setVisible(bool(expanded))
+        arrow = _enum_value(self._qt.Qt, "DownArrow" if expanded else "RightArrow")
+        if arrow is not None:
+            self.priority_button.setArrowType(arrow)
+
     def _populate_rulesets(self) -> None:
         self.ruleset_combo.blockSignals(True)
         self.ruleset_combo.clear()
@@ -835,7 +856,7 @@ class RuleManagerDialog:
         self._load_ruleset_metadata()
         self._apply_rule_defaults()
         self._update_ruleset_enabled_tooltip()
-        self._update_delete_ruleset_button()
+        self._update_delete_ruleset_action()
 
     def _stash_ruleset(self) -> None:
         if self._ruleset_id in self._rulesets:
@@ -946,11 +967,14 @@ class RuleManagerDialog:
         self._refresh_editor_mode()
 
     def _refresh_builtin_info(self) -> None:
+        if not hasattr(self, "selection_details"):
+            return
         active = bool(self._run_options.get("builtin_rules_enabled", True))
         status = self._labels["builtin_on" if active else "builtin_off"]
         sources = ", ".join(rule.source for rule in BUILTIN_RULES)
-        self.builtin_info_label.setText(
-            self._labels["builtin_info"].format(status=status, rules=sources))
+        info = self._labels["builtin_info"].format(status=status, rules=sources)
+        self.selection_details.setPlaceholderText(
+            self._labels["select_rule_details"] + "\n" + info)
 
     def _mark_test_result_stale(self, *_args) -> None:
         if not getattr(self, "_test_result_has_run", False) or not hasattr(
@@ -1097,7 +1121,7 @@ class RuleManagerDialog:
         self._load_ruleset_metadata()
         self._apply_rule_defaults()
         self._update_ruleset_enabled_tooltip()
-        self._update_delete_ruleset_button()
+        self._update_delete_ruleset_action()
         self._refresh()
         self._mark_test_result_stale()
 
@@ -1172,13 +1196,13 @@ class RuleManagerDialog:
         self._refresh()
         self._mark_test_result_stale()
 
-    def _update_delete_ruleset_button(self) -> None:
-        button = getattr(self, "delete_ruleset_button", None)
-        if button is None:
+    def _update_delete_ruleset_action(self) -> None:
+        action = getattr(self, "_ruleset_menu_actions", {}).get("delete")
+        if action is None:
             return
         is_default = self._ruleset_id == "default"
-        button.setEnabled(not is_default)
-        button.setToolTip(
+        action.setEnabled(not is_default)
+        action.setToolTip(
             self._labels["cannot_delete_default"] if is_default else "")
 
     def _delete_ruleset(self) -> None:

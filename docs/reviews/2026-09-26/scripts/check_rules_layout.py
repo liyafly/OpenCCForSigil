@@ -14,7 +14,7 @@ import subprocess
 import sys
 
 import PySide6
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QPoint, Qt
 from PySide6.QtTest import QTest
 
 from rules.exporters import export_rules
@@ -64,6 +64,12 @@ def main():
         window.dialog.resize(options.width, options.height)
         app.processEvents()
         minimum = window.dialog.minimumSizeHint()
+        table_viewport = window.table.viewport()
+        row_height = window.table.verticalHeader().defaultSectionSize()
+        editor_viewport = window.editor_scroll.viewport()
+        add_button_origin = window.add_button.mapTo(editor_viewport, QPoint(0, 0))
+        add_button_end = add_button_origin + QPoint(
+            window.add_button.width() - 1, window.add_button.height() - 1)
         result = {
             "language": language,
             "minimum_width": minimum.width(),
@@ -77,6 +83,12 @@ def main():
             "editor_label_count_after_resize": len(
                 window.editor_panel.findChildren(qt.QLabel)),
             "table_height": window.table.height(),
+            "table_viewport_height": table_viewport.height(),
+            "table_row_height": row_height,
+            "table_rows_visible": table_viewport.height() // max(row_height, 1),
+            "add_button_in_editor_viewport": (
+                editor_viewport.rect().contains(add_button_origin)
+                and editor_viewport.rect().contains(add_button_end)),
             "same_orientation_resize_preserves_split_ratio": resize_preserves_split_ratio,
             "split_ratio_before_resize": before_ratio,
             "split_ratio_after_resize": after_ratio,
@@ -320,6 +332,8 @@ def main():
             assert item["working_copy_update_marks_stale"] is True, item
             assert item["working_copy_remove_marks_stale"] is True, item
             assert item["table_height"] >= 100, item
+            assert item["table_rows_visible"] >= 5, item
+            assert item["add_button_in_editor_viewport"] is True, item
         assert all(keyboard.values()), keyboard
 
 

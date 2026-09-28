@@ -144,6 +144,10 @@ class Base:
 
         def rec(*a, **k):
             self.calls.append((name, a))
+            if (name in {"addWidget", "addLayout", "insertWidget", "insertLayout",
+                         "addTab", "setWidget"}
+                    and a and isinstance(a[0], Base)):
+                self.__dict__.setdefault("_children", []).append(a[0])
             return None
 
         return rec
@@ -262,6 +266,7 @@ class Base:
 
     def setWidget(self, widget):
         self._widget = widget
+        self.__dict__.setdefault("_children", []).append(widget)
 
     def widget(self):
         return getattr(self, "_widget", None)
@@ -466,6 +471,45 @@ class Button(Check):
 
     def click(self):
         self.clicked.emit(False)
+
+
+class Action(Base):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._checkable = False
+
+    def trigger(self):
+        if self.isEnabled():
+            self.triggered.emit(False)
+
+
+class Menu(Base):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._actions = []
+
+    def addAction(self, action):
+        self._actions.append(action)
+        return action
+
+    def actions(self):
+        return list(self._actions)
+
+
+class ToolButton(Button):
+    InstantPopup = 2
+
+    def setMenu(self, menu):
+        self._menu = menu
+
+    def menu(self):
+        return getattr(self, "_menu", None)
+
+    def setPopupMode(self, mode):
+        self._popup_mode = mode
+
+    def popupMode(self):
+        return getattr(self, "_popup_mode", None)
 
 
 class GroupBox(Base):
@@ -725,6 +769,7 @@ class Splitter(Base):
 
     def addWidget(self, widget):
         self.widgets.append(widget)
+        self.__dict__.setdefault("_children", []).append(widget)
 
     def setStretchFactor(self, index, factor):
         self.stretch_factors[int(index)] = int(factor)
@@ -775,10 +820,8 @@ def make():
         "QTextEdit",
         "QLineEdit",
         "QScrollArea",
-        "QMenu",
         "QTableView",
         "QTableWidget",
-        "QToolButton",
         "QFrame",
         "QProgressDialog",
         "QListView",
@@ -790,6 +833,9 @@ def make():
     ):
         setattr(qt, name, type(name, (Base,), {}))
     qt.QDialog = Dialog
+    qt.QMenu = Menu
+    qt.QAction = Action
+    qt.QToolButton = ToolButton
     for name in ("QVBoxLayout", "QHBoxLayout", "QFormLayout", "QGridLayout"):
         setattr(qt, name, type(name, (Layout,), {}))
     qt.QCheckBox = type("QCheckBox", (Check,), {})
@@ -826,7 +872,7 @@ def make():
     )
     qt.QHeaderView = SimpleNamespace(ResizeToContents=3, Stretch=1, Interactive=0)
     qt.QtGui = SimpleNamespace(
-        QAction=qt.QAction,
+        QAction=Action,
         QColor=lambda c: c,
         QFont=type("QFont", (Base,), {}),
         QShortcut=qt.QShortcut,

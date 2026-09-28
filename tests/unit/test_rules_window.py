@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 import pytest
+from tests.support import fake_qt
 from tests.support.fake_qt import make_with_table
 
 from rules.models import Rule
@@ -124,6 +125,19 @@ class QMessageBox:
     @staticmethod
     def warning(*_args):
         raise AssertionError("valid test rule should not trigger a warning")
+
+
+def _fake_widget_tree(value):
+    if isinstance(value, fake_qt.Layout):
+        for child in value.children:
+            yield from _fake_widget_tree(child)
+    elif isinstance(value, fake_qt.Base):
+        yield value
+        layout = getattr(value, "_layout", None)
+        if layout is not None:
+            yield from _fake_widget_tree(layout)
+        for child in value.__dict__.get("_children", ()):
+            yield from _fake_widget_tree(child)
 
 
 def _manager(rules, *, config="s2t", row=0, rule_type="exact", source="术语", target="新词"):
@@ -254,10 +268,9 @@ def test_enter_in_rule_editor_submits_without_opening_ruleset_prompt():
             manager.update_button,
             manager.remove_button,
             manager.template_button,
-            manager.import_button,
-            manager.export_button,
             manager.test_button,
             manager.inspect_button,
+            manager.ruleset_settings_close_button,
             manager.apply_button,
             manager.cancel_button,
         )
@@ -344,7 +357,8 @@ def test_rule_table_and_default_ruleset_use_localized_labels():
     assert manager.direction_combo.itemText(any_index) == translator.text("rules.direction_any")
     assert manager.ruleset_combo.itemText(0) == translator.text("rules.default_set_name")
     assert manager.new_ruleset_button.text() == translator.text("rules.new_set")
-    assert manager.help_label.text() == translator.text("rules.help")
+    assert manager._ruleset_menu_actions["help"].text() == translator.text(
+        "rules.help_details")
 
 
 def test_rule_conflicts_and_sandbox_have_dedicated_tabs():
@@ -355,6 +369,69 @@ def test_rule_conflicts_and_sandbox_have_dedicated_tabs():
     assert manager.conflict_list.maximumHeight() == 120
     assert not manager.test_box.isCheckable()
     assert any(call[0] == "addTab" for call in manager.tabs.calls)
+
+
+def test_rules_page_has_no_checkable_disclosure_groupboxes():
+    manager = RuleManagerDialog(make_with_table(), (), translator=Translator("en"))
+
+    groupboxes = [
+        widget for widget in _fake_widget_tree(manager.rules_page)
+        if isinstance(widget, manager._qt.QGroupBox)
+    ]
+    assert groupboxes
+    assert all(not group.isCheckable() for group in groupboxes)
+
+
+def test_more_menu_exposes_settings_help_import_bulk_export_and_delete(monkeypatch):
+    triggered = []
+    handlers = {
+        "settings": "_open_ruleset_settings",
+        "help": "_show_ruleset_help",
+        "import": "_import",
+        "bulk_add": "_bulk_add",
+        "export": "_export",
+        "delete": "_delete_ruleset",
+    }
+    for name, method in handlers.items():
+        monkeypatch.setattr(
+            RuleManagerDialog, method,
+            lambda _self, selected=name: triggered.append(selected))
+    manager = RuleManagerDialog(
+        make_with_table(), (), translator=Translator("en"),
+        rulesets=(RuleSet("default"), RuleSet("mine")), ruleset_id="mine")
+
+    assert manager.ruleset_more_button.menu() is manager.ruleset_menu
+    assert manager.ruleset_more_button.popupMode() == manager._qt.QToolButton.InstantPopup
+    assert set(manager._ruleset_menu_actions) == {
+        "settings", "help", "import", "bulk_add", "export", "delete",
+    }
+    assert len(manager.ruleset_menu.actions()) == 6
+    for action in manager._ruleset_menu_actions.values():
+        action.trigger()
+    assert set(triggered) == set(handlers)
+    settings_form = manager.ruleset_settings_dialog._layout.children[0]
+    settings_controls = {
+        widget
+        for row in settings_form.children
+        for widget in row
+        if isinstance(widget, fake_qt.Base)
+    }
+    assert {
+        manager.default_direction_combo,
+        manager.default_scope_combo,
+        manager.ruleset_enabled_check,
+    } <= settings_controls
+
+
+def test_test_page_places_input_before_test_buttons():
+    manager = RuleManagerDialog(make_with_table(), (), translator=Translator("en"))
+    children = manager.test_content._layout.children
+    buttons_index = next(
+        index for index, child in enumerate(children)
+        if isinstance(child, fake_qt.Layout) and manager.test_button in child.children
+    )
+
+    assert children.index(manager.test_input) < buttons_index
 
 
 def test_rules_editor_labels_are_buddied_and_table_has_accessible_name():
@@ -544,8 +621,9 @@ def test_default_ruleset_cannot_be_deleted():
         make_with_table(), (), translator=Translator("en"),
         rulesets=(RuleSet("default"),), ruleset_id="default")
 
-    assert not manager.delete_ruleset_button.isEnabled()
-    assert manager.delete_ruleset_button.toolTip() == manager._labels["cannot_delete_default"]
+    action = manager._ruleset_menu_actions["delete"]
+    assert not action.isEnabled()
+    assert action.toolTip() == manager._labels["cannot_delete_default"]
     manager._delete_ruleset()
     assert tuple(manager._rulesets) == ("default",)
     assert manager._deleted == []
