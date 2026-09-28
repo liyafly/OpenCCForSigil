@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT / "plugin/OpenCCForSigil"))
 
 import PySide6  # noqa: E402
 from PySide6.QtCore import QTimer, Qt  # noqa: E402
+from PySide6.QtTest import QTest  # noqa: E402
 from app.profiles import Profile  # noqa: E402
 from app.settings import RunSettings  # noqa: E402
 from opencc_backend.backend import OpenCCBackend  # noqa: E402
@@ -179,6 +180,20 @@ def _run_summary(qt, app, language, output_dir, width, height):
                         summary.text().split("\n", 1)[0]
                     assert translator.text("scope.run_summary_nav_unavailable") in summary.text()
                     assert detail["summary_lines"] <= 2
+                    scope.filter_edit.setText("nav")
+                    app.processEvents()
+                    QTest.keyClick(scope.filter_edit, Qt.Key.Key_Return)
+                    app.processEvents()
+                    detail["filter_enter_keeps_dialog_open"] = dialog.isVisible()
+                    detail["filter_enter_keeps_scope_unaccepted"] = not scope.accepted
+                    detail["filter_enter_focuses_visible_nav"] = (
+                        scope.list_widget.currentRow() == 1)
+                    assert detail["filter_enter_keeps_dialog_open"]
+                    assert detail["filter_enter_keeps_scope_unaccepted"]
+                    assert detail["filter_enter_focuses_visible_nav"]
+                    scope.filter_edit.clear()
+                    scope.list_widget.setCurrentRow(0)
+                    app.processEvents()
                     tabs = dialog.findChild(qt.QTabWidget)
                     tabs.setCurrentIndex(1)
                     app.processEvents()

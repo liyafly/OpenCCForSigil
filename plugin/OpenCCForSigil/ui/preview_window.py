@@ -3808,6 +3808,7 @@ class _ScopeDialog:
         self.filter_edit.setAccessibleName(translator.text("a11y.scope.filter_files"))
         self.filter_edit.textChanged.connect(self._refresh_list)
         self.filter_edit.returnPressed.connect(self._focus_first_visible_item)
+        self._install_filter_enter_guard(qt_widgets)
         layout.addWidget(self.filter_edit)
         self.guide_label = qt_widgets.QLabel(translator.text("scope.selection_guide"))
         self.guide_label.setWordWrap(True)
@@ -3894,6 +3895,36 @@ class _ScopeDialog:
                 self.list_widget.setCurrentRow(row)
                 self.list_widget.setFocus()
                 return
+
+    def _filter_enter_pressed(self) -> bool:
+        self._focus_first_visible_item()
+        return True
+
+    def _install_filter_enter_guard(self, qt_widgets: Any) -> None:
+        core = getattr(qt_widgets, "QtCore", None)
+        qobject = getattr(core, "QObject", None)
+        qevent = getattr(core, "QEvent", None)
+        if qobject is None or qevent is None:
+            return
+        key_press = getattr(qevent, "KeyPress", None)
+        if key_press is None:
+            key_press = getattr(getattr(qevent, "Type", qevent), "KeyPress", None)
+        keys = {
+            _enum_value(qt_widgets.Qt, "Key_Return"),
+            _enum_value(qt_widgets.Qt, "Key_Enter"),
+        }
+        keys.discard(None)
+        if key_press is None or not keys:
+            return
+        owner = self
+
+        class _Guard(qobject):
+            def eventFilter(_self, _target, event):
+                return (event.type() == key_press and event.key() in keys
+                        and owner._filter_enter_pressed())
+
+        self._filter_enter_guard = _Guard(self.filter_edit)
+        self.filter_edit.installEventFilter(self._filter_enter_guard)
 
     def _item_changed(self, _item: Any) -> None:
         """Refresh counts and validity for direct checkbox changes."""

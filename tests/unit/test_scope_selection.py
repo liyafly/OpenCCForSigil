@@ -197,6 +197,17 @@ def test_scope_filter_enter_focuses_first_visible_row_without_accepting():
     )
 
 
+def test_filter_enter_guard_consumes_key_and_focuses_first_row():
+    dialog = _ScopeDialog(
+        make_with_table(), FILES, (), "en", Translator("en"))
+    dialog.filter_edit.setText("nested")
+    dialog.filter_edit.textChanged.emit("nested")
+
+    assert dialog._filter_enter_pressed() is True
+    assert dialog.list_widget.currentRow() == 1
+    assert dialog.accepted is False
+
+
 def test_scope_labels_are_buddied_and_filter_list_have_accessible_names():
     dialog = _ScopeDialog(
         make_with_table(), FILES, (), "en", Translator("en"),
