@@ -44,6 +44,7 @@ class RuleWindowResult:
     rulesets: tuple[RuleSet, ...]
     renamed: tuple[tuple[str, str], ...] = ()
     run_ruleset_ids: tuple[str, ...] | None = None
+    deleted: tuple[str, ...] = ()
 
 
 def _guarded_rule_dialog(qt_widgets, guard):
@@ -392,6 +393,7 @@ class RuleManagerDialog:
         selected = ruleset_id if ruleset_id in self._rulesets else values[0].id
         self._ruleset_id = selected
         self._renamed: list[tuple[str, str]] = []
+        self._deleted: list[str] = []
         self.rules = list(self._rulesets[selected].rules)
         self._editing_rule_id: str | None = None
         self._editor_baseline = None
@@ -517,11 +519,14 @@ class RuleManagerDialog:
         self.ruleset_combo = qt.QComboBox()
         self.new_ruleset_button = qt.QPushButton(self._labels["new_set"])
         self.rename_ruleset_button = qt.QPushButton(self._labels["rename_ruleset"])
-        for button in (self.new_ruleset_button, self.rename_ruleset_button):
+        self.delete_ruleset_button = qt.QPushButton(self._labels["delete_ruleset"])
+        for button in (self.new_ruleset_button, self.rename_ruleset_button,
+                       self.delete_ruleset_button):
             button.setAutoDefault(False)
         ruleset_row.addWidget(self.ruleset_combo, 1)
         ruleset_row.addWidget(self.new_ruleset_button)
         ruleset_row.addWidget(self.rename_ruleset_button)
+        ruleset_row.addWidget(self.delete_ruleset_button)
         self.ruleset_enabled_check = qt.QCheckBox(self._labels["ruleset_enabled"])
         self.ruleset_enabled_check.setChecked(True)
         ruleset_row.addWidget(self.ruleset_enabled_check)
@@ -771,6 +776,7 @@ class RuleManagerDialog:
         self.ruleset_combo.currentIndexChanged.connect(self._ruleset_changed)
         self.new_ruleset_button.clicked.connect(self._new_ruleset)
         self.rename_ruleset_button.clicked.connect(self._rename_ruleset)
+        self.delete_ruleset_button.clicked.connect(self._delete_ruleset)
         self.ruleset_enabled_check.stateChanged.connect(self._ruleset_enabled_changed)
         self.use_in_run_check.toggled.connect(self._use_in_run_changed)
         self.default_direction_combo.currentIndexChanged.connect(self._ruleset_metadata_changed)
@@ -829,6 +835,7 @@ class RuleManagerDialog:
         self._load_ruleset_metadata()
         self._apply_rule_defaults()
         self._update_ruleset_enabled_tooltip()
+        self._update_delete_ruleset_button()
 
     def _stash_ruleset(self) -> None:
         if self._ruleset_id in self._rulesets:
@@ -1090,6 +1097,7 @@ class RuleManagerDialog:
         self._load_ruleset_metadata()
         self._apply_rule_defaults()
         self._update_ruleset_enabled_tooltip()
+        self._update_delete_ruleset_button()
         self._refresh()
         self._mark_test_result_stale()
 
@@ -1157,7 +1165,58 @@ class RuleManagerDialog:
             self._renamed[previous] = (original, identifier)
         self._ruleset_id = identifier
         self.rules = list(ruleset.rules)
+        references = self._ruleset_profiles.pop(old, ())
+        if references:
+            self._ruleset_profiles[identifier] = references
         self._populate_rulesets()
+        self._refresh()
+        self._mark_test_result_stale()
+
+    def _update_delete_ruleset_button(self) -> None:
+        button = getattr(self, "delete_ruleset_button", None)
+        if button is None:
+            return
+        is_default = self._ruleset_id == "default"
+        button.setEnabled(not is_default)
+        button.setToolTip(
+            self._labels["cannot_delete_default"] if is_default else "")
+
+    def _delete_ruleset(self) -> None:
+        identifier = self._ruleset_id
+        if identifier == "default" or identifier not in self._rulesets:
+            return
+        if not self._resolve_editor_draft():
+            return
+        self._stash_ruleset()
+        ruleset = self._rulesets[identifier]
+        references = tuple(self._ruleset_profiles.get(identifier, ()))
+        profile_names = ", ".join(name for _profile_id, name in references)
+        if not profile_names:
+            profile_names = self._translator.text("rules.no_profile_references")
+        if not ask_confirmation(
+            self._qt,
+            self.dialog,
+            self._labels["title"],
+            self._translator.text(
+                "rules.delete_ruleset_confirm",
+                name=(ruleset.name or identifier),
+                profiles=profile_names,
+            ),
+            self._translator,
+        ):
+            return
+
+        self._rulesets.pop(identifier)
+        self._deleted.append(identifier)
+        self._run_ruleset_ids = tuple(
+            item for item in self._run_ruleset_ids if item != identifier)
+        if not self._rulesets:
+            self._rulesets["default"] = RuleSet(
+                "default", default_direction=base_direction(self._config))
+        self._ruleset_id = next(iter(self._rulesets))
+        self.rules = list(self._rulesets[self._ruleset_id].rules)
+        self._populate_rulesets()
+        self._apply_rule_defaults()
         self._refresh()
         self._mark_test_result_stale()
 
@@ -2137,6 +2196,7 @@ class RuleManagerDialog:
                 tuple(self._rulesets.values()),
                 tuple(self._renamed),
                 run_ruleset_ids=self._run_ruleset_ids,
+                deleted=tuple(dict.fromkeys(self._deleted)),
             )
         self.dialog.accept()
 

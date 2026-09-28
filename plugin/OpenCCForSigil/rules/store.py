@@ -157,6 +157,12 @@ class RuleStore:
             result.extend(self.load(str(identifier)).rules)
         return tuple(result)
 
+    def delete(self, ruleset_id: str) -> None:
+        self._validate_id(ruleset_id)
+        if ruleset_id == "default":
+            raise RuleValidationError("the default ruleset cannot be deleted")
+        (self.directory / f"{ruleset_id}.json").unlink(missing_ok=True)
+
     def load_snapshot(self, ruleset_ids: Iterable[str]) -> RuleSnapshot:
         return RuleSnapshot.freeze(self.load_many(ruleset_ids))
 

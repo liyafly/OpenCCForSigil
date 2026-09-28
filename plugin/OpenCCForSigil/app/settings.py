@@ -337,11 +337,13 @@ class RunSettings:
                 result_sets = (RuleSet(selected_id, result, values[selected_id].name),)
                 renamed = ()
                 run_ruleset_ids = None
+                deleted = ()
             else:
                 selected_id = result.selected_id
                 result_sets = result.rulesets
                 renamed = result.renamed
                 run_ruleset_ids = result.run_ruleset_ids
+                deleted = tuple(dict.fromkeys(result.deleted))
             for item in result_sets:
                 old = previous.get(item.id)
                 if old != item and (item.id != "default" or item.rules or old is not None):
@@ -353,15 +355,21 @@ class RunSettings:
                     if old_id not in result_ids:
                         old_path = self.rules.directory / f"{old_id}.json"
                         old_path.unlink(missing_ok=True)
+            if deleted:
+                self._remove_ruleset_references(deleted)
             self.rules._validate_id(selected_id)
             replacements = dict(renamed)
             previous_rule_ids = tuple(dict.fromkeys(
                 replacements.get(item, item) for item in self.active.ruleset_ids))
             if run_ruleset_ids is None:
-                updated_rule_ids = tuple(dict.fromkeys((*previous_rule_ids, selected_id)))
+                updated_rule_ids = tuple(
+                    item for item in dict.fromkeys((*previous_rule_ids, selected_id))
+                    if item not in deleted)
             else:
                 updated_rule_ids = tuple(dict.fromkeys(
-                    replacements.get(item, item) for item in run_ruleset_ids))
+                    identifier for identifier in (
+                        replacements.get(item, item) for item in run_ruleset_ids)
+                    if identifier not in deleted))
             updated = replace(self.active, ruleset_ids=updated_rule_ids)
             newly_added_ids = tuple(
                 identifier for identifier in updated_rule_ids
@@ -403,6 +411,20 @@ class RunSettings:
             ruleset_ids=tuple(dict.fromkeys(
                 replacements.get(item, item) for item in self.active.ruleset_ids)),
         )
+
+    def _remove_ruleset_references(self, identifiers):
+        removed = set(identifiers)
+        profiles, _errors = self.profiles.load_all()
+        for profile in profiles:
+            updated_ids = tuple(item for item in profile.ruleset_ids if item not in removed)
+            if updated_ids != profile.ruleset_ids:
+                self.profiles.save(replace(profile, ruleset_ids=updated_ids))
+        self.active = replace(
+            self.active,
+            ruleset_ids=tuple(item for item in self.active.ruleset_ids if item not in removed),
+        )
+        for identifier in identifiers:
+            self.rules.delete(identifier)
 
     def freeze_rules(self, profile):
         identifiers = self._existing_ruleset_ids(profile.ruleset_ids)

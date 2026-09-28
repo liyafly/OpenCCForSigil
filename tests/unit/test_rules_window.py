@@ -539,6 +539,44 @@ def test_disabling_shared_ruleset_restores_check_when_confirmation_is_cancelled(
     assert manager._rulesets["shared"].enabled
 
 
+def test_default_ruleset_cannot_be_deleted():
+    manager = RuleManagerDialog(
+        make_with_table(), (), translator=Translator("en"),
+        rulesets=(RuleSet("default"),), ruleset_id="default")
+
+    assert not manager.delete_ruleset_button.isEnabled()
+    assert manager.delete_ruleset_button.toolTip() == manager._labels["cannot_delete_default"]
+    manager._delete_ruleset()
+    assert tuple(manager._rulesets) == ("default",)
+    assert manager._deleted == []
+
+
+def test_cancel_after_delete_keeps_ruleset_file(monkeypatch, tmp_path):
+    store = RuleStore(tmp_path / "rules")
+    store.save(RuleSet("mine"))
+    manager = RuleManagerDialog(
+        make_with_table(), (), translator=Translator("en"),
+        rulesets=(RuleSet("default"), RuleSet("mine", name="Mine")),
+        ruleset_id="mine", rule_store=store,
+        ruleset_profiles={"mine": (("saved", "Saved"),)})
+    prompts = []
+    monkeypatch.setattr(
+        rules_window, "ask_confirmation",
+        lambda _qt, _parent, _title, message, _translator: (prompts.append(message), True)[1],
+    )
+
+    manager._delete_ruleset()
+
+    assert len(prompts) == 1
+    assert "Saved" in prompts[0]
+    assert manager._deleted == ["mine"]
+    assert store.load("mine").id == "mine"
+    manager._confirm_discard_rules = lambda: True
+    manager.cancel_button.click()
+    assert manager.result is None
+    assert store.load("mine").id == "mine"
+
+
 @pytest.mark.parametrize("semantic_version", (1, 2))
 def test_import_tsv_uses_target_ruleset_semantic_version(tmp_path, semantic_version):
     store = RuleStore(tmp_path / "rules")

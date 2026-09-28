@@ -205,6 +205,31 @@ def _saved_profile_settings(tmp_path):
     return settings, profile_store
 
 
+def test_delete_ruleset_removes_profile_references_and_file(monkeypatch, tmp_path):
+    profiles = ProfileStore(tmp_path / "profiles")
+    profiles.save(Profile(id="saved", name="Saved", ruleset_ids=("default", "mine")))
+    profiles.save(Profile(id="other", name="Other", ruleset_ids=("mine", "default")))
+    store = RuleStore(tmp_path / "rules")
+    store.save(RuleSet("mine", name="Mine"))
+    settings = RunSettings(
+        Storage(tmp_path), SimpleNamespace(book_fingerprint=lambda: "book-hash"),
+        {"profile_id": "saved"}, language="en", session_id="test-session")
+    monkeypatch.setattr(
+        "ui.rules_window.show_rules_window",
+        lambda *_args, **_kwargs: RuleWindowResult(
+            "default", (RuleSet("default"),), run_ruleset_ids=("default",),
+            deleted=("mine",)),
+    )
+
+    settings.edit_rules("s2t", Translator(), RuleDialogQt, object())
+
+    assert settings.active.ruleset_ids == ("default",)
+    assert profiles.load("saved").ruleset_ids == ("default",)
+    assert profiles.load("other").ruleset_ids == ("default",)
+    assert not (store.directory / "mine.json").exists()
+    assert settings.take_missing_rulesets_notice() == ()
+
+
 def test_saved_profile_can_confirm_adding_ruleset(monkeypatch, tmp_path):
     settings, profiles = _saved_profile_settings(tmp_path)
     before = profiles.load("saved")
