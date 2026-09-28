@@ -655,6 +655,92 @@ def test_cancel_after_delete_keeps_ruleset_file(monkeypatch, tmp_path):
     assert store.load("mine").id == "mine"
 
 
+def test_foreign_book_rule_is_labelled_other_book():
+    rule = Rule(
+        id="other-book", source="术语", target="专名", direction="s2t",
+        scope="book", book_fingerprint="old-book")
+    manager = RuleManagerDialog(
+        make_with_table(), (rule,), translator=Translator("en"),
+        profile_id="current-profile", book_fingerprint="current-book",
+        run_ruleset_ids=("default",))
+    manager.table.selectRow(0)
+    manager._refresh_selection_details()
+
+    assert manager.table.item(0, 4).text() == Translator("en").text(
+        "rules.scope_book_other")
+    assert Translator("en").text("rules.scope_book_other") in (
+        manager.selection_details.toPlainText())
+    assert manager.foreign_owner_button.isVisible()
+    manager.foreign_owner_button.click()
+    assert manager.activity_filter.currentData() == "inactive"
+    assert manager._visible_rule_ids == ["other-book"]
+
+
+def test_foreign_profile_rule_is_labelled_other_profile():
+    rule = Rule(
+        id="other-profile", source="术语", target="专名", direction="s2t",
+        scope="profile", profile_id="old-profile")
+    manager = RuleManagerDialog(
+        make_with_table(), (rule,), translator=Translator("en"),
+        profile_id="current-profile")
+
+    assert manager.table.item(0, 4).text() == Translator("en").text(
+        "rules.scope_profile_other")
+
+
+def test_rebind_button_binds_current_book_only_on_click():
+    rule = Rule(
+        id="other-book", source="术语", target="专名", direction="s2t",
+        scope="book", book_fingerprint="old-book",
+        updated_at="2024-01-01T00:00:00Z")
+    manager = RuleManagerDialog(
+        make_with_table(), (rule,), translator=Translator("en"),
+        profile_id="current-profile", book_fingerprint="current-book")
+    manager.table.selectRow(0)
+    manager._load_selected()
+
+    assert manager.rules[0].book_fingerprint == "old-book"
+    assert manager.rebind_owner_button.isVisible()
+    assert manager.rebind_owner_button.isEnabled()
+    manager.rebind_owner_button.click()
+
+    assert manager.rules[0].book_fingerprint == "current-book"
+    assert manager.rules[0].updated_at != "2024-01-01T00:00:00Z"
+    assert not manager.rebind_owner_button.isVisible()
+
+
+def test_rebind_button_is_disabled_when_current_book_is_unavailable():
+    rule = Rule(
+        id="other-book", source="术语", target="专名", direction="s2t",
+        scope="book", book_fingerprint="old-book")
+    manager = RuleManagerDialog(
+        make_with_table(), (rule,), translator=Translator("en"),
+        profile_id="current-profile", book_fingerprint=None)
+    manager.table.selectRow(0)
+    manager._load_selected()
+
+    assert manager.rebind_owner_button.isVisible()
+    assert not manager.rebind_owner_button.isEnabled()
+
+
+def test_rebind_button_binds_current_profile():
+    rule = Rule(
+        id="other-profile", source="术语", target="专名", direction="s2t",
+        scope="profile", profile_id="old-profile",
+        updated_at="2024-01-01T00:00:00Z")
+    manager = RuleManagerDialog(
+        make_with_table(), (rule,), translator=Translator("en"),
+        profile_id="current-profile")
+    manager.table.selectRow(0)
+    manager._load_selected()
+
+    assert manager.rebind_owner_button.isEnabled()
+    manager.rebind_owner_button.click()
+
+    assert manager.rules[0].profile_id == "current-profile"
+    assert manager.rules[0].updated_at != "2024-01-01T00:00:00Z"
+
+
 @pytest.mark.parametrize("semantic_version", (1, 2))
 def test_import_tsv_uses_target_ruleset_semantic_version(tmp_path, semantic_version):
     store = RuleStore(tmp_path / "rules")

@@ -607,6 +607,11 @@ class RuleManagerDialog:
         self.editor_panel = qt.QWidget()
         editor_layout = qt.QVBoxLayout(self.editor_panel)
         self.editor_scroll.setWidget(self.editor_panel)
+        self.foreign_owner_button = qt.QPushButton()
+        self.foreign_owner_button.setAutoDefault(False)
+        self.foreign_owner_button.setVisible(False)
+        self.foreign_owner_button.clicked.connect(self._filter_foreign_owner_rules)
+        content_layout.addWidget(self.foreign_owner_button)
         self.editor_splitter.addWidget(self.rule_list_panel)
         self.editor_splitter.addWidget(self.editor_scroll)
         content_layout.addWidget(self.editor_splitter, 1)
@@ -699,6 +704,12 @@ class RuleManagerDialog:
         self.editor_mode_label = qt.QLabel(self._labels["editor_new_mode"])
         editor_layout.addWidget(self.editor_mode_label)
         editor_layout.addLayout(form)
+        self.rebind_owner_button = qt.QPushButton(
+            self._translator.text("rules.rebind_owner"))
+        self.rebind_owner_button.setAutoDefault(False)
+        self.rebind_owner_button.setVisible(False)
+        self.rebind_owner_button.clicked.connect(self._rebind_owner)
+        editor_layout.addWidget(self.rebind_owner_button)
         self.priority_button = qt.QToolButton()
         self.priority_button.setText(self._labels["advanced_rule_options"])
         self.priority_button.setCheckable(True)
@@ -804,6 +815,7 @@ class RuleManagerDialog:
         self.table.itemSelectionChanged.connect(self._selection_changed)
         self.search_edit.textChanged.connect(self._filters_changed)
         self.activity_filter.currentIndexChanged.connect(self._filters_changed)
+        self.scope_combo.currentIndexChanged.connect(self._update_rebind_owner_button)
         self.test_input.textChanged.connect(self._mark_test_result_stale)
         self.test_scope_combo.currentIndexChanged.connect(self._mark_test_result_stale)
         for control, signal_name in (
@@ -1065,6 +1077,7 @@ class RuleManagerDialog:
         self.source_edit.clear()
         self.target_edit.clear()
         self._mark_editor_clean()
+        self._update_rebind_owner_button()
 
     def _resolve_editor_draft(self) -> bool:
         if not self._editor_dirty():
@@ -1258,6 +1271,7 @@ class RuleManagerDialog:
             self.dialog, plugin_window_title(self._translator, self._labels["title"]), message)
 
     def _refresh(self) -> None:
+        self._update_foreign_owner_button()
         selected_id = (self._rule_id_at_row(self.table.currentRow())
                        or getattr(self, "_selected_rule_id", None))
         search = str(self.search_edit.text()).casefold() if hasattr(self, "search_edit") else ""
@@ -1305,7 +1319,7 @@ class RuleManagerDialog:
                 ),
                 rule.source,
                 _display_rule_target(rule, self._labels),
-                self._labels.get(f"scope_{rule.scope}", rule.scope),
+                self._scope_display(rule),
                 str(rule.priority),
             )
             for column, value in enumerate(values):
@@ -1417,6 +1431,88 @@ class RuleManagerDialog:
                 book_fingerprint=self._book_fingerprint)
         )
 
+    def _foreign_owner_scope(self, rule: Rule) -> str | None:
+        if (rule.scope == "book" and rule.book_fingerprint
+                and rule.book_fingerprint != (self._book_fingerprint or "")):
+            return "book"
+        if (rule.scope == "profile" and rule.profile_id
+                and rule.profile_id != (self._profile_id or "")):
+            return "profile"
+        return None
+
+    def _scope_display(self, rule: Rule) -> str:
+        foreign_scope = self._foreign_owner_scope(rule)
+        key = (f"scope_{foreign_scope}_other" if foreign_scope
+               else f"scope_{rule.scope}")
+        return self._labels.get(key, rule.scope)
+
+    def _update_foreign_owner_button(self) -> None:
+        button = getattr(self, "foreign_owner_button", None)
+        if button is None:
+            return
+        count = sum(self._foreign_owner_scope(rule) is not None for rule in self.rules)
+        button.setText(self._translator.text("rules.foreign_owner_count", count=count))
+        button.setVisible(count > 0)
+
+    def _filter_foreign_owner_rules(self) -> None:
+        index = self.activity_filter.findData("inactive")
+        if index < 0:
+            return
+        if self.activity_filter.currentIndex() == index:
+            self._filters_changed()
+        else:
+            self.activity_filter.setCurrentIndex(index)
+
+    def _update_rebind_owner_button(self, *_args) -> None:
+        button = getattr(self, "rebind_owner_button", None)
+        if button is None:
+            return
+        identifier = (getattr(self, "_editing_rule_id", None)
+                      or self._rule_id_at_row(self.table.currentRow()))
+        rule = next((item for item in self.rules if item.id == identifier), None)
+        foreign_scope = self._foreign_owner_scope(rule) if rule is not None else None
+        same_scope = (rule is not None and str(self.scope_combo.currentData()) == rule.scope)
+        visible = bool(foreign_scope and same_scope)
+        button.setVisible(visible)
+        if foreign_scope:
+            button.setText(self._translator.text(
+                "rules.rebind_owner", owner=self._labels[f"scope_{foreign_scope}"]))
+        has_owner = bool(
+            self._book_fingerprint if foreign_scope == "book" else
+            self._profile_id if foreign_scope == "profile" else None)
+        button.setEnabled(visible and has_owner)
+
+    def _rebind_owner(self) -> None:
+        if not self._resolve_editor_draft():
+            return
+        identifier = (getattr(self, "_editing_rule_id", None)
+                      or self._rule_id_at_row(self.table.currentRow()))
+        row = next((index for index, rule in enumerate(self.rules)
+                    if rule.id == identifier), -1)
+        if row < 0:
+            return
+        rule = self.rules[row]
+        owner_scope = self._foreign_owner_scope(rule)
+        if owner_scope == "book":
+            if not self._book_fingerprint:
+                return
+            updated = replace(rule, book_fingerprint=self._book_fingerprint)
+        elif owner_scope == "profile":
+            if not self._profile_id:
+                return
+            updated = replace(rule, profile_id=self._profile_id)
+        else:
+            return
+        updated_at = datetime.now(timezone.utc).isoformat(timespec="microseconds").replace(
+            "+00:00", "Z")
+        self.rules[row] = replace(updated, updated_at=updated_at)
+        self._editing_rule_id = rule.id
+        self._selected_rule_id = rule.id
+        self._refresh()
+        self._load_selected()
+        self._mark_editor_clean()
+        self._mark_test_result_stale()
+
     def _run_candidates(self, *, exclude_ruleset_id: str | None = None) -> tuple[Rule, ...]:
         """Return rules that the current conversion will actually apply."""
 
@@ -1466,6 +1562,7 @@ class RuleManagerDialog:
         rule = next((item for item in self.rules if item.id == identifier), None)
         if rule is None:
             self.selection_details.clear()
+            self._update_rebind_owner_button()
             return
         action_key = ("protect" if rule.action == "protect" else
                       "replace_pre" if rule.action == "replace" and rule.stage == "pre" else
@@ -1481,7 +1578,7 @@ class RuleManagerDialog:
                 direction=self._labels["direction_any"] if rule.direction == "*" else
                 configuration_label(self._translator, rule.direction)),
             self._labels["detail_scope"].format(
-                scope=self._labels.get(f"scope_{rule.scope}", rule.scope),
+                scope=self._scope_display(rule),
                 owner=rule.profile_id if rule.scope == "profile" else
                 rule.book_fingerprint if rule.scope == "book" else ""),
             self._labels["detail_activity"].format(status=self._rule_activity_reason(rule)),
@@ -1493,6 +1590,7 @@ class RuleManagerDialog:
         if rule.action != "protect" and (rule.target == "" or rule.target.isspace()):
             lines += (self._labels["detail_target_raw"].format(target=repr(rule.target)),)
         self.selection_details.setPlainText("\n".join(lines))
+        self._update_rebind_owner_button()
 
     def _filters_changed(self, *_args) -> None:
         if not self._resolve_editor_draft():
@@ -1643,6 +1741,7 @@ class RuleManagerDialog:
         if rule.action == "protect":
             self.target_edit.clear()
         self._mark_editor_clean()
+        self._update_rebind_owner_button()
 
     def _type_changed(self, *_args):
         is_protect = self.type_combo.currentData() == "protect"
