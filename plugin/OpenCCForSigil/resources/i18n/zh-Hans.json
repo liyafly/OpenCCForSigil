@@ -345,6 +345,7 @@
   "result.status.success": "转换完成。",
   "result.status.partial": "写回在 {file} 处出错。Sigil 会放弃本次全部变更，书将保持原样。",
   "result.status.cancelled": "转换已取消。",
+  "result.status.cancelled_unchanged": "转换已取消，书籍未作修改。",
   "result.status.skipped": "已跳过所有建议变更。",
   "result.status.noop": "本次没有需要转换的内容。",
   "result.save_reminder": "变更已交给 Sigil，请在 Sigil 中检查并保存 EPUB。",

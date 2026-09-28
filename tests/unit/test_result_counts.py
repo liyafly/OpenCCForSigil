@@ -79,13 +79,13 @@ class _MessageBox:
         "expected_unwritten",
     ),
     (
-        ("en", 1, 1, 1, 0, 0, 0, 0, "Files not written: 0 (no proposed changes: 0)"),
+        ("en", 1, 1, 1, 0, 0, 0, 0, None),
         ("en", 2, 1, 1, 0, 1, 1, 0, "Files not written: 1 (no proposed changes: 1)"),
         ("en", 3, 1, 1, 2, 2, 1, 1, "Files not written: 2 (no proposed changes: 1)"),
-        ("zh-Hans", 1, 1, 1, 0, 0, 0, 0, "未写回：0 个文件（其中没有建议变更：0 个）"),
+        ("zh-Hans", 1, 1, 1, 0, 0, 0, 0, None),
         ("zh-Hans", 2, 1, 1, 0, 1, 1, 0, "未写回：1 个文件（其中没有建议变更：1 个）"),
         ("zh-Hans", 3, 1, 1, 2, 2, 1, 1, "未写回：2 个文件（其中没有建议变更：1 个）"),
-        ("zh-Hant", 1, 1, 1, 0, 0, 0, 0, "未寫回：0 個檔案（其中沒有建議變更：0 個）"),
+        ("zh-Hant", 1, 1, 1, 0, 0, 0, 0, None),
         ("zh-Hant", 2, 1, 1, 0, 1, 1, 0, "未寫回：1 個檔案（其中沒有建議變更：1 個）"),
         ("zh-Hant", 3, 1, 1, 2, 2, 1, 1, "未寫回：2 個檔案（其中沒有建議變更：1 個）"),
     ),
@@ -100,7 +100,7 @@ def test_result_done_states_unwritten_files_include_unchanged_subset(
     files_not_written: int,
     files_without_changes: int,
     files_all_skipped: int,
-    expected_unwritten: str,
+    expected_unwritten: str | None,
 ):
     _MessageBox.messages = []
     fake_qt = type("FakeQt", (), {"QMessageBox": _MessageBox})
@@ -126,9 +126,15 @@ def test_result_done_states_unwritten_files_include_unchanged_subset(
     assert str(files_changed) in lines[3]
     assert str(accepted_changes) in lines[3]
     assert str(skipped_changes) in lines[3]
-    assert lines[4] == expected_unwritten
-    assert lines[5] == translator.text(
-        "result.files_all_skipped", count=files_all_skipped)
+    expected_count_rows = []
+    if expected_unwritten is not None:
+        expected_count_rows.append(expected_unwritten)
+    if files_all_skipped > 0:
+        expected_count_rows.append(translator.text(
+            "result.files_all_skipped", count=files_all_skipped))
+    count_rows_end = 4 + len(expected_count_rows)
+    assert lines[4:count_rows_end] == expected_count_rows
+    assert lines[count_rows_end:] == ["", translator.text("result.save_reminder")]
 
 
 def test_noop_result_offers_scope_return_and_lists_invalid_sources(monkeypatch):
@@ -208,7 +214,7 @@ def test_result_box_returns_after_report_is_viewed_and_closed(monkeypatch):
     (
         ("success", 1, 0, "result.status.success", True),
         ("partial_failure", 2, 1, "result.status.partial", False),
-        ("cancelled", 0, 0, "result.status.cancelled", False),
+        ("cancelled", 0, 0, "result.status.cancelled_unchanged", False),
         ("success", 0, 0, "result.status.noop", False),
         ("success", 0, 2, "result.status.skipped", False),
     ),
@@ -240,6 +246,9 @@ def test_result_status_and_count_rows_are_localized_line_by_line(
     expected_status = translator.text(
         status_key, file="Text/ch.xhtml") if status_key.endswith("partial") else translator.text(status_key)
     assert lines[0] == expected_status
+    if status == "cancelled":
+        assert lines == [expected_status]
+        return
     assert lines[2] == translator.text("result.row.scanned", count=4)
     assert lines[3] == translator.text(
         "result.row.written", files=1, accepted=accepted, skipped=skipped)
@@ -250,6 +259,30 @@ def test_result_status_and_count_rows_are_localized_line_by_line(
         assert lines[7] == translator.text("result.save_reminder")
     else:
         assert translator.text("result.save_reminder") not in lines
+
+
+@pytest.mark.parametrize("language", ("en", "zh-Hans", "zh-Hant"))
+def test_cancelled_result_is_single_line(monkeypatch, language):
+    _MessageBox.messages = []
+    fake_qt = type("FakeQt", (), {"QMessageBox": _MessageBox})
+    monkeypatch.setattr(preview_window, "load_qt", lambda: fake_qt)
+    monkeypatch.setattr(preview_window, "ensure_application", lambda *_args, **_kwargs: None)
+    translator = Translator(language)
+
+    preview_window.show_result(
+        status="cancelled",
+        files_scanned=4,
+        files_changed=1,
+        accepted_changes=2,
+        skipped_changes=1,
+        files_not_written=3,
+        files_without_changes=1,
+        files_all_skipped=2,
+        diagnostics=(("Text/bad.xhtml", "SOURCE_INVALID_XHTML"),),
+        translator=translator,
+    )
+
+    assert _MessageBox.messages == [translator.text("result.status.cancelled_unchanged")]
 
 
 def test_success_result_opens_this_sessions_markdown_report(monkeypatch):

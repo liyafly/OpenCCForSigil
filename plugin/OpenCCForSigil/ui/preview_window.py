@@ -1133,22 +1133,26 @@ def show_result(
         if files_not_written is None
         else max(int(files_not_written), 0)
     )
-    rows = (
+    rows = [
         translator.text("result.row.scanned", count=max(int(files_scanned), 0)),
         translator.text(
             "result.row.written", files=max(int(files_changed), 0),
             accepted=max(int(accepted_changes), 0), skipped=max(int(skipped_changes), 0)),
-        translator.text(
+    ]
+    if not_written > 0:
+        rows.append(translator.text(
             "result.row.unwritten", files=not_written,
-            unchanged=max(int(files_without_changes), 0)),
-        translator.text(
-            "result.files_all_skipped", count=max(int(files_all_skipped), 0)),
-    )
+            unchanged=max(int(files_without_changes), 0)))
+    all_skipped = max(int(files_all_skipped), 0)
+    if all_skipped > 0:
+        rows.append(translator.text(
+            "result.files_all_skipped", count=all_skipped))
+    cancelled = status == "cancelled"
     if status == "partial_failure":
         status_line = translator.text("result.status.partial", file=failed_file or "?")
         method = getattr(qt_widgets.QMessageBox, "warning")
     elif status == "cancelled":
-        status_line = translator.text("result.status.cancelled")
+        status_line = translator.text("result.status.cancelled_unchanged")
         method = getattr(qt_widgets.QMessageBox, "information")
     elif accepted_changes == 0 and skipped_changes:
         status_line = translator.text("result.status.skipped")
@@ -1159,13 +1163,13 @@ def show_result(
     else:
         status_line = translator.text("result.status.success")
         method = getattr(qt_widgets.QMessageBox, "information")
-    message = status_line + "\n\n" + "\n".join(rows)
+    message = status_line if cancelled else status_line + "\n\n" + "\n".join(rows)
     if status == "success" and accepted_changes > 0:
         message += "\n\n" + translator.text("result.save_reminder")
     diagnostics = tuple(diagnostics)
     diagnostic_documents = tuple(diagnostic_documents)
     diagnostic_records = _diagnostic_records(diagnostic_documents, translator)
-    if diagnostics:
+    if diagnostics and not cancelled:
         rows = []
         for item in diagnostics:
             if isinstance(item, (tuple, list)) and len(item) >= 2:
