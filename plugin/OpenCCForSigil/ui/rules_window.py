@@ -1330,6 +1330,8 @@ class RuleManagerDialog:
         target = _display_rule_target(rule, self._labels)
         lines = (
             self._labels["detail_id"].format(id=rule.id),
+            self._labels["detail_version"].format(version=self._labels[
+                "version_v1" if rule.semantic_version <= 1 else "version_v2"]),
             self._labels["detail_action"].format(
                 action=self._labels[action_key], match=self._labels.get(rule.match_type, rule.match_type)),
             self._labels["detail_direction"].format(
@@ -1771,6 +1773,7 @@ class RuleManagerDialog:
                 scope=options["scope"],
                 profile_id=self._profile_id or "",
                 book_fingerprint=self._book_fingerprint or "",
+                semantic_version=self._rulesets[self._ruleset_id].semantic_version,
                 strict=options["strict"],
             )
             self._stash_ruleset()

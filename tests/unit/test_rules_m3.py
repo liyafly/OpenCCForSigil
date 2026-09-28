@@ -51,6 +51,36 @@ def test_direction_scope_and_disabled_rules():
     assert lock_spans("软件", snapshot, config="s2t", profile_id="p")[0].target == "Z"
 
 
+def test_v1_book_rule_beats_v2_global_rule_at_same_position():
+    rules = (
+        Rule(id="v1-book", direction="s2t", source="头发", target="頭髮(书)",
+             scope="book", book_fingerprint="B", semantic_version=1),
+        Rule(id="v2-global", direction="s2t", source="头发", target="頭髮(全局)",
+             scope="global", semantic_version=2, action="override", stage="source"),
+    )
+
+    result = convert_with_overlay(
+        "头发", lambda value: value, config="s2t",
+        snapshot=RuleSnapshot.freeze(rules), book_fingerprint="B",
+    )
+
+    assert result.final == "頭髮(书)"
+
+
+def test_cross_version_same_source_different_target_is_blocking():
+    rules = (
+        Rule(id="v1", direction="s2t", source="软件", target="軟體",
+             semantic_version=1),
+        Rule(id="v2", direction="s2t", source="软件", target="軟件",
+             semantic_version=2, action="override", stage="source"),
+    )
+
+    conflicts = blocking_conflicts(rules)
+
+    assert conflicts
+    assert conflicts[0].kind == "SAME_SOURCE_DIFFERENT_TARGET"
+
+
 def test_all_standard_directions_and_jieba_base_direction():
     directions = (
         "s2t",

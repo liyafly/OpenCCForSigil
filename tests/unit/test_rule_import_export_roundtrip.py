@@ -61,6 +61,18 @@ def test_import_review_uses_the_same_semantic_deduplication():
     assert tuple(rule.stage for rule in review.additions) == ("post",)
 
 
+def test_tsv_import_uses_target_ruleset_semantic_version():
+    source = "direction\tsource\ttarget\ns2t\t软件\t軟件\n"
+
+    v2_rule = import_rules(source, format="tsv").rules[0]
+    v1_rule = import_rules(source, format="tsv", semantic_version=1).rules[0]
+
+    assert v2_rule.semantic_version == 2
+    assert (v2_rule.action, v2_rule.match_type, v2_rule.stage) == (
+        "override", "literal", "source")
+    assert v1_rule.semantic_version == 1
+
+
 def test_lenient_json_import_skips_bad_records_and_preserves_record_numbers():
     payload = [
         replacement_rule(id="first").to_dict(),

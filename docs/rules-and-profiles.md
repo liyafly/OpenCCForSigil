@@ -52,8 +52,10 @@ short guide; the installable ZIP includes `OpenCCForSigil/resources/rule-guide.m
 with examples for adding and testing other exact/protect rules.
 
 Protection wins first. V1 retains its book, global, profile ordering; V2 uses
-book, current profile, global, then built-in scope. At the same precedence,
-longer actual matches win before the advanced priority. Conflicting
+book, current profile, global, then built-in scope. At the same source position,
+if any candidate is V2, all candidates use the V2 scope order; otherwise all
+candidates use the V1 order. At the same precedence, longer actual matches win
+before the advanced priority. Conflicting
 same-source targets at the same precedence block planning; ambiguous dynamic
 regex matches with different outputs stop at that text position. Owners of
 separate profile/book scopes are independent.

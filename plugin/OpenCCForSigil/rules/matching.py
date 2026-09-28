@@ -107,15 +107,18 @@ class RegexBudget:
         self.output_chars += length
 
 
-def _rank(match: RuleMatch) -> tuple[int, int, int, int, int]:
-    rule = match.rule
-    return (type_rank(rule), rule.semantic_version, scope_rank(rule),
-            match.end - match.start, int(rule.priority))
-
-
 def _resolve_same_start(candidates: list[RuleMatch]) -> RuleMatch:
-    best_rank = max(_rank(candidate) for candidate in candidates)
-    best = [candidate for candidate in candidates if _rank(candidate) == best_rank]
+    legacy = all(candidate.rule.semantic_version <= 1 for candidate in candidates)
+
+    def rank(candidate: RuleMatch) -> tuple[int, int, int, int]:
+        rule = candidate.rule
+        return (
+            type_rank(rule), scope_rank(rule, legacy=legacy),
+            candidate.end - candidate.start, int(rule.priority),
+        )
+
+    best_rank = max(rank(candidate) for candidate in candidates)
+    best = [candidate for candidate in candidates if rank(candidate) == best_rank]
     targets = {candidate.target for candidate in best}
     if len(targets) > 1:
         ids = ", ".join(sorted(candidate.rule.id for candidate in best))

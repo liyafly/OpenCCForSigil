@@ -67,6 +67,7 @@ def import_rules(
     scope: str = "global",
     profile_id: str = "",
     book_fingerprint: str = "",
+    semantic_version: int = 2,
     strict: bool = True,
 ) -> ImportResult:
     text, inferred = _read_source(source)
@@ -80,6 +81,7 @@ def import_rules(
             scope=scope,
             profile_id=profile_id,
             book_fingerprint=book_fingerprint,
+            semantic_version=semantic_version,
             diagnostics=diagnostics,
             strict=strict,
         )
@@ -90,6 +92,7 @@ def import_rules(
             scope=scope,
             profile_id=profile_id,
             book_fingerprint=book_fingerprint,
+            semantic_version=semantic_version,
             diagnostics=diagnostics,
             strict=strict,
         )
@@ -99,7 +102,8 @@ def import_rules(
                 "OpenCC TXT import requires an explicit direction", field="direction"
             )
         values = _opencc_rows(
-            text, direction, scope, profile_id, book_fingerprint, diagnostics, strict=strict)
+            text, direction, scope, profile_id, book_fingerprint, diagnostics,
+            semantic_version=semantic_version, strict=strict)
     elif fmt == "json":
         values = _json_rules(
             text,
@@ -181,6 +185,7 @@ def _rows_to_rules(
     scope: str,
     profile_id: str,
     book_fingerprint: str,
+    semantic_version: int,
     diagnostics: list[ImportDiagnostic],
     strict: bool,
 ) -> list[Rule]:
@@ -201,6 +206,10 @@ def _rows_to_rules(
                 "scope": scope,
                 "profile_id": profile_id,
                 "book_fingerprint": book_fingerprint,
+                "semantic_version": semantic_version,
+                "action": "override",
+                "match_type": "literal",
+                "stage": "source",
             }
             if len(row) > 3:
                 values["comment"] = row[3]
@@ -220,6 +229,7 @@ def _opencc_rows(
     book_fingerprint: str,
     diagnostics: list[ImportDiagnostic],
     *,
+    semantic_version: int,
     strict: bool,
 ) -> list[Rule]:
     result: list[Rule] = []
@@ -246,6 +256,10 @@ def _opencc_rows(
                         "scope": scope,
                         "profile_id": profile_id,
                         "book_fingerprint": book_fingerprint,
+                        "semantic_version": semantic_version,
+                        "action": "override",
+                        "match_type": "literal",
+                        "stage": "source",
                     }
                 )
             )

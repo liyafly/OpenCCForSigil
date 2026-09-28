@@ -42,8 +42,10 @@ def type_rank(rule: Rule) -> int:
         rule.action or ("protect" if rule.type == "protect" else "override"), 0)
 
 
-def scope_rank(rule: Rule) -> int:
-    if rule.semantic_version <= 1:
+def scope_rank(rule: Rule, *, legacy: bool | None = None) -> int:
+    if legacy is None:
+        legacy = rule.semantic_version <= 1
+    if legacy:
         # V1 order is book, global, profile. Preserve it for migrated rules.
         return {"book": 3, "global": 2, "profile": 1, "builtin": 0}.get(
             rule.scope, 0)
@@ -52,10 +54,12 @@ def scope_rank(rule: Rule) -> int:
         rule.scope, 0)
 
 
-def precedence_key(rule: Rule) -> tuple[int, int, int, int, int, str]:
+def precedence_key(
+    rule: Rule, *, legacy: bool | None = None
+) -> tuple[int, int, int, int, str]:
     """Higher tuple values win, except id is inverted by ``ordered_rules``."""
 
-    return (type_rank(rule), rule.semantic_version, scope_rank(rule),
+    return (type_rank(rule), scope_rank(rule, legacy=legacy),
             int(rule.priority), len(rule.source), rule.id)
 
 
@@ -68,13 +72,8 @@ def ordered_rules(rules: Iterable[Rule]) -> tuple[Rule, ...]:
     """
 
     def key(rule):
-        if rule.semantic_version <= 1:
-            return (
-                -type_rank(rule), -rule.semantic_version, -scope_rank(rule),
-                -len(rule.source), -int(rule.priority), rule.id,
-            )
         return (
-            -type_rank(rule), -rule.semantic_version, -scope_rank(rule),
+            -type_rank(rule), -scope_rank(rule),
             -len(rule.source), -int(rule.priority), rule.id,
         )
 

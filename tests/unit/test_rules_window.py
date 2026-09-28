@@ -499,6 +499,61 @@ def test_unselected_ruleset_conflict_does_not_block_save():
     assert manager.apply_button.isEnabled()
 
 
+@pytest.mark.parametrize("semantic_version", (1, 2))
+def test_import_tsv_uses_target_ruleset_semantic_version(tmp_path, semantic_version):
+    store = RuleStore(tmp_path / "rules")
+    store.save(RuleSet("B", semantic_version=semantic_version))
+    imported_path = tmp_path / "rules.tsv"
+    imported_path.write_text(
+        "direction\tsource\ttarget\ns2t\t软件\t軟件\n", encoding="utf-8")
+    manager = object.__new__(RuleManagerDialog)
+    manager._translator = Translator("en")
+    manager._qt = SimpleNamespace(
+        QFileDialog=SimpleNamespace(getOpenFileName=lambda *_args: (str(imported_path), "")),
+    )
+    manager._labels = {"import": "Import"}
+    manager._rule_store = store
+    rulesets, errors = store.list()
+    assert errors == ()
+    manager._rulesets = {item.id: item for item in rulesets}
+    manager._ruleset_id = "B"
+    manager.rules = []
+    manager._run_options = {"ruleset_ids": ["B"]}
+    manager._config = "s2t"
+    manager._profile_id = None
+    manager._book_fingerprint = None
+    manager.dialog = object()
+    manager._ui_preferences = {}
+    manager._save_ui_preferences = None
+    manager._import_options = lambda _path: {
+        "format": "tsv", "direction": "s2t", "scope": "global", "strict": True,
+    }
+    manager._confirm_import = lambda _review: True
+    manager._refresh = lambda: None
+    manager._show_exception = lambda error: (_ for _ in ()).throw(error)
+
+    manager._import()
+
+    assert len(manager.rules) == 1
+    assert manager.rules[0].semantic_version == semantic_version
+    assert (manager.rules[0].action, manager.rules[0].match_type,
+            manager.rules[0].stage) == ("override", "literal", "source")
+
+
+def test_rule_details_show_legacy_precedence_version():
+    translator = Translator("zh-Hans")
+    legacy_rule = Rule(
+        id="legacy", semantic_version=1, source="词", target="詞", direction="s2t")
+    manager = RuleManagerDialog(
+        make_with_table(), (legacy_rule,), translator=translator, config="s2t")
+    manager.table.selectRow(0)
+    manager._refresh_selection_details()
+
+    expected = translator.text(
+        "rules.detail_version", version=translator.text("rules.version_v1"))
+    assert expected in manager.selection_details.toPlainText()
+
+
 def test_nonstrict_txt_import_reports_candidates_and_invalid_rows_with_scope():
     imported = import_rules(
         "术语\t专名 其他候选\n空目标\t\n",
