@@ -1,0 +1,3 @@
+  100 literal rules x 3000 paragraphs:   0.04s  hits=0  index buckets built=95 (unused)
+ 1000 literal rules x 3000 paragraphs:   0.40s  hits=0  index buckets built=853 (unused)
+ 5000 literal rules x 3000 paragraphs:   1.98s  hits=0  index buckets built=2462 (unused)

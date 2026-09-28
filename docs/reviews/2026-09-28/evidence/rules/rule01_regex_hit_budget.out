@@ -1,0 +1,4 @@
+(a) text='你好世界再见' pattern=\p{Han}+ -> candidates: 6 budget.regex_hits: 6 (only 1 replacement is applied)
+(b) 600-char paragraph: RuleExecutionError rule han: regular expression exceeded 512 hits near offset 512
+(c) 60 files x 10 paragraphs with one double space: RuleExecutionError rule spaces: regular expression exceeded 512 hits near offset 1
+(d) 40 files: 400 changes, OK

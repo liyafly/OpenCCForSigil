@@ -1,0 +1,8 @@
+before: profile B freezes ['r1']
+label shown to the user: 本次启用此规则集
+after : shared.json enabled = False
+after : profile B (never touched) freezes []
+
+-- RULE-12: merely viewing another ruleset and saving adds it to this run --
+run ruleset_ids before: ()
+run ruleset_ids after : ('other',)

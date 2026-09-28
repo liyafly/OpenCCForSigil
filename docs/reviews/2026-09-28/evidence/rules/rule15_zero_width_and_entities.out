@@ -1,0 +1,6 @@
+entity A&amp;B, rule 'A&B'->X : <html><body><p>A&amp;B 漢</p></body></html>
+numeric &#x6C49;字, rule '汉字'->Y: <html><body><p>&#x6C49;字</p></body></html>   (no change planned)
+inline tag 乾<b>隆</b>, protect 乾隆: <html><body><p>乾<b>隆</b></p></body></html>   (no change planned)
+title attr, rule applies to attributes too: <html><body><p title="軟體">軟體</p></body></html>
+validation of (?<=「)[^」]*: passes
+runtime on '他说「」然后': RuleExecutionError rule z: zero-length regular-expression match at offset 3 is not allowed

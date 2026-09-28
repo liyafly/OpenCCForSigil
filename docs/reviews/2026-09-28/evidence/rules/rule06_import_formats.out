@@ -1,0 +1,18 @@
+== RULE-06: simplest 2-column TSV '源<TAB>目标' is rejected even with a direction chosen ==
+2-col TSV: rules= [] diagnostics= [(1, 'line', 'rule 1: expected direction, source, target, comment'), (2, 'line', 'rule 2: expected direction, source, target, comment')]
+3-col TSV without direction column (源/目标/备注): rules= [] diagnostics= [(1, 'line', "rule 0: direction: direction is required and must be a supported V1 config or '*'")]
+Chinese header row: rules= [('s2t', '软件', '軟體')] diagnostics= [(1, 'line', "rule 0: direction: direction is required and must be a supported V1 config or '*'")]
+
+== RULE-07: TSV goes through csv quoting: ASCII quotes are eaten / swallow lines ==
+quoted source : rules= [('s2t', '引号', '「引号」')] diagnostics= []
+unbalanced quote: rules= [] diagnostics= [(1, 'line', 'rule 1: expected direction, source, target, comment')]
+
+== RULE-08: delimited error line numbers are record indexes, not file lines ==
+bad direction on physical line 6: rules= [('s2t', '软件', '軟體')] diagnostics= [(2, 'line', "rule 0: direction: direction is required and must be a supported V1 config or '*'")]
+
+== RULE-09: JSON import ignores the scope chosen in the import dialog ==
+chosen scope=book -> imported scope: global book_fingerprint: 'THIS-BOOK' profile_id: 'P'
+foreign book rule -> scope: book owner: OTHER-BOOK (never active in this book)
+
+== JSON roundtrip identity (global rule, current profile P) ==
+canonical equal: False diff: {'profile_id': ('', 'P')}

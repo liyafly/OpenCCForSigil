@@ -1,0 +1,144 @@
+#!/usr/bin/env python3
+"""Real-Qt main-thread latency of the preview dialog on a synthetic large book.
+
+Run from the repository root:
+
+    QT_QPA_PLATFORM=offscreen mise exec -- uv run --with PySide6==6.11.2 \
+        python <this script> --output /tmp/opencc-preview-ui.json
+
+The plan is built once with the vendored OpenCC backend (not timed here).
+Every interaction below is a main-thread call measured with perf_counter,
+including the Qt event processing it triggers. No EPUB is written.
+"""
+
+from __future__ import annotations
+
+import argparse
+import gc
+import json
+import platform
+import statistics
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from synthetic_book import ROOT, SyntheticBook, build_sources  # noqa: E402
+
+from core.models import ConvertRequest  # noqa: E402
+from core.preview import PreviewSession  # noqa: E402
+from core.workflow import ConversionWorkflow  # noqa: E402
+from opencc_backend.backend import OpenCCBackend  # noqa: E402
+from sigil.adapter import SigilBookAdapter  # noqa: E402
+from ui import preview_window as pw  # noqa: E402
+from ui.i18n import Translator  # noqa: E402
+from ui.qt import ensure_application, load_qt  # noqa: E402
+
+
+def timed(fn, app):
+    gc.collect()
+    start = time.perf_counter()
+    fn()
+    app.processEvents()
+    return time.perf_counter() - start
+
+
+def median_of(fn, app, repeats):
+    samples = [timed(fn, app) for _ in range(repeats)]
+    return round(statistics.median(samples), 4), [round(value, 4) for value in samples]
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--files", type=int, default=200)
+    parser.add_argument("--paragraphs", type=int, default=60)
+    parser.add_argument("--chars", type=int, default=150)
+    parser.add_argument("--repeats", type=int, default=5)
+    parser.add_argument("--output", type=Path)
+    args = parser.parse_args()
+
+    sources = build_sources(args.files, args.paragraphs, args.chars)
+    workflow = ConversionWorkflow(SigilBookAdapter(SyntheticBook(sources)),
+                                  OpenCCBackend("s2t"), ConvertRequest("s2t"))
+    planned = workflow.plan()
+    qt = load_qt()
+    app = ensure_application(qt, language="en")
+    translator = Translator("en")
+    results = {"changes": sum(len(item.plan.changes) for item in planned),
+               "diagnostics": sum(len(item.plan.diagnostics) for item in planned)}
+
+    start = time.perf_counter()
+    records = pw._diagnostic_records(planned, translator)
+    results["diagnostic_records_seconds"] = round(time.perf_counter() - start, 4)
+    results["diagnostic_records"] = len(records)
+
+    previews = tuple(PreviewSession(item.plan) for item in planned)
+    start = time.perf_counter()
+    dialog = pw._PreviewDialog(qt, planned, previews, translator, None)
+    results["dialog_construct_seconds"] = round(time.perf_counter() - start, 4)
+    results["first_show_seconds"] = round(timed(dialog.dialog.show, app), 4)
+
+    counters = {"decision": 0}
+    original_decision = PreviewSession.decision
+
+    def counting_decision(self, change_id):
+        counters["decision"] += 1
+        return original_decision(self, change_id)
+
+    PreviewSession.decision = counting_decision
+
+    def measure(label, fn, repeats=args.repeats):
+        counters["decision"] = 0
+        value, samples = median_of(fn, app, repeats)
+        results[label] = {"median_seconds": value, "samples": samples,
+                          "decision_calls_per_action": counters["decision"] // repeats}
+
+    # Ordinary single-change decisions with no filter.
+    dialog._set_current_row(0)
+    measure("accept_this_no_filter", dialog._accept_this, repeats=args.repeats * 4)
+
+    # Status filter "undecided" is active: every decision rebuilds visible rows.
+    index = dialog.status_filter.findData("undecided")
+    dialog.status_filter.setCurrentIndex(index)
+    app.processEvents()
+    measure("accept_this_status_undecided", dialog._accept_this)
+    dialog.status_filter.setCurrentIndex(0)
+    app.processEvents()
+
+    # Text search over all rows (query typed after the 140 ms debounce).
+    def search():
+        dialog.search_input.setText("軟件")
+        dialog._refresh()
+
+    measure("search_refresh", search, repeats=3)
+    dialog._clear_filters()
+    app.processEvents()
+
+    dialog._set_current_row(len(dialog._entries) // 2)
+    measure("accept_file", dialog._accept_file, repeats=3)
+    measure("undo_after_accept_file", dialog._undo_preview_action, repeats=1)
+    measure("accept_all", dialog._accept_all, repeats=1)
+    measure("undo_accept_all", dialog._undo_preview_action, repeats=1)
+
+    PreviewSession.decision = original_decision
+    dialog._allow_reject = True
+    dialog.dialog.reject() if hasattr(dialog.dialog, "reject") else None
+    output = {
+        "head": subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT,
+                                        text=True).strip(),
+        "python": sys.version.split()[0],
+        "platform": platform.platform(),
+        "qt_platform": app.platformName(),
+        "results": results,
+    }
+    text = json.dumps(output, ensure_ascii=False, indent=2) + "\n"
+    if args.output:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(text, encoding="utf-8")
+    print(text, end="")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

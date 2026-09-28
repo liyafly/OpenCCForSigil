@@ -1,0 +1,18 @@
+== RULE-02: V2 rule silently beats V1 rule regardless of scope ==
+final: ('頭髮(全局)', [('v2-global', '头发', '頭髮(全局)')])
+conflicts reported: []
+TSV-imported rule semantic_version: [1]
+
+== RULE-02b: V1 profile rule loses to V1 global rule (V1 order book>global>profile) ==
+final: ('頭髮(全局)', [('v1-global', '头发', '頭髮(全局)')])
+
+== RULE-03: protect blocks the longest override; shorter override at same start is not tried ==
+with long+short: ('大乾隆', [('p', '乾隆', '乾隆')])
+short only     : ('太乾隆', [('short', '大', '太'), ('p', '乾隆', '乾隆')])
+
+== RULE-04: leftmost match wins over scope/priority ==
+global '大乾' vs book '乾隆帝'(priority 100000) on '大乾隆帝': ('G隆帝', [('g', '大乾', 'G')])
+
+== RULE-02c: same visible rule (UI-added V2 vs TSV-imported V1) is not a duplicate ==
+additions: [('软件', '軟件', 1)] duplicates: 0 conflicts: []
+runtime winner: ('軟體', [('ui', '软件', '軟體')])

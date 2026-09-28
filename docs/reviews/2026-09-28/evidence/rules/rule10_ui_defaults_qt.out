@@ -1,0 +1,8 @@
+RULE-10 run config = s2t; new-rule direction preselected: * -> 任意方向
+  added rule: 里 -> 裡 direction = '*' semantic_version = 2
+  applies to a later t2s run: True | applies to s2twp run: True
+  for comparison, rule in a user-created set: direction = 's2t' | applies to s2twp run: False
+
+RULE-11 label of ruleset-level switch: 本次启用此规则集
+  t2s without rule: 他每天走三公里去邻里的学校。
+  t2s with the '*' rule added during an s2t session: 他每天走三公裡去邻裡的学校。

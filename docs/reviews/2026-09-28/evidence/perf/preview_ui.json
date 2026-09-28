@@ -1,0 +1,90 @@
+{
+  "head": "c14701f",
+  "python": "3.14.7",
+  "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "qt_platform": "offscreen",
+  "results": {
+    "changes": 396091,
+    "diagnostics": 5711,
+    "diagnostic_records_seconds": 1.1583,
+    "diagnostic_records": 5711,
+    "dialog_construct_seconds": 1.7598,
+    "first_show_seconds": 0.0386,
+    "accept_this_no_filter": {
+      "median_seconds": 0.0057,
+      "samples": [
+        0.0042,
+        0.0043,
+        0.0043,
+        0.0044,
+        0.005,
+        0.0064,
+        0.0054,
+        0.006,
+        0.0063,
+        0.0056,
+        0.0068,
+        0.0064,
+        0.0061,
+        0.0079,
+        0.006,
+        0.0056,
+        0.0058,
+        0.0054,
+        0.0059,
+        0.0055
+      ],
+      "decision_calls_per_action": 147
+    },
+    "accept_this_status_undecided": {
+      "median_seconds": 0.1415,
+      "samples": [
+        0.1215,
+        0.1407,
+        0.1415,
+        0.1581,
+        0.2164
+      ],
+      "decision_calls_per_action": 396447
+    },
+    "search_refresh": {
+      "median_seconds": 0.1226,
+      "samples": [
+        0.2887,
+        0.1226,
+        0.1206
+      ],
+      "decision_calls_per_action": 0
+    },
+    "accept_file": {
+      "median_seconds": 0.1138,
+      "samples": [
+        0.1408,
+        0.1138,
+        0.1108
+      ],
+      "decision_calls_per_action": 400459
+    },
+    "undo_after_accept_file": {
+      "median_seconds": 0.0076,
+      "samples": [
+        0.0076
+      ],
+      "decision_calls_per_action": 2357
+    },
+    "accept_all": {
+      "median_seconds": 0.0296,
+      "samples": [
+        0.0296
+      ],
+      "decision_calls_per_action": 347
+    },
+    "undo_accept_all": {
+      "median_seconds": 0.0976,
+      "samples": [
+        0.0976
+      ],
+      "decision_calls_per_action": 396437
+    }
+  }
+}

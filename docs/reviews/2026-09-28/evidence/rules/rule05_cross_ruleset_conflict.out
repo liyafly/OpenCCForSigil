@@ -1,0 +1,7 @@
+conflicts shown while editing set A: []
+conflicts shown while editing set B: []
+analysis: BlockingRuleConflict -> blocking rule conflicts: BLOCKING CONFLICT: SAME_SOURCE_DIFFERENT_TARGET: '软件' (global/s2t → 軟體 [a1], global/s2t → 軟件 [b1])
+
+-- Spec §83 example: global vs profile rule for the same source (shadowing) --
+find_conflicts ->  () (spec §83 wants the pair listed with 'Winner: profile rule')
+protect + exact with identical source ->  () (the exact rule can never apply; nothing tells the user)

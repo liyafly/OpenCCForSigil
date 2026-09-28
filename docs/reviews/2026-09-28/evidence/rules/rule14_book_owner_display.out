@@ -1,0 +1,3 @@
+fingerprint changes after adding an ISBN identifier: 6cf6c6af0339 -> 16f1289eb285
+table scope column: 当前书 | activity: 方案或书籍归属不匹配
+after update with scope unchanged -> owner still old book: True

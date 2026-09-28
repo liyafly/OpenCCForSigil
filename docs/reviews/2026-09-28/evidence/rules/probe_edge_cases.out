@@ -1,0 +1,12 @@
+ExtB literal: ('😀發😀', 3, True)
+emoji source: ('a笑b', 1, True)
+source==target exact (V1): ('发', 0, True)
+empty source -> rejected: rule 0: source: source must contain visible non-punctuation text
+whitespace V1 source -> rejected: rule 0: source: source must contain visible non-punctuation text
+whitespace V2 source -> accepted
+punct-only V1 source -> rejected: rule 0: source: source must contain visible non-punctuation text
+punct-only V2 source -> accepted
+chaining A->B, B->C (same stage): ('BC', 2, True)
+exact dup same target: ['DUPLICATE']
+TXT CRLF+BOM: [('软件', '軟體'), ('内存', '記憶體')] ['discarded candidates: 內存']
+TSV roundtrip identity: True

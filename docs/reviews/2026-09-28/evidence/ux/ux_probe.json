@@ -1,0 +1,783 @@
+{
+ "auto_dismissed_modals": [],
+ "screen": [
+  800,
+  800
+ ],
+ "zh-Hans": {
+  "_": null,
+  "merged_no_selection": {
+   "sigil_selection": [],
+   "window_title": "OpenCCForSigil — 选择要转换的文件",
+   "initial_tab_index": 0,
+   "initial_tab_text": "选择要转换的文件",
+   "default_button_text": [
+    "继续选择转换方向"
+   ],
+   "default_button_enabled": [
+    false
+   ],
+   "checked_scope_radio": "选择文件",
+   "direction_default": "s2t",
+   "direction_count": 16,
+   "focus_widget_at_open": "QTabBar",
+   "tab0_controls": {
+    "QPushButton": 2,
+    "QRadioButton": 4,
+    "QComboBox": 1,
+    "QLineEdit": 1,
+    "QListWidget": 1,
+    "total_clickable": 7
+   },
+   "tab0_labels": [
+    "QPushButton:选择可见项|enabled=True",
+    "QPushButton:清空可见项|enabled=True",
+    "QRadioButton:单个文件|enabled=True",
+    "QRadioButton:选择文件|enabled=True",
+    "QRadioButton:Spine 正文|enabled=True",
+    "QRadioButton:全部 XHTML|enabled=True"
+   ],
+   "outer_summary": "本次：0 个 XHTML · 简体中文 → 繁体中文\n未选择 XHTML 文件，无法分析 · 当前选择不包含导航文档",
+   "tab1_controls_collapsed": {
+    "QPushButton": 4,
+    "QToolButton": 2,
+    "QCheckBox": 5,
+    "QComboBox": 1,
+    "total_clickable": 12
+   },
+   "tab1_labels_collapsed": [
+    "QPushButton:查看修改|enabled=True",
+    "QPushButton:方案|enabled=True",
+    "QPushButton:另存为方案|enabled=True",
+    "QPushButton:规则 / 沙箱|enabled=True",
+    "QToolButton:高级选项 · 修改 0 项|enabled=True",
+    "QToolButton:工具 ▾|enabled=True",
+    "QCheckBox:高级：使用官方原生 Jieba 分词插件|enabled=False",
+    "QCheckBox:启用内置署名保护|enabled=True",
+    "QCheckBox:包含所选 XHTML 中的 NAV 目录|enabled=False",
+    "QCheckBox:同时转换 NCX 标签（全书 · EPUB 2 导航）|enabled=True",
+    "QCheckBox:同时转换白名单书籍元数据（全书 · 高风险）|enabled=True"
+   ],
+   "tab1_controls_expanded": {
+    "QPushButton": 4,
+    "QToolButton": 2,
+    "QCheckBox": 14,
+    "QComboBox": 7,
+    "total_clickable": 27
+   },
+   "tools_menu_actions": [
+    "历史 / 报告",
+    "自检"
+   ],
+   "enter_in_filter_closed_dialog": false,
+   "enter_in_filter_dialog_result": 0,
+   "enter_in_filter_scope_accepted": false,
+   "enter_in_filter_config_accepted": false,
+   "tab_order_from_filter": [
+    "QPushButton:选择可见项",
+    "QPushButton:清空可见项"
+   ]
+  },
+  "merged_one_selected": {
+   "sigil_selection": [
+    "c2"
+   ],
+   "window_title": "OpenCCForSigil — 选择要转换的文件",
+   "initial_tab_index": 0,
+   "initial_tab_text": "选择要转换的文件",
+   "default_button_text": [
+    "继续选择转换方向"
+   ],
+   "default_button_enabled": [
+    true
+   ],
+   "checked_scope_radio": "单个文件",
+   "direction_default": "s2t",
+   "direction_count": 16,
+   "focus_widget_at_open": "QTabBar",
+   "tab0_controls": {
+    "QPushButton": 2,
+    "QRadioButton": 4,
+    "QComboBox": 1,
+    "QLineEdit": 1,
+    "QListWidget": 1,
+    "total_clickable": 7
+   },
+   "tab0_labels": [
+    "QPushButton:选择可见项|enabled=False",
+    "QPushButton:清空可见项|enabled=False",
+    "QRadioButton:单个文件|enabled=True",
+    "QRadioButton:选择文件|enabled=True",
+    "QRadioButton:Spine 正文|enabled=True",
+    "QRadioButton:全部 XHTML|enabled=True"
+   ],
+   "outer_summary": "本次：1 个 XHTML · 简体中文 → 繁体中文\n当前选择不包含导航文档",
+   "tab1_controls_collapsed": {
+    "QPushButton": 4,
+    "QToolButton": 2,
+    "QCheckBox": 5,
+    "QComboBox": 1,
+    "total_clickable": 12
+   },
+   "tab1_labels_collapsed": [
+    "QPushButton:查看修改|enabled=True",
+    "QPushButton:方案|enabled=True",
+    "QPushButton:另存为方案|enabled=True",
+    "QPushButton:规则 / 沙箱|enabled=True",
+    "QToolButton:高级选项 · 修改 0 项|enabled=True",
+    "QToolButton:工具 ▾|enabled=True",
+    "QCheckBox:高级：使用官方原生 Jieba 分词插件|enabled=False",
+    "QCheckBox:启用内置署名保护|enabled=True",
+    "QCheckBox:包含所选 XHTML 中的 NAV 目录|enabled=False",
+    "QCheckBox:同时转换 NCX 标签（全书 · EPUB 2 导航）|enabled=True",
+    "QCheckBox:同时转换白名单书籍元数据（全书 · 高风险）|enabled=True"
+   ],
+   "tab1_controls_expanded": {
+    "QPushButton": 4,
+    "QToolButton": 2,
+    "QCheckBox": 14,
+    "QComboBox": 7,
+    "total_clickable": 27
+   },
+   "tools_menu_actions": [
+    "历史 / 报告",
+    "自检"
+   ],
+   "enter_in_filter_closed_dialog": true,
+   "enter_in_filter_dialog_result": 1,
+   "enter_in_filter_scope_accepted": true,
+   "enter_in_filter_config_accepted": true
+  },
+  "merged_two_selected": {
+   "sigil_selection": [
+    "c1",
+    "c2"
+   ],
+   "window_title": "OpenCCForSigil — 选择要转换的文件",
+   "initial_tab_index": 0,
+   "initial_tab_text": "选择要转换的文件",
+   "default_button_text": [
+    "继续选择转换方向"
+   ],
+   "default_button_enabled": [
+    true
+   ],
+   "checked_scope_radio": "选择文件",
+   "direction_default": "s2t",
+   "direction_count": 16,
+   "focus_widget_at_open": "QTabBar",
+   "tab0_controls": {
+    "QPushButton": 2,
+    "QRadioButton": 4,
+    "QComboBox": 1,
+    "QLineEdit": 1,
+    "QListWidget": 1,
+    "total_clickable": 7
+   },
+   "tab0_labels": [
+    "QPushButton:选择可见项|enabled=True",
+    "QPushButton:清空可见项|enabled=True",
+    "QRadioButton:单个文件|enabled=True",
+    "QRadioButton:选择文件|enabled=True",
+    "QRadioButton:Spine 正文|enabled=True",
+    "QRadioButton:全部 XHTML|enabled=True"
+   ],
+   "outer_summary": "本次：2 个 XHTML · 简体中文 → 繁体中文\n当前选择不包含导航文档",
+   "tab1_controls_collapsed": {
+    "QPushButton": 4,
+    "QToolButton": 2,
+    "QCheckBox": 5,
+    "QComboBox": 1,
+    "total_clickable": 12
+   },
+   "tab1_labels_collapsed": [
+    "QPushButton:查看修改|enabled=True",
+    "QPushButton:方案|enabled=True",
+    "QPushButton:另存为方案|enabled=True",
+    "QPushButton:规则 / 沙箱|enabled=True",
+    "QToolButton:高级选项 · 修改 0 项|enabled=True",
+    "QToolButton:工具 ▾|enabled=True",
+    "QCheckBox:高级：使用官方原生 Jieba 分词插件|enabled=False",
+    "QCheckBox:启用内置署名保护|enabled=True",
+    "QCheckBox:包含所选 XHTML 中的 NAV 目录|enabled=False",
+    "QCheckBox:同时转换 NCX 标签（全书 · EPUB 2 导航）|enabled=True",
+    "QCheckBox:同时转换白名单书籍元数据（全书 · 高风险）|enabled=True"
+   ],
+   "tab1_controls_expanded": {
+    "QPushButton": 4,
+    "QToolButton": 2,
+    "QCheckBox": 14,
+    "QComboBox": 7,
+    "total_clickable": 27
+   },
+   "tools_menu_actions": [
+    "历史 / 报告",
+    "自检"
+   ],
+   "enter_in_filter_closed_dialog": true,
+   "enter_in_filter_dialog_result": 1,
+   "enter_in_filter_scope_accepted": true,
+   "enter_in_filter_config_accepted": true
+  },
+  "preview": {
+   "controls": {
+    "QPushButton": 9,
+    "QToolButton": 2,
+    "QCheckBox": 1,
+    "QComboBox": 1,
+    "QLineEdit": 1,
+    "QPlainTextEdit": 3,
+    "QTableView": 1,
+    "QTabBar": 1,
+    "total_clickable": 13
+   },
+   "labels": [
+    "QPushButton:清除筛选|enabled=True",
+    "QPushButton:接受此项|enabled=True",
+    "QPushButton:跳过此项|enabled=True",
+    "QPushButton:下一条未决|enabled=True",
+    "QPushButton:撤销|enabled=False",
+    "QPushButton:重做|enabled=False",
+    "QPushButton:返回设置|enabled=True",
+    "QPushButton:取消|enabled=True",
+    "QPushButton:应用已接受的变更|enabled=False",
+    "QToolButton:更多筛选（0）|enabled=True",
+    "QToolButton:更多…|enabled=True",
+    "QCheckBox:显示源码上下文|enabled=True"
+   ],
+   "more_menu_actions": [
+    [
+     "接受本文件",
+     true,
+     true
+    ],
+    [
+     "跳过本文件",
+     true,
+     true
+    ],
+    [
+     "接受筛选项",
+     true,
+     true
+    ],
+    [
+     "跳过筛选项",
+     true,
+     true
+    ],
+    [
+     "接受全部文件",
+     true,
+     true
+    ],
+    [
+     "跳过全部文件",
+     true,
+     true
+    ],
+    [
+     "恢复此项",
+     true,
+     true
+    ],
+    [
+     "导出报告",
+     true,
+     true
+    ],
+    [
+     "批量处理待决定项…",
+     true,
+     true
+    ],
+    [
+     "接受语言标签组",
+     false,
+     false
+    ],
+    [
+     "跳过语言标签组",
+     false,
+     false
+    ]
+   ],
+   "apply_enabled_initially": false,
+   "apply_text_initially": "应用已接受的变更",
+   "apply_status": "剩余 40 项待决定\nA 接受 · S 跳过 · N 下一项",
+   "summary": "文件：1   变更：40   接受：0   跳过：0   待决定：40",
+   "detail_text": "规则：OpenCC:STPhrases\n类别：词语    风险：低\n待定",
+   "tab_order_from_table": [
+    "QTabWidget:",
+    "QTabBar:",
+    "QCheckBox:显示源码上下文",
+    "QPlainTextEdit:",
+    "QPlainTextEdit:"
+   ],
+   "enter_on_table_visible": true,
+   "enter_on_table_applied": false
+  },
+  "rules": {
+   "controls_rules_tab": {
+    "QPushButton": 10,
+    "QCheckBox": 2,
+    "QComboBox": 6,
+    "QLineEdit": 3,
+    "QPlainTextEdit": 1,
+    "QTableView": 1,
+    "QTableWidget": 1,
+    "QTabBar": 1,
+    "total_clickable": 18
+   },
+   "labels_rules_tab": [
+    "QPushButton:新建规则集…|enabled=True",
+    "QPushButton:重命名|enabled=True",
+    "QPushButton:新增并应用到草稿|enabled=True",
+    "QPushButton:更新草稿中的规则|enabled=False",
+    "QPushButton:删除|enabled=True",
+    "QPushButton:使用模板…|enabled=True",
+    "QPushButton:导入|enabled=True",
+    "QPushButton:导出|enabled=True",
+    "QPushButton:取消|enabled=True",
+    "QPushButton:保存规则集|enabled=True",
+    "QCheckBox:本次启用此规则集|enabled=True",
+    "QCheckBox:启用此规则|enabled=True"
+   ],
+   "help_text": "规则说明：指定最终写法会跳过后续转换；保护规则保留匹配原文。转换前替换结果会进入 OpenCC；转换后替换在标点整理之后运行。正则使用随插件附带的 VERSION1 方言，只匹配提取出的文字或允许的属性值，不跨标签。先在下方沙箱测试。",
+   "tab_names": [
+    "规则",
+    "测试"
+   ],
+   "ruleset_enabled_label": "本次启用此规则集",
+   "add_button": "新增并应用到草稿",
+   "update_button": "更新草稿中的规则",
+   "apply_button": "保存规则集",
+   "test_tab_order": [
+    "QPushButton:测试",
+    "QPushButton:词典检查",
+    "QPlainTextEdit:",
+    "QPlainTextEdit:"
+   ]
+  },
+  "profiles": {
+   "controls": {
+    "QPushButton": 6,
+    "QCheckBox": 2,
+    "QLineEdit": 1,
+    "QPlainTextEdit": 1,
+    "QListWidget": 1,
+    "QTabBar": 1,
+    "total_clickable": 8
+   },
+   "labels": [
+    "QPushButton:从当前设置新建|enabled=True",
+    "QPushButton:重命名|enabled=False",
+    "QPushButton:复制|enabled=True",
+    "QPushButton:删除|enabled=False",
+    "QPushButton:关闭|enabled=True",
+    "QPushButton:使用|enabled=True",
+    "QCheckBox:default|enabled=True",
+    "QCheckBox:names|enabled=True"
+   ],
+   "default_buttons": [
+    "从当前设置新建",
+    "重命名",
+    "复制",
+    "删除",
+    "关闭",
+    "使用"
+   ],
+   "enter_in_search_closed": false,
+   "enter_in_search_accepted": false,
+   "enter_in_search_selected": null
+  }
+ },
+ "en": {
+  "_": null,
+  "merged_no_selection": {
+   "sigil_selection": [],
+   "window_title": "OpenCCForSigil — Choose files to convert",
+   "initial_tab_index": 0,
+   "initial_tab_text": "Choose files to convert",
+   "default_button_text": [
+    "Continue to direction"
+   ],
+   "default_button_enabled": [
+    false
+   ],
+   "checked_scope_radio": "Selected files",
+   "direction_default": "s2t",
+   "direction_count": 16,
+   "focus_widget_at_open": "QTabBar",
+   "tab0_controls": {
+    "QPushButton": 2,
+    "QRadioButton": 4,
+    "QComboBox": 1,
+    "QLineEdit": 1,
+    "QListWidget": 1,
+    "total_clickable": 7
+   },
+   "tab0_labels": [
+    "QPushButton:Select visible|enabled=True",
+    "QPushButton:Clear visible|enabled=True",
+    "QRadioButton:One file|enabled=True",
+    "QRadioButton:Selected files|enabled=True",
+    "QRadioButton:Spine|enabled=True",
+    "QRadioButton:All XHTML|enabled=True"
+   ],
+   "outer_summary": "This run: 0 XHTML · Simplified Chinese → Traditional Chinese\nNo XHTML files selected; analysis is disabled · Navigation document is not included for this selection",
+   "tab1_controls_collapsed": {
+    "QPushButton": 4,
+    "QToolButton": 2,
+    "QCheckBox": 5,
+    "QComboBox": 1,
+    "total_clickable": 12
+   },
+   "tab1_labels_collapsed": [
+    "QPushButton:View changes|enabled=True",
+    "QPushButton:Profiles|enabled=True",
+    "QPushButton:Save as profile|enabled=True",
+    "QPushButton:Rules / sandbox|enabled=True",
+    "QToolButton:Advanced options · 0 changed|enabled=True",
+    "QToolButton:Tools ▾|enabled=True",
+    "QCheckBox:Advanced: use the official native Jieba plugin|enabled=False",
+    "QCheckBox:Use built-in author-credit protections|enabled=True",
+    "QCheckBox:Include NAV within the selected XHTML files|enabled=False",
+    "QCheckBox:Also convert NCX labels (whole book · EPUB 2 navigation)|enabled=True",
+    "QCheckBox:Also convert allowed book metadata (whole book · high risk)|enabled=True"
+   ],
+   "tab1_controls_expanded": {
+    "QPushButton": 4,
+    "QToolButton": 2,
+    "QCheckBox": 14,
+    "QComboBox": 7,
+    "total_clickable": 27
+   },
+   "tools_menu_actions": [
+    "History / reports",
+    "Self-test"
+   ],
+   "enter_in_filter_closed_dialog": false,
+   "enter_in_filter_dialog_result": 0,
+   "enter_in_filter_scope_accepted": false,
+   "enter_in_filter_config_accepted": false,
+   "tab_order_from_filter": [
+    "QPushButton:Select visible",
+    "QPushButton:Clear visible"
+   ]
+  },
+  "merged_one_selected": {
+   "sigil_selection": [
+    "c2"
+   ],
+   "window_title": "OpenCCForSigil — Choose files to convert",
+   "initial_tab_index": 0,
+   "initial_tab_text": "Choose files to convert",
+   "default_button_text": [
+    "Continue to direction"
+   ],
+   "default_button_enabled": [
+    true
+   ],
+   "checked_scope_radio": "One file",
+   "direction_default": "s2t",
+   "direction_count": 16,
+   "focus_widget_at_open": "QTabBar",
+   "tab0_controls": {
+    "QPushButton": 2,
+    "QRadioButton": 4,
+    "QComboBox": 1,
+    "QLineEdit": 1,
+    "QListWidget": 1,
+    "total_clickable": 7
+   },
+   "tab0_labels": [
+    "QPushButton:Select visible|enabled=False",
+    "QPushButton:Clear visible|enabled=False",
+    "QRadioButton:One file|enabled=True",
+    "QRadioButton:Selected files|enabled=True",
+    "QRadioButton:Spine|enabled=True",
+    "QRadioButton:All XHTML|enabled=True"
+   ],
+   "outer_summary": "This run: 1 XHTML · Simplified Chinese → Traditional Chinese\nNavigation document is not included for this selection",
+   "tab1_controls_collapsed": {
+    "QPushButton": 4,
+    "QToolButton": 2,
+    "QCheckBox": 5,
+    "QComboBox": 1,
+    "total_clickable": 12
+   },
+   "tab1_labels_collapsed": [
+    "QPushButton:View changes|enabled=True",
+    "QPushButton:Profiles|enabled=True",
+    "QPushButton:Save as profile|enabled=True",
+    "QPushButton:Rules / sandbox|enabled=True",
+    "QToolButton:Advanced options · 0 changed|enabled=True",
+    "QToolButton:Tools ▾|enabled=True",
+    "QCheckBox:Advanced: use the official native Jieba plugin|enabled=False",
+    "QCheckBox:Use built-in author-credit protections|enabled=True",
+    "QCheckBox:Include NAV within the selected XHTML files|enabled=False",
+    "QCheckBox:Also convert NCX labels (whole book · EPUB 2 navigation)|enabled=True",
+    "QCheckBox:Also convert allowed book metadata (whole book · high risk)|enabled=True"
+   ],
+   "tab1_controls_expanded": {
+    "QPushButton": 4,
+    "QToolButton": 2,
+    "QCheckBox": 14,
+    "QComboBox": 7,
+    "total_clickable": 27
+   },
+   "tools_menu_actions": [
+    "History / reports",
+    "Self-test"
+   ],
+   "enter_in_filter_closed_dialog": true,
+   "enter_in_filter_dialog_result": 1,
+   "enter_in_filter_scope_accepted": true,
+   "enter_in_filter_config_accepted": true
+  },
+  "merged_two_selected": {
+   "sigil_selection": [
+    "c1",
+    "c2"
+   ],
+   "window_title": "OpenCCForSigil — Choose files to convert",
+   "initial_tab_index": 0,
+   "initial_tab_text": "Choose files to convert",
+   "default_button_text": [
+    "Continue to direction"
+   ],
+   "default_button_enabled": [
+    true
+   ],
+   "checked_scope_radio": "Selected files",
+   "direction_default": "s2t",
+   "direction_count": 16,
+   "focus_widget_at_open": "QTabBar",
+   "tab0_controls": {
+    "QPushButton": 2,
+    "QRadioButton": 4,
+    "QComboBox": 1,
+    "QLineEdit": 1,
+    "QListWidget": 1,
+    "total_clickable": 7
+   },
+   "tab0_labels": [
+    "QPushButton:Select visible|enabled=True",
+    "QPushButton:Clear visible|enabled=True",
+    "QRadioButton:One file|enabled=True",
+    "QRadioButton:Selected files|enabled=True",
+    "QRadioButton:Spine|enabled=True",
+    "QRadioButton:All XHTML|enabled=True"
+   ],
+   "outer_summary": "This run: 2 XHTML · Simplified Chinese → Traditional Chinese\nNavigation document is not included for this selection",
+   "tab1_controls_collapsed": {
+    "QPushButton": 4,
+    "QToolButton": 2,
+    "QCheckBox": 5,
+    "QComboBox": 1,
+    "total_clickable": 12
+   },
+   "tab1_labels_collapsed": [
+    "QPushButton:View changes|enabled=True",
+    "QPushButton:Profiles|enabled=True",
+    "QPushButton:Save as profile|enabled=True",
+    "QPushButton:Rules / sandbox|enabled=True",
+    "QToolButton:Advanced options · 0 changed|enabled=True",
+    "QToolButton:Tools ▾|enabled=True",
+    "QCheckBox:Advanced: use the official native Jieba plugin|enabled=False",
+    "QCheckBox:Use built-in author-credit protections|enabled=True",
+    "QCheckBox:Include NAV within the selected XHTML files|enabled=False",
+    "QCheckBox:Also convert NCX labels (whole book · EPUB 2 navigation)|enabled=True",
+    "QCheckBox:Also convert allowed book metadata (whole book · high risk)|enabled=True"
+   ],
+   "tab1_controls_expanded": {
+    "QPushButton": 4,
+    "QToolButton": 2,
+    "QCheckBox": 14,
+    "QComboBox": 7,
+    "total_clickable": 27
+   },
+   "tools_menu_actions": [
+    "History / reports",
+    "Self-test"
+   ],
+   "enter_in_filter_closed_dialog": true,
+   "enter_in_filter_dialog_result": 1,
+   "enter_in_filter_scope_accepted": true,
+   "enter_in_filter_config_accepted": true
+  },
+  "preview": {
+   "controls": {
+    "QPushButton": 9,
+    "QToolButton": 2,
+    "QCheckBox": 1,
+    "QComboBox": 1,
+    "QLineEdit": 1,
+    "QPlainTextEdit": 3,
+    "QTableView": 1,
+    "QTabBar": 1,
+    "total_clickable": 13
+   },
+   "labels": [
+    "QPushButton:Clear filters|enabled=True",
+    "QPushButton:Accept this|enabled=True",
+    "QPushButton:Skip this|enabled=True",
+    "QPushButton:Next undecided|enabled=True",
+    "QPushButton:Undo|enabled=False",
+    "QPushButton:Redo|enabled=False",
+    "QPushButton:Back to settings|enabled=True",
+    "QPushButton:Cancel|enabled=True",
+    "QPushButton:Apply accepted changes|enabled=False",
+    "QToolButton:More filters (0)|enabled=True",
+    "QToolButton:More…|enabled=True",
+    "QCheckBox:Show source markup context|enabled=True"
+   ],
+   "more_menu_actions": [
+    [
+     "Accept file",
+     true,
+     true
+    ],
+    [
+     "Skip file",
+     true,
+     true
+    ],
+    [
+     "Accept filtered",
+     true,
+     true
+    ],
+    [
+     "Skip filtered",
+     true,
+     true
+    ],
+    [
+     "Accept all files",
+     true,
+     true
+    ],
+    [
+     "Skip all files",
+     true,
+     true
+    ],
+    [
+     "Reset item",
+     true,
+     true
+    ],
+    [
+     "Export report",
+     true,
+     true
+    ],
+    [
+     "Batch decisions…",
+     true,
+     true
+    ],
+    [
+     "Accept language tag group",
+     false,
+     false
+    ],
+    [
+     "Skip language tag group",
+     false,
+     false
+    ]
+   ],
+   "apply_enabled_initially": false,
+   "apply_text_initially": "Apply accepted changes",
+   "apply_status": "Remaining: 40\nA accept · S skip · N next",
+   "summary": "Files: 1   Changes: 40   Accepted: 0   Skipped: 0   Undecided: 40",
+   "detail_text": "Rule: OpenCC:STPhrases\nCategory: Phrase    Risk: Low\nPending",
+   "tab_order_from_table": [
+    "QTabWidget:",
+    "QTabBar:",
+    "QCheckBox:Show source markup context",
+    "QPlainTextEdit:",
+    "QPlainTextEdit:"
+   ],
+   "enter_on_table_visible": true,
+   "enter_on_table_applied": false
+  },
+  "rules": {
+   "controls_rules_tab": {
+    "QPushButton": 10,
+    "QCheckBox": 2,
+    "QComboBox": 6,
+    "QLineEdit": 3,
+    "QPlainTextEdit": 1,
+    "QTableView": 1,
+    "QTableWidget": 1,
+    "QTabBar": 1,
+    "total_clickable": 18
+   },
+   "labels_rules_tab": [
+    "QPushButton:New rule set…|enabled=True",
+    "QPushButton:Rename|enabled=True",
+    "QPushButton:Apply new rule to draft|enabled=True",
+    "QPushButton:Apply edit to draft|enabled=False",
+    "QPushButton:Remove|enabled=True",
+    "QPushButton:Templates…|enabled=True",
+    "QPushButton:Import|enabled=True",
+    "QPushButton:Export|enabled=True",
+    "QPushButton:Cancel|enabled=True",
+    "QPushButton:Save rule set|enabled=True",
+    "QCheckBox:Use this rule set|enabled=True",
+    "QCheckBox:Enable this rule|enabled=True"
+   ],
+   "help_text": "Rules: Final wording replaces the full source and skips later conversion; Protect keeps the source unchanged. Pre-replacements enter OpenCC; post-replacements run after punctuation. Regex uses the bundled VERSION1 dialect, is limited to each extracted text or allowed attribute, and never crosses tags. Disabled rules are marked in the list. Built-in author-credit protection covers common ◎著 forms. Test rules in the sandbox below.",
+   "tab_names": [
+    "Rules",
+    "Test"
+   ],
+   "ruleset_enabled_label": "Use this rule set",
+   "add_button": "Apply new rule to draft",
+   "update_button": "Apply edit to draft",
+   "apply_button": "Save rule set",
+   "test_tab_order": [
+    "QPushButton:Test",
+    "QPushButton:Inspect dictionary",
+    "QPlainTextEdit:",
+    "QPlainTextEdit:"
+   ]
+  },
+  "profiles": {
+   "controls": {
+    "QPushButton": 6,
+    "QCheckBox": 2,
+    "QLineEdit": 1,
+    "QPlainTextEdit": 1,
+    "QListWidget": 1,
+    "QTabBar": 1,
+    "total_clickable": 8
+   },
+   "labels": [
+    "QPushButton:From current settings|enabled=True",
+    "QPushButton:Rename|enabled=False",
+    "QPushButton:Copy|enabled=True",
+    "QPushButton:Delete|enabled=False",
+    "QPushButton:Close|enabled=True",
+    "QPushButton:Use|enabled=True",
+    "QCheckBox:default|enabled=True",
+    "QCheckBox:names|enabled=True"
+   ],
+   "default_buttons": [
+    "From current settings",
+    "Rename",
+    "Copy",
+    "Delete",
+    "Close",
+    "Use"
+   ],
+   "enter_in_search_closed": false,
+   "enter_in_search_accepted": false,
+   "enter_in_search_selected": null
+  }
+ }
+}
