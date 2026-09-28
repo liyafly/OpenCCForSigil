@@ -17,11 +17,9 @@ INVARIANTS.md
 REVISION_NOTES.md
 ```
 
-It supersedes [`OpenCCForSigil_Spec_v1.3/`](OpenCCForSigil_Spec_v1.3/), which
-is retained as the previous stable baseline. v1.2 remains the historical
-backend architecture baseline. The v1.4 production backend is the vendored
-BYVoid/OpenCC official Python Binding (`opencc.OpenCC`); the v1.2 direct
-`ctypes`/shared-library design is historical only.
+v1.4 is the only retained versioned specification. The current backend and
+package boundaries are described in [`native-backend.md`](native-backend.md)
+and [`release.md`](release.md).
 
 ## Choose a guide
 
@@ -48,6 +46,7 @@ BYVoid/OpenCC official Python Binding (`opencc.OpenCC`); the v1.2 direct
 | Plan the next preview optimizations, safety fixes, and features for Luna | [`reviews/2026-09-27/01-optimization-feature-luna-plan.md`](reviews/2026-09-27/01-optimization-feature-luna-plan.md) |
 | Review the implementation, test evidence, and acceptance limits for that plan | [`reviews/2026-09-27/02-implementation-results.md`](reviews/2026-09-27/02-implementation-results.md) |
 | Implement the post-v0.2.8 settings, preview, rules, profiles, and history UI workflow improvements with Luna | [`reviews/2026-09-27/ui-workflow/01-luna-plan.md`](reviews/2026-09-27/ui-workflow/01-luna-plan.md) |
+| Review the 2026-09-28 interaction, performance, and rules findings with reproduction evidence | [`reviews/2026-09-28/README.md`](reviews/2026-09-28/README.md) |
 
 ## Release artifacts
 
