@@ -110,9 +110,9 @@ class Rule:
             values["direction"] = default_direction
         if not values.get("scope"):
             values["scope"] = default_scope
-        if profile_id and not values.get("profile_id"):
+        if values.get("scope") == "profile" and profile_id and not values.get("profile_id"):
             values["profile_id"] = profile_id
-        if book_fingerprint and not values.get("book_fingerprint"):
+        if values.get("scope") == "book" and book_fingerprint and not values.get("book_fingerprint"):
             values["book_fingerprint"] = book_fingerprint
         if "pattern" in values and "source" not in values:
             values["source"] = values.pop("pattern")

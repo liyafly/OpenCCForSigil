@@ -68,6 +68,7 @@ def import_rules(
     scope: str = "global",
     profile_id: str = "",
     book_fingerprint: str = "",
+    rebind_owner: bool = False,
     semantic_version: int = 2,
     strict: bool = True,
 ) -> ImportResult:
@@ -115,6 +116,7 @@ def import_rules(
             book_fingerprint=book_fingerprint,
             diagnostics=diagnostics,
             strict=strict,
+            rebind_owner=rebind_owner,
         )
     else:
         raise ValueError(f"unsupported rule import format: {fmt}")
@@ -320,6 +322,7 @@ def _opencc_rows(
 def _json_rules(
     text: str, *, direction: str | None, scope: str, profile_id: str,
     book_fingerprint: str, diagnostics: list[ImportDiagnostic], strict: bool,
+    rebind_owner: bool = False,
 ) -> list[tuple[int, Rule]]:
     payload = json.loads(text)
     if isinstance(payload, dict):
@@ -344,6 +347,10 @@ def _json_rules(
                 profile_id=profile_id,
                 book_fingerprint=book_fingerprint,
             )
+            if rebind_owner and rule.scope == "profile":
+                rule = replace(rule, profile_id=profile_id, book_fingerprint="")
+            elif rebind_owner and rule.scope == "book":
+                rule = replace(rule, profile_id="", book_fingerprint=book_fingerprint)
             result.append((index, rule))
         except (TypeError, ValueError) as exc:
             error = (exc if isinstance(exc, RuleValidationError) else

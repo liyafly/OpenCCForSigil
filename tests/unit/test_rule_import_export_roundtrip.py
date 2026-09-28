@@ -6,9 +6,12 @@ import pytest
 
 from rules.exporters import export_rules, export_warnings
 from rules.importers import import_rules
-from rules.models import Rule
+from rules.models import Rule, canonical_rules_json
 from rules.validators import RuleValidationError
-from ui.rules_window import review_import
+from tests.support.fake_qt import make_with_table
+from ui import rules_window
+from ui.i18n import Translator
+from ui.rules_window import RuleManagerDialog, review_import
 
 
 def test_json_import_keeps_rules_with_distinct_v2_semantics():
@@ -164,6 +167,85 @@ def test_csv_quotes_and_multiline_fields_keep_csv_behavior():
     assert len(result.rules) == 1
     assert result.rules[0].source == '"引号"'
     assert result.rules[0].comment == "第一行\n第二行"
+
+
+def test_json_global_rule_roundtrip_keeps_empty_owner_fields():
+    original = Rule(
+        id="global", source="术语", target="专名", direction="s2t", scope="global")
+    exported = export_rules((original,), format="json")
+
+    imported = import_rules(
+        exported, format="json", scope="book", profile_id="CURRENT-PROFILE",
+        book_fingerprint="CURRENT-BOOK")
+
+    assert canonical_rules_json(imported.rules) == canonical_rules_json((original,))
+
+
+def test_json_selected_scope_applies_only_to_records_without_scope():
+    payload = json.dumps([
+        {"id": "global", "scope": "global", "direction": "s2t",
+         "source": "全局", "target": "全域"},
+        {"id": "foreign", "scope": "book", "book_fingerprint": "OTHER-BOOK",
+         "direction": "s2t", "source": "外书", "target": "異書"},
+        {"id": "defaulted", "direction": "s2t", "source": "默认", "target": "預設"},
+    ], ensure_ascii=False)
+
+    imported = import_rules(
+        payload, format="json", scope="book", profile_id="CURRENT-PROFILE",
+        book_fingerprint="CURRENT-BOOK")
+    by_id = {rule.id: rule for rule in imported.rules}
+
+    assert by_id["global"].scope == "global"
+    assert (by_id["foreign"].scope, by_id["foreign"].book_fingerprint) == (
+        "book", "OTHER-BOOK")
+    assert (by_id["defaulted"].scope, by_id["defaulted"].book_fingerprint) == (
+        "book", "CURRENT-BOOK")
+
+
+def test_json_import_reports_foreign_owner_rules(monkeypatch):
+    foreign = Rule(
+        id="foreign-book", source="术语", target="專名", direction="s2t",
+        scope="book", book_fingerprint="OTHER-BOOK")
+    imported = import_rules(
+        export_rules((foreign,), format="json"), format="json", scope="book",
+        profile_id="CURRENT-PROFILE", book_fingerprint="CURRENT-BOOK")
+    manager = RuleManagerDialog(
+        make_with_table(), (), translator=Translator("en"), config="s2t",
+        profile_id="CURRENT-PROFILE", book_fingerprint="CURRENT-BOOK")
+    messages = []
+
+    def capture_review(dialog):
+        messages.append(dialog._layout.children[0].text())
+
+    monkeypatch.setattr(rules_window, "exec_dialog", capture_review)
+    manager._confirm_import(review_import((), imported))
+
+    assert len(messages) == 1
+    assert "1 rule(s) belong to another book or profile" in messages[0]
+
+
+@pytest.mark.parametrize(("scope", "owner", "other_owner"), [
+    ("book", "book_fingerprint", "OTHER-BOOK"),
+    ("profile", "profile_id", "OTHER-PROFILE"),
+])
+def test_json_import_rebinds_foreign_owner_only_when_requested(scope, owner, other_owner):
+    rule = Rule(
+        id="foreign", source="术语", target="专名", direction="s2t", scope=scope,
+        **{owner: other_owner})
+    payload = export_rules((rule,), format="json")
+    import_context = {
+        "scope": scope,
+        "profile_id": "CURRENT-PROFILE",
+        "book_fingerprint": "CURRENT-BOOK",
+    }
+
+    unchanged = import_rules(payload, format="json", **import_context)
+    rebound = import_rules(payload, format="json", rebind_owner=True, **import_context)
+
+    assert getattr(unchanged.rules[0], owner) == other_owner
+    assert getattr(rebound.rules[0], owner) == import_context[owner]
+    other_owner_field = "profile_id" if owner == "book_fingerprint" else "book_fingerprint"
+    assert getattr(rebound.rules[0], other_owner_field) == ""
 
 
 @pytest.mark.parametrize(("payload", "format", "direction"), [

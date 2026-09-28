@@ -540,6 +540,34 @@ def test_import_tsv_uses_target_ruleset_semantic_version(tmp_path, semantic_vers
             manager.rules[0].stage) == ("override", "literal", "source")
 
 
+def test_json_import_options_scope_is_default_and_rebind_is_opt_in(monkeypatch):
+    manager = RuleManagerDialog(
+        make_with_table(), (), translator=Translator("en"), config="s2t",
+        profile_id="profile-A", book_fingerprint="book-A")
+    state = {}
+
+    def accept_json_options(dialog):
+        form = dialog._layout.children[0]
+        scope_label, _scope_combo = form.children[2]
+        rebind_owner = form.children[3][0]
+        state["scope_label"] = scope_label.text()
+        state["rebind_default"] = rebind_owner.isChecked()
+        state["rebind_visible"] = rebind_owner.isVisible()
+        rebind_owner.setChecked(True)
+        dialog._layout.children[-1].children[-1].clicked.emit()
+
+    monkeypatch.setattr(rules_window, "exec_dialog", accept_json_options)
+    options = manager._import_options("rules.json")
+
+    assert state == {
+        "scope_label": "Only for records without a scope",
+        "rebind_default": False,
+        "rebind_visible": True,
+    }
+    assert options["scope"] == "global"
+    assert options["rebind_owner"] is True
+
+
 def test_bulk_paste_adds_rules_through_import_review(monkeypatch):
     manager = RuleManagerDialog(
         make_with_table(), (), translator=Translator("en"), config="s2t",

@@ -1861,6 +1861,7 @@ class RuleManagerDialog:
                 scope=options["scope"],
                 profile_id=self._profile_id or "",
                 book_fingerprint=self._book_fingerprint or "",
+                rebind_owner=options.get("rebind_owner", False),
                 semantic_version=self._rulesets[self._ruleset_id].semantic_version,
                 strict=options["strict"],
             )
@@ -1901,9 +1902,22 @@ class RuleManagerDialog:
                 item.setEnabled(False)
         skip_invalid = qt.QCheckBox(self._labels["skip_invalid"])
         skip_invalid.setChecked(True)
+        scope_label = qt.QLabel(self._labels["scope"])
+        rebind_owner = qt.QCheckBox(self._translator.text("rules.import_rebind_owner"))
+        rebind_owner.setChecked(False)
+
+        def update_scope_import_options(*_args):
+            is_json = str(format_combo.currentData()) == "json"
+            scope_label.setText(self._translator.text(
+                "rules.import_scope_default_only") if is_json else self._labels["scope"])
+            rebind_owner.setVisible(is_json)
+
+        format_combo.currentIndexChanged.connect(update_scope_import_options)
+        update_scope_import_options()
         form.addRow(self._labels["import_format"], format_combo)
         form.addRow(self._labels["direction"], direction_combo)
-        form.addRow(self._labels["scope"], scope_combo)
+        form.addRow(scope_label, scope_combo)
+        form.addRow(rebind_owner)
         form.addRow(skip_invalid)
         layout.addLayout(form)
         buttons = qt.QHBoxLayout()
@@ -1925,6 +1939,7 @@ class RuleManagerDialog:
             "format": str(format_combo.currentData()),
             "direction": str(direction_combo.currentData()),
             "scope": str(scope_combo.currentData()),
+            "rebind_owner": bool(rebind_owner.isChecked()),
             "strict": not skip_invalid.isChecked(),
         }
 
@@ -1940,6 +1955,22 @@ class RuleManagerDialog:
             new=len(review.additions), duplicates=review.duplicate_count,
             discarded=discarded, errors=errors,
         )
+        foreign_owner_count = sum(
+            not applies_to(
+                rule,
+                config=self._config,
+                profile_id=self._profile_id,
+                book_fingerprint=self._book_fingerprint,
+            )
+            and (
+                rule.scope == "profile" and rule.profile_id != (self._profile_id or "")
+                or rule.scope == "book" and rule.book_fingerprint != (self._book_fingerprint or "")
+            )
+            for rule in review.additions
+        )
+        if foreign_owner_count:
+            message += "\n" + self._translator.text(
+                "rules.import_foreign_owner", count=foreign_owner_count)
         if review.id_reassigned_count:
             message += "\n" + self._translator.text(
                 "rules.import_ids_reassigned", count=review.id_reassigned_count
