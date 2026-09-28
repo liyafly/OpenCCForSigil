@@ -1931,7 +1931,11 @@ class RuleManagerDialog:
     def _confirm_import(self, review: RuleImportReview) -> bool:
         diagnostics = tuple(review.diagnostics)
         errors = sum(getattr(item, "severity", "") == "error" for item in diagnostics)
-        discarded = len(diagnostics) - errors
+        discarded = sum(
+            getattr(item, "severity", "") != "error"
+            and getattr(item, "message_key", "") != "rules.import_tsv_quoted_field"
+            for item in diagnostics
+        )
         message = self._labels["import_summary"].format(
             new=len(review.additions), duplicates=review.duplicate_count,
             discarded=discarded, errors=errors,
@@ -2004,8 +2008,13 @@ class RuleManagerDialog:
         if lossy:
             warnings.append(self._translator.text("rules.export_lossy_warning"))
         if skipped_txt:
+            skipped_key = (
+                "rules.export_tsv_skipped"
+                if suffix.lower().lstrip(".") in {"tsv", "tab"}
+                else "rules.export_txt_skipped"
+            )
             warnings.append(self._translator.text(
-                "rules.export_txt_skipped", count=skipped_txt))
+                skipped_key, count=skipped_txt))
         if warnings and not ask_confirmation(
             self._qt,
             self.dialog,

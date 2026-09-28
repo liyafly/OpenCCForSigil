@@ -756,6 +756,35 @@ def test_export_confirms_before_writing_a_lossy_format(monkeypatch, tmp_path):
     assert destination.read_text(encoding="utf-8").startswith("direction\tsource\ttarget\tcomment")
 
 
+def test_tsv_export_warning_names_skipped_multiline_rules(monkeypatch, tmp_path):
+    unsafe = Rule(
+        id="multiline", source="两行\n原文", target="目标", direction="s2t")
+    destination = tmp_path / "rules.tsv"
+    manager = object.__new__(RuleManagerDialog)
+    manager._qt = SimpleNamespace(QFileDialog=SimpleNamespace(
+        getSaveFileName=lambda *_args: (str(destination), "TSV"),
+    ))
+    manager._labels = {"export": "Export", "title": "Rules"}
+    manager._translator = Translator("en")
+    manager.dialog = object()
+    manager.rules = [unsafe]
+    prompts = []
+    monkeypatch.setattr(
+        rules_window,
+        "ask_confirmation",
+        lambda _qt, _parent, _title, message, _translator: (
+            prompts.append(message), True
+        )[1],
+    )
+
+    manager._export()
+
+    assert len(prompts) == 1
+    assert "TSV cannot represent 1 rule(s)" in prompts[0]
+    assert "两行" not in destination.read_text(encoding="utf-8")
+    assert destination.read_text(encoding="utf-8").count("\n") == 1
+
+
 def test_export_cancellation_does_not_replace_existing_file(monkeypatch, tmp_path):
     rule = Rule(
         id="replace", semantic_version=2, action="replace", stage="pre",

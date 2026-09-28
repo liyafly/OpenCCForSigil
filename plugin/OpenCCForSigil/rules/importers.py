@@ -85,6 +85,7 @@ def import_rules(
             semantic_version=semantic_version,
             diagnostics=diagnostics,
             strict=strict,
+            tsv=True,
         )
     elif fmt == "csv":
         values = _rows_to_rules(
@@ -175,6 +176,11 @@ def _read_source(source: str | bytes | Path | TextIO) -> tuple[str, str | None]:
 
 
 def _delimited_rows(text: str, delimiter: str) -> list[tuple[int, list[str]]]:
+    if delimiter == "\t":
+        return [
+            (line, row.split("\t"))
+            for line, row in enumerate(text.lstrip("\ufeff").splitlines(), 1)
+        ]
     reader = csv.reader(io.StringIO(text), delimiter=delimiter)
     return [(index, list(row)) for index, row in enumerate(reader, 1)]
 
@@ -189,6 +195,7 @@ def _rows_to_rules(
     semantic_version: int,
     diagnostics: list[ImportDiagnostic],
     strict: bool,
+    tsv: bool = False,
 ) -> list[Rule]:
     rows = list(rows)
     if rows and _is_header(rows[0][1]):
@@ -233,6 +240,14 @@ def _rows_to_rules(
             if comment:
                 values["comment"] = comment
             result.append(Rule.from_dict(values))
+            if tsv and any(_is_legacy_quoted_tsv_field(value) for value in row):
+                diagnostics.append(ImportDiagnostic(
+                    line,
+                    "quoted field was imported literally",
+                    "warning",
+                    "line",
+                    "rules.import_tsv_quoted_field",
+                ))
         except RuleValidationError as exc:
             if strict:
                 raise
@@ -241,6 +256,13 @@ def _rows_to_rules(
                 getattr(exc, "message_key", ""),
             ))
     return result
+
+
+def _is_legacy_quoted_tsv_field(value: str) -> bool:
+    return (
+        len(value) >= 2 and value.startswith('"') and value.endswith('"')
+        and '""' in value[1:-1]
+    )
 
 
 def _opencc_rows(

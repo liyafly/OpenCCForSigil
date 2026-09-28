@@ -64,7 +64,7 @@ def export_warnings(
     enabled_only: bool = False,
     conflicts_only: bool = False,
 ) -> tuple[bool, int]:
-    """Return whether export is lossy and how many TXT targets will be skipped."""
+    """Return whether export is lossy and how many rows cannot be represented."""
 
     checked = validate_rules(rules)
     selected = tuple(rule for rule in checked if not enabled_only or rule.enabled)
@@ -82,6 +82,12 @@ def _export_warnings(rules: Iterable[Rule], fmt: str) -> tuple[bool, int]:
         return False, 0
     if fmt in {"tsv", "tab", "csv", "txt", "opencc", "opencc-txt"}:
         selected = tuple(rules)
+        if fmt in {"tsv", "tab"}:
+            representable = tuple(rule for rule in selected if _tsv_representable(rule))
+            skipped_tsv = len(selected) - len(representable)
+            lossy = skipped_tsv > 0 or any(
+                _delimited_loses_semantics(rule) for rule in representable)
+            return lossy, skipped_tsv
         is_txt = fmt in {"txt", "opencc", "opencc-txt"}
         representable = _opencc_txt_rules(selected) if is_txt else selected
         skipped_txt = len(selected) - len(representable) if is_txt else 0
@@ -133,17 +139,38 @@ def _opencc_txt_rules(rules: Iterable[Rule]) -> tuple[Rule, ...]:
 def _delimited(rules: Iterable[Rule], delimiter: str) -> str:
     output = io.StringIO(newline="")
     writer = csv.writer(output, delimiter=delimiter, lineterminator="\n")
-    writer.writerow(("direction", "source", "target", "comment"))
+    header = ("direction", "source", "target", "comment")
+    if delimiter == "\t":
+        output.write("\t".join(header) + "\n")
+    else:
+        writer.writerow(header)
     for rule in sorted(rules, key=lambda item: item.id):
-        writer.writerow(
-            (
-                rule.direction,
-                rule.source,
-                rule.source if rule.type == "protect" else rule.target,
-                rule.comment,
-            )
+        fields = (
+            rule.direction,
+            rule.source,
+            rule.source if rule.type == "protect" else rule.target,
+            rule.comment,
         )
+        if delimiter == "\t":
+            if not _tsv_fields_representable(fields[1:]):
+                continue
+            output.write("\t".join(fields) + "\n")
+        else:
+            writer.writerow(fields)
     return output.getvalue()
+
+
+def _tsv_representable(rule: Rule) -> bool:
+    fields = (
+        rule.source,
+        rule.source if rule.type == "protect" else rule.target,
+        rule.comment,
+    )
+    return _tsv_fields_representable(fields)
+
+
+def _tsv_fields_representable(fields: Iterable[str]) -> bool:
+    return not any(any(character in "\t\r\n" for character in value) for value in fields)
 
 
 def export_json(

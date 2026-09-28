@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from rules.exporters import export_rules
+from rules.exporters import export_rules, export_warnings
 from rules.importers import import_rules
 from rules.models import Rule
 from rules.validators import RuleValidationError
@@ -104,6 +104,66 @@ def test_chinese_tsv_header_is_skipped():
     assert len(result.rules) == 1
     assert result.rules[0].source == "软件"
     assert result.diagnostics == ()
+
+
+def test_tsv_keeps_ascii_quotes_literally():
+    result = import_rules(
+        's2t\t"引号"\t"「引号」"\n', format="tsv")
+
+    assert (result.rules[0].source, result.rules[0].target) == ('"引号"', '"「引号」"')
+
+
+def test_tsv_unbalanced_quote_does_not_swallow_following_lines():
+    result = import_rules(
+        's2t\t"引号\t目标\ns2t\t第二行\t目标二\ns2t\t第三行\t目标三\n',
+        format="tsv")
+
+    assert [rule.source for rule in result.rules] == ['"引号', "第二行", "第三行"]
+
+
+def test_tsv_export_import_roundtrip_with_quotes():
+    original = Rule(
+        id="quoted", source='包含 "引号"', target='改成 "目标"', comment='备注 "示例"',
+        direction="s2t")
+
+    exported = export_rules((original,), format="tsv")
+    imported = import_rules(exported, format="tsv")
+
+    assert len(imported.rules) == 1
+    assert (imported.rules[0].source, imported.rules[0].target,
+            imported.rules[0].comment) == (
+                original.source, original.target, original.comment)
+
+
+def test_legacy_quoted_tsv_field_warns_but_stays_unchanged():
+    raw_field = '"""引号"""'
+    result = import_rules(f"s2t\t{raw_field}\t目标\n", format="tsv")
+
+    assert result.rules[0].source == raw_field
+    assert [(item.severity, item.message_key) for item in result.diagnostics] == [
+        ("warning", "rules.import_tsv_quoted_field")]
+
+
+def test_tsv_export_skips_fields_with_line_breaks_and_reports_count():
+    safe = Rule(id="safe", source="术语", target="专名", direction="s2t")
+    unsafe = Rule(id="unsafe", source="多行\n原文", target="目标", direction="s2t")
+
+    exported = export_rules((safe, unsafe), format="tsv")
+
+    assert "术语" in exported
+    assert "多行" not in exported
+    assert export_warnings((safe, unsafe), format="tsv") == (True, 1)
+
+
+def test_csv_quotes_and_multiline_fields_keep_csv_behavior():
+    payload = '"direction","source","target","comment"\n'
+    payload += '"s2t","""引号""","目标","第一行\n第二行"\n'
+
+    result = import_rules(payload, format="csv")
+
+    assert len(result.rules) == 1
+    assert result.rules[0].source == '"引号"'
+    assert result.rules[0].comment == "第一行\n第二行"
 
 
 def test_lenient_json_import_skips_bad_records_and_preserves_record_numbers():
