@@ -173,7 +173,6 @@ _I18N_REQUIRED_KEYS = frozenset(
         "error.no_config",
         "a11y.scope.information",
         "error.ui_unavailable",
-        "error.scope_exactly_one",
         "language.label",
         "options.documents",
         "options.advanced",
