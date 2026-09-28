@@ -28,14 +28,14 @@ class _FakeDialog:
 
 def _preview_dialog(
     change_count: int = 3, current_row: int = 1, *, ui_preferences=None,
-    preserve_dialog=False, language="en",
+    preserve_dialog=False, language="en", rule_source="test-rule",
 ):
     changes = tuple(
         TokenChange(
             source=source,
             target=target,
             span=SourceSpan(index, index + 1),
-            rule_source="test-rule",
+            rule_source=rule_source,
             change_id=f"change-{index}",
             file_id="chapter.xhtml",
             category="character",
@@ -136,8 +136,9 @@ def test_preview_detail_uses_translated_label_separator():
     detail = _detail_text(dialog)
     label = translator.text("preview.rule")
     assert f"{label}: " not in detail
+    source_label = translator.text("preview.source.named", source="test-rule")
     assert (
-        f"{label}{translator.text('common.label_separator')}test-rule" in detail
+        f"{label}{translator.text('common.label_separator')}{source_label}" in detail
     )
 
 
@@ -384,14 +385,30 @@ def test_preview_table_uses_interactive_columns_with_readable_initial_widths():
     header = dialog.table_view.horizontalHeader()
 
     assert [args for name, args in header.calls if name == "setSectionResizeMode"] == [
-        (column, dialog._qt.QHeaderView.Interactive) for column in range(7)
+        (column, dialog._qt.QHeaderView.Stretch if column in {3, 4}
+         else dialog._qt.QHeaderView.Interactive) for column in range(7)
     ]
+    assert ("setStretchLastSection", (False,)) in header.calls
+    assert ("setColumnHidden", (2, True)) in dialog.table_view.calls
     assert ("setResizeContentsPrecision", (50,)) in header.calls
-    assert not any(name == "setStretchLastSection" for name, _args in header.calls)
     assert [args for name, args in dialog.table_view.calls if name == "setColumnWidth"] == [
         (column, width) for column, width in enumerate((84, 96, 64, 142, 142, 126, 64))
     ]
     assert not any(name == "resizeColumnsToContents" for name, _args in dialog.table_view.calls)
+
+
+def test_detail_rule_uses_localized_source_label():
+    translator = Translator("zh-Hans")
+    dialog, _preview, _model = _preview_dialog(
+        change_count=1, current_row=0, language="zh-Hans", rule_source="OpenCC:s2t")
+
+    dialog._show_current(0)
+
+    expected = (
+        f"{translator.text('preview.rule')}{translator.text('common.label_separator')}"
+        f"{translator.text('preview.source.opencc', source='s2t')}"
+    )
+    assert dialog.detail.toPlainText().splitlines()[0] == expected
 
 
 def test_preview_filters_use_minimum_contents_length():

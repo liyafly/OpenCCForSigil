@@ -1949,9 +1949,14 @@ class _PreviewDialog:
             lambda current, _previous: self._show_current(current.row()))
         header = self.table_view.horizontalHeader()
         interactive = _enum_value(qt.QHeaderView, "Interactive")
+        stretch = _enum_value(qt.QHeaderView, "Stretch")
+        header.setStretchLastSection(False)
         if interactive is not None:
             for column in range(7):
-                header.setSectionResizeMode(column, interactive)
+                mode = stretch if column in {3, 4} else interactive
+                if mode is not None:
+                    header.setSectionResizeMode(column, mode)
+        self.table_view.setColumnHidden(2, True)
         set_precision = getattr(header, "setResizeContentsPrecision", None)
         if callable(set_precision):
             set_precision(50)
@@ -3254,7 +3259,8 @@ class _PreviewDialog:
             else "pending"
         )
         self.detail.setPlainText("\n".join((
-            f"{self._translator.text('preview.rule')}{separator}{change.rule_source}",
+            f"{self._translator.text('preview.rule')}{separator}"
+            f"{self._source_filter_label(change.rule_source)}",
             f"{self._translator.text('preview.category')}{separator}"
             f"{self._translator.text(f'preview.category_value.{change.category}')}    "
             f"{self._translator.text('preview.risk')}{separator}"
