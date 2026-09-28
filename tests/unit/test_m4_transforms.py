@@ -3,7 +3,9 @@ import unicodedata
 
 from core import classifier as classifier_module
 from core.classifier import classify_conversion
+from core.converter import OfficialBackendConverter
 from core.diagnostics import diagnose_mixed_script
+from core.models import ConvertRequest
 from core.transformation import apply_force_pivot
 from transforms.punctuation import HORIZONTAL_PUNCTUATION_MAP, normalize_punctuation
 from transforms.quotations import transform_quotations
@@ -142,3 +144,40 @@ def test_classifier_shares_alignment_for_identical_output_strings(monkeypatch):
     assert result.final == "X甲乙"
     assert len(result.changes) == 1
     assert calls == [("甲乙", "X甲乙")]
+
+
+def test_s2twp_requests_each_comparison_config_once_per_text():
+    class CountingBackend:
+        config = "s2twp"
+
+        def __init__(self):
+            self.comparison_calls = []
+
+        def convert(self, text):
+            return self._output("s2twp", text)
+
+        def convert_for_config(self, config, text):
+            self.comparison_calls.append((config, text))
+            return self._output(config, text)
+
+        @staticmethod
+        def _output(config, text):
+            if config == "t2s":
+                return text.replace("漢", "汉").replace("軟", "软").replace("體", "体")
+            output = text.replace("汉", "漢").replace("软", "軟")
+            if config == "s2twp":
+                output = output.replace("件", "體")
+            return output
+
+    backend = CountingBackend()
+    source = "汉软件"
+
+    result = OfficialBackendConverter(backend).convert(
+        source, ConvertRequest("s2twp"))
+
+    assert result.target == "漢軟體"
+    assert {config for config, _text in backend.comparison_calls} == {
+        "s2t", "t2s", "s2tw",
+    }
+    assert len(backend.comparison_calls) == 3
+    assert all(text == source for _config, text in backend.comparison_calls)

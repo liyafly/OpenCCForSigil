@@ -1,5 +1,7 @@
+import random
+
 from core.converter import OfficialBackendConverter
-from core.diagnostics import diagnose_mixed_script
+from core.diagnostics import _is_han, diagnose_mixed_script
 from core.models import ConvertRequest
 
 
@@ -15,6 +17,33 @@ def test_short_or_non_han_text_skips_diagnostic_backend_calls():
     assert result.status == "unknown"
     assert result.evidence_length == 0
     assert not calls
+
+
+def test_han_evidence_matches_character_reference():
+    rng = random.Random(20260928)
+    ranges = (
+        (0x3400, 0x4DBF),
+        (0x4E00, 0x9FFF),
+        (0xF900, 0xFAFF),
+        (0x20000, 0x2FA1F),
+    )
+    alphabet = "abc 中文。🙂"
+    texts = ["".join(rng.choice(alphabet) for _ in range(rng.randrange(80)))
+             for _ in range(200)]
+    texts.extend(
+        "".join(chr(rng.randrange(start, end + 1)) for _ in range(80))
+        for start, end in ranges
+    )
+    texts.extend(
+        "".join(chr(rng.randrange(start, end + 1)) if index % 2 else "a"
+                for index in range(80))
+        for start, end in ranges
+    )
+
+    for text in texts:
+        result = diagnose_mixed_script(text, lambda _config, value: value)
+        expected = sum(char.isalpha() and _is_han(char) for char in text)
+        assert result.evidence_length == expected
 
 
 def test_s2t_diagnosis_reuses_official_output_and_calls_only_t2s():

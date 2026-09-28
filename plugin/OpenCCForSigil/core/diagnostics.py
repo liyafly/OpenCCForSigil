@@ -1,10 +1,12 @@
 """Conversion diagnostics based on independent official config outputs."""
 
 from dataclasses import dataclass
+import re
 from typing import Callable
 
 
 OfficialConvert = Callable[..., str]
+_HAN_RUN = re.compile(r"[㐀-䶿一-鿿豈-﫿\U00020000-\U0002fa1f]+")
 
 
 @dataclass(frozen=True)
@@ -43,7 +45,10 @@ def diagnose_mixed_script(
 
     if not isinstance(text, str):
         raise TypeError("diagnostic input must be text")
-    evidence_length = sum(char.isalpha() and _is_han(char) for char in text)
+    evidence_length = sum(
+        len(run) if run.isalpha() else sum(char.isalpha() for char in run)
+        for run in _HAN_RUN.findall(text)
+    )
     if evidence_length < min_evidence:
         return ScriptDiagnostic(
             status="unknown",

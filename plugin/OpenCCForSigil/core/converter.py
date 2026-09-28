@@ -52,6 +52,16 @@ class OfficialBackendConverter:
             rule_source = pivot.rule_source
         else:
             official = self.backend.convert(text)
+        # A pivoted result is not the direct output for its final config.
+        comparison_outputs = {} if request.pivot_chain else {request.config: official}
+
+        def compare_once(config, source_text):
+            if source_text != text:
+                return compare(config, source_text)
+            if config not in comparison_outputs:
+                comparison_outputs[config] = compare(config, source_text)
+            return comparison_outputs[config]
+
         pairer = quotation_pairer
         if pairer is None and request.quotation_mode != "keep":
             pairer = QuotationPairer(request.quotation_mode)
@@ -63,7 +73,7 @@ class OfficialBackendConverter:
         if request.diagnose_mixed and callable(compare) and text:
             diagnosis = diagnose_mixed_script(
                 text,
-                compare,
+                compare_once,
                 known_output_config=(request.config
                                      if request.config in {"s2t", "t2s"}
                                      and not request.pivot_chain else None),
@@ -82,7 +92,8 @@ class OfficialBackendConverter:
             )
         classification = {}
         if request.detailed_classification and callable(compare) and not request.pivot_chain:
-            result = classify_conversion(text, request.config, compare, final=official)
+            result = classify_conversion(
+                text, request.config, compare_once, final=official)
             classification = {(item.source_start, item.source_end, item.target): item
                               for item in result.changes}
         changes = []
