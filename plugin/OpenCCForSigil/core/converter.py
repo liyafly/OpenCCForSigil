@@ -5,6 +5,7 @@ turns one backend result into source-relative changes that a planner can move
 to absolute document offsets.
 """
 
+from collections import OrderedDict
 from dataclasses import replace
 from hashlib import sha256
 import json
@@ -27,6 +28,7 @@ class OfficialBackendConverter:
     def __init__(self, backend: OpenCCBackend) -> None:
         self.backend = backend
         self._compiled_overlays = {}
+        self._source_candidate_cache = None
         self._regex_budget = None
 
     def convert(self, text: str, request: ConvertRequest, *, quotation_pairer=None) -> ConvertResult:
@@ -147,20 +149,29 @@ class OfficialBackendConverter:
             self._compiled_overlays[cache_key] = (request.rules_snapshot.rules, overlay)
         from rules.matching import RegexBudget
 
-        guarded_rules = any(rule.match_type == "regex" or rule.action == "replace"
-                            for rule in overlay.rules)
-        if guarded_rules and self._regex_budget is None:
+        if overlay.guarded and self._regex_budget is None:
             self._regex_budget = RegexBudget()
         budget = self._regex_budget or RegexBudget()
-        spans = lock_spans_compiled(text, overlay, budget)
+        candidate_cache = self._source_candidate_cache
+        if candidate_cache is None or candidate_cache[0] is not overlay:
+            candidate_cache = (overlay, OrderedDict())
+            self._source_candidate_cache = candidate_cache
+        spans = lock_spans_compiled(
+            text, overlay, budget, candidate_cache=candidate_cache[1])
         pairer = quotation_pairer or QuotationPairer(request.quotation_mode)
         # Reuse the complete unlocked pipeline while avoiding a second rule pass.
-        unlocked = replace(request, rules_snapshot=type(request.rules_snapshot)())
+        cached_unlocked = getattr(self, "_unlocked_request", None)
+        if cached_unlocked is None or cached_unlocked[0] is not request:
+            cached_unlocked = (
+                request, replace(request, rules_snapshot=type(request.rules_snapshot)())
+            )
+            self._unlocked_request = cached_unlocked
+        unlocked = cached_unlocked[1]
         output, changes, diagnostics = [], [], []
         after_pre, after_opencc, after_post, rule_trace = [], [], [], []
-        regex_patterns = dict(overlay.regex_patterns)
-        pre_rules = tuple(rule for rule in overlay.rules if rule.action == "replace" and rule.stage == "pre")
-        post_rules = tuple(rule for rule in overlay.rules if rule.action == "replace" and rule.stage == "post")
+        regex_patterns = overlay.regex_patterns
+        pre_rules = overlay.pre_rules
+        post_rules = overlay.post_rules
         cursor = 0
         pre_offset = 0
         opencc_offset = 0
@@ -170,11 +181,19 @@ class OfficialBackendConverter:
                 segment = text[cursor:end]
                 try:
                     before_opencc, pre_hits = replace_stage(
-                        segment, pre_rules, regex_patterns, budget)
+                        segment, pre_rules, regex_patterns, budget,
+                        literal_index=overlay.pre_literal_index,
+                        order=overlay.pre_rule_order,
+                        regex_rules=overlay.pre_regex_rules,
+                        include_single_char_rules=overlay.pre_has_single_char_literals)
                     converted = self.convert(
                         before_opencc, unlocked, quotation_pairer=pairer)
                     final_segment, post_hits = replace_stage(
-                        converted.target, post_rules, regex_patterns, budget)
+                        converted.target, post_rules, regex_patterns, budget,
+                        literal_index=overlay.post_literal_index,
+                        order=overlay.post_rule_order,
+                        regex_rules=overlay.post_regex_rules,
+                        include_single_char_rules=overlay.post_has_single_char_literals)
                 except RuleExecutionError:
                     raise
                 output.append(final_segment)

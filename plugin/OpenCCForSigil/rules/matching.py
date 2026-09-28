@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import re
 import time
+from typing import Mapping
 
 from .models import Rule
 from .precedence import scope_rank, type_rank
@@ -128,30 +129,74 @@ def _resolve_same_start(candidates: list[RuleMatch]) -> RuleMatch:
     return min(best, key=lambda candidate: candidate.rule.id)
 
 
+def literal_candidates(
+    text: str,
+    index: Mapping[str, tuple[Rule, ...]],
+    order: Mapping[str, int],
+    *,
+    include_single_char_rules: bool = True,
+) -> tuple[Rule, ...]:
+    """Return indexed literal rules whose one/two-character prefix occurs."""
+
+    if include_single_char_rules:
+        keys = set(text)
+        keys.update(text[position:position + 2] for position in range(len(text) - 1))
+    else:
+        keys = {text[position:position + 2] for position in range(len(text) - 1)}
+    found = [rule for key in keys.intersection(index) for rule in index[key]]
+    found.sort(key=lambda rule: order[rule.id])
+    return tuple(found)
+
+
+def _indexed_stage_candidates(
+    text: str,
+    regex_rules: tuple[Rule, ...],
+    literal_index: Mapping[str, tuple[Rule, ...]],
+    order: Mapping[str, int],
+    *,
+    include_single_char_rules: bool = True,
+) -> tuple[Rule, ...]:
+    literals = literal_candidates(
+        text, literal_index, order,
+        include_single_char_rules=include_single_char_rules)
+    if not literals:
+        return regex_rules
+    if not regex_rules:
+        return literals
+    candidates = [*literals, *regex_rules]
+    candidates.sort(key=lambda rule: order[rule.id])
+    return tuple(candidates)
+
+
 def collect_matches(
     text: str,
     rules: tuple[Rule, ...],
-    regex_patterns: dict[str, object],
+    regex_patterns: Mapping[str, object],
     budget: RegexBudget,
 ) -> tuple[RuleMatch, ...]:
     """Collect candidates from one immutable stage input; matches may overlap."""
 
     matches: list[RuleMatch] = []
-    if any(rule.match_type == "regex" for rule in rules):
-        budget.note_scan(len(text))
+    regex_scan_noted = False
     for rule in rules:
         if rule.match_type == "literal":
+            source = rule.source
+            source_length = len(source)
+            final_start = len(text) - source_length
             cursor = 0
-            while rule.source and cursor <= len(text) - len(rule.source):
-                start = text.find(rule.source, cursor)
+            while source and cursor <= final_start:
+                start = text.find(source, cursor)
                 if start < 0:
                     break
-                end = start + len(rule.source)
+                end = start + source_length
                 target = text[start:end] if rule.action == "protect" else rule.target
                 matches.append(RuleMatch(rule, start, end, target))
                 cursor = start + 1
             continue
 
+        if not regex_scan_noted:
+            budget.note_scan(len(text))
+            regex_scan_noted = True
         pattern = regex_patterns.get(rule.id)
         if pattern is None:
             raise RuleExecutionError(f"rule {rule.id}: compiled regular expression is missing")
@@ -212,29 +257,51 @@ def collect_matches(
 def source_matches(
     text: str,
     rules: tuple[Rule, ...],
-    regex_patterns: dict[str, object],
+    regex_patterns: Mapping[str, object],
     budget: RegexBudget,
 ) -> tuple[RuleMatch, ...]:
     """Reserve protections first, then choose final-wording matches."""
 
     candidates = collect_matches(text, rules, regex_patterns, budget)
     fragment_hits: dict[str, int] = {}
-    protected_candidates: dict[int, list[RuleMatch]] = {}
-    override_candidates: dict[int, list[RuleMatch]] = {}
+    protected_candidates: dict[int, RuleMatch | list[RuleMatch]] = {}
+    override_candidates: dict[int, RuleMatch | list[RuleMatch]] = {}
     for candidate in candidates:
         bucket = protected_candidates if candidate.rule.action == "protect" else override_candidates
-        bucket.setdefault(candidate.start, []).append(candidate)
+        previous = bucket.get(candidate.start)
+        if previous is None:
+            bucket[candidate.start] = candidate
+        elif isinstance(previous, list):
+            previous.append(candidate)
+        else:
+            bucket[candidate.start] = [previous, candidate]
 
     protected = []
     cursor = 0
     for start in sorted(protected_candidates):
         if start < cursor:
             continue
-        chosen = _resolve_same_start(protected_candidates[start])
+        same_start = protected_candidates[start]
+        chosen = _resolve_same_start(same_start) if isinstance(same_start, list) else same_start
         if chosen.rule.match_type == "regex":
             budget.note_regex_hit(chosen.rule, chosen.start, fragment_hits)
         protected.append(chosen)
         cursor = chosen.end
+
+    if not protected:
+        spans = []
+        cursor = 0
+        for start in sorted(override_candidates):
+            if start < cursor:
+                continue
+            same_start = override_candidates[start]
+            chosen = _resolve_same_start(same_start) if isinstance(same_start, list) else same_start
+            if chosen.rule.match_type == "regex":
+                budget.note_regex_hit(chosen.rule, chosen.start, fragment_hits)
+            budget.note_output(chosen.rule, len(chosen.target), chosen.start, stage="source")
+            spans.append(chosen)
+            cursor = chosen.end
+        return tuple(spans)
 
     spans = list(protected)
     cursor = 0
@@ -244,7 +311,8 @@ def source_matches(
             protected_index += 1
         if start < cursor:
             continue
-        chosen = _resolve_same_start(override_candidates[start])
+        same_start = override_candidates[start]
+        chosen = _resolve_same_start(same_start) if isinstance(same_start, list) else same_start
         if (protected_index < len(protected)
                 and protected[protected_index].start < chosen.end):
             continue
@@ -259,24 +327,52 @@ def source_matches(
 def replace_stage(
     text: str,
     rules: tuple[Rule, ...],
-    regex_patterns: dict[str, object],
+    regex_patterns: Mapping[str, object],
     budget: RegexBudget,
+    *,
+    literal_index: Mapping[str, tuple[Rule, ...]] | None = None,
+    order: Mapping[str, int] | None = None,
+    regex_rules: tuple[Rule, ...] | None = None,
+    include_single_char_rules: bool = True,
 ) -> tuple[str, tuple[StageHit, ...]]:
     """Apply one stage's non-cascading replacements from a single input value."""
 
     if not rules:
         return text, ()
-    candidates = collect_matches(text, rules, regex_patterns, budget)
-    by_start: dict[int, list[RuleMatch]] = {}
+    if literal_index is not None and order is not None:
+        if regex_rules is None:
+            regex_rules = tuple(rule for rule in rules if rule.match_type == "regex")
+        candidates = collect_matches(
+            text,
+            _indexed_stage_candidates(
+                text,
+                regex_rules,
+                literal_index,
+                order,
+                include_single_char_rules=include_single_char_rules,
+            ),
+            regex_patterns,
+            budget,
+        )
+    else:
+        candidates = collect_matches(text, rules, regex_patterns, budget)
+    by_start: dict[int, RuleMatch | list[RuleMatch]] = {}
     for candidate in candidates:
-        by_start.setdefault(candidate.start, []).append(candidate)
+        previous = by_start.get(candidate.start)
+        if previous is None:
+            by_start[candidate.start] = candidate
+        elif isinstance(previous, list):
+            previous.append(candidate)
+        else:
+            by_start[candidate.start] = [previous, candidate]
     selected = []
     fragment_hits: dict[str, int] = {}
     cursor = 0
     for start in sorted(by_start):
         if start < cursor:
             continue
-        chosen = _resolve_same_start(by_start[start])
+        same_start = by_start[start]
+        chosen = _resolve_same_start(same_start) if isinstance(same_start, list) else same_start
         selected.append(chosen)
         cursor = chosen.end
 
@@ -311,6 +407,7 @@ __all__ = [
     "RuleExecutionError",
     "StageHit",
     "collect_matches",
+    "literal_candidates",
     "replace_stage",
     "source_matches",
 ]

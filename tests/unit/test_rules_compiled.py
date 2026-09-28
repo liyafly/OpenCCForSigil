@@ -144,6 +144,153 @@ def test_compiled_overlay_covers_prefixes_buckets_disabled_rules_and_conflicts()
     ]
 
 
+def test_prefix_indexed_lock_spans_equals_full_scan_for_300_random_snapshots():
+    from rules.compiled import CompiledOverlay, lock_spans_compiled
+    from rules.matching import RegexBudget, source_matches
+
+    rng = random.Random(20260928)
+    explicit_rules = (
+        Rule(id="one-character", source="词", target="字", direction="s2t"),
+        Rule(id="overlap-short", source="词语", target="短", direction="s2t"),
+        Rule(id="overlap-long", source="词语深", target="长", direction="s2t"),
+        Rule(id="letter", source="A", target="甲", direction="s2t"),
+        Rule(id="letter-prefix", source="A1", target="乙", direction="s2t"),
+        Rule(id="letter-overlap", source="A10", target="丙", direction="s2t"),
+        Rule(
+            id="regex-source",
+            semantic_version=2,
+            action="override",
+            match_type="regex",
+            stage="source",
+            source=r"字\d+",
+            target="数字",
+            direction="s2t",
+        ),
+    )
+    alphabet = "词语深目汉字A012"
+    for _ in range(300):
+        rules = (*_random_rules(rng, rng.randrange(201)), *explicit_rules)
+        snapshot = RuleSnapshot.freeze(rules)
+        overlay = CompiledOverlay.build(
+            snapshot, config="s2t", profile_id="profile", book_fingerprint="book")
+        text = "".join(rng.choice(alphabet) for _ in range(rng.randrange(1, 50)))
+        text += rng.choice(("词语深", "A10", "字12", "词", "普通"))
+        matches = source_matches(
+            text, overlay.source_rules, overlay.regex_patterns, RegexBudget())
+        expected = tuple(
+            LockedSpan(match.start, match.end, text[match.start:match.end],
+                       match.target, match.rule)
+            for match in matches
+        )
+
+        assert lock_spans_compiled(text, overlay) == expected
+
+
+def test_lock_spans_passes_only_prefix_candidates(monkeypatch):
+    import rules.matching as matching
+    from rules.compiled import CompiledOverlay, lock_spans_compiled
+
+    regex_rule = Rule(
+        id="regex-source",
+        semantic_version=2,
+        action="override",
+        match_type="regex",
+        stage="source",
+        source="不存在",
+        target="never",
+        direction="s2t",
+    )
+    rules = tuple(
+        Rule(id=f"literal-{index}", source=f"甲乙{index}", target="目标",
+             direction="s2t")
+        for index in range(2_000)
+    ) + (regex_rule,)
+    overlay = CompiledOverlay.build(RuleSnapshot.freeze(rules), config="s2t")
+    seen = []
+    original_collect = matching.collect_matches
+
+    def record_candidates(text, candidates, regex_patterns, budget):
+        seen.append(tuple(candidates))
+        return original_collect(text, candidates, regex_patterns, budget)
+
+    monkeypatch.setattr(matching, "collect_matches", record_candidates)
+
+    assert lock_spans_compiled("漢字" * 50, overlay) == ()
+
+    assert len(seen) == 1
+    assert not any(rule.match_type == "literal" for rule in seen[0])
+    assert tuple(rule for rule in seen[0] if rule.match_type == "regex") == (regex_rule,)
+
+
+def test_compiled_source_candidate_cache_reuses_entries_and_stays_bounded(monkeypatch):
+    from collections import OrderedDict
+
+    import rules.compiled as compiled
+
+    overlay = compiled.CompiledOverlay.build(
+        RuleSnapshot.freeze((Rule(
+            id="common-name", source="专名", target="專名", direction="s2t"),)),
+        config="s2t",
+    )
+    calls = 0
+    original = compiled._indexed_stage_candidates
+
+    def count_candidate_builds(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(compiled, "_indexed_stage_candidates", count_candidate_builds)
+    cache = OrderedDict()
+    for _ in range(2):
+        compiled.lock_spans_compiled("专名", overlay, candidate_cache=cache)
+
+    assert calls == 1
+    for index in range(257):
+        compiled.lock_spans_compiled(f"text-{index}", overlay, candidate_cache=cache)
+
+    assert len(cache) == 256
+    assert "专名" not in cache
+
+
+def test_convert_rules_does_not_iterate_overlay_rules_per_target():
+    from core.converter import OfficialBackendConverter
+
+    class Backend:
+        config = "s2t"
+
+        def convert(self, text):
+            return text
+
+        def convert_for_config(self, _config, text):
+            return text
+
+        def provenance(self):
+            return type("P", (), {"as_dict": lambda _self: {}})()
+
+    snapshot = RuleSnapshot.freeze((Rule(
+        id="common-name", source="专名", target="專名", direction="s2t"),))
+    request = ConvertRequest(
+        "s2t", rules_snapshot=RequestRuleSnapshot(
+            rules_hash=snapshot.rules_hash, rules=snapshot.rules))
+    converter = OfficialBackendConverter(Backend())
+    converter.convert("专名", request)
+    overlay = next(value[1] for value in converter._compiled_overlays.values())
+    iterations = 0
+
+    class CountingTuple(tuple):
+        def __iter__(self):
+            nonlocal iterations
+            iterations += 1
+            return super().__iter__()
+
+    object.__setattr__(overlay, "rules", CountingTuple(overlay.rules))
+    for index in range(100):
+        converter.convert(f"第{index}次 专名", request)
+
+    assert iterations == 0
+
+
 def test_compiled_overlay_rejects_mismatched_requested_hash():
     from rules.compiled import CompiledOverlay
 
