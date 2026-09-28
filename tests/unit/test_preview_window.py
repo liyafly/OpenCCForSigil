@@ -426,11 +426,11 @@ def test_preview_dialog_single_decisions_update_only_selected_row_and_summary():
     dialog._accept_this()
     assert dialog._current_row() == 2
     assert _display(dialog, 1, 0) == "Accepted"
-    assert _display(dialog, 0, 0) == "Pending"
+    assert _display(dialog, 0, 0) == "Undecided"
     assert "Accepted: 1" in dialog.summary.text()
     assert "Undecided: 2" in dialog.summary.text()
     assert dialog.apply_status_label.text() == (
-        "Remaining: 2\n" + dialog._translator.text("preview.shortcut_hint")
+        "Undecided: 2\n" + dialog._translator.text("preview.shortcut_hint")
     )
     assert "己" in _detail_text(dialog)
     assert dialog.apply_button.isEnabled() is False

@@ -96,6 +96,10 @@ def test_one_term_per_concept():
 
     for language, catalog in catalogs.items():
         translator = Translator(language)
+        status = translator.text("preview.status.pending")
+        assert status == translator.text("preview.filter_status.undecided")
+        assert status.casefold() in translator.text(
+            "preview.next_undecided").casefold()
         for key, value in catalog.items():
             if key.startswith("recovery."):
                 assert "Conservative" not in value, (language, key)

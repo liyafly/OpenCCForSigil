@@ -172,7 +172,7 @@ def test_preview_model_exposes_change_file_path_and_full_tooltips():
             column=lambda: column,
         )
 
-    assert model.data(index(0), _FakeQt.Qt.DisplayRole) == "Pending"
+    assert model.data(index(0), _FakeQt.Qt.DisplayRole) == "Undecided"
     assert model.data(index(1), _FakeQt.Qt.DisplayRole) == "ch001.xhtml"
     assert model.data(index(2), _FakeQt.Qt.DisplayRole) == "后 → 後"
     assert model.data(index(1), _FakeQt.Qt.ToolTipRole) == "Text/ch001.xhtml"
