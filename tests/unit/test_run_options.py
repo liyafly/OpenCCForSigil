@@ -128,6 +128,7 @@ class StatefulCheck:
     def __init__(self, value=False):
         self.value = value
         self.enabled = True
+        self.visible = True
         self.tooltip = ""
 
     def isChecked(self):
@@ -138,6 +139,12 @@ class StatefulCheck:
 
     def setEnabled(self, value):
         self.enabled = value
+
+    def isVisible(self):
+        return self.visible
+
+    def setVisible(self, value):
+        self.visible = value
 
     def setToolTip(self, value):
         self.tooltip = value
@@ -263,11 +270,11 @@ def test_profile_load_applies_direction_before_saved_disabled_options():
     assert panel.values()["pivot_chain"] == ("t2s", "s2t")
 
 
-def test_nav_preference_survives_a_scope_without_navigation_document():
+def test_include_nav_hidden_when_nav_not_selected_and_preference_kept():
     panel = _live_options_panel({"include_nav": True}, nav_available=False)
     panel.update_enablement("s2t")
 
-    assert not panel.checks["include_nav"].isEnabled()
+    assert not panel.checks["include_nav"].isVisible()
     assert panel.checks["include_nav"].isChecked()
     assert panel.values()["include_nav"] is False
     assert panel.preference_values()["include_nav"] is True
@@ -275,7 +282,7 @@ def test_nav_preference_survives_a_scope_without_navigation_document():
     panel._nav_available = True
     panel.update_enablement("s2t")
 
-    assert panel.checks["include_nav"].isEnabled()
+    assert panel.checks["include_nav"].isVisible()
     assert panel.checks["include_nav"].isChecked()
     assert panel.values()["include_nav"] is True
 
@@ -292,7 +299,7 @@ def test_jieba_configs_disable_force_pivot_with_a_specific_tooltip():
         "Force pivot is not supported for Jieba configurations.")
 
 
-def test_nav_is_disabled_when_selected_scope_has_no_navigation_document():
+def test_nav_is_hidden_when_selected_scope_has_no_navigation_document():
     panel = object.__new__(RunOptionsPanel)
     panel._initial = {"conversion": "s2t", "force_pivot": False}
     panel._preferred_pivot_chain = ""
@@ -316,7 +323,8 @@ def test_nav_is_disabled_when_selected_scope_has_no_navigation_document():
 
     panel._update_enablement("s2t")
 
-    assert not panel.checks["include_nav"].enabled
+    assert panel.checks["include_nav"].visible is False
+    assert panel.checks["include_nav"].enabled
     assert panel.checks["include_nav"].value
     assert panel.values()["include_nav"] is False
     assert panel.preference_values()["include_nav"] is True

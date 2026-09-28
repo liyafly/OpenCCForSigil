@@ -190,7 +190,7 @@ class RunOptionsPanel:
         control.setChecked(bool(self._initial.get(name, default)))
         self.checks[name] = control
         if name == "include_nav" and not self._nav_available:
-            control.setEnabled(False)
+            control.setVisible(False)
             control.setToolTip(self._tr.text("options.nav_unavailable"))
         if name == "include_metadata" and not self._metadata_available:
             control.setEnabled(False)
@@ -325,7 +325,7 @@ class RunOptionsPanel:
         values["metadata_available"] = self._metadata_available
         values["nav_available"] = self._nav_available
         self._enablement = option_enablement(str(config), values)
-        self.checks["include_nav"].setEnabled(self._enablement["include_nav"])
+        self.checks["include_nav"].setVisible(self._enablement["include_nav"])
         self.checks["include_nav"].setToolTip(
             "" if self._enablement["include_nav"]
             else self._tr.text("options.nav_unavailable"))
