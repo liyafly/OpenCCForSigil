@@ -80,6 +80,13 @@ def test_supported_catalogs_have_same_keys_and_render_placeholders():
         assert "a.xhtml" in progress
 
 
+def test_ruleset_enabled_label_describes_global_scope_not_this_run():
+    catalogs = load_catalogs()
+    assert "本次" not in catalogs["zh-Hans"]["rules.ruleset_enabled"]
+    assert "本次" not in catalogs["zh-Hant"]["rules.ruleset_enabled"]
+    assert "this run" not in catalogs["en"]["rules.ruleset_enabled"].lower()
+
+
 def test_profile_summary_uses_locale_label_separator():
     for language, separator in (("en", ": "), ("zh-Hans", "："), ("zh-Hant", "：")):
         translator = Translator(language)

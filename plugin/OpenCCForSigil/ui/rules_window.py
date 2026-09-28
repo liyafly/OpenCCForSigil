@@ -43,6 +43,7 @@ class RuleWindowResult:
     selected_id: str
     rulesets: tuple[RuleSet, ...]
     renamed: tuple[tuple[str, str], ...] = ()
+    run_ruleset_ids: tuple[str, ...] | None = None
 
 
 def _guarded_rule_dialog(qt_widgets, guard):
@@ -311,6 +312,8 @@ def show_rules_window(
     comparison_configs: Iterable[str] = (),
     storage_errors: Iterable[str] = (),
     run_options: dict[str, object] | None = None,
+    run_ruleset_ids: tuple[str, ...] = (),
+    ruleset_profiles: dict[str, tuple[tuple[str, str], ...]] | None = None,
     rulesets: Iterable[RuleSet] | None = None,
     ruleset_id: str | None = None,
     rule_store: RuleStore | None = None,
@@ -335,6 +338,8 @@ def show_rules_window(
         comparison_configs=comparison_configs,
         storage_errors=storage_errors,
         run_options=run_options,
+        run_ruleset_ids=run_ruleset_ids,
+        ruleset_profiles=ruleset_profiles,
         rulesets=rulesets,
         ruleset_id=ruleset_id,
         rule_store=rule_store,
@@ -366,6 +371,8 @@ class RuleManagerDialog:
         comparison_configs: Iterable[str] = (),
         storage_errors: Iterable[str] = (),
         run_options: dict[str, object] | None = None,
+        run_ruleset_ids: tuple[str, ...] = (),
+        ruleset_profiles: dict[str, tuple[tuple[str, str], ...]] | None = None,
         rulesets: Iterable[RuleSet] | None = None,
         ruleset_id: str | None = None,
         rule_store: RuleStore | None = None,
@@ -401,6 +408,11 @@ class RuleManagerDialog:
         self._comparison_configs = tuple(comparison_configs)
         self._storage_errors = tuple(storage_errors)
         self._run_options = dict(run_options or {})
+        self._run_ruleset_ids = tuple(dict.fromkeys(str(item) for item in run_ruleset_ids))
+        self._ruleset_profiles = {
+            str(identifier): tuple((str(profile_id), str(name)) for profile_id, name in profiles)
+            for identifier, profiles in (ruleset_profiles or {}).items()
+        }
         self._jieba_pending = bool(jieba_pending)
         self._test_result_has_run = False
         self._ui_preferences = dict(ui_preferences or {})
@@ -513,6 +525,8 @@ class RuleManagerDialog:
         self.ruleset_enabled_check = qt.QCheckBox(self._labels["ruleset_enabled"])
         self.ruleset_enabled_check.setChecked(True)
         ruleset_row.addWidget(self.ruleset_enabled_check)
+        self.use_in_run_check = qt.QCheckBox(self._translator.text("rules.use_in_run"))
+        ruleset_row.addWidget(self.use_in_run_check)
         layout.addLayout(ruleset_row)
 
         self.tabs = qt.QTabWidget()
@@ -757,7 +771,8 @@ class RuleManagerDialog:
         self.ruleset_combo.currentIndexChanged.connect(self._ruleset_changed)
         self.new_ruleset_button.clicked.connect(self._new_ruleset)
         self.rename_ruleset_button.clicked.connect(self._rename_ruleset)
-        self.ruleset_enabled_check.stateChanged.connect(self._ruleset_metadata_changed)
+        self.ruleset_enabled_check.stateChanged.connect(self._ruleset_enabled_changed)
+        self.use_in_run_check.toggled.connect(self._use_in_run_changed)
         self.default_direction_combo.currentIndexChanged.connect(self._ruleset_metadata_changed)
         self.default_scope_combo.currentIndexChanged.connect(self._ruleset_metadata_changed)
         self.add_button.clicked.connect(self._add)
@@ -813,6 +828,7 @@ class RuleManagerDialog:
         self.ruleset_combo.blockSignals(False)
         self._load_ruleset_metadata()
         self._apply_rule_defaults()
+        self._update_ruleset_enabled_tooltip()
 
     def _stash_ruleset(self) -> None:
         if self._ruleset_id in self._rulesets:
@@ -836,17 +852,61 @@ class RuleManagerDialog:
         current = self._rulesets.get(self._ruleset_id)
         if current is None or not hasattr(self, "ruleset_enabled_check"):
             return
-        for control in (self.ruleset_enabled_check, self.default_direction_combo,
-                        self.default_scope_combo):
+        controls = [self.ruleset_enabled_check, self.default_direction_combo,
+                    self.default_scope_combo]
+        if hasattr(self, "use_in_run_check"):
+            controls.append(self.use_in_run_check)
+        for control in controls:
             control.blockSignals(True)
         self.ruleset_enabled_check.setChecked(current.enabled)
+        if hasattr(self, "use_in_run_check"):
+            self.use_in_run_check.setChecked(self._ruleset_id in self._run_ruleset_ids)
         direction_index = self.default_direction_combo.findData(current.default_direction)
         self.default_direction_combo.setCurrentIndex(max(0, direction_index))
         scope_index = self.default_scope_combo.findData(current.default_scope)
         self.default_scope_combo.setCurrentIndex(max(0, scope_index))
-        for control in (self.ruleset_enabled_check, self.default_direction_combo,
-                        self.default_scope_combo):
+        for control in controls:
             control.blockSignals(False)
+
+    def _update_ruleset_enabled_tooltip(self) -> None:
+        if not hasattr(self, "ruleset_enabled_check"):
+            return
+        references = self._ruleset_profiles.get(self._ruleset_id, ())
+        profiles = ", ".join(name for _identifier, name in references)
+        if not profiles:
+            profiles = self._translator.text("rules.no_profile_references")
+        self.ruleset_enabled_check.setToolTip(self._translator.text(
+            "rules.ruleset_enabled_tooltip", profiles=profiles))
+
+    def _ruleset_enabled_changed(self, *_args) -> None:
+        if not self.ruleset_enabled_check.isChecked():
+            other_profiles = tuple(
+                name for profile_id, name in self._ruleset_profiles.get(self._ruleset_id, ())
+                if profile_id != self._profile_id
+            )
+            if other_profiles and not ask_confirmation(
+                self._qt,
+                self.dialog,
+                self._labels["title"],
+                self._translator.text(
+                    "rules.disable_shared_ruleset_confirm",
+                    profiles=", ".join(other_profiles)),
+                self._translator,
+            ):
+                self.ruleset_enabled_check.blockSignals(True)
+                self.ruleset_enabled_check.setChecked(True)
+                self.ruleset_enabled_check.blockSignals(False)
+                return
+        self._ruleset_metadata_changed()
+
+    def _use_in_run_changed(self, checked: bool) -> None:
+        if not self._ruleset_id:
+            return
+        identifiers = [item for item in self._run_ruleset_ids if item != self._ruleset_id]
+        if checked:
+            identifiers.append(self._ruleset_id)
+        self._run_ruleset_ids = tuple(dict.fromkeys(identifiers))
+        self._refresh()
 
     def _ruleset_metadata_changed(self, *_args) -> None:
         current = self._rulesets.get(self._ruleset_id)
@@ -1029,6 +1089,7 @@ class RuleManagerDialog:
         self.rules = list(self._rulesets[self._ruleset_id].rules)
         self._load_ruleset_metadata()
         self._apply_rule_defaults()
+        self._update_ruleset_enabled_tooltip()
         self._refresh()
         self._mark_test_result_stale()
 
@@ -1266,8 +1327,7 @@ class RuleManagerDialog:
             ruleset_enabled = True
         else:
             ruleset_enabled = ruleset.enabled
-        referenced = self._ruleset_id in tuple(
-            str(item) for item in self._run_options.get("ruleset_ids", ()))
+        referenced = self._ruleset_id in getattr(self, "_run_ruleset_ids", ())
         return bool(
             ruleset_enabled and referenced and applies_to(
                 rule, config=self._config, profile_id=self._profile_id,
@@ -1281,9 +1341,7 @@ class RuleManagerDialog:
             self._run_candidate_rule_sets = {}
             return ()
         self._stash_ruleset()
-        identifiers = tuple(dict.fromkeys(
-            str(item) for item in getattr(self, "_run_options", {}).get("ruleset_ids", ())
-        ))
+        identifiers = tuple(getattr(self, "_run_ruleset_ids", ()))
         candidates = []
         owners = {}
         for identifier in identifiers:
@@ -1306,8 +1364,7 @@ class RuleManagerDialog:
         ruleset = self._rulesets.get(self._ruleset_id)
         if ruleset is not None and not ruleset.enabled:
             return self._labels["reason_ruleset_disabled"]
-        if self._ruleset_id not in tuple(
-                str(item) for item in self._run_options.get("ruleset_ids", ())):
+        if self._ruleset_id not in getattr(self, "_run_ruleset_ids", ()):
             return self._labels["reason_ruleset_not_referenced"]
         if not rule.enabled:
             return self._labels["reason_rule_disabled"]
@@ -1630,8 +1687,7 @@ class RuleManagerDialog:
         self._stash_ruleset()
         mode = str(self.test_scope_combo.currentData()) if hasattr(
             self, "test_scope_combo") else "current"
-        run_ids = tuple(dict.fromkeys(str(item) for item in
-                                     self._run_options.get("ruleset_ids", ())))
+        run_ids = tuple(getattr(self, "_run_ruleset_ids", ()))
         if mode == "run":
             identifiers = run_ids
             rules = [
@@ -2077,7 +2133,11 @@ class RuleManagerDialog:
         self.accepted = True
         if self._managed:
             self.result = RuleWindowResult(
-                self._ruleset_id, tuple(self._rulesets.values()), tuple(self._renamed))
+                self._ruleset_id,
+                tuple(self._rulesets.values()),
+                tuple(self._renamed),
+                run_ruleset_ids=self._run_ruleset_ids,
+            )
         self.dialog.accept()
 
 

@@ -13,6 +13,7 @@ from core.preview import PreviewSession
 from rules.models import Rule
 from rules.store import RuleSet, RuleStore
 from tests.support.fake_qt import make_with_table
+from ui.i18n import Translator as CatalogTranslator
 from ui.rules_window import RuleManagerDialog, RuleWindowResult
 from sigil.scope import Scope, TargetSelection
 from ui.preview_window import PreviewOutcome, ScopeOutcome, _ConversionConfigDialog
@@ -211,12 +212,14 @@ def test_saved_profile_can_confirm_adding_ruleset(monkeypatch, tmp_path):
     RuleDialogQt.QMessageBox.questions = []
     RuleDialogQt.QMessageBox.information_messages = []
     monkeypatch.setattr("ui.rules_window.show_rules_window", lambda *args, **kwargs:
-                        RuleWindowResult("mine", (RuleSet("mine"),)))
+                        RuleWindowResult(
+                            "mine", (RuleSet("mine"),),
+                            run_ruleset_ids=("default", "mine")))
 
-    settings.edit_rules("s2t", Translator(), RuleDialogQt, object())
+    settings.edit_rules("s2t", CatalogTranslator("en"), RuleDialogQt, object())
 
     assert profiles.load("saved").ruleset_ids == ("default", "mine")
-    assert RuleDialogQt.QMessageBox.questions
+    assert len(RuleDialogQt.QMessageBox.questions) == 1
     assert settings.active.ruleset_ids == ("default", "mine")
     assert before.ruleset_ids == ("default",)
 
@@ -228,13 +231,81 @@ def test_saved_profile_rejection_keeps_change_session_only(monkeypatch, tmp_path
     RuleDialogQt.QMessageBox.questions = []
     RuleDialogQt.QMessageBox.information_messages = []
     monkeypatch.setattr("ui.rules_window.show_rules_window", lambda *args, **kwargs:
-                        RuleWindowResult("mine", (RuleSet("mine"),)))
+                        RuleWindowResult(
+                            "mine", (RuleSet("mine"),),
+                            run_ruleset_ids=("default", "mine")))
 
     settings.edit_rules("s2t", Translator(), RuleDialogQt, object())
 
     assert profiles.load("saved").ruleset_ids == before.ruleset_ids
     assert settings.active.ruleset_ids == ("default", "mine")
-    assert RuleDialogQt.QMessageBox.information_messages
+    assert not RuleDialogQt.QMessageBox.information_messages
+
+
+def test_saved_profile_asks_once_for_multiple_new_rulesets(monkeypatch, tmp_path):
+    settings, profiles = _saved_profile_settings(tmp_path)
+    RuleDialogQt.QMessageBox.response = True
+    RuleDialogQt.QMessageBox.questions = []
+    monkeypatch.setattr("ui.rules_window.show_rules_window", lambda *args, **kwargs:
+                        RuleWindowResult(
+                            "mine",
+                            (RuleSet("mine", name="Mine"), RuleSet("other", name="Other")),
+                            run_ruleset_ids=("default", "mine", "other")))
+
+    settings.edit_rules("s2t", CatalogTranslator("en"), RuleDialogQt, object())
+
+    assert len(RuleDialogQt.QMessageBox.questions) == 1
+    _title, message = RuleDialogQt.QMessageBox.questions[0]
+    assert "Mine" in message and "Other" in message
+    assert profiles.load("saved").ruleset_ids == ("default", "mine", "other")
+
+
+def test_viewing_other_ruleset_does_not_add_it_to_run(monkeypatch, tmp_path):
+    settings, profiles = _saved_profile_settings(tmp_path)
+    RuleDialogQt.QMessageBox.questions = []
+    monkeypatch.setattr("ui.rules_window.show_rules_window", lambda *_args, **_kwargs:
+                        RuleWindowResult(
+                            "mine", (RuleSet("mine"),),
+                            run_ruleset_ids=("default",)))
+
+    settings.edit_rules("s2t", CatalogTranslator("en"), RuleDialogQt, object())
+
+    assert profiles.load("saved").ruleset_ids == ("default",)
+    assert settings.active.ruleset_ids == ("default",)
+    assert not RuleDialogQt.QMessageBox.questions
+
+
+def test_disabling_shared_ruleset_asks_when_other_profiles_reference_it(monkeypatch, tmp_path):
+    settings, profiles = _saved_profile_settings(tmp_path)
+    profiles.save(Profile(
+        id="other", name="Other profile", ruleset_ids=("default",)))
+    settings.rules.save(RuleSet("default"))
+    path = settings.rules.directory / "default.json"
+    before = path.read_bytes()
+    prompts = []
+    managers = []
+
+    def cancel_disable(_qt, _parent, _title, message, _translator):
+        prompts.append(message)
+        return False
+
+    def open_rules(*args, **kwargs):
+        manager = RuleManagerDialog(make_with_table(), args[0], **kwargs)
+        managers.append(manager)
+        manager.ruleset_enabled_check.setChecked(False)
+        manager._apply()
+        return manager.result
+
+    monkeypatch.setattr("ui.rules_window.ask_confirmation", cancel_disable)
+    monkeypatch.setattr("ui.rules_window.show_rules_window", open_rules)
+
+    settings.edit_rules("s2t", CatalogTranslator("en"), RuleDialogQt, object())
+
+    assert len(prompts) == 1
+    assert "Other profile" in prompts[0]
+    assert managers[0].ruleset_enabled_check.isChecked()
+    assert settings.rules.load("default").enabled
+    assert path.read_bytes() == before
 
 
 def test_clearing_persisted_default_ruleset_saves_empty_rules(monkeypatch, tmp_path):
@@ -396,6 +467,7 @@ def test_new_ruleset_is_applied_on_the_next_controller_run(monkeypatch, tmp_path
     def execute_rule_dialog(_widget):
         manager = rule_dialogs[-1]
         manager.new_ruleset_button.click()
+        manager.use_in_run_check.setChecked(True)
         manager.source_edit.setText("测试")
         manager.target_edit.setText("专名")
         manager.add_button.click()

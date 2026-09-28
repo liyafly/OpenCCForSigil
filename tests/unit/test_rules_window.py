@@ -12,6 +12,7 @@ from opencc_backend.configs import comparison_configs
 from ui.rules_window import (
     DictionaryInspection,
     RuleManagerDialog,
+    RuleWindowResult,
     _configure_rule_table,
     _conflict_summary,
     _select_default_direction,
@@ -127,6 +128,7 @@ class QMessageBox:
 
 def _manager(rules, *, config="s2t", row=0, rule_type="exact", source="术语", target="新词"):
     manager = object.__new__(RuleManagerDialog)
+    manager._run_ruleset_ids = ()
     manager._qt = SimpleNamespace(
         Qt=SimpleNamespace(UserRole=32),
         QListWidgetItem=ConflictItem,
@@ -471,6 +473,7 @@ def test_conflict_with_another_run_ruleset_is_listed_and_blocks_save():
     manager = RuleManagerDialog(
         make_with_table(), (current,), translator=Translator("en"),
         run_options={"ruleset_ids": ["A", "B"]},
+        run_ruleset_ids=("A", "B"),
         rulesets=(
             RuleSet("A", (current,), name="Current terms"),
             RuleSet("B", (other,), name="Other terms"),
@@ -491,12 +494,49 @@ def test_unselected_ruleset_conflict_does_not_block_save():
     manager = RuleManagerDialog(
         make_with_table(), (current,), translator=Translator("en"),
         run_options={"ruleset_ids": ["A"]},
+        run_ruleset_ids=("A",),
         rulesets=(RuleSet("A", (current,)), RuleSet("B", (other,))),
         ruleset_id="A",
     )
 
     assert manager.conflict_list.count() == 0
     assert manager.apply_button.isEnabled()
+
+
+def test_use_in_run_checkbox_tracks_selected_ruleset():
+    manager = RuleManagerDialog(
+        make_with_table(), (), translator=Translator("en"),
+        rulesets=(RuleSet("A"), RuleSet("B")), ruleset_id="A",
+        run_ruleset_ids=("A",))
+
+    assert manager.use_in_run_check.isChecked()
+    manager.ruleset_combo.setCurrentIndex(manager.ruleset_combo.findData("B"))
+    assert not manager.use_in_run_check.isChecked()
+    manager.use_in_run_check.setChecked(True)
+
+    assert manager._run_ruleset_ids == ("A", "B")
+    manager._apply()
+    assert isinstance(manager.result, RuleWindowResult)
+    assert manager.result.run_ruleset_ids == ("A", "B")
+
+
+def test_disabling_shared_ruleset_restores_check_when_confirmation_is_cancelled(monkeypatch):
+    manager = RuleManagerDialog(
+        make_with_table(), (), translator=Translator("en"), profile_id="current",
+        rulesets=(RuleSet("shared"),), ruleset_id="shared",
+        ruleset_profiles={"shared": (("other", "Other profile"),)})
+    prompts = []
+    monkeypatch.setattr(
+        rules_window, "ask_confirmation",
+        lambda _qt, _parent, _title, message, _translator: (prompts.append(message), False)[1],
+    )
+
+    assert "Other profile" in manager.ruleset_enabled_check.toolTip()
+    manager.ruleset_enabled_check.setChecked(False)
+
+    assert len(prompts) == 1
+    assert manager.ruleset_enabled_check.isChecked()
+    assert manager._rulesets["shared"].enabled
 
 
 @pytest.mark.parametrize("semantic_version", (1, 2))
@@ -729,6 +769,7 @@ def test_import_review_includes_conflicts_from_other_run_rulesets(tmp_path):
     manager._ruleset_id = "B"
     manager.rules = []
     manager._run_options = {"ruleset_ids": ["A", "B"]}
+    manager._run_ruleset_ids = ("A", "B")
     manager._config = "s2t"
     manager._profile_id = None
     manager._book_fingerprint = None
@@ -874,6 +915,7 @@ def test_sandbox_run_scope_uses_only_referenced_enabled_rulesets_and_current_con
             RuleSet("extra", (unrelated,)),
         ),
         ruleset_id="extra", run_options={"ruleset_ids": ["active", "disabled"]},
+        run_ruleset_ids=("active", "disabled"),
     )
     current_snapshot, current_context = manager._sandbox_snapshot()
     assert unrelated in current_snapshot.rules
@@ -1151,6 +1193,7 @@ def test_search_and_filter_update_the_stable_rule_id_in_a_large_set():
         make_with_table(), rules, translator=Translator("en"), ruleset_id="active",
         rulesets=(RuleSet("active", rules),),
         run_options={"ruleset_ids": ["active"]},
+        run_ruleset_ids=("active",),
     )
     original = {rule.id: rule for rule in manager.rules}
     manager.search_edit.setText("comment-00497")
@@ -1186,7 +1229,8 @@ def test_activity_filter_matches_rule_enabled_direction_scope_and_ruleset_state(
     manager = RuleManagerDialog(
         make_with_table(), rules, translator=Translator("en"), ruleset_id="active-set",
         rulesets=(RuleSet("active-set", rules),),
-        run_options={"ruleset_ids": ["active-set"]}, profile_id="profile-A",
+        run_options={"ruleset_ids": ["active-set"]}, run_ruleset_ids=("active-set",),
+        profile_id="profile-A",
         book_fingerprint="book-A",
     )
     manager.activity_filter.setCurrentIndex(manager.activity_filter.findData("active"))

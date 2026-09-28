@@ -303,6 +303,12 @@ class RunSettings:
         for identifier in identifiers:
             values.setdefault(
                 identifier, RuleSet(identifier, default_direction=base_direction(config)))
+        profile_values, _profile_errors = self.profiles.load_all()
+        ruleset_profiles = {}
+        for profile in profile_values:
+            for identifier in profile.ruleset_ids:
+                ruleset_profiles.setdefault(identifier, []).append(
+                    (profile.id, profile.name or profile.id))
         available_configs, jieba_pending = self._available_config_options()
         result = show_rules_window(
             values[initial_id].rules, translator=translator, official_convert=self.backend,
@@ -313,6 +319,11 @@ class RunSettings:
             storage_errors=self._storage_error_labels(errors, translator),
             run_options=(profile_options(self.active) if run_options is None
                          else dict(run_options)),
+            run_ruleset_ids=tuple(self.active.ruleset_ids),
+            ruleset_profiles={
+                identifier: tuple(references)
+                for identifier, references in ruleset_profiles.items()
+            },
             rulesets=tuple(values.values()), ruleset_id=initial_id,
             rule_store=self.rules,
             ui_preferences=self._ui_preferences,
@@ -325,10 +336,12 @@ class RunSettings:
                 selected_id = initial_id
                 result_sets = (RuleSet(selected_id, result, values[selected_id].name),)
                 renamed = ()
+                run_ruleset_ids = None
             else:
                 selected_id = result.selected_id
                 result_sets = result.rulesets
                 renamed = result.renamed
+                run_ruleset_ids = result.run_ruleset_ids
             for item in result_sets:
                 old = previous.get(item.id)
                 if old != item and (item.id != "default" or item.rules or old is not None):
@@ -341,25 +354,33 @@ class RunSettings:
                         old_path = self.rules.directory / f"{old_id}.json"
                         old_path.unlink(missing_ok=True)
             self.rules._validate_id(selected_id)
-            updated_rule_ids = tuple(dict.fromkeys(
-                [dict(renamed).get(item, item) for item in self.active.ruleset_ids]
-                + [selected_id]
-            ))
+            replacements = dict(renamed)
+            previous_rule_ids = tuple(dict.fromkeys(
+                replacements.get(item, item) for item in self.active.ruleset_ids))
+            if run_ruleset_ids is None:
+                updated_rule_ids = tuple(dict.fromkeys((*previous_rule_ids, selected_id)))
+            else:
+                updated_rule_ids = tuple(dict.fromkeys(
+                    replacements.get(item, item) for item in run_ruleset_ids))
             updated = replace(self.active, ruleset_ids=updated_rule_ids)
-            if (self.active_profile_is_saved
-                    and selected_id not in self.active.ruleset_ids):
+            newly_added_ids = tuple(
+                identifier for identifier in updated_rule_ids
+                if identifier not in previous_rule_ids
+            )
+            if self.active_profile_is_saved and newly_added_ids:
+                result_names = {item.id: item.name for item in result_sets}
+                added_names = tuple(
+                    result_names.get(identifier)
+                    or (values[identifier].name if identifier in values else None)
+                    or identifier
+                    for identifier in newly_added_ids
+                )
                 if ask_confirmation(
                         qt, parent, translator.text("settings.rules"),
-                        translator.text("settings.add_ruleset_to_profile",
-                                        ruleset=selected_id,
+                        translator.text("settings.add_rulesets_to_profile",
+                                        rulesets=", ".join(added_names),
                                         profile=profile_display_name(self.active, translator)), translator):
                     self.profiles.save(updated)
-                else:
-                    qt.QMessageBox.information(
-                        parent, plugin_window_title(
-                            translator, translator.text("settings.rules")),
-                        translator.text("settings.ruleset_session_only", ruleset=selected_id),
-                    )
             self.active = updated
 
     def _available_config_options(self):
