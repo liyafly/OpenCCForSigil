@@ -1265,6 +1265,32 @@ def test_sandbox_lists_rule_id_source_target_and_match_location():
     assert "Hits: 1" in manager.test_output.toPlainText().splitlines()
 
 
+def test_sandbox_reports_zero_width_skips_without_input_text():
+    rule = Rule.from_dict({
+        "id": "zero",
+        "semantic_version": 2,
+        "type": "exact",
+        "action": "replace",
+        "match_type": "regex",
+        "stage": "pre",
+        "direction": "s2t",
+        "scope": "global",
+        "source": r"(?<=「)[^」]*",
+        "target": "善",
+    })
+    manager = RuleManagerDialog(
+        make_with_table(), (rule,), translator=Translator("en"),
+        official_convert=lambda _config, text: text, config="s2t",
+        profile_id="profile", book_fingerprint="book-hash")
+    manager.test_input.setPlainText("他说「」然后「好」")
+
+    manager._test()
+
+    output = manager.test_output.toPlainText()
+    assert "zero: skipped 1 zero-width match(es)" in output
+    assert "zero: 好 → 善 at 7–8" in output
+
+
 def test_apply_saves_a_valid_unsubmitted_editor_draft():
     manager = RuleManagerDialog(make_with_table(), (), translator=Translator("en"))
     manager.source_edit.setText("draft source")

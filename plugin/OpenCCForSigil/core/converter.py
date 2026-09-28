@@ -152,6 +152,7 @@ class OfficialBackendConverter:
         if overlay.guarded and self._regex_budget is None:
             self._regex_budget = RegexBudget()
         budget = self._regex_budget or RegexBudget()
+        zero_width_before = dict(budget.zero_width_skips)
         candidate_cache = self._source_candidate_cache
         if candidate_cache is None or candidate_cache[0] is not overlay:
             candidate_cache = (overlay, OrderedDict())
@@ -253,6 +254,18 @@ class OfficialBackendConverter:
                         rule_source=f"UserRule:{span.rule.id}", category="user_rule",
                         risk="HIGH" if len(span.source) != len(span.target) else "REVIEW"))
                 cursor = span.end
+        zero_width_skips = tuple(sorted(
+            (rule_id, count - zero_width_before.get(rule_id, 0))
+            for rule_id, count in budget.zero_width_skips.items()
+            if count > zero_width_before.get(rule_id, 0)
+        ))
+        diagnostics.extend(
+            Diagnostic(
+                "REGEX_ZERO_WIDTH_SKIPPED",
+                f"rule {rule_id}: skipped {count} zero-width match(es)",
+            )
+            for rule_id, count in zero_width_skips
+        )
         return ConvertResult(
             text,
             "".join(output),
@@ -262,6 +275,7 @@ class OfficialBackendConverter:
             "".join(after_pre) if request.include_rule_trace else "",
             "".join(after_opencc) if request.include_rule_trace else "",
             "".join(after_post) if request.include_rule_trace else "",
+            zero_width_skips,
         )
 
 

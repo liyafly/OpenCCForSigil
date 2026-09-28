@@ -166,6 +166,26 @@ def test_zero_width_pattern_and_bad_template_are_rejected():
         validate_rules((_rule(id="group", source=r"(?P<word>x)", target=r"\g<missing>"),))
 
 
+def test_zero_width_runtime_match_is_skipped_not_fatal():
+    source = "他说「」然后「好」"
+    rule = _rule(
+        id="zero", source=r"(?<=「)[^」]*", target="善")
+
+    result = OfficialBackendConverter(_Backend()).convert(source, _request((rule,)))
+
+    assert result.target == "他说「」然后「善」"
+    assert apply_changes(source, result.changes) == result.target
+    assert result.zero_width_skips == (("zero", 1),)
+    assert len(result.diagnostics) == 1
+    diagnostic = result.diagnostics[0]
+    assert diagnostic.code == "REGEX_ZERO_WIDTH_SKIPPED"
+    assert diagnostic.message == "rule zero: skipped 1 zero-width match(es)"
+    assert diagnostic.span is None
+    assert "他说" not in diagnostic.message
+    assert "「」" not in diagnostic.message
+    assert "好" not in diagnostic.message
+
+
 def test_expired_regex_budget_stops_with_rule_identity():
     rule = _rule(id="bounded", source="x", target="y")
     budget = RegexBudget()

@@ -53,6 +53,7 @@ class RegexBudget:
         self.regex_hits = 0
         self.output_chars = 0
         self.candidate_output_chars = 0
+        self.zero_width_skips: dict[str, int] = {}
 
     def allowance(self) -> float:
         return (REGEX_RUN_BUDGET_SECONDS
@@ -221,9 +222,10 @@ def collect_matches(
             if found is None:
                 break
             if found.start() == found.end():
-                raise RuleExecutionError(
-                    f"rule {rule.id}: zero-length regular-expression match at "
-                    f"offset {found.start()} is not allowed")
+                budget.zero_width_skips[rule.id] = (
+                    budget.zero_width_skips.get(rule.id, 0) + 1)
+                cursor = found.start() + 1
+                continue
             candidates += 1
             if candidates > REGEX_MAX_CANDIDATES_PER_FRAGMENT:
                 raise RuleExecutionError(

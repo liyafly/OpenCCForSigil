@@ -127,6 +127,7 @@ class ConvertResult:
     after_pre_rules: str = ""
     after_opencc: str = ""
     after_post_rules: str = ""
+    zero_width_skips: Tuple[Tuple[str, int], ...] = ()
 
 
 @dataclass(frozen=True)

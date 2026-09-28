@@ -25,7 +25,7 @@
 
 “普通文字”会按字面匹配；“正则表达式”使用随插件附带的 `regex` VERSION1 方言。正则只匹配当前提取的文本或允许转换的属性值，不会跨越标签，也不会直接扫描或改写整份 XHTML。替换阶段同一轮只基于阶段输入匹配一次，新生成的文字不会在同阶段再次匹配。
 
-零长度命中会被拒绝。每条正则在一个文本片段、一个阶段中最多采用 512 个匹配，整次分析最多采用 100,000 个；重叠但未采用的候选不计入命中。为限制内存，每条正则在每个文本片段中最多枚举 20,000 个候选。整次分析中，实际采用的替换输出和候选展开文本各累计不超过 2,000,000 个字符。插件还限制表达式长度和匹配耗时：单次搜索最多 50 毫秒，整次分析的预算为 3 秒加上每扫描一百万字符 2 秒。超时或越限会中止整次分析，不会生成可写回的部分计划。复杂表达式可从“使用模板”开始，例如署名保护模板只匹配 `◎` 后的署名标记；它不会保护正文里所有单独的“著”。
+运行时若正则在某个位置得到零长度匹配，会跳过这次匹配并继续搜索；分析诊断和规则测试只显示规则 ID 与跳过次数，不包含原文。保存时仍会拒绝能匹配空字符串的表达式。每条正则在一个文本片段、一个阶段中最多采用 512 个匹配，整次分析最多采用 100,000 个；重叠但未采用的候选不计入命中。为限制内存，每条正则在每个文本片段中最多枚举 20,000 个候选。整次分析中，实际采用的替换输出和候选展开文本各累计不超过 2,000,000 个字符。插件还限制表达式长度和匹配耗时：单次搜索最多 50 毫秒，整次分析的预算为 3 秒加上每扫描一百万字符 2 秒。超时或越限会中止整次分析，不会生成可写回的部分计划。复杂表达式可从“使用模板”开始，例如署名保护模板只匹配 `◎` 后的署名标记；它不会保护正文里所有单独的“著”。
 
 规则匹配只发生在单个提取文本片段内。`<span>` 等标签分开的文字不会拼接后再匹配。
 
@@ -87,7 +87,7 @@
 
 「一般文字」會依字面比對；「正規表示式」使用隨附的 `regex` VERSION1 方言。正規表示式只比對目前擷取的文字或允許轉換的屬性值，不會跨越標籤，也不會直接掃描或改寫整份 XHTML。同一取代階段每輪只依階段輸入比對一次，新產生的文字不會在同階段再次比對。
 
-零長度命中會被拒絕。每條正規表示式在一個文字片段、一個階段中最多採用 512 個比對，整次分析最多採用 100,000 個；重疊但未採用的候選不計入命中。為限制記憶體，每條正規表示式在每個文字片段中最多列舉 20,000 個候選。整次分析中，實際採用的取代輸出與候選展開文字各累計不超過 2,000,000 個字元。外掛也會限制表示式長度和比對時間：單次搜尋最多 50 毫秒，整次分析的預算為 3 秒加上每掃描一百萬字元 2 秒。逾時或超過限制會中止整次分析，不會產生可寫回的部分計畫。可從「使用範本」開始，例如署名保護範本只比對 `◎` 後的署名標記，不會保護正文中所有單獨的「著」。
+執行時若正規表示式在某個位置得到零長度比對，會略過這次比對並繼續搜尋；分析診斷和規則測試只顯示規則 ID 與略過次數，不包含原文。儲存時仍會拒絕能比對空字串的表示式。每條正規表示式在一個文字片段、一個階段中最多採用 512 個比對，整次分析最多採用 100,000 個；重疊但未採用的候選不計入命中。為限制記憶體，每條正規表示式在每個文字片段中最多列舉 20,000 個候選。整次分析中，實際採用的取代輸出與候選展開文字各累計不超過 2,000,000 個字元。外掛也會限制表示式長度和比對時間：單次搜尋最多 50 毫秒，整次分析的預算為 3 秒加上每掃描一百萬字元 2 秒。逾時或超過限制會中止整次分析，不會產生可寫回的部分計畫。可從「使用範本」開始，例如署名保護範本只比對 `◎` 後的署名標記，不會保護正文中所有單獨的「著」。
 
 規則只會在單一擷取文字片段內比對。被 `<span>` 等標籤分開的文字不會先拼接再比對。
 
@@ -149,7 +149,7 @@ The import review still appears so you can check duplicates, conflicts, and inva
 
 **Plain text** matches literally. **Regular expression** uses the bundled `regex` VERSION1 dialect. Expressions only match one extracted text or allowed attribute value; they do not cross tags or scan and rewrite whole XHTML. A stage matches its input once, so newly generated text is not matched again in the same stage.
 
-Zero-length matches are rejected. Each regex can apply at most 512 matches per text fragment and stage, and one analysis can apply at most 100,000. Overlapping candidates that are not selected do not count as hits. To bound memory, each regex can enumerate at most 20,000 candidates per text fragment. Per analysis, applied replacement output and combined candidate expansion output are each capped at 2,000,000 characters. The plugin also caps pattern length. A search is limited to 50 ms; the analysis budget is 3 seconds plus 2 seconds per million characters scanned. A timeout or limit stops the whole analysis, so it cannot produce a partial writeback plan. Start with **Templates**, such as the author-credit protection template; it matches a marked credit and does not protect every standalone `著` in prose.
+If a regex produces a zero-width match at a position in actual text, that match is skipped and searching continues. Analysis diagnostics and the rule test show only the rule ID and skip count, never the original text. Saving still rejects patterns that match the empty input. Each regex can apply at most 512 matches per text fragment and stage, and one analysis can apply at most 100,000. Overlapping candidates that are not selected do not count as hits. To bound memory, each regex can enumerate at most 20,000 candidates per text fragment. Per analysis, applied replacement output and combined candidate expansion output are each capped at 2,000,000 characters. The plugin also caps pattern length. A search is limited to 50 ms; the analysis budget is 3 seconds plus 2 seconds per million characters scanned. A timeout or limit stops the whole analysis, so it cannot produce a partial writeback plan. Start with **Templates**, such as the author-credit protection template; it matches a marked credit and does not protect every standalone `著` in prose.
 
 Matching stays inside each extracted text fragment. Text split by tags such as `<span>` is not joined for matching.
 

@@ -7,9 +7,10 @@ precedence, scopes, immutable snapshots, and the manager/sandbox/inspector.
 A rule carries `id`, `enabled`, `type`, `direction`, `source`, `target`, `scope`,
 `priority`, and optional profile/book ownership. V2 rules also carry `action`,
 `match_type`, and `stage`. Missing directions, malformed text, invalid IDs,
-unsupported schemas, invalid regex syntax/templates, and zero-length regex
-matches are rejected. Existing V1 `exact` rules remain final wording and V1
-`protect` rules remain source-preserving.
+unsupported schemas, invalid regex syntax/templates, and patterns matching the
+empty input are rejected. A zero-width match found in actual text is skipped;
+analysis continues and reports only the rule ID and skip count. Existing V1
+`exact` rules remain final wording and V1 `protect` rules remain source-preserving.
 
 `action` is `protect`, `override`, or `replace`; `match_type` is `literal` or
 `regex`; `stage` is `source`, `pre`, or `post`. Protect and override rules are
@@ -19,7 +20,7 @@ context by the source-preserving planner.
 
 Regex patterns use the bundled `regex` VERSION1 dialect. They match only one
 extracted text fragment or an explicitly allowed attribute value. The
-runtime rejects zero-length matches and enforces a 512-character pattern cap,
+runtime skips each zero-length match and enforces a 512-character pattern cap,
 512 applied hits per rule per text fragment and stage, and 100,000 applied hits
 per analysis. Overlapping candidates do not count as applied hits; candidate
 enumeration is separately capped at 20,000 per rule per text fragment to bound
