@@ -56,6 +56,7 @@ def build_conversion_plan(
 
     converter = converter or OfficialBackendConverter(backend)
     changes = []
+    change_strings: dict[str, str] = {}
     diagnostics = list(inline_boundary_diagnostics(document)) if document_kind in {"xhtml", "nav"} else []
     block_tags = tuple(tag for tag in document.tags if tag.name.lower() in _BLOCK_LEVEL_ELEMENTS)
     block_tag_ends = tuple(tag.end for tag in block_tags)
@@ -144,6 +145,7 @@ def build_conversion_plan(
             change = _absolute_change(
                 file_id, target, local_change, source,
                 cdata_ranges=cdata_ranges, cdata_starts=cdata_starts,
+                string_pool=change_strings,
                 document_kind=document_kind,
                 risk_override="HIGH" if document_kind == "metadata" else None,
             )
@@ -289,6 +291,7 @@ def _absolute_change(
     *,
     cdata_ranges: Optional[tuple[tuple[int, int], ...]] = None,
     cdata_starts: Optional[tuple[int, ...]] = None,
+    string_pool: dict[str, str],
     document_kind: str,
     risk_override: Optional[str] = None,
 ) -> TokenChange:
@@ -318,6 +321,8 @@ def _absolute_change(
                 target_text += "&gt;"
                 patch_end += 1
                 change_source += ">"
+    change_source = string_pool.setdefault(change_source, change_source)
+    target_text = string_pool.setdefault(target_text, target_text)
     change_key = "\0".join(
         (file_id, target.node_id, str(start), str(patch_end), target_text)
     )

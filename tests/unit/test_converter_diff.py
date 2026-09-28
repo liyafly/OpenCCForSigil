@@ -139,6 +139,27 @@ def test_partial_acceptance_never_mixes_phrase():
             assert paragraph in {"打印机", "印表機"}
 
 
+def test_plan_shares_equal_change_strings():
+    source = "<p>汉</p><p>汉</p>"
+    backend = OpenCCBackend("s2t")
+    try:
+        plan = build_conversion_plan(
+            file_id="chapter.xhtml",
+            source=source,
+            document=tokenize_xhtml(source),
+            backend=backend,
+            request=ConvertRequest("s2t"),
+        )
+    finally:
+        backend.close()
+
+    assert len(plan.changes) == 2
+    assert all(change.source == "汉" for change in plan.changes)
+    assert all(change.target == "漢" for change in plan.changes)
+    assert plan.changes[0].source is plan.changes[1].source
+    assert plan.changes[0].target is plan.changes[1].target
+
+
 def test_opcodes_partition_both_strings():
     cases = [
         ("打印机", "印表機"),

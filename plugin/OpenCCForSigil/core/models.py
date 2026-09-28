@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from typing import Optional, Tuple
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class SourceSpan:
     """An absolute half-open source span in a single source string."""
 
@@ -77,7 +77,7 @@ class ConvertRequest:
     include_rule_trace: bool = False
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class TokenChange:
     source: str
     target: str

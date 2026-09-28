@@ -1,6 +1,7 @@
 import pytest
 
-from core.models import SourceSpan
+from core.models import SourceSpan, TokenChange
+from document.tokenizer import TokenizerOptions, tokenize_xhtml
 from opencc_backend.configs import (
     JIEBA_CONFIGS,
     V1_CONFIGS,
@@ -16,6 +17,27 @@ def test_source_span_is_half_open_and_non_negative():
         SourceSpan(-1, 2)
     with pytest.raises(ValueError):
         SourceSpan(3, 2)
+
+
+def test_change_models_use_slots():
+    span = SourceSpan(0, 1)
+    change = TokenChange("旧", "新", span, "test")
+
+    assert not hasattr(span, "__dict__")
+    assert not hasattr(change, "__dict__")
+    assert SourceSpan(0, 1) == span
+    assert hash(SourceSpan(0, 1)) == hash(span)
+    assert TokenChange("旧", "新", span, "test") == change
+
+
+def test_tokenizer_does_not_copy_target_context():
+    source = "<p>文本目标</p>"
+
+    document = tokenize_xhtml(source, TokenizerOptions(context_radius=128))
+
+    assert len(document.targets) == 1
+    assert document.targets[0].source_text == "文本目标"
+    assert document.targets[0].context == ""
 
 
 def test_native_config_allowlist_and_comparison_metadata():

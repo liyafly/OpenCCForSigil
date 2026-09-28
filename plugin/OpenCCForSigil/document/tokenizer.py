@@ -40,7 +40,11 @@ _CLOSING_TAG_PATTERNS: dict[str, re.Pattern[str]] = {}
 
 @dataclass(frozen=True)
 class TokenizerOptions:
-    """Profile-controlled lexical target policy."""
+    """Profile-controlled lexical target policy.
+
+    ``context_radius`` remains accepted for caller compatibility, but target
+    context is no longer retained in each plan.
+    """
 
     protected_elements: Tuple[str, ...] = DEFAULT_PROTECTED_ELEMENTS
     convert_attributes: Tuple[str, ...] = ("alt", "title")
@@ -266,9 +270,6 @@ def _make_target(
     attribute_quote: Optional[str] = None,
     numeric_reference: bool = False,
 ) -> TextTarget:
-    radius = options.context_radius
-    context_start = max(0, start - radius)
-    context_end = min(len(source), end + radius)
     kind = "attr" if attribute_name is not None else "text"
     prefix = "numeric_ref:" if numeric_reference else f"{options.document_kind}:{kind}:"
     node_id = f"{prefix}{ordinal}"
@@ -277,7 +278,7 @@ def _make_target(
         source_text=source[start:end],
         source_start=start,
         source_end=end,
-        context=source[context_start:context_end],
+        context="",
         tag_name=tag_name,
         attribute_name=attribute_name,
         attribute_quote=attribute_quote,
