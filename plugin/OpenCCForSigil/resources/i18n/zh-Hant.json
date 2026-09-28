@@ -247,7 +247,7 @@
   "options.corner": "直角引號 「 」",
   "options.nested_corner": "巢狀直角 『 』",
   "options.horizontal": "橫排標準",
-  "settings.profiles": "設定檔",
+  "settings.profiles": "選擇設定檔…",
   "settings.save_profile": "另存為設定檔",
   "settings.name": "名稱",
   "settings.rules": "規則 / 沙箱",

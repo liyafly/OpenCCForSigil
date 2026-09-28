@@ -247,7 +247,7 @@
   "options.corner": "直角引号 「 」",
   "options.nested_corner": "嵌套直角 『 』",
   "options.horizontal": "横排标准",
-  "settings.profiles": "方案",
+  "settings.profiles": "选择方案…",
   "settings.save_profile": "另存为方案",
   "settings.name": "名称",
   "settings.rules": "规则 / 沙箱",

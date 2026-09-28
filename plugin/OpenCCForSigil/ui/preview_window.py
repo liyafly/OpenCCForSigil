@@ -504,6 +504,12 @@ def choose_scope(
     )
     tabs.addTab(scope_page, translator.text("scope.title"))
     tabs.addTab(config_page, translator.text("config.title"))
+    language_corner = qt_widgets.QWidget()
+    language_corner_layout = qt_widgets.QHBoxLayout(language_corner)
+    language_corner_layout.setContentsMargins(0, 0, 0, 0)
+    language_corner_layout.addWidget(scope_dialog.language_label)
+    language_corner_layout.addWidget(scope_dialog.language_combo)
+    tabs.setCornerWidget(language_corner, _enum_value(qt_widgets.Qt, "TopRightCorner"))
     summary = qt_widgets.QLabel()
     summary.setWordWrap(True)
     outer_layout.addWidget(summary)
@@ -3856,7 +3862,11 @@ class _ConversionConfigDialog:
         self.jieba_status.setToolTip(tooltip)
         self.jieba_status.setText(status)
         self.jieba_details_button.setEnabled(bool(self._probe_error))
-        self.jieba_details_button.setVisible(bool(self._probe_error))
+        controls_visible = not (
+            self._probe_state == "unavailable" and not self._preferred_jieba)
+        self.jieba_checkbox.setVisible(controls_visible)
+        self.jieba_status.setVisible(controls_visible)
+        self.jieba_details_button.setVisible(controls_visible and bool(self._probe_error))
         if hasattr(self, "options_panel"):
             self.options_panel.update_enablement(self._get_config())
         completion_button = getattr(
@@ -4112,8 +4122,9 @@ class _ScopeDialog:
         self.language_combo.setCurrentIndex(max(0, self.language_combo.findData(language)))
         self.language_combo.currentIndexChanged.connect(self._language_changed)
         language_row.addWidget(self.language_combo)
-        language_row.addStretch(1)
-        layout.addLayout(language_row)
+        if not self._embedded:
+            language_row.addStretch(1)
+            layout.addLayout(language_row)
 
         self.single_radio = qt_widgets.QRadioButton(translator.text("scope.single"))
         self.single_radio.setVisible(False)

@@ -808,6 +808,21 @@ class Qt:
     AscendingOrder = 0
     DescendingOrder = 1
     ElideMiddle = 2
+    TopRightCorner = 1
+
+
+class TabWidget(Base):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._corner_widget = None
+
+    def setCornerWidget(self, widget, corner=None):
+        self._corner_widget = widget
+        self._corner = corner
+        self.calls.append(("setCornerWidget", (widget, corner)))
+
+    def cornerWidget(self, _corner=None):
+        return self._corner_widget
 
 
 def make():
@@ -829,9 +844,9 @@ def make():
         "QDialogButtonBox",
         "QAction",
         "QShortcut",
-        "QTabWidget",
     ):
         setattr(qt, name, type(name, (Base,), {}))
+    qt.QTabWidget = TabWidget
     qt.QDialog = Dialog
     qt.QMenu = Menu
     qt.QAction = Action

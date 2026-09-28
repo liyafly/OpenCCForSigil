@@ -58,7 +58,7 @@ class Probe:
             config for config in SUPPORTED_CONFIGS if not config.endswith("_jieba"))
 
 
-def _dialog(probe):
+def _dialog(probe, *, preferred_jieba=True):
     dialog = object.__new__(_ConversionConfigDialog)
     dialog._qt = SimpleNamespace(QMessageBox=SimpleNamespace(
         information=lambda *args: setattr(dialog, "details", args)))
@@ -69,7 +69,7 @@ def _dialog(probe):
     dialog._probe_error = None
     dialog._probe_state = "pending"
     dialog._default_base = "s2t"
-    dialog._preferred_jieba = True
+    dialog._preferred_jieba = preferred_jieba
     dialog._direction_reselected = False
     dialog._jieba_auto_checked = False
     dialog._updating_jieba = False
@@ -121,13 +121,16 @@ def test_not_started_probe_disables_preferred_jieba_until_a_result_exists():
     assert dialog.jieba_status.text == "config.jieba_checking"
 
 
-def test_failed_preferred_probe_requires_direction_reselection_and_shows_reason():
+def test_unavailable_preferred_jieba_still_explains_block():
     probe = Probe("unavailable", "native library requires a newer operating system")
     dialog = _dialog(probe)
 
     dialog._poll_jieba_probe()
     assert not dialog.jieba_checkbox.enabled
     assert not dialog.continue_button.enabled
+    assert dialog.jieba_checkbox.isVisible()
+    assert dialog.jieba_status.isVisible()
+    assert dialog.jieba_details_button.isVisible()
     assert probe.reason in dialog.jieba_checkbox.tooltip
     assert dialog.jieba_details_button.enabled
 
@@ -137,6 +140,19 @@ def test_failed_preferred_probe_requires_direction_reselection_and_shows_reason(
     dialog.combo.value = "t2s"
     dialog._direction_changed()
     assert dialog.continue_button.enabled
+
+
+def test_unavailable_jieba_without_preference_is_hidden():
+    dialog = _dialog(
+        Probe("unavailable", "native library requires a newer operating system"),
+        preferred_jieba=False,
+    )
+
+    dialog._poll_jieba_probe()
+
+    assert not dialog.jieba_checkbox.isVisible()
+    assert not dialog.jieba_status.isVisible()
+    assert not dialog.jieba_details_button.isVisible()
 
 
 def test_user_can_uncheck_preferred_jieba():

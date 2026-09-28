@@ -129,10 +129,16 @@ def test_scope_and_conversion_configuration_share_one_dialog(monkeypatch):
         executed.append(dialog)
         summary, direction_row, tabs, footer = dialog._layout.children
         assert isinstance(tabs, qt.QTabWidget)
+        language_corner = tabs.cornerWidget()
+        assert isinstance(language_corner, qt.QWidget)
+        assert language_corner._layout.children[0].text() == "Interface language"
+        assert isinstance(language_corner._layout.children[1], qt.QComboBox)
+        assert language_corner._layout.children[1].currentData() == "en"
+        assert ("setCornerWidget", (language_corner, qt.Qt.TopRightCorner)) in tabs.calls
         assert summary.text().startswith("This run: 1 XHTML")
         assert direction_row.children[0].text() == "Conversion direction"
         assert direction_row.children[1].currentData() == "s2t"
-        assert len(tabs.calls) == 2
+        assert sum(name == "addTab" for name, _args in tabs.calls) == 2
         assert footer.children[-1].text() == "Analyze and preview"
         assert dialog.windowTitle() == "OpenCCForSigil — Chinese conversion"
         footer.children[-1].click()

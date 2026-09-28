@@ -140,7 +140,7 @@ def enum_value(namespace: Any, name: str) -> Any:
         "WindowType", "Key", "ItemDataRole", "Orientation", "SelectionBehavior",
         "SelectionMode", "ResizeMode", "SizeAdjustPolicy", "ColorRole", "ShortcutContext",
         "TextElideMode", "ToolButtonPopupMode",
-        "ToolButtonStyle", "ArrowType", "ButtonRole",
+        "ToolButtonStyle", "ArrowType", "ButtonRole", "Corner",
     ):
         enum = getattr(namespace, enum_name, None)
         value = getattr(enum, name, None) if enum is not None else None
