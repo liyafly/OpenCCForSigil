@@ -1,0 +1,27 @@
+{
+  "head": "687154f6d628e38bf5b17fe6b05a65a53b16587f",
+  "results": [
+    {
+      "language": "en",
+      "status_filter_item": "Undecided",
+      "status_column": "Undecided",
+      "next_button": "Next undecided",
+      "screenshot": "preview-undecided-filter-en.png"
+    },
+    {
+      "language": "zh-Hans",
+      "status_filter_item": "待决定",
+      "status_column": "待决定",
+      "next_button": "下一项待决定",
+      "screenshot": "preview-undecided-filter-zh-Hans.png"
+    },
+    {
+      "language": "zh-Hant",
+      "status_filter_item": "待決定",
+      "status_column": "待決定",
+      "next_button": "下一項待決定",
+      "screenshot": "preview-undecided-filter-zh-Hant.png"
+    }
+  ],
+  "status": "PASS"
+}
