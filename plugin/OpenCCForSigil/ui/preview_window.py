@@ -1343,6 +1343,9 @@ def _recovery_notice_text(kind: str, value: str, translator: Translator) -> str:
         "rulesets_future_schema": "recovery.rulesets_future_schema",
         "rulesets_recovered": "recovery.rulesets_recovered",
     }.get(kind, "recovery.generic")
+    if kind == "profile_recovered":
+        return translator.text(
+            key, value=value, name=translator.text("profile.default_name"))
     return translator.text(key, value=value)
 
 

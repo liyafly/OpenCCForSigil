@@ -80,6 +80,35 @@ def test_supported_catalogs_have_same_keys_and_render_placeholders():
         assert "a.xhtml" in progress
 
 
+def test_one_term_per_concept():
+    catalogs = load_catalogs()
+
+    for key, value in catalogs["zh-Hans"].items():
+        if key.startswith(("preview.", "a11y.preview.")):
+            normalized = value.replace("待决定", "")
+            assert "待定" not in normalized, key
+            assert "未决" not in normalized, key
+            assert "未处理" not in normalized, key
+
+    for key, value in catalogs["zh-Hant"].items():
+        if key.startswith(("profile.", "history.", "options.")):
+            assert "方案" not in value, key
+
+    for language, catalog in catalogs.items():
+        translator = Translator(language)
+        for key, value in catalog.items():
+            if key.startswith("recovery."):
+                assert "Conservative" not in value, (language, key)
+
+        recovered = preview_window._recovery_notice_text(
+            "profile_recovered", "broken-profile.json", translator)
+        assert recovered == translator.text(
+            "recovery.profile_recovered",
+            value="broken-profile.json",
+            name=translator.text("profile.default_name"),
+        )
+
+
 def test_ruleset_enabled_label_describes_global_scope_not_this_run():
     catalogs = load_catalogs()
     assert "本次" not in catalogs["zh-Hans"]["rules.ruleset_enabled"]
