@@ -329,6 +329,22 @@ def test_protect_rule_wins_over_earlier_overlapping_exact_match():
     assert not any(span.source == "大乾" for span in spans)
 
 
+def test_shorter_override_at_same_start_survives_overlapping_protect():
+    from rules.compiled import CompiledOverlay, lock_spans_compiled
+
+    snapshot = RuleSnapshot.freeze((
+        Rule(id="protect", type="protect", source="乾隆", direction="s2t"),
+        Rule(id="long", source="大乾", target="大幹", direction="s2t"),
+        Rule(id="short", source="大", target="太", direction="s2t"),
+    ))
+    overlay = CompiledOverlay.build(snapshot, config="s2t")
+
+    spans = lock_spans_compiled("大乾隆", overlay)
+
+    assert [span.source for span in spans] == ["大", "乾隆"]
+    assert [span.target for span in spans] == ["太", "乾隆"]
+
+
 def test_exact_rule_still_matches_when_it_does_not_overlap_a_protect_span():
     from rules.compiled import CompiledOverlay, lock_spans_compiled
 

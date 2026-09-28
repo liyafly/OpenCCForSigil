@@ -312,10 +312,16 @@ def source_matches(
         if start < cursor:
             continue
         same_start = override_candidates[start]
-        chosen = _resolve_same_start(same_start) if isinstance(same_start, list) else same_start
-        if (protected_index < len(protected)
-                and protected[protected_index].start < chosen.end):
+        blocker = (protected[protected_index]
+                   if protected_index < len(protected) else None)
+        if blocker is not None and blocker.start <= start:
             continue
+        candidates_at_start = same_start if isinstance(same_start, list) else [same_start]
+        allowed = [candidate for candidate in candidates_at_start
+                   if blocker is None or candidate.end <= blocker.start]
+        if not allowed:
+            continue
+        chosen = _resolve_same_start(allowed) if len(allowed) > 1 else allowed[0]
         if chosen.rule.match_type == "regex":
             budget.note_regex_hit(chosen.rule, chosen.start, fragment_hits)
         budget.note_output(chosen.rule, len(chosen.target), chosen.start, stage="source")
