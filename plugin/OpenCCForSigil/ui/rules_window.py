@@ -1664,9 +1664,9 @@ class RuleManagerDialog:
             return
         text = self.test_input.toPlainText()
         if not text:
-            row = self.table.currentRow()
-            if 0 <= row < len(self.rules):
-                text = self.rules[row].source
+            index = self._rule_index_at_row(self.table.currentRow())
+            if 0 <= index < len(self.rules):
+                text = self.rules[index].source
         if not text:
             self.test_output.setPlainText(self._labels["input_required"])
             return

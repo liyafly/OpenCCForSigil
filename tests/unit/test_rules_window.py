@@ -262,6 +262,41 @@ def test_enter_in_rule_editor_submits_without_opening_ruleset_prompt():
     )
 
 
+@pytest.mark.parametrize(
+    ("visible_rule_ids", "selected_row"),
+    [(["r-a", "r-b"], 1), (["r-b"], 0)],
+)
+def test_inspect_without_input_uses_the_visible_selected_rule(
+    monkeypatch, visible_rule_ids, selected_row,
+):
+    rules = (
+        Rule(id="r-a", direction="s2t", source="甲方", target="甲方案"),
+        Rule(id="r-b", direction="s2t", source="乙方", target="乙方案"),
+    )
+    manager = _manager(rules, row=selected_row)
+    manager._visible_rule_ids = visible_rule_ids
+    manager._official_convert = lambda _config, value: value
+    manager._resolve_editor_draft = lambda: True
+    manager._sandbox_snapshot = lambda: (None, "sandbox")
+    manager.test_input = SimpleNamespace(toPlainText=lambda: "")
+    manager.test_context_label = Edit()
+    manager._comparison_configs = ()
+    manager._ui_preferences = {}
+    manager._save_ui_preferences = None
+    manager.dialog = object()
+    manager._labels["operation_failed"] = "Operation failed"
+    seen = {}
+    monkeypatch.setattr(
+        rules_window,
+        "show_dictionary_inspector",
+        lambda text, **_kwargs: seen.setdefault("text", text),
+    )
+
+    manager._inspect()
+
+    assert seen["text"] == "乙方"
+
+
 def test_reject_confirms_unsaved_rules_and_returning_keeps_window_open():
     manager = RuleManagerDialog(make_with_table(), (), translator=Translator("en"))
     manager.source_edit.setText("术语")
