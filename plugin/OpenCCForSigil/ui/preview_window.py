@@ -2052,9 +2052,9 @@ class _PreviewDialog:
         self._more_action_by_button = {}
         for button in (self.accept_file_button, self.reject_file_button,
                        self.accept_filter_button, self.reject_filter_button,
-                       self.accept_all_button, self.reject_all_button,
-                       self.reset_current_button, self.export_button,
-                       self.batch_button):
+                       self.accept_all_button, self.reject_all_button):
+            button.setVisible(False)
+        for button in (self.reset_current_button, self.export_button, self.batch_button):
             button.setVisible(False)
             if action_type is not None:
                 action = action_type(button.text(), self.more_menu)
@@ -2075,6 +2075,12 @@ class _PreviewDialog:
         layout.addLayout(buttons)
         actions = qt.QHBoxLayout()
         actions.addWidget(self.apply_status_label)
+        self.resolve_remaining_button = qt.QPushButton(
+            self._translator.text("preview.resolve_remaining", count=0))
+        self.resolve_remaining_button.setVisible(False)
+        self.resolve_remaining_button.clicked.connect(
+            lambda: self._open_batch_decision(initial_scope="all"))
+        actions.addWidget(self.resolve_remaining_button)
         actions.addStretch(1)
         for button in (self.back_settings_button, self.cancel_button, self.apply_button):
             actions.addWidget(button)
@@ -2094,7 +2100,8 @@ class _PreviewDialog:
         self.redo_button.clicked.connect(self._redo_preview_action)
         self.reset_current_button.clicked.connect(self._reset_current_to_undecided)
         self.export_button.clicked.connect(self._export_preview)
-        self.batch_button.clicked.connect(self._open_batch_decision)
+        self.batch_button.clicked.connect(
+            lambda: self._open_batch_decision(initial_scope="filtered"))
         self.apply_button.clicked.connect(self._apply)
         self.back_settings_button.clicked.connect(self._back_to_settings)
         self.cancel_button.clicked.connect(self.dialog.reject)
@@ -2122,7 +2129,8 @@ class _PreviewDialog:
                     "reject_all_button",
                     "accept_filter_button", "reject_filter_button", "undo_button",
                     "redo_button", "reset_current_button", "export_button",
-                    "apply_button", "back_settings_button", "cancel_button",
+                    "resolve_remaining_button", "apply_button", "back_settings_button",
+                    "cancel_button",
                 )
             )
         for button in buttons:
@@ -2209,11 +2217,11 @@ class _PreviewDialog:
                 self._translator.text("preview.export_failed", reason=str(error)),
             )
 
-    def _open_batch_decision(self) -> None:
+    def _open_batch_decision(self, initial_scope: str = "filtered") -> None:
         if not self._entries:
             return
         qt = self._qt
-        selected_scope = "filtered"
+        selected_scope = initial_scope
         selected_action = "accept"
         only_undecided = True
         stale = False
@@ -2227,6 +2235,7 @@ class _PreviewDialog:
             dialog = qt.QDialog(self.dialog)
             dialog.setWindowTitle(self._translator.text("preview.batch_title"))
             layout = qt.QVBoxLayout(dialog)
+            form = qt.QFormLayout()
             scope_combo = qt.QComboBox()
             for label_key, value in (
                 ("preview.batch_scope_filtered", "filtered"),
@@ -2243,12 +2252,15 @@ class _PreviewDialog:
                     model_item.setToolTip(
                         self._translator.text("preview.batch_file_unavailable"))
             scope_combo.setCurrentIndex(scope_combo.findData(selected_scope))
-            layout.addWidget(scope_combo)
+            form.addRow(
+                qt.QLabel(self._translator.text("preview.batch_scope_label")), scope_combo)
             action_combo = qt.QComboBox()
             action_combo.addItem(self._translator.text("preview.batch_accept"), "accept")
             action_combo.addItem(self._translator.text("preview.batch_skip"), "skip")
             action_combo.setCurrentIndex(action_combo.findData(selected_action))
-            layout.addWidget(action_combo)
+            form.addRow(
+                qt.QLabel(self._translator.text("preview.batch_action_label")), action_combo)
+            layout.addLayout(form)
             only_check = qt.QCheckBox(self._translator.text("preview.batch_only_undecided"))
             only_check.setChecked(only_undecided)
             layout.addWidget(only_check)
@@ -2281,17 +2293,37 @@ class _PreviewDialog:
 
             def refresh_batch_summary(*_args):
                 batch = build_plan()
-                summary.setText(self._translator.text(
-                    "preview.batch_summary",
-                    changes=batch.change_count,
-                    groups=batch.group_count,
-                    files=batch.file_count,
-                    hidden=batch.hidden_count,
-                    overwrite=batch.overwrite_count,
-                    mixed=batch.excluded_mixed_groups,
-                    language=batch.excluded_language_groups,
-                    other=batch.excluded_other_groups,
-                ))
+                summary_parts = []
+                if batch.change_count:
+                    action = self._translator.text(
+                        "preview.batch_action_accept"
+                        if action_combo.currentData() != "skip"
+                        else "preview.batch_action_skip")
+                    if batch.change_count == 1:
+                        summary_key = "preview.batch_summary_main_one"
+                    elif batch.file_count == 1:
+                        summary_key = "preview.batch_summary_main_many_one_file"
+                    else:
+                        summary_key = "preview.batch_summary_main_many_files"
+                    summary_parts.append(self._translator.text(
+                        summary_key,
+                        action=action,
+                        changes=batch.change_count,
+                        files=batch.file_count,
+                    ))
+                else:
+                    summary_parts.append(self._translator.text("preview.batch_summary_main_none"))
+                for key, count in (
+                    ("preview.batch_summary_part_groups", batch.group_count),
+                    ("preview.batch_summary_part_hidden", batch.hidden_count),
+                    ("preview.batch_summary_part_overwrite", batch.overwrite_count),
+                    ("preview.batch_summary_part_mixed", batch.excluded_mixed_groups),
+                    ("preview.batch_summary_part_language", batch.excluded_language_groups),
+                    ("preview.batch_summary_part_other", batch.excluded_other_groups),
+                ):
+                    if count:
+                        summary_parts.append(self._translator.text(key, count=count))
+                summary.setText(" ".join(summary_parts))
                 confirm.setText(self._translator.text(
                     "preview.batch_confirm_overwrite"
                     if batch.overwrite_count and not only_check.isChecked()
@@ -2968,6 +3000,13 @@ class _PreviewDialog:
         set_tooltip = getattr(self.apply_button, "setToolTip", None)
         if callable(set_tooltip):
             set_tooltip("" if complete else self._translator.text("preview.incomplete"))
+        resolve_remaining = getattr(self, "resolve_remaining_button", None)
+        if resolve_remaining is not None:
+            remaining = totals["undecided"]
+            resolve_remaining.setText(self._translator.text(
+                "preview.resolve_remaining", count=remaining))
+            resolve_remaining.setVisible(remaining > 0)
+            resolve_remaining.setEnabled(remaining > 0)
 
     def _refresh_file_filter_counts(self) -> None:
         combo = getattr(self, "file_filter", None)

@@ -90,6 +90,44 @@ def test_preview_keeps_primary_review_actions_visible_and_collapses_secondary_fi
     assert dialog.more_filters_button.text() == "More filters (0)"
 
 
+def test_resolve_remaining_button_tracks_undecided_count():
+    changes = tuple(TokenChange(
+        source="源", target="目标", span=SourceSpan(index, index + 1),
+        rule_source="test-rule", change_id=f"change-{index}",
+        file_id="chapter.xhtml", category="character", risk="LOW",
+    ) for index in range(40))
+    preview = PreviewSession(ConversionPlan(source_sha256="", changes=changes))
+    planned = (SimpleNamespace(
+        source=SimpleNamespace(file_id="chapter.xhtml", href="Text/chapter.xhtml",
+                               document_kind="xhtml"),
+        plan=preview.plan,
+    ),)
+    dialog = _PreviewDialog(
+        make_with_table(), planned, (preview,), Translator("en"), None)
+
+    assert dialog.resolve_remaining_button.isVisible()
+    assert "40" in dialog.resolve_remaining_button.text()
+
+    for _ in changes:
+        dialog._accept_this()
+
+    assert not dialog.resolve_remaining_button.isVisible()
+
+
+def test_more_menu_has_single_batch_path():
+    dialog, _preview, _model = _preview_dialog(change_count=1, current_row=0)
+    actions = [action.text() for action in dialog._more_actions]
+    translator = Translator("en")
+
+    for key in (
+        "preview.accept_file", "preview.skip_file",
+        "preview.accept_filter", "preview.skip_filter",
+        "preview.accept_all", "preview.skip_all",
+    ):
+        assert translator.text(key) not in actions
+    assert actions.count(translator.text("preview.batch_decide")) == 1
+
+
 def test_preview_detail_uses_translated_label_separator():
     translator = Translator("zh-Hans")
     dialog, _preview, _model = _preview_dialog(

@@ -59,7 +59,10 @@ def exercise_batch_decisions(qt, app, language, output_dir):
             if scope is not None:
                 combo = combos[0]
                 combo.setCurrentIndex(combo.findData(scope))
-            summary_prefix = translator.text("preview.batch_summary").split("{")[0].strip()
+            summary_prefix = translator.text(
+                "preview.batch_summary_main_many_files",
+                action="", changes=1, files=1,
+            ).split("1")[0].strip()
             details["summary"] = next(label.text() for label in labels
                                        if label.text().startswith(summary_prefix))
             confirm_button = next(button for button in buttons
@@ -98,6 +101,73 @@ def exercise_batch_decisions(qt, app, language, output_dir):
                and decision.value.startswith("accept") for change in plain) == 2
     assert sum((decision := previews[0].decision(change.change_id)) is not None
                and decision.value.startswith("reject") for change in plain) == 3
+    dialog.dialog.hide()
+
+    remaining_changes = [TokenChange(
+        source="a", target="b", span=SourceSpan(0, 1),
+        rule_source="fixture", change_id=f"remaining-{index}",
+        file_id="chapter",
+    ) for index in range(10)]
+    dialog, previews = make_dialog(remaining_changes)
+    for change in remaining_changes[:2]:
+        previews[0].accept_this(change.change_id)
+    for change in remaining_changes[2:5]:
+        previews[0].reject_this(change.change_id)
+    dialog._recompute_counts()
+    dialog._update_summary()
+    dialog.dialog.show()
+    dialog.dialog.activateWindow()
+    app.processEvents()
+    assert dialog.resolve_remaining_button.isVisible()
+    assert "5" in dialog.resolve_remaining_button.text()
+    menu_labels = [action.text() for action in dialog.more_menu.actions()]
+    assert translator.text("preview.batch_decide") in menu_labels
+    assert menu_labels.count(translator.text("preview.batch_decide")) == 1
+    assert not any(translator.text(key) in menu_labels for key in (
+        "preview.accept_file", "preview.skip_file", "preview.accept_filter",
+        "preview.skip_filter", "preview.accept_all", "preview.skip_all",
+    ))
+    assert sum(action.isVisible() for action in dialog.more_menu.actions()) <= 4
+    dialog.dialog.grab().save(str(output_dir / f"resolve-remaining-{language}.png"))
+    resolve_details = {}
+
+    def resolve_remaining_once():
+        modal = app.activeModalWidget()
+        assert modal is not None
+        combos = modal.findChildren(qt.QComboBox)
+        check = modal.findChild(qt.QCheckBox)
+        assert len(combos) == 2 and check is not None and check.isChecked()
+        assert combos[0].currentData() == "all"
+        expected_summary = translator.text(
+            "preview.batch_summary_main_many_one_file",
+            action=translator.text("preview.batch_action_accept"),
+            changes=5,
+            files=1,
+        )
+        assert expected_summary in [
+            label.text() for label in modal.findChildren(qt.QLabel)
+        ]
+        resolve_details["summary"] = expected_summary
+        buttons = modal.findChildren(qt.QPushButton)
+        confirm_button = next(button for button in buttons if button.text().startswith(
+            translator.text("preview.batch_confirm").split("{")[0])
+            or button.text().startswith(
+                translator.text("preview.batch_confirm_overwrite").split("{")[0]))
+        confirm_button.click()
+
+    QTimer.singleShot(0, resolve_remaining_once)
+    dialog.resolve_remaining_button.click()
+    app.processEvents()
+    assert all(previews[0].decision(change.change_id).value.startswith("accept")
+               for change in remaining_changes[:2] + remaining_changes[5:])
+    assert all(previews[0].decision(change.change_id).value.startswith("reject")
+               for change in remaining_changes[2:5])
+    assert dialog.apply_button.isEnabled()
+    assert len(dialog._undo_stack) == 1
+    assert resolve_details["summary"]
+    dialog._undo_preview_action()
+    assert all(previews[0].decision(change.change_id) is None
+               for change in remaining_changes[5:])
     dialog.dialog.hide()
 
     grouped = [TokenChange(source="a", target="b", span=SourceSpan(0, 1),
@@ -183,6 +253,7 @@ def exercise_batch_decisions(qt, app, language, output_dir):
     dialog.dialog.hide()
 
     return {"B1": "real QAction, exact counts and one-step Undo",
+            "UXS-03": "all-scope remaining button preserves manual skips; apply unlocks after one confirmation",
             "B3": "Cancel preserved decisions; filtered hit expanded group and Undo restored",
             "B5": "file scope included local rules and excluded language group; all scope included it",
             "B10": "stale decision revision refreshed and required a second confirmation"}
@@ -238,7 +309,7 @@ def exercise_group_actions(qt, app, language):
     assert all(previews[index].decision(change.change_id).value == "accept_this"
                for index, change in enumerate((language_changes[0], language_changes[1])))
     assert all(previews[0].decision(change.change_id) is None for change in rule_changes)
-    dialog._more_action_by_button[dialog.accept_file_button].trigger()
+    dialog.accept_file_button.click()
     app.processEvents()
     assert all(previews[0].decision(change.change_id).value == "accept_this"
                for change in rule_changes)
@@ -262,7 +333,7 @@ def exercise_group_actions(qt, app, language):
     app.processEvents()
     assert all(rule_only._previews[0].decision(change.change_id) is None
                for change in rule_changes)
-    rule_only._more_action_by_button[rule_only.accept_file_button].trigger()
+    rule_only.accept_file_button.click()
     app.processEvents()
     assert all(rule_only._previews[0].decision(change.change_id).value == "accept_this"
                for change in rule_changes)
@@ -420,7 +491,7 @@ def exercise_filters(qt, app, language, output_dir):
     loop = QEventLoop()
     QTimer.singleShot(240, loop.quit)
     loop.exec()
-    assert not dialog._more_action_by_button[dialog.accept_filter_button].isEnabled()
+    assert not dialog.accept_filter_button.isEnabled()
     assert dialog.filter_count_label.text() == translator.text(
         "preview.visible_count", visible=0, total=3)
     assert dialog.detail.toPlainText() == translator.text("preview.no_filter_matches")

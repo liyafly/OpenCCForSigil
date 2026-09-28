@@ -55,6 +55,61 @@ def test_b1_only_undecided_default_preserves_manual_accepts_and_skips():
                for preview, change in entries) == 3
 
 
+def test_resolve_remaining_preserves_manual_skips(monkeypatch):
+    from types import SimpleNamespace
+
+    from tests.support.fake_qt import make_with_table
+    from ui import preview_window
+    from ui.i18n import Translator
+    from ui.preview_window import _PreviewDialog
+
+    entries, sessions, _groups, _group_files = _entries(
+        [(f"c{i}", "book", None) for i in range(10)])
+    for preview, change in entries[:2]:
+        preview.accept_this(change.change_id)
+    for preview, change in entries[2:5]:
+        preview.reject_this(change.change_id)
+    planned = (SimpleNamespace(
+        source=SimpleNamespace(
+            file_id="book", href="Text/book.xhtml", document_kind="xhtml"),
+        plan=sessions[0].plan,
+    ),)
+    dialog = _PreviewDialog(
+        make_with_table(), planned, sessions, Translator("en"), None)
+
+    def confirm_batch(batch_dialog):
+        children = batch_dialog._layout.children
+        form = next(item for item in children if isinstance(item, dialog._qt.QFormLayout))
+        scope_label, scope_combo = form.children[0]
+        action_label, action_combo = form.children[1]
+        only_check = next(item for item in children if isinstance(item, dialog._qt.QCheckBox))
+        summary = children[2]
+        confirm = children[-1].children[-1]
+
+        assert scope_label.text() == "Scope"
+        assert action_label.text() == "Action"
+        assert scope_combo.currentData() == "all"
+        assert action_combo.currentData() == "accept"
+        assert only_check.isChecked()
+        assert summary.text() == "Will accept 5 changes in one file."
+        assert "0" not in summary.text()
+
+        only_check.setChecked(False)
+        assert "Existing decisions to replace: 3." in summary.text()
+        assert confirm.text() == "Confirm and overwrite 3 decisions (8 changes)"
+        only_check.setChecked(True)
+        return 1
+
+    monkeypatch.setattr(preview_window, "exec_dialog", confirm_batch)
+    dialog._open_batch_decision(initial_scope="all")
+
+    assert sum(preview.decision(change.change_id) is PreviewDecision.ACCEPT_THIS
+               for preview, change in entries) == 7
+    assert sum(preview.decision(change.change_id) is PreviewDecision.REJECT_THIS
+               for preview, change in entries) == 3
+    assert len(dialog._undo_stack) == 1
+
+
 def test_b2_explicit_overwrite_changes_eight_and_counts_three_overrides():
     entries, _sessions, groups, group_files = _entries(
         [(f"c{i}", "book", None) for i in range(10)])
