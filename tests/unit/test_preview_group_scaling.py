@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from core.models import ConversionPlan, SourceSpan, TokenChange
 from core.preview import PreviewSession
 from tests.support.fake_qt import make_with_table
+from tests.support.preview_batch import apply_batch_decision
 from ui.i18n import Translator
 from ui.preview_window import _PreviewDialog
 
@@ -50,11 +51,11 @@ def _grouped_dialog(group_count):
     return dialog, preview
 
 
-def test_bulk_deciding_two_thousand_rule_groups_scans_the_preview_linearly():
+def test_batch_deciding_two_thousand_rule_groups_scans_the_preview_linearly(monkeypatch):
     group_count = 2_000
     dialog, preview = _grouped_dialog(group_count)
 
-    dialog._decide_filtered(True)
+    apply_batch_decision(monkeypatch, dialog, scope="filtered")
 
     assert preview.summary() == {
         "total": group_count * 2,
@@ -78,7 +79,7 @@ def test_deciding_one_occurrence_does_not_visit_unrelated_preview_entries():
     assert preview.decision("change-0") is None
 
 
-def test_accept_file_visits_only_that_file_and_incremental_counts_match_recompute(
+def test_file_batch_visits_only_that_file_and_incremental_counts_match_recompute(
     monkeypatch,
 ):
     file_count = 100
@@ -108,6 +109,8 @@ def test_accept_file_visits_only_that_file_and_incremental_counts_match_recomput
     dialog = _PreviewDialog(
         make_with_table(), tuple(planned), tuple(previews), Translator("en"))
     dialog._entries = VisitCountingEntries(dialog._entries)
+    dialog._entries_by_file["chapter-0.xhtml"] = VisitCountingEntries(
+        dialog._entries_by_file["chapter-0.xhtml"])
     decision_calls = 0
     original_decision = PreviewSession.decision
 
@@ -117,10 +120,11 @@ def test_accept_file_visits_only_that_file_and_incremental_counts_match_recomput
         return original_decision(preview, change_id)
 
     monkeypatch.setattr(PreviewSession, "decision", counted_decision)
-    dialog._accept_file()
+    dialog._set_current_row(0)
+    apply_batch_decision(monkeypatch, dialog, scope="file")
 
     assert decision_calls <= 10_000
-    assert dialog._entries.visits <= 3 * changes_per_file + 50
+    assert dialog._entries_by_file["chapter-0.xhtml"].visits <= 3 * changes_per_file + 50
     assert dialog._totals == {
         "total": file_count * changes_per_file,
         "accepted": changes_per_file,

@@ -23,6 +23,49 @@ from ui.preview_window import _PreviewDialog  # noqa: E402
 from ui.qt import ensure_application, load_qt  # noqa: E402
 
 
+def complete_batch_dialog(
+    qt, app, translator, dialog, *, scope=None, confirm=True,
+    output_dir=None, screenshot=None,
+):
+    action = dialog._more_action_by_button[dialog.batch_button]
+    assert action.isEnabled()
+    details = {}
+
+    def interact():
+        modal = app.activeModalWidget()
+        assert modal is not None
+        combos = modal.findChildren(qt.QComboBox)
+        check = modal.findChild(qt.QCheckBox)
+        labels = modal.findChildren(qt.QLabel)
+        buttons = modal.findChildren(qt.QPushButton)
+        assert len(combos) == 2 and check is not None and check.isChecked()
+        if screenshot is not None:
+            app.processEvents()
+            modal.grab().save(str(output_dir / screenshot))
+        if scope is not None:
+            combos[0].setCurrentIndex(combos[0].findData(scope))
+        summary_prefix = translator.text(
+            "preview.batch_summary_main_many_files",
+            action="", changes=1, files=1,
+        ).split("1")[0].strip()
+        details["summary"] = next(label.text() for label in labels
+                                   if label.text().startswith(summary_prefix))
+        confirm_button = next(button for button in buttons
+                              if button.text().startswith(
+                                  translator.text("preview.batch_confirm").split("{")[0])
+                              or button.text().startswith(
+                                  translator.text("preview.batch_confirm_overwrite").split("{")[0]))
+        details["enabled"] = confirm_button.isEnabled()
+        (confirm_button if confirm else next(
+            button for button in buttons
+            if button.text() == translator.text("common.cancel"))).click()
+
+    QTimer.singleShot(0, interact)
+    action.trigger()
+    app.processEvents()
+    return details
+
+
 def exercise_batch_decisions(qt, app, language, output_dir):
     translator = Translator(language)
 
@@ -40,46 +83,6 @@ def exercise_batch_decisions(qt, app, language, output_dir):
         previews = tuple(PreviewSession(plan) for plan in plans)
         return _PreviewDialog(qt, planned, previews, translator), previews
 
-    def complete(dialog, *, scope=None, confirm=True, screenshot=None):
-        action = dialog._more_action_by_button[dialog.batch_button]
-        assert action.isEnabled()
-        details = {}
-
-        def interact():
-            modal = app.activeModalWidget()
-            assert modal is not None
-            combos = modal.findChildren(qt.QComboBox)
-            check = modal.findChild(qt.QCheckBox)
-            labels = modal.findChildren(qt.QLabel)
-            buttons = modal.findChildren(qt.QPushButton)
-            assert len(combos) == 2 and check is not None and check.isChecked()
-            if screenshot is not None:
-                app.processEvents()
-                modal.grab().save(str(output_dir / screenshot))
-            if scope is not None:
-                combo = combos[0]
-                combo.setCurrentIndex(combo.findData(scope))
-            summary_prefix = translator.text(
-                "preview.batch_summary_main_many_files",
-                action="", changes=1, files=1,
-            ).split("1")[0].strip()
-            details["summary"] = next(label.text() for label in labels
-                                       if label.text().startswith(summary_prefix))
-            confirm_button = next(button for button in buttons
-                                  if button.text().startswith(
-                                      translator.text("preview.batch_confirm").split("{")[0])
-                                  or button.text().startswith(
-                                      translator.text("preview.batch_confirm_overwrite").split("{")[0]))
-            details["enabled"] = confirm_button.isEnabled()
-            (confirm_button if confirm else next(
-                button for button in buttons
-                if button.text() == translator.text("common.cancel"))).click()
-
-        QTimer.singleShot(0, interact)
-        action.trigger()
-        app.processEvents()
-        return details
-
     plain = [TokenChange(source="a", target="b", span=SourceSpan(0, 1),
                          rule_source="fixture", change_id=f"b1-{i}",
                          file_id="chapter") for i in range(10)]
@@ -89,7 +92,9 @@ def exercise_batch_decisions(qt, app, language, output_dir):
     for change in plain[2:5]:
         previews[0].reject_this(change.change_id)
     dialog._recompute_counts()
-    b1 = complete(dialog, screenshot=f"batch-b1-dialog-{language}.png")
+    b1 = complete_batch_dialog(
+        qt, app, translator, dialog,
+        output_dir=output_dir, screenshot=f"batch-b1-dialog-{language}.png")
     assert b1["enabled"] and "5" in b1["summary"]
     assert sum((decision := previews[0].decision(change.change_id)) is not None
                and decision.value.startswith("accept") for change in plain) == 7
@@ -123,10 +128,7 @@ def exercise_batch_decisions(qt, app, language, output_dir):
     menu_labels = [action.text() for action in dialog.more_menu.actions()]
     assert translator.text("preview.batch_decide") in menu_labels
     assert menu_labels.count(translator.text("preview.batch_decide")) == 1
-    assert not any(translator.text(key) in menu_labels for key in (
-        "preview.accept_file", "preview.skip_file", "preview.accept_filter",
-        "preview.skip_filter", "preview.accept_all", "preview.skip_all",
-    ))
+    assert menu_labels.count(translator.text("preview.batch_decide")) == 1
     assert sum(action.isVisible() for action in dialog.more_menu.actions()) <= 4
     dialog.dialog.grab().save(str(output_dir / f"resolve-remaining-{language}.png"))
     resolve_details = {}
@@ -176,11 +178,11 @@ def exercise_batch_decisions(qt, app, language, output_dir):
                for i in range(3)]
     dialog, previews = make_dialog(grouped)
     dialog._visible_entries_cache = (dialog._entries[0],)
-    cancelled = complete(dialog, confirm=False)
+    cancelled = complete_batch_dialog(qt, app, translator, dialog, confirm=False)
     assert cancelled["enabled"] and "2" in cancelled["summary"]
     assert all(preview.decision(change.change_id) is None
                for preview, change in dialog._entries)
-    b3 = complete(dialog)
+    b3 = complete_batch_dialog(qt, app, translator, dialog)
     assert b3["enabled"] and "2" in b3["summary"]
     assert all(preview.decision(change.change_id).value.startswith("accept")
                for preview, change in dialog._entries)
@@ -204,12 +206,12 @@ def exercise_batch_decisions(qt, app, language, output_dir):
                     file_id="content.opf", group_id="language_metadata"),
     ]
     dialog, previews = make_dialog(b5_changes)
-    b5_file = complete(dialog, scope="file")
+    b5_file = complete_batch_dialog(qt, app, translator, dialog, scope="file")
     assert b5_file["enabled"]
     assert sum(preview.summary()["accepted"] for preview in previews) == 2
     assert sum(preview.summary()["undecided"] for preview in previews) == 2
     dialog._undo_preview_action()
-    b5_all = complete(dialog, scope="all")
+    b5_all = complete_batch_dialog(qt, app, translator, dialog, scope="all")
     assert b5_all["enabled"]
     assert sum(preview.summary()["accepted"] for preview in previews) == 4
     dialog.dialog.hide()
@@ -309,7 +311,7 @@ def exercise_group_actions(qt, app, language):
     assert all(previews[index].decision(change.change_id).value == "accept_this"
                for index, change in enumerate((language_changes[0], language_changes[1])))
     assert all(previews[0].decision(change.change_id) is None for change in rule_changes)
-    dialog.accept_file_button.click()
+    complete_batch_dialog(qt, app, translator, dialog, scope="file")
     app.processEvents()
     assert all(previews[0].decision(change.change_id).value == "accept_this"
                for change in rule_changes)
@@ -333,7 +335,7 @@ def exercise_group_actions(qt, app, language):
     app.processEvents()
     assert all(rule_only._previews[0].decision(change.change_id) is None
                for change in rule_changes)
-    rule_only.accept_file_button.click()
+    complete_batch_dialog(qt, app, translator, rule_only, scope="file")
     app.processEvents()
     assert all(rule_only._previews[0].decision(change.change_id).value == "accept_this"
                for change in rule_changes)
@@ -367,18 +369,14 @@ def exercise_group_actions(qt, app, language):
     filtered.dialog.show()
     app.processEvents()
 
-    def click_modal(index):
-        modal = app.activeModalWidget()
-        assert isinstance(modal, QMessageBox), modal
-        modal.buttons()[index].click()
-
-    QTimer.singleShot(0, lambda: click_modal(1))
-    filtered._decide_filtered(True)
+    cancelled = complete_batch_dialog(
+        qt, app, translator, filtered, scope="filtered", confirm=False)
+    assert translator.text(
+        "preview.batch_summary_part_hidden", count=1) in cancelled["summary"]
     app.processEvents()
     assert all(preview.decision(preview.changes[0].change_id) is None
                for preview in filtered_previews)
-    QTimer.singleShot(0, lambda: click_modal(0))
-    filtered._decide_filtered(True)
+    complete_batch_dialog(qt, app, translator, filtered, scope="filtered")
     app.processEvents()
     assert all(preview.decision(preview.changes[0].change_id).value == "accept_this"
                for preview in filtered_previews)
@@ -387,9 +385,9 @@ def exercise_group_actions(qt, app, language):
         "language_group_label": group_label,
         "language_group_accepts_both_files": True,
         "language_button_leaves_rule_group_pending": True,
-        "accept_file_completes_local_rule_group": True,
+        "file_batch_completes_local_rule_group": True,
         "rule_only_language_button_hidden_and_inert": True,
-        "hidden_group_prompt_cancel_preserves_and_confirm_expands": True,
+        "batch_hidden_group_summary_cancel_preserves_and_confirm_expands": True,
     }
 
 
@@ -491,7 +489,30 @@ def exercise_filters(qt, app, language, output_dir):
     loop = QEventLoop()
     QTimer.singleShot(240, loop.quit)
     loop.exec()
-    assert not dialog.accept_filter_button.isEnabled()
+    batch_state = {}
+
+    def inspect_empty_filtered_batch():
+        modal = app.activeModalWidget()
+        assert modal is not None
+        buttons = modal.findChildren(qt.QPushButton)
+        confirm_prefixes = tuple(
+            translator.text(key).split("{")[0]
+            for key in (
+                "preview.batch_confirm", "preview.batch_confirm_overwrite",
+                "preview.batch_confirm_none",
+            )
+        )
+        confirm = next(button for button in buttons
+                       if any(button.text().startswith(prefix)
+                              for prefix in confirm_prefixes))
+        batch_state["enabled"] = confirm.isEnabled()
+        next(button for button in buttons
+             if button.text() == translator.text("common.cancel")).click()
+
+    QTimer.singleShot(0, inspect_empty_filtered_batch)
+    dialog.batch_button.click()
+    app.processEvents()
+    assert batch_state["enabled"] is False
     assert dialog.filter_count_label.text() == translator.text(
         "preview.visible_count", visible=0, total=3)
     assert dialog.detail.toPlainText() == translator.text("preview.no_filter_matches")

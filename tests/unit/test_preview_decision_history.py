@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from core.models import ConversionPlan, SourceSpan, TokenChange
 from core.preview import PreviewDecision, PreviewError, PreviewSession
 from tests.support.fake_qt import make_with_table
+from tests.support.preview_batch import apply_batch_decision
 from ui import preview_window
 from ui.i18n import Translator
 from ui.preview_window import _PreviewDialog
@@ -135,12 +136,15 @@ def test_occurrence_group_accept_reset_undo_and_redo_are_atomic():
                for decision in _decisions(previews).values())
 
 
-def test_file_filter_and_all_operations_can_be_undone_redone_and_new_action_clears_redo():
+def test_file_filter_and_all_operations_can_be_undone_redone_and_new_action_clears_redo(
+    monkeypatch,
+):
     dialog, previews = _dialog((
         _change("chapter-1"), _change("chapter-2", source="丙"),
         _change("other-1", file_id="other.xhtml", source="丁"),
     ))
-    dialog._accept_file()
+    dialog._set_current_row(0)
+    apply_batch_decision(monkeypatch, dialog, scope="file")
     snapshot = _decisions(previews)
     assert snapshot[("chapter.xhtml", "chapter-1")] == PreviewDecision.ACCEPT_THIS
     assert snapshot[("chapter.xhtml", "chapter-2")] == PreviewDecision.ACCEPT_THIS
@@ -153,7 +157,7 @@ def test_file_filter_and_all_operations_can_be_undone_redone_and_new_action_clea
     dialog._undo_preview_action()
     dialog._accept_this()
     assert dialog._redo_stack == []
-    dialog._accept_all()
+    apply_batch_decision(monkeypatch, dialog, scope="all")
     all_accepted = _decisions(previews)
     dialog._undo_preview_action()
     assert _decisions(previews) == {
@@ -165,7 +169,7 @@ def test_file_filter_and_all_operations_can_be_undone_redone_and_new_action_clea
     assert _decisions(previews) == all_accepted
 
 
-def test_bulk_history_snapshot_restores_mixed_prior_decisions_as_one_operation():
+def test_batch_history_restores_mixed_prior_decisions_as_one_operation(monkeypatch):
     dialog, previews = _dialog((
         _change("chapter-1"), _change("chapter-2", source="丙"),
         _change("other-1", file_id="other.xhtml", source="丁"),
@@ -175,7 +179,8 @@ def test_bulk_history_snapshot_restores_mixed_prior_decisions_as_one_operation()
     dialog._clear_decision_history()
     before = _decisions(previews)
 
-    dialog._accept_all()
+    apply_batch_decision(
+        monkeypatch, dialog, scope="all", only_undecided=False)
     after = _decisions(previews)
     assert len(dialog._undo_stack) == 1
     assert len(dialog._undo_stack[0].changes) == 2
@@ -215,7 +220,7 @@ def test_scoped_bulk_history_restores_exact_decisions_as_one_compact_operation()
                for decision in _decisions(previews).values()) == 3
 
 
-def test_cancelled_batch_keeps_redo_but_new_batch_action_clears_it():
+def test_cancelled_batch_keeps_redo_but_new_batch_action_clears_it(monkeypatch):
     dialog, previews = _dialog((_change("one"), _change("two", source="丙")))
     dialog._accept_this()
     dialog._undo_preview_action()
@@ -223,22 +228,19 @@ def test_cancelled_batch_keeps_redo_but_new_batch_action_clears_it():
     decisions_before = _decisions(previews)
 
     # Opening and cancelling the dialog only plans changes; it records nothing.
-    dialog._record_scoped_bulk_decision_action((), PreviewDecision.ACCEPT_THIS, 0)
+    apply_batch_decision(monkeypatch, dialog, scope="all", confirm=False)
     assert tuple(dialog._redo_stack) == redo_before
     assert _decisions(previews) == decisions_before
 
-    compact = dialog._capture_compact_decisions(dialog._entries)
-    for preview, change in dialog._entries:
-        preview.reject_this(change.change_id)
-    dialog._record_scoped_bulk_decision_action(
-        compact, PreviewDecision.REJECT_THIS, len(dialog._entries))
+    apply_batch_decision(
+        monkeypatch, dialog, scope="all", action="skip", only_undecided=False)
     assert dialog._redo_stack == []
 
 
-def test_filtered_decision_undo_restores_status_filter_visibility():
+def test_filtered_decision_undo_restores_status_filter_visibility(monkeypatch):
     dialog, previews = _dialog((_change("one"), _change("two", source="丙")))
     dialog.status_filter.setCurrentIndex(dialog.status_filter.findData("undecided"))
-    dialog._decide_filtered(True)
+    apply_batch_decision(monkeypatch, dialog, scope="filtered")
     assert all(preview.summary()["accepted"] == 2 for preview in previews)
     assert dialog._visible_entries_cache == ()
 
@@ -280,7 +282,8 @@ def test_history_operation_and_record_limits_evict_whole_oldest_operations(monke
     monkeypatch.setattr(preview_window, "_MAX_DECISION_HISTORY_CHANGES", 2)
     oversized, previews = _dialog(tuple(_change(f"big-{i}") for i in range(3)))
     oversized._accept_this()
-    oversized._reject_all()
+    apply_batch_decision(
+        monkeypatch, oversized, scope="all", action="skip", only_undecided=False)
     assert len(oversized._undo_stack) == 1
     assert len(oversized._undo_stack[0].changes) == 3
     assert "history limit" in oversized._history_feedback.lower()
@@ -290,7 +293,7 @@ def test_history_operation_and_record_limits_evict_whole_oldest_operations(monke
     assert _decisions(previews)[("chapter.xhtml", "big-2")] is None
 
 
-def test_history_clears_only_after_exit_is_confirmed_or_apply_succeeds():
+def test_history_clears_only_after_exit_is_confirmed_or_apply_succeeds(monkeypatch):
     dialog, previews = _dialog((_change("one"),))
     dialog._accept_this()
     dialog._confirm_discard_decisions = lambda: False
@@ -302,7 +305,7 @@ def test_history_clears_only_after_exit_is_confirmed_or_apply_succeeds():
     assert not dialog._undo_stack and not dialog._redo_stack
 
     applying, previews = _dialog((_change("apply"),))
-    applying._accept_all()
+    apply_batch_decision(monkeypatch, applying, scope="all")
     applying._checkpoint_confirm = lambda: True
     applying._apply()
     assert applying.applied

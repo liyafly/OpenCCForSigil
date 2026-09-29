@@ -116,11 +116,40 @@ def main() -> int:
     dialog._clear_filters()
     app.processEvents()
 
+    def resolve_batch(scope, *, action="accept", only_undecided=False):
+        def confirm_batch():
+            modal = app.activeModalWidget()
+            assert modal is not None
+            combos = modal.findChildren(qt.QComboBox)
+            only_check = modal.findChild(qt.QCheckBox)
+            assert len(combos) == 2 and only_check is not None
+            combos[0].setCurrentIndex(combos[0].findData(scope))
+            combos[1].setCurrentIndex(combos[1].findData(action))
+            only_check.setChecked(only_undecided)
+            prefixes = tuple(
+                translator.text(key).split("{")[0]
+                for key in (
+                    "preview.batch_confirm", "preview.batch_confirm_overwrite",
+                    "preview.batch_confirm_none",
+                )
+            )
+            buttons = modal.findChildren(qt.QPushButton)
+            confirm = next(button for button in buttons
+                           if any(button.text().startswith(prefix) for prefix in prefixes))
+            if confirm.isEnabled():
+                confirm.click()
+            else:
+                next(button for button in buttons
+                     if button.text() == translator.text("common.cancel")).click()
+
+        qt.QTimer.singleShot(0, confirm_batch)
+        dialog._open_batch_decision(initial_scope=scope)
+
     dialog._set_current_row(len(dialog._entries) // 2)
-    measure("accept_file", dialog._accept_file, repeats=3)
-    measure("undo_after_accept_file", dialog._undo_preview_action, repeats=1)
-    measure("accept_all", dialog._accept_all, repeats=1)
-    measure("undo_accept_all", dialog._undo_preview_action, repeats=1)
+    measure("batch_current_file", lambda: resolve_batch("file"), repeats=3)
+    measure("undo_after_current_file_batch", dialog._undo_preview_action, repeats=1)
+    measure("batch_all_changes", lambda: resolve_batch("all"), repeats=1)
+    measure("undo_all_changes_batch", dialog._undo_preview_action, repeats=1)
 
     # Attach synthetic two-row rule groups to otherwise unchanged preview rows.
     # This isolates the grouped-decision path while retaining the full book size.

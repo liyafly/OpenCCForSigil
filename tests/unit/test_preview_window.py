@@ -4,6 +4,7 @@ from core.models import ConversionPlan, Diagnostic, SourceSpan, TextTarget, Toke
 from core.preview import PreviewSession
 from core.workflow import ConversionWorkflow
 from tests.support.fake_qt import make_with_table
+from tests.support.preview_batch import apply_batch_decision
 from ui import preview_window
 from ui.preview_window import (
     _PreviewDialog,
@@ -83,8 +84,11 @@ def test_preview_keeps_primary_review_actions_visible_and_collapses_secondary_fi
     assert dialog.undo_button.isVisible()
     assert dialog.redo_button.isVisible()
     assert dialog.more_button.isVisible()
-    assert not dialog.accept_all_button.isVisible()
-    assert not dialog.accept_file_button.isVisible()
+    for name in (
+        "accept_file_button", "reject_file_button", "accept_all_button",
+        "reject_all_button", "accept_filter_button", "reject_filter_button",
+    ):
+        assert not hasattr(dialog, name)
     assert not dialog.export_button.isVisible()
     assert not dialog.extra_filters.isVisible()
     assert dialog.more_filters_button.text() == "More filters (0)"
@@ -119,12 +123,13 @@ def test_more_menu_has_single_batch_path():
     actions = [action.text() for action in dialog._more_actions]
     translator = Translator("en")
 
-    for key in (
-        "preview.accept_file", "preview.skip_file",
-        "preview.accept_filter", "preview.skip_filter",
-        "preview.accept_all", "preview.skip_all",
-    ):
-        assert translator.text(key) not in actions
+    assert actions == [
+        translator.text("preview.reset_current"),
+        translator.text("preview.export"),
+        translator.text("preview.batch_decide"),
+        translator.text("preview.accept_language_group"),
+        translator.text("preview.skip_language_group"),
+    ]
     assert actions.count(translator.text("preview.batch_decide")) == 1
 
 
@@ -257,6 +262,7 @@ def _table_dialog(entries, previews, *, current_row=0, category="all", file_id=N
     qt = make_with_table()
     dialog = object.__new__(_PreviewDialog)
     dialog._qt = qt
+    dialog.dialog = qt.QDialog()
     dialog._translator = Translator(language)
     dialog._previews = tuple(previews)
     dialog._entries = tuple(entries)
@@ -337,9 +343,6 @@ def test_preview_dialog_buttons_are_never_default_or_auto_default():
 
     buttons = (
         dialog.accept_this_button, dialog.reject_this_button,
-        dialog.accept_file_button, dialog.reject_file_button,
-        dialog.accept_all_button, dialog.reject_all_button,
-        dialog.accept_filter_button, dialog.reject_filter_button,
         dialog.undo_button, dialog.redo_button, dialog.reset_current_button,
         dialog.next_undecided_button,
         dialog.export_button, dialog.apply_button,
@@ -513,19 +516,21 @@ def test_refresh_restores_current_change_id_after_filtering():
     assert dialog._current_row() == 0
 
 
-def test_file_filter_counts_refresh_without_changing_selection():
+def test_file_filter_counts_refresh_without_changing_selection(monkeypatch):
     dialog, _preview, _model = _preview_dialog(change_count=3, current_row=0)
     file_filter = dialog.file_filter
     file_filter.setCurrentIndex(file_filter.findData("chapter.xhtml"))
     selected = file_filter.currentData()
 
-    dialog._accept_all()
+    apply_batch_decision(monkeypatch, dialog, scope="all")
 
     assert file_filter.currentData() == selected
     assert file_filter.itemText(file_filter.currentIndex()).endswith("3 changes / 0 undecided")
 
 
-def test_apply_status_has_pending_ready_and_no_change_states_in_both_chinese_and_english():
+def test_apply_status_has_pending_ready_and_no_change_states_in_both_chinese_and_english(
+    monkeypatch,
+):
     for language in ("en", "zh-Hans"):
         dialog, preview, _model = _preview_dialog(change_count=2, current_row=0)
         dialog._translator = Translator(language)
@@ -533,7 +538,7 @@ def test_apply_status_has_pending_ready_and_no_change_states_in_both_chinese_and
         assert dialog.apply_button.toolTip() == dialog._translator.text("preview.incomplete")
         assert "2" in dialog.apply_status_label.text()
 
-        dialog._accept_all()
+        apply_batch_decision(monkeypatch, dialog, scope="all")
         dialog._update_summary()
         assert dialog.apply_status_label.text() == (
             dialog._translator.text("preview.apply_status_ready") + "\n"
@@ -541,7 +546,8 @@ def test_apply_status_has_pending_ready_and_no_change_states_in_both_chinese_and
         )
         assert "2" in dialog.apply_button.text()
 
-        dialog._reject_all()
+        apply_batch_decision(
+            monkeypatch, dialog, scope="all", action="skip", only_undecided=False)
         dialog._update_summary()
         assert dialog.apply_button.text() == dialog._translator.text(
             "preview.apply_no_changes")
@@ -583,7 +589,7 @@ def test_preview_decoding_is_display_only_and_group_feedback_clears_on_normal_ac
     assert "Decided together" not in dialog.summary.text()
 
 
-def test_filtered_group_decision_reaches_hidden_language_metadata_entries():
+def test_filtered_group_decision_reaches_hidden_language_metadata_entries(monkeypatch):
     changes = (
         TokenChange(
             source="zh-CN", target="zh-TW", span=SourceSpan(0, 5),
@@ -610,14 +616,16 @@ def test_filtered_group_decision_reaches_hidden_language_metadata_entries():
         (first, second), current_row=0, file_id="chapter.xhtml")
     dialog.dialog = dialog._qt.QDialog()
     dialog._refresh = lambda **_kwargs: None
-    dialog._decide_filtered(True)
+    apply_batch_decision(monkeypatch, dialog, scope="filtered")
 
     assert first.decision("language-visible").value == "accept_this"
     assert second.decision("language-hidden").value == "accept_this"
     assert first.decision("character-visible").value == "accept_this"
 
 
-def test_accept_file_leaves_language_group_pending_until_separate_group_action():
+def test_file_scope_leaves_language_group_pending_until_separate_group_action(
+    monkeypatch,
+):
     changes = (
         TokenChange(
             source="zh-CN", target="zh-TW", span=SourceSpan(0, 5),
@@ -650,7 +658,7 @@ def test_accept_file_leaves_language_group_pending_until_separate_group_action()
     dialog._visible_entries_cache = entries[:2]
     dialog._group_stats = {"language_metadata": (2, 2)}
 
-    dialog._accept_file()
+    apply_batch_decision(monkeypatch, dialog, scope="file")
 
     assert first.decision("normal-a").value == "accept_this"
     assert first.decision("language-a") is None
@@ -667,7 +675,7 @@ def test_accept_file_leaves_language_group_pending_until_separate_group_action()
     assert len(finalized) == 2
 
 
-def test_accept_file_includes_this_files_atomic_rule_occurrences():
+def test_file_scope_includes_this_files_atomic_rule_occurrences(monkeypatch):
     changes = (
         TokenChange(
             source="旧", target="新", span=SourceSpan(0, 1),
@@ -694,7 +702,7 @@ def test_accept_file_includes_this_files_atomic_rule_occurrences():
                     for change in preview.changes)
     dialog = _table_dialog(entries, (first, second), current_row=0, file_id="a.xhtml")
 
-    dialog._accept_file()
+    apply_batch_decision(monkeypatch, dialog, scope="file")
 
     assert first.decision("rule-a-1").value == "accept_this"
     assert first.decision("rule-a-2").value == "accept_this"
@@ -911,34 +919,24 @@ def _cross_file_language_group_dialog():
     return dialog, previews
 
 
-def test_filtered_group_expansion_requires_confirmation_and_cancel_is_atomic(monkeypatch):
+def test_filtered_batch_summary_includes_hidden_group_members_and_cancel_is_atomic(
+    monkeypatch,
+):
     dialog, previews = _cross_file_language_group_dialog()
-    calls = []
+    summary = apply_batch_decision(
+        monkeypatch, dialog, scope="filtered", confirm=False)
 
-    def cancel(box):
-        calls.append(box.text())
-        box._clicked_button = box.buttons[-1]
-
-    monkeypatch.setattr(preview_window, "exec_dialog", cancel)
-
-    dialog._decide_filtered(True)
-
-    assert len(calls) == 1
-    assert "1" in calls[0]
+    assert "2 changes across 2 files" in summary
+    assert "Linked changes outside the filter: 1." in summary
     assert all(preview.decision(change.change_id) is None
                for preview in previews for change in preview.changes)
 
 
-def test_filtered_group_expansion_confirmation_decides_the_full_linked_group(monkeypatch):
+def test_filtered_batch_decision_decides_the_full_linked_group(monkeypatch):
     dialog, previews = _cross_file_language_group_dialog()
+    summary = apply_batch_decision(monkeypatch, dialog, scope="filtered")
 
-    def confirm(box):
-        box._clicked_button = box.buttons[0]
-
-    monkeypatch.setattr(preview_window, "exec_dialog", confirm)
-
-    dialog._decide_filtered(True)
-
+    assert "2 changes across 2 files" in summary
     assert [preview.decision(preview.changes[0].change_id).value for preview in previews] == [
         "accept_this", "accept_this",
     ]

@@ -22,6 +22,7 @@ from core.preview import PreviewSession  # noqa: E402
 from document.tokenizer import tokenize_xhtml  # noqa: E402
 from tests.support.fake_qt import make_with_table  # noqa: E402
 from ui.i18n import Translator  # noqa: E402
+from ui import preview_window  # noqa: E402
 from ui.preview_window import _PreviewDialog  # noqa: E402
 
 
@@ -45,6 +46,21 @@ def dialog_for(changes):
     dialog = _PreviewDialog(make_with_table(), planned, (preview,), Translator("en"))
     dialog._set_current_row(0)
     return dialog, preview
+
+
+class _ScriptPatch:
+    def setattr(self, target, name, value):
+        setattr(target, name, value)
+
+
+def decide_batch(dialog, scope):
+    from tests.support.preview_batch import apply_batch_decision
+
+    original = preview_window.exec_dialog
+    try:
+        apply_batch_decision(_ScriptPatch(), dialog, scope=scope)
+    finally:
+        preview_window.exec_dialog = original
 
 
 class CountedEntries:
@@ -74,7 +90,7 @@ def probe_group_semantics():
         item.change_id: preview.decision(item.change_id)
         for item in preview.changes
     }
-    dialog._accept_file()
+    decide_batch(dialog, "file")
     after_file = {
         item.change_id: preview.decision(item.change_id)
         for item in preview.changes
@@ -103,7 +119,7 @@ def probe_group_semantics():
             key: value.value if value else None
             for key, value in after_hidden_language_button.items()
         },
-        "rule_only_after_accept_file": {
+        "rule_only_after_file_batch": {
             key: value.value if value else None for key, value in after_file.items()
         },
         "mixed_language_button_decisions": {
@@ -125,7 +141,7 @@ def probe_group_scans(groups):
         # Isolate the decision operation; exclude table refresh/recount from this measurement.
         dialog._refresh = lambda **_kwargs: None
         started = perf_counter()
-        dialog._decide_filtered(True)
+        decide_batch(dialog, "filtered")
         elapsed = perf_counter() - started
         assert preview.summary()["accepted"] == groups * 2
         assert counted.visits <= 10 * groups * 2, (

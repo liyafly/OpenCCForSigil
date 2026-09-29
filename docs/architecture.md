@@ -34,10 +34,13 @@ Preview decisions produce an accepted-only plan; staging applies those patches
 to an in-memory copy; structural and planned-span verification must pass before
 the adapter is allowed to call `bk.writefile()`.
 
-The Preview UI supports `Accept this`, `Skip this`, `Accept all`, and `Skip
-all`. The selected config is saved as the next default, but every run still
-shows the explicit choice. When the selected payload advertises a verified
-official native plugin, the config dialog enables an advanced Jieba checkbox
+The Preview UI supports `Accept this` and `Skip this` for individual changes.
+The batch-decision dialog can accept or skip the filtered changes, current file,
+or all changes; it handles undecided changes by default and can explicitly
+overwrite existing decisions. The selected config is saved as the next default,
+but every run still shows the explicit choice. When the selected payload
+advertises a verified official native plugin, the config dialog enables an
+advanced Jieba checkbox
 that maps a standard config to its concrete `*_jieba` config. It is not a
 generic segmentation selector, and an unavailable/invalid payload fails
 closed. The core API also supports bulk filters by file, category, risk, or

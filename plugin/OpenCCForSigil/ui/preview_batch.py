@@ -35,6 +35,7 @@ def plan_batch_decision(
     visible_identities=(),
     visible_change_ids=(),
     file_id=None,
+    entries_by_file=None,
     accepted=True,
     undecided_only=True,
 ):
@@ -90,7 +91,12 @@ def plan_batch_decision(
         )
         files.update(change.file_id for _preview, change in changes)
 
-    for preview, change in entries:
+    candidates = (
+        entries_by_file.get(file_id, ())
+        if scope == "file" and entries_by_file is not None
+        else entries
+    )
+    for preview, change in candidates:
         group_id = change.group_id
         if group_id:
             if group_id in seen_groups:

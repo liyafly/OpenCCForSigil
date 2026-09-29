@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from core.models import ConversionPlan, SourceSpan, TextTarget, TokenChange
 from core.preview import PreviewSession
 from tests.support.fake_qt import make_with_table
+from tests.support.preview_batch import apply_batch_decision
 from ui.i18n import Translator
 from ui import preview_window
 from ui.preview_window import (
@@ -312,7 +313,9 @@ def test_lazy_row_cache_survives_filters_and_single_decisions(monkeypatch):
     assert calls.count(first_id) == 1
 
 
-def test_three_hundred_thousand_preview_build_filter_and_accept_all_stay_bounded():
+def test_three_hundred_thousand_preview_build_filter_and_batch_accept_stay_bounded(
+    monkeypatch,
+):
     grouped = {}
     for index in range(300_000):
         file_id = f"chapter-{index % 100}.xhtml"
@@ -346,7 +349,7 @@ def test_three_hundred_thousand_preview_build_filter_and_accept_all_stay_bounded
     assert len(dialog._visible_entries_cache) == 150_000
 
     started = time.perf_counter()
-    dialog._accept_all()
+    apply_batch_decision(monkeypatch, dialog, scope="all")
     accept_all_seconds = time.perf_counter() - started
 
     assert build_seconds < 2.0
