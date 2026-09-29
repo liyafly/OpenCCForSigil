@@ -54,15 +54,6 @@ def scope_rank(rule: Rule, *, legacy: bool | None = None) -> int:
         rule.scope, 0)
 
 
-def precedence_key(
-    rule: Rule, *, legacy: bool | None = None
-) -> tuple[int, int, int, int, str]:
-    """Higher tuple values win, except id is inverted by ``ordered_rules``."""
-
-    return (type_rank(rule), scope_rank(rule, legacy=legacy),
-            int(rule.priority), len(rule.source), rule.id)
-
-
 def ordered_rules(rules: Iterable[Rule]) -> tuple[Rule, ...]:
     """Order rules for a stable match decision.
 
@@ -89,7 +80,6 @@ __all__ = [
     "applies_to",
     "base_direction",
     "ordered_rules",
-    "precedence_key",
     "scope_rank",
     "type_rank",
 ]

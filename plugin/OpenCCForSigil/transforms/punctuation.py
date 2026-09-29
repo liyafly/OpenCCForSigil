@@ -67,15 +67,8 @@ def normalize_punctuation(text: str, mode: str = "keep") -> str:
     return "".join(HORIZONTAL_PUNCTUATION_MAP.get(char, char) for char in text)
 
 
-def transform_punctuation(text: str, mode: str = "keep") -> str:
-    """Compatibility alias for :func:`normalize_punctuation`."""
-
-    return normalize_punctuation(text, mode)
-
-
 __all__ = [
     "HORIZONTAL_PUNCTUATION_MAP",
     "PUNCTUATION_MODES",
     "normalize_punctuation",
-    "transform_punctuation",
 ]

@@ -74,18 +74,6 @@ def inline_boundary_diagnostics(
     return tuple(diagnostics)
 
 
-def inline_boundary_codes(document: TokenizedDocument) -> tuple[str, ...]:
-    """Return deterministic diagnostic codes for a tokenized document."""
-
-    return tuple(diagnostic.code for diagnostic in inline_boundary_diagnostics(document))
-
-
-def find_inline_boundaries(document: TokenizedDocument) -> tuple[Diagnostic, ...]:
-    """Compatibility alias for :func:`inline_boundary_diagnostics`."""
-
-    return inline_boundary_diagnostics(document)
-
-
 def _contains_only_tags_and_space(
     gap: str,
     tags: tuple[object, ...],
@@ -125,7 +113,5 @@ def _is_han(character: str) -> bool:
 
 __all__ = [
     "INLINE_ELEMENTS",
-    "find_inline_boundaries",
-    "inline_boundary_codes",
     "inline_boundary_diagnostics",
 ]

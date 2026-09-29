@@ -1,1 +1,0 @@
-"""OPF metadata whitelist boundary."""

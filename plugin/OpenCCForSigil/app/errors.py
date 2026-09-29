@@ -41,14 +41,6 @@ class RuleConflictError(PluginError):
         super().__init__(message)
 
 
-class ConversionError(PluginError):
-    code = "CONVERSION_ERROR"
-
-
-class VerificationError(PluginError):
-    code = "VERIFICATION_ERROR"
-
-
 class StorageError(PluginError):
     code = "STORAGE_ERROR"
 

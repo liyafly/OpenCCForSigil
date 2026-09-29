@@ -219,16 +219,6 @@ def migrate_ruleset_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
     )
 
 
-def save_ruleset(
-    root: str | Path, ruleset_id: str, rules: Iterable[Rule], *, name: str = ""
-) -> Path:
-    return RuleStore(root).save(RuleSet(ruleset_id, tuple(rules), name))
-
-
-def load_ruleset(root: str | Path, ruleset_id: str) -> RuleSet:
-    return RuleStore(root).load(ruleset_id)
-
-
 def _validate_ruleset_payload_metadata(payload: Mapping[str, Any]) -> None:
     semantic_version = payload.get("semantic_version", 1)
     if (not isinstance(semantic_version, int) or isinstance(semantic_version, bool)
@@ -275,7 +265,5 @@ __all__ = [
     "RuleSet",
     "RuleSetFutureSchemaError",
     "RuleStore",
-    "load_ruleset",
     "migrate_ruleset_payload",
-    "save_ruleset",
 ]

@@ -91,23 +91,6 @@ def diagnose_mixed_script(
     )
 
 
-def diagnose_script(
-    text: str,
-    official_convert: OfficialConvert | object,
-    *,
-    min_evidence: int = 2,
-    include_outputs: bool = False,
-) -> ScriptDiagnostic:
-    """Compatibility alias for :func:`diagnose_mixed_script`."""
-
-    return diagnose_mixed_script(
-        text,
-        official_convert,
-        min_evidence=min_evidence,
-        include_outputs=include_outputs,
-    )
-
-
 def _invoke_official(backend: OfficialConvert | object, config: str, text: str) -> str:
     if callable(backend):
         result = backend(config, text)
@@ -134,8 +117,4 @@ def _is_han(char: str) -> bool:
     )
 
 
-def diagnostic_schema_version() -> int:
-    return 1
-
-
-__all__ = ["ScriptDiagnostic", "diagnose_mixed_script", "diagnose_script", "diagnostic_schema_version"]
+__all__ = ["ScriptDiagnostic", "diagnose_mixed_script"]

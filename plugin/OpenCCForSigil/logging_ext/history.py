@@ -224,13 +224,6 @@ class HistoryStore:
             self.index_path, {"schema_version": HISTORY_SCHEMA_VERSION, "sessions": validated}
         )
 
-    def report_inputs(
-        self, session_id: str
-    ) -> tuple[Mapping[str, Any], Mapping[str, Any], Mapping[str, Any]]:
-        record = self.get(session_id)
-        return record["summary"], record["commit_manifest"], record["provenance"]
-
-
 def record_session(
     history_root: Path,
     summary: Mapping[str, Any],

@@ -190,7 +190,7 @@ def test_compiled_overlay_covers_prefixes_buckets_disabled_rules_and_conflicts()
 
     overlay = CompiledOverlay.build(snapshot, config="s2t")
     text = "词语深目A"
-    assert len(overlay.index) == 3
+    assert set(overlay.source_literal_index) == {"词", "词语", "目", "A"}
     assert lock_spans_compiled(text, overlay) == _reference_lock_spans(
         text, snapshot, config="s2t")
     spans = lock_spans_compiled(text, overlay)

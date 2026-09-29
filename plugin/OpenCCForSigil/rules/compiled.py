@@ -45,7 +45,6 @@ class CompiledOverlay:
     profile_id: str | None
     book_fingerprint: str | None
     rules: tuple[Rule, ...]
-    index: Mapping[str, tuple[Rule, ...]]
     regex_patterns: Mapping[str, object]
     source_rules: tuple[Rule, ...]
     pre_rules: tuple[Rule, ...]
@@ -94,7 +93,6 @@ class CompiledOverlay:
         # different direction, profile, or book must not prevent an unrelated
         # conversion from starting.
         validate_no_blocking_conflicts(candidates)
-        buckets: dict[str, list[Rule]] = {}
         regex_rules = tuple(rule for rule in candidates if rule.match_type == "regex")
         if len(regex_rules) > REGEX_MAX_RULES:
             raise ValueError(f"at most {REGEX_MAX_RULES} active regular-expression rules are allowed")
@@ -116,12 +114,6 @@ class CompiledOverlay:
                     patterns[rule.id] = regex_module.compile(rule.source, regex_module.VERSION1)
                 except Exception as exc:
                     raise ValueError(f"rule {rule.id}: invalid regular expression: {exc}") from exc
-        for rule in candidates:
-            if rule.match_type == "regex":
-                continue
-            buckets.setdefault(rule.source[0], []).append(rule)
-        index = MappingProxyType({key: tuple(values) for key, values in buckets.items()})
-
         source_rules = tuple(rule for rule in candidates if rule.stage == "source")
         pre_rules = tuple(
             rule for rule in candidates if rule.action == "replace" and rule.stage == "pre")
@@ -158,7 +150,6 @@ class CompiledOverlay:
             profile_id=profile_id,
             book_fingerprint=book_fingerprint,
             rules=candidates,
-            index=index,
             regex_patterns=MappingProxyType(patterns),
             source_rules=source_rules,
             pre_rules=pre_rules,

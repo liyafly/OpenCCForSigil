@@ -176,7 +176,3 @@ def tokenize_xml(
                 else node.name, document_kind=document_kind,
             ))
     return TokenizedDocument(source, tuple(targets), tuple(tags))
-
-
-def processor_name() -> str:
-    return "source_preserving_xml"

@@ -254,10 +254,6 @@ def tokenize_xhtml(source: str, options: Optional[TokenizerOptions] = None) -> T
     return TokenizedDocument(source=source, targets=tuple(targets), tags=tuple(tags))
 
 
-def tokenizer_strategy() -> str:
-    return "absolute_source_spans"
-
-
 def _make_target(
     source: str,
     start: int,
@@ -554,15 +550,6 @@ def _pop_element_stacks(
             del language_stack[index:]
             del namespace_stack[index:]
             return
-
-
-def _split_entity_boundaries(source: str, start: int, end: int) -> Iterable[Tuple[int, int]]:
-    """Yield only non-entity spans, preserving the legacy default behavior."""
-
-    for span_start, span_end, _ in _split_text_boundaries(
-        source, start, end, decode_numeric_cjk_refs=False
-    ):
-        yield span_start, span_end
 
 
 def _split_text_boundaries(

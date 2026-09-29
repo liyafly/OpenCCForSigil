@@ -451,18 +451,6 @@ class ProfileStore:
         return self.directory / f"{profile_id}.json"
 
 
-def load_profile(path_or_id: str | Path, *, root: str | Path | None = None) -> Profile:
-    path = Path(path_or_id)
-    if path.exists():
-        try:
-            return Profile.from_dict(json.loads(path.read_text(encoding="utf-8")), migrate=True)
-        except (OSError, json.JSONDecodeError) as exc:
-            raise ProfileValidationError(f"could not read profile {path}: {exc}") from exc
-    if root is None:
-        raise ProfileValidationError(f"profile not found: {path_or_id}")
-    return ProfileStore(root).load(str(path_or_id))
-
-
 def save_profile(profile: Profile | Mapping[str, Any], root: str | Path) -> Path:
     return ProfileStore(root).save(profile)
 
@@ -481,7 +469,6 @@ __all__ = [
     "ProfileFutureSchemaError",
     "ProfileStore",
     "ProfileValidationError",
-    "load_profile",
     "migrate_profile_payload",
     "save_profile",
 ]

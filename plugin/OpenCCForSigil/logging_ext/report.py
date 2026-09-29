@@ -19,10 +19,6 @@ class ReportError(ValueError):
     """Raised when report inputs or report files are invalid."""
 
 
-def report_schema_version() -> int:
-    return REPORT_SCHEMA_VERSION
-
-
 def _atomic_write(path: Path, content: str) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary: Path | None = None
@@ -234,14 +230,3 @@ def export_markdown(
             include_full_diff=include_full_diff,
         ),
     )
-
-
-def validate_report(payload: Any) -> dict[str, Any]:
-    """Validate and return report JSON without silently resetting corrupt data."""
-
-    if not isinstance(payload, Mapping) or payload.get("schema_version") != REPORT_SCHEMA_VERSION:
-        raise ReportError("unsupported or malformed report schema")
-    for key in ("summary", "commit_manifest", "provenance"):
-        if not isinstance(payload.get(key), Mapping):
-            raise ReportError(f"report field must be an object: {key}")
-    return dict(payload)

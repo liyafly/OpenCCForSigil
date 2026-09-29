@@ -117,18 +117,6 @@ def classify_conversion(
     )
 
 
-def comparative_classification(
-    source: str,
-    config: str,
-    official_convert: OfficialConvert | object,
-    *,
-    final: str | None = None,
-) -> ComparativeClassification:
-    """Compatibility alias for :func:`classify_conversion`."""
-
-    return classify_conversion(source, config, official_convert, final=final)
-
-
 def _classify_change(
     config: str,
     source: str,
@@ -276,5 +264,4 @@ __all__ = [
     "ComparativeClassification",
     "attribution_method",
     "classify_conversion",
-    "comparative_classification",
 ]

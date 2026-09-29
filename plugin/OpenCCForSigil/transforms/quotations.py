@@ -82,12 +82,6 @@ class QuotationPairer:
         return "".join(result) if mutate else text
 
 
-def convert_quotations(text: str, mode: str = "keep") -> str:
-    """Compatibility alias for :func:`transform_quotations`."""
-
-    return transform_quotations(text, mode)
-
-
 def _validate_mode(mode: str) -> None:
     if mode not in QUOTATION_MODES and mode not in _MODE_ALIASES:
         raise ValueError(f"unsupported quotation mode: {mode!r}")
@@ -103,6 +97,5 @@ __all__ = [
     "QUOTATION_PAIRS",
     "DOUBLE_QUOTE_CHARACTERS",
     "QuotationPairer",
-    "convert_quotations",
     "transform_quotations",
 ]

@@ -1,1 +1,0 @@
-"""Ruby annotation policy boundary."""

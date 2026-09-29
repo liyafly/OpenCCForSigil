@@ -6,7 +6,6 @@ row and field.  This module does not silently coerce malformed user data.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Any, Iterable, Mapping
 import unicodedata
 
@@ -31,14 +30,6 @@ class RuleValidationError(ValueError):
         prefix = f"rule {index}: " if index is not None else ""
         prefix += f"{field}: " if field else ""
         super().__init__(prefix + message)
-
-
-@dataclass(frozen=True)
-class ValidationIssue:
-    message: str
-    field: str = ""
-    index: int | None = None
-    blocking: bool = True
 
 
 def _has_visible_text(value: str) -> bool:
@@ -245,7 +236,6 @@ def validate_snapshot(snapshot: RuleSnapshot) -> RuleSnapshot:
 
 __all__ = [
     "RuleValidationError",
-    "ValidationIssue",
     "validate_rule",
     "validate_rules",
     "validate_snapshot",

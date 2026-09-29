@@ -137,9 +137,6 @@ def blocking_conflicts(rules: Iterable[Rule]) -> tuple[RuleConflict, ...]:
     return tuple(item for item in find_conflicts(rules) if item.blocking)
 
 
-detect_conflicts = find_conflicts
-
-
 def validate_no_blocking_conflicts(rules: Iterable[Rule]) -> tuple[RuleConflict, ...]:
     conflicts = blocking_conflicts(rules)
     if conflicts:
@@ -162,7 +159,6 @@ __all__ = [
     "BlockingRuleConflict",
     "RuleConflict",
     "blocking_conflicts",
-    "detect_conflicts",
     "find_conflicts",
     "validate_no_blocking_conflicts",
 ]

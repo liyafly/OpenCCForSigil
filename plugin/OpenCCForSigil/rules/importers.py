@@ -8,7 +8,7 @@ import io
 import json
 from pathlib import Path
 import re
-from typing import Any, Iterable, TextIO
+from typing import Iterable, TextIO
 
 from .conflicts import RuleConflict, find_conflicts
 from .models import Rule, SUPPORTED_DIRECTIONS, new_rule_id
@@ -152,26 +152,6 @@ def import_rules(
             unique.append(rule)
     conflicts = find_conflicts(unique)
     return ImportResult(tuple(unique), tuple(diagnostics), tuple(duplicates), tuple(conflicts))
-
-
-def parse_rules(*args: Any, **kwargs: Any) -> ImportResult:
-    return import_rules(*args, **kwargs)
-
-
-def import_tsv(source: Any, **kwargs: Any) -> ImportResult:
-    return import_rules(source, format="tsv", **kwargs)
-
-
-def import_csv(source: Any, **kwargs: Any) -> ImportResult:
-    return import_rules(source, format="csv", **kwargs)
-
-
-def import_json(source: Any, **kwargs: Any) -> ImportResult:
-    return import_rules(source, format="json", **kwargs)
-
-
-def import_opencc_txt(source: Any, **kwargs: Any) -> ImportResult:
-    return import_rules(source, format="opencc-txt", **kwargs)
 
 
 def _read_source(source: str | bytes | Path | TextIO) -> tuple[str, str | None]:
@@ -387,12 +367,7 @@ def _is_header(row: list[str]) -> bool:
 __all__ = [
     "ImportDiagnostic",
     "ImportResult",
-    "import_csv",
-    "import_json",
-    "import_opencc_txt",
     "import_rules",
-    "import_tsv",
-    "parse_rules",
     "reassign_colliding_ids",
     "rule_dedup_key",
 ]

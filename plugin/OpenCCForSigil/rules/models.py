@@ -52,9 +52,6 @@ def new_rule_id() -> str:
     return str(uuid.uuid4())
 
 
-_new_id = new_rule_id
-
-
 @dataclass(frozen=True)
 class Rule:
     """A directional rule with versioned behavior.
@@ -230,9 +227,6 @@ class RuleSnapshot:
             item if isinstance(item, Rule) else Rule.from_dict(item) for item in rules
         )
         return cls(schema_version=schema_version, rules=normalized)
-
-    build = freeze
-    from_rules = freeze
 
     @property
     def rules_hash(self) -> str:

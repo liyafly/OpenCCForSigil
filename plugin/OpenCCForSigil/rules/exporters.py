@@ -173,31 +173,6 @@ def _tsv_fields_representable(fields: Iterable[str]) -> bool:
     return not any(any(character in "\t\r\n" for character in value) for value in fields)
 
 
-def export_json(
-    rules: Iterable[Rule], destination: str | Path | None = None, **kwargs: object
-) -> str:
-    return export_rules(rules, destination, format="json", **kwargs)
-
-
-def export_tsv(
-    rules: Iterable[Rule], destination: str | Path | None = None, **kwargs: object
-) -> str:
-    return export_rules(rules, destination, format="tsv", **kwargs)
-
-
-def export_csv(
-    rules: Iterable[Rule], destination: str | Path | None = None, **kwargs: object
-) -> str:
-    return export_rules(rules, destination, format="csv", **kwargs)
-
-
-def export_opencc_txt(
-    rules: Iterable[Rule], destination: str | Path | None = None, **kwargs: object
-) -> str:
-    return export_rules(rules, destination, format="opencc-txt", **kwargs)
-
-
 __all__ = [
-    "export_csv", "export_json", "export_opencc_txt", "export_rules", "export_tsv",
-    "export_warnings",
+    "export_rules", "export_warnings",
 ]

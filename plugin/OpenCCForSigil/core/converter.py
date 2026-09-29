@@ -9,17 +9,11 @@ from collections import OrderedDict
 from dataclasses import replace
 from hashlib import sha256
 import json
-from typing import Protocol
 
 from core.diff import bounded_opcodes
 from core.models import (ConvertRequest, ConvertResult, Diagnostic, RuleTrace,
                          SkippedRuleTrace, SourceSpan, TokenChange)
 from opencc_backend.backend import OpenCCBackend
-
-
-class Converter(Protocol):
-    def convert(self, text: str, request: ConvertRequest, *, quotation_pairer=None) -> ConvertResult:
-        ...
 
 
 class OfficialBackendConverter:

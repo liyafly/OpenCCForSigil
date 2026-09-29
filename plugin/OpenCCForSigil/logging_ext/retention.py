@@ -89,22 +89,3 @@ def cleanup(
         removed_sessions=tuple(removed_sessions),
         removed_log_files=tuple(str(path) for path in log_files),
     )
-
-
-def cleanup_history(
-    history_root: Path,
-    logs_root: Path,
-    *,
-    max_sessions: int = 50,
-    max_age_days: int = 30,
-    now: datetime | None = None,
-) -> RetentionResult:
-    """Named cleanup entry point for explicit UI/application actions."""
-
-    return cleanup(
-        history_root,
-        logs_root,
-        max_sessions=max_sessions,
-        max_age_days=max_age_days,
-        now=now,
-    )
