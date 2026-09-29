@@ -2226,7 +2226,7 @@ class RuleManagerDialog:
         diagnostics = tuple(review.diagnostics)
         errors = sum(getattr(item, "severity", "") == "error" for item in diagnostics)
         discarded = sum(
-            getattr(item, "severity", "") != "error"
+            getattr(item, "severity", "") == "warning"
             and getattr(item, "message_key", "") != "rules.import_tsv_quoted_field"
             for item in diagnostics
         )

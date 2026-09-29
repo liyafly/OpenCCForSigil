@@ -106,7 +106,37 @@ def test_chinese_tsv_header_is_skipped():
 
     assert len(result.rules) == 1
     assert result.rules[0].source == "软件"
-    assert result.diagnostics == ()
+    assert [(item.line, item.severity, item.message_key) for item in result.diagnostics] == [
+        (1, "info", "rules.import_header_skipped")]
+
+
+@pytest.mark.parametrize("first_row", [
+    "备注\t備註",
+    "目标\t目標",
+    "原文\t原文本",
+    "source\tsauce",
+])
+def test_data_row_starting_with_header_word_is_not_skipped(first_row):
+    result = import_rules(f"{first_row}\n软件\t軟體\n", format="tsv", direction="s2t")
+
+    assert len(result.rules) == 2
+    assert [(rule.source, rule.target) for rule in result.rules] == [
+        tuple(first_row.split("\t")), ("软件", "軟體")]
+
+
+def test_header_row_skip_is_reported_as_info():
+    result = import_rules("源\t目标\n软件\t軟體\n", format="tsv", direction="s2t")
+
+    assert len(result.rules) == 1
+    assert [(item.line, item.severity, item.message_key) for item in result.diagnostics] == [
+        (1, "info", "rules.import_header_skipped")]
+
+
+def test_three_column_row_with_blank_direction_uses_selected_direction():
+    result = import_rules("\t软件\t軟體\n", format="tsv", direction="s2t")
+
+    assert [(rule.direction, rule.source, rule.target) for rule in result.rules] == [
+        ("s2t", "软件", "軟體")]
 
 
 def test_tsv_keeps_ascii_quotes_literally():
@@ -256,9 +286,14 @@ def test_json_import_rebinds_foreign_owner_only_when_requested(scope, owner, oth
 def test_delimited_validation_errors_report_physical_line(payload, format, direction):
     result = import_rules(payload, format=format, direction=direction, strict=False)
 
-    assert len(result.diagnostics) == 1
-    assert result.diagnostics[0].line == 6
-    assert "rule 0" not in result.diagnostics[0].message
+    errors = [item for item in result.diagnostics if item.severity == "error"]
+    assert len(errors) == 1
+    assert errors[0].line == 6
+    assert "rule 0" not in errors[0].message
+    if format in {"tsv", "csv"}:
+        assert [(item.line, item.severity, item.message_key)
+                for item in result.diagnostics if item.severity == "info"] == [
+                    (1, "info", "rules.import_header_skipped")]
 
 
 def test_lenient_json_import_skips_bad_records_and_preserves_record_numbers():

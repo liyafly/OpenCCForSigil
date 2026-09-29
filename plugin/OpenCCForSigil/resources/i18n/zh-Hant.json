@@ -567,6 +567,7 @@
   "rules.import_rebind_owner": "將其他書籍或設定檔的規則改綁至目前書籍或設定檔",
   "rules.import_foreign_owner": "{count} 條規則屬於其他書籍/設定檔，本次不會生效。",
   "rules.import_tsv_quoted_field": "此 TSV 欄位兩側帶引號且含有雙寫引號，已依原樣匯入。",
+  "rules.import_header_skipped": "第 1 行是表頭，已略過",
   "rules.import_format": "格式",
   "rules.skip_invalid": "略過錯誤列並回報",
   "rules.import_add": "加入匯入規則",

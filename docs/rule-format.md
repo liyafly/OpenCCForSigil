@@ -31,8 +31,12 @@ scanned. These limits are centralized in
 `rules/matching.py`. A timeout or exceeded limit aborts planning; it does not
 return a partial plan.
 
-JSON preserves every field. Delimited import/export and OpenCC TXT are useful
-for exchanging terms; TXT requires the direction to be selected explicitly.
+JSON preserves every field. TSV and CSV rows can contain `source<Tab>target`,
+`source<Tab>target<Tab>comment`, or
+`direction<Tab>source<Tab>target<Tab>comment`. The first two forms use the
+direction selected in the import dialog. A header on the first row is skipped
+only when it includes both a recognized source label and a recognized target
+label. OpenCC TXT uses `source<Tab>target` and requires a selected direction.
 Imports report duplicates, invalid records, and blocking conflicts before save.
 
 ## Example: protect an author-credit marker

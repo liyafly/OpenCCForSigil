@@ -567,6 +567,7 @@
   "rules.import_rebind_owner": "Rebind rules from other books or profiles to the current one",
   "rules.import_foreign_owner": "{count} rule(s) belong to another book or profile and will not apply this time.",
   "rules.import_tsv_quoted_field": "This TSV field is surrounded by quotes and contains doubled quotes; it was imported exactly as written.",
+  "rules.import_header_skipped": "Line 1 is a header row and was skipped",
   "rules.import_format": "Format",
   "rules.skip_invalid": "Skip invalid rows and report them",
   "rules.import_add": "Add imported rules",

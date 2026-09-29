@@ -204,7 +204,9 @@ def _rows_to_rules(
 ) -> list[tuple[int, Rule]]:
     rows = list(rows)
     if rows and _is_header(rows[0][1]):
-        rows.pop(0)
+        line, _ = rows.pop(0)
+        diagnostics.append(ImportDiagnostic(
+            line, "header row skipped", "info", "line", "rules.import_header_skipped"))
     result: list[tuple[int, Rule]] = []
     for line, row in rows:
         if not row or not any(value.strip() for value in row):
@@ -212,7 +214,6 @@ def _rows_to_rules(
         try:
             first = row[0].strip() if row else ""
             has_direction = first in SUPPORTED_DIRECTIONS
-            keep_legacy_blank_direction = len(row) >= 4 and not first
             if len(row) == 2:
                 if not direction:
                     error = RuleValidationError(
@@ -221,7 +222,7 @@ def _rows_to_rules(
                     raise error
                 row_direction, source, target = direction, row[0], row[1]
                 comment = ""
-            elif len(row) >= 3 and not has_direction and direction and not keep_legacy_blank_direction:
+            elif len(row) >= 3 and first and not has_direction and direction:
                 row_direction, source, target = direction, row[0], row[1]
                 comment = row[2]
             elif len(row) >= 3:
@@ -364,10 +365,10 @@ def _json_rules(
 def _is_header(row: list[str]) -> bool:
     if not row:
         return False
-    return row[0].strip().casefold() in {
-        "方向", "源", "源文本", "原文", "目标", "目标文本", "目標", "目標文字",
-        "來源文字", "备注", "備註", "comment", "direction", "source", "target",
-    }
+    cells = {value.strip().casefold() for value in row}
+    source_headers = {"源", "源文本", "原文", "來源文字", "source"}
+    target_headers = {"目标", "目标文本", "目標", "目標文字", "target"}
+    return bool(cells & source_headers and cells & target_headers)
 
 
 __all__ = [

@@ -567,6 +567,7 @@
   "rules.import_rebind_owner": "将其他书籍或方案的规则改绑到当前书籍或方案",
   "rules.import_foreign_owner": "{count} 条规则属于其他书籍/方案，本次不会生效。",
   "rules.import_tsv_quoted_field": "此 TSV 字段两侧带引号且含有双写引号，已按原样导入。",
+  "rules.import_header_skipped": "第 1 行是表头，已跳过",
   "rules.import_format": "格式",
   "rules.skip_invalid": "跳过错误行并报告",
   "rules.import_add": "加入导入规则",

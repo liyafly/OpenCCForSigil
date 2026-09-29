@@ -16,6 +16,10 @@
 
 确认后仍会先显示导入预览，供你检查重复项、冲突和错误行。
 
+### 导入文件
+
+TSV 和 CSV 文件每行可写 `源文本<Tab>目标文本`、`源文本<Tab>目标文本<Tab>备注`，或 `方向<Tab>源文本<Tab>目标文本<Tab>备注`。前两种格式使用导入对话框中选择的方向。若文件首行有表头，该行必须同时包含源文本和目标文本列名，例如 `source` 和 `target`；只包含其中一类时会按数据行处理。
+
 ### 动作和匹配方式
 
 - **指定最终写法**：在原文上匹配，完整命中直接使用目标文本，并跳过后续转换。
@@ -80,6 +84,10 @@
 
 確認後仍會先顯示匯入預覽，供你檢查重複項、衝突和錯誤列。
 
+### 匯入檔案
+
+TSV 和 CSV 檔案每列可寫 `來源文字<Tab>目標文字`、`來源文字<Tab>目標文字<Tab>備註`，或 `方向<Tab>來源文字<Tab>目標文字<Tab>備註`。前兩種格式使用匯入對話框中選擇的方向。若檔案首列有標題，該列必須同時包含來源文字和目標文字欄名，例如 `source` 和 `target`；只包含其中一類時會按資料列處理。
+
 ### 動作和比對方式
 
 - **指定最終寫法**：在原文比對，完整命中直接使用目標文字，並略過後續轉換。
@@ -143,6 +151,10 @@ Choose a direction and scope on the Rules page, then select **Bulk add…**. Ent
 ```
 
 The import review still appears so you can check duplicates, conflicts, and invalid rows before adding anything.
+
+### Import files
+
+Each TSV or CSV row can use `source<Tab>target`, `source<Tab>target<Tab>comment`, or `direction<Tab>source<Tab>target<Tab>comment`. The first two formats use the direction selected in the import dialog. If the first row is a header, it must include both a source and a target column label, such as `source` and `target`; a row with only one class of label is treated as data.
 
 ### Actions and match types
 
