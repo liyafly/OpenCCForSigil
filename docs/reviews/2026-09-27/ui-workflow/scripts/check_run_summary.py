@@ -180,7 +180,9 @@ def _run_summary(qt, app, language, output_dir, width, height):
                         summary.text().split("\n", 1)[0]
                     assert translator.text("scope.run_summary_nav_unavailable") in summary.text()
                     assert detail["summary_lines"] <= 2
-                    analyze_button = config._completion_button
+                    analyze_button = next(
+                        button for button in dialog.findChildren(qt.QPushButton)
+                        if button.text() == translator.text("config.continue"))
                     assert dialog.windowTitle() == (
                         f"{translator.text('app.title')} — {translator.text('main.title')}")
                     assert analyze_button.text() == translator.text("config.continue")
@@ -325,7 +327,10 @@ def _probe_state(qt, app, language, state):
         app.processEvents()
         report["summary"] = next(label.text() for label in dialog.findChildren(qt.QLabel)
                                  if label.text().startswith(translator.text("scope.run_summary").split("{")[0]))
-        report["analyze_enabled"] = captured["scope"]._analysis_button.isEnabled()
+        analyze_button = next(
+            button for button in dialog.findChildren(qt.QPushButton)
+            if button.text() == translator.text("config.continue"))
+        report["analyze_enabled"] = analyze_button.isEnabled()
         dialog.reject()
 
     preview_window.exec_dialog = inspect_dialog

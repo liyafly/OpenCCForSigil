@@ -146,11 +146,19 @@ def _fake_widget_tree(value):
             yield from _fake_widget_tree(child)
 
 
+def test_user_role_reads_nested_or_flat_qt_enum_value():
+    from ui.rules_window import _user_role
+
+    assert _user_role(SimpleNamespace(
+        ItemDataRole=SimpleNamespace(UserRole=256))) == 256
+    assert _user_role(SimpleNamespace(UserRole=256)) == 256
+
+
 def _manager(rules, *, config="s2t", row=0, rule_type="exact", source="术语", target="新词"):
     manager = object.__new__(RuleManagerDialog)
     manager._run_ruleset_ids = ()
     manager._qt = SimpleNamespace(
-        Qt=SimpleNamespace(UserRole=32),
+        Qt=SimpleNamespace(UserRole=256),
         QListWidgetItem=ConflictItem,
         QTableWidgetItem=lambda value: value,
         QMessageBox=QMessageBox,

@@ -207,30 +207,14 @@ class ProgressReporter:
 
     def _elided_filename(self, href: str) -> str:
         full_name = str(href)
-        label_method = getattr(self.dialog, "label", None)
-        label = label_method() if callable(label_method) else None
-        if label is not None:
-            set_tooltip = getattr(label, "setToolTip", None)
-            if callable(set_tooltip):
-                set_tooltip(full_name)
-            width_method = getattr(label, "width", None)
-            width = (width_method() if callable(width_method) else 0) or 440
-        else:
-            set_tooltip = getattr(self.dialog, "setToolTip", None)
-            if callable(set_tooltip):
-                set_tooltip(full_name)
-            width = 440
-
-        qt_gui = getattr(self._qt, "QtGui", None)
-        font_metrics = getattr(qt_gui, "QFontMetrics", None)
-        if callable(font_metrics) and label is not None:
-            qt = getattr(self._qt, "Qt", None)
-            mode = getattr(qt, "ElideMiddle", None)
-            if mode is None:
-                mode = getattr(getattr(qt, "TextElideMode", None), "ElideMiddle", None)
-            if mode is not None:
-                return font_metrics(label.font()).elidedText(full_name, mode, width)
-        return _elide_middle_by_width(full_name, width)
+        set_tooltip = getattr(self.dialog, "setToolTip", None)
+        if callable(set_tooltip):
+            set_tooltip(full_name)
+        if len(full_name) <= 55:
+            return full_name
+        left_count = 27
+        right_count = 27
+        return f"{full_name[:left_count]}…{full_name[-right_count:]}"
 
     def cancelled(self) -> bool:
         self._process_events()
@@ -302,15 +286,6 @@ class ProgressReporter:
         process_events = getattr(self._qt.QApplication, "processEvents", None)
         if callable(process_events):
             process_events()
-
-
-def _elide_middle_by_width(value: str, width: int) -> str:
-    max_characters = max(8, int(width) // 8)
-    if len(value) <= max_characters:
-        return value
-    left_count = (max_characters - 1) // 2
-    right_count = max_characters - left_count - 1
-    return f"{value[:left_count]}…{value[-right_count:]}"
 
 
 CONFIG_SELECTION_ORDER = V1_CONFIGS
@@ -2247,7 +2222,7 @@ class _PreviewDialog:
             cancel.clicked.connect(dialog.reject)
 
             def build_plan():
-                visible = getattr(self, "_visible_entries_cache", self._entries)
+                visible = self._visible_entries_cache
                 return plan_batch_decision(
                     self._entries, self._group_entries_by_id, self._group_file_ids,
                     scope=scope_combo.currentData() or "filtered",
@@ -2549,10 +2524,7 @@ class _PreviewDialog:
             self._refresh(refresh_statuses=True)
             return
 
-        visible = getattr(self, "_visible_entries_cache", None)
-        if visible is None:
-            self._refresh()
-            visible = self._visible_entries_cache
+        visible = self._visible_entries_cache
         affected = tuple(affected)
         current_row = self._current_row()
 
@@ -2830,9 +2802,7 @@ class _PreviewDialog:
 
     def _selected_change_identity(self) -> Tuple[str, str] | None:
         row = self._current_row()
-        entries = getattr(self, "_visible_entries_cache", None)
-        if entries is None:
-            entries = self._visible_entries()
+        entries = self._visible_entries_cache
         if 0 <= row < len(entries):
             change = entries[row][1]
             return change.file_id, change.change_id
@@ -2848,7 +2818,7 @@ class _PreviewDialog:
                 self.file_filter.setCurrentIndex(index)
                 break
         self._refresh()
-        visible_entries = getattr(self, "_visible_entries_cache", ())
+        visible_entries = self._visible_entries_cache
         row = next(
             (index for index, (_preview, change) in enumerate(visible_entries)
              if (change.file_id, change.change_id) == identity),
@@ -2912,9 +2882,9 @@ class _PreviewDialog:
         if recalculate_counts:
             self._recompute_counts()
         self._selection_advanced_scan_start = None
-        cached_entries = getattr(self, "_visible_entries_cache", None)
+        cached_entries = self._visible_entries_cache
         status_filter_active = self._status_filter_value() is not None
-        if refresh_statuses and cached_entries is not None and not status_filter_active:
+        if refresh_statuses and not status_filter_active:
             # Decisions change row status, not which rows match the filters.
             # Keep the tuple/model identity and avoid rescanning large books.
             visible_entries = cached_entries
@@ -3000,7 +2970,7 @@ class _PreviewDialog:
             summary += "\n" + history_feedback
         self.summary.setText(summary)
         self._refresh_file_filter_counts()
-        has_current = bool(getattr(self, "_visible_entries_cache", ()))
+        has_current = bool(self._visible_entries_cache)
         for name in (
             "accept_this_button",
             "reject_this_button",
@@ -3106,9 +3076,7 @@ class _PreviewDialog:
                 combo.blockSignals(previous_blocked)
 
     def _show_current(self, row: int) -> None:
-        visible_entries = getattr(self, "_visible_entries_cache", None)
-        if visible_entries is None:
-            visible_entries = self._visible_entries()
+        visible_entries = self._visible_entries_cache
         if row < 0 or row >= len(visible_entries):
             self.detail.clear()
             self.source_detail.clear()
@@ -3164,9 +3132,7 @@ class _PreviewDialog:
 
     def _current_entry(self):
         row = self._current_row()
-        visible_entries = getattr(self, "_visible_entries_cache", None)
-        if visible_entries is None:
-            visible_entries = self._visible_entries()
+        visible_entries = self._visible_entries_cache
         if row < 0 or row >= len(visible_entries):
             return None
         return visible_entries[row]
@@ -3215,9 +3181,7 @@ class _PreviewDialog:
     def _select_next_undecided(
         self, current_change_id=None, *, direction: int = 1, start_row=None,
     ) -> None:
-        entries = getattr(self, "_visible_entries_cache", None)
-        if entries is None:
-            entries = self._visible_entries()
+        entries = self._visible_entries_cache
         if not entries:
             return
         current_row = self._current_row() if start_row is None else start_row
@@ -3306,9 +3270,7 @@ class _PreviewDialog:
 
     def _refresh_current(self, *, rows=()) -> None:
         row = self._current_row()
-        visible_entries = getattr(self, "_visible_entries_cache", None)
-        if visible_entries is None:
-            visible_entries = self._visible_entries()
+        visible_entries = self._visible_entries_cache
         if row < 0 or row >= len(visible_entries):
             self._update_summary()
             return
@@ -3570,8 +3532,7 @@ class _ConversionConfigDialog:
         self.jieba_checkbox.setVisible(controls_visible)
         self.jieba_status.setVisible(controls_visible)
         self.jieba_details_button.setVisible(controls_visible and bool(self._probe_error))
-        if hasattr(self, "options_panel"):
-            self.options_panel.update_enablement(self._get_config())
+        self.options_panel.update_enablement(self._get_config())
         callback = self._completion_enabled_callback
         if callable(callback):
             callback()

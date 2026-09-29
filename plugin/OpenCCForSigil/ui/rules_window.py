@@ -29,6 +29,16 @@ from ui.qt import ask_confirmation, ensure_application, enum_value as _enum_valu
 from ui.window_state import restore_window_size, save_window_size
 
 
+def _user_role(qt: Any) -> Any:
+    """Return Qt's user-data role across the supported flat and nested APIs."""
+
+    if qt is None:
+        return None
+    item_data_role = getattr(qt, "ItemDataRole", None)
+    role = getattr(item_data_role, "UserRole", None)
+    return role if role is not None else getattr(qt, "UserRole", None)
+
+
 @dataclass(frozen=True)
 class RuleImportReview:
     additions: tuple[Rule, ...]
@@ -1306,7 +1316,7 @@ class RuleManagerDialog:
         blocker = getattr(self.table, "blockSignals", None)
         previous_block = blocker(True) if callable(blocker) else False
         self.table.setRowCount(0)
-        role = getattr(self._qt.Qt, "UserRole", 32)
+        role = _user_role(self._qt.Qt)
         for rule in visible:
             row = self.table.rowCount()
             self.table.insertRow(row)
@@ -1405,7 +1415,7 @@ class RuleManagerDialog:
         for conflict in conflicts:
             item = self._qt.QListWidgetItem(
                 other_summaries.get(id(conflict), _conflict_summary(conflict, translator)))
-            item.setData(getattr(self._qt.Qt, "UserRole", 32),
+            item.setData(_user_role(self._qt.Qt),
                          tuple(rule.id for rule in conflict.rules))
             self.conflict_list.addItem(item)
         if callable(blocker):
@@ -1423,9 +1433,10 @@ class RuleManagerDialog:
             item = self.table.item(row, 0)
         except (AttributeError, TypeError):
             item = None
-        role = getattr(getattr(self, "_qt", None), "Qt", None)
-        role = getattr(role, "UserRole", 32)
-        identifier = item.data(role) if item is not None and hasattr(item, "data") else None
+        qt = getattr(getattr(self, "_qt", None), "Qt", None)
+        role = _user_role(qt)
+        identifier = (item.data(role) if item is not None and role is not None
+                      and hasattr(item, "data") else None)
         if identifier:
             return str(identifier)
         visible = getattr(self, "_visible_rule_ids", [rule.id for rule in self.rules])
@@ -1869,7 +1880,7 @@ class RuleManagerDialog:
         self._refresh_editor_mode()
 
     def _select_conflict_item(self, item):
-        rule_ids = item.data(getattr(self._qt.Qt, "UserRole", 32))
+        rule_ids = item.data(_user_role(self._qt.Qt))
         if not rule_ids:
             return
         identifier = next((rule_id for rule_id in rule_ids

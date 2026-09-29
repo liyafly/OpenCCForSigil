@@ -852,6 +852,7 @@ def test_summary_lists_skipped_source_href_with_original_line_and_column():
     dialog._translator = Translator("zh-Hans")
     dialog._previews = ()
     dialog._entries = ()
+    dialog._visible_entries_cache = ()
     dialog._planned = (
         SimpleNamespace(
             source=SimpleNamespace(file_id="bad", href="Text/bad.xhtml"),

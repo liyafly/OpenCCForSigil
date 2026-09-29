@@ -1,6 +1,8 @@
 import sys
 from types import ModuleType, SimpleNamespace
 
+import pytest
+
 from ui import qt as qt_helpers
 
 
@@ -33,6 +35,17 @@ class _FakeTranslator:
     def load(self, name, path):
         self.load_request = (name, path)
         return True
+
+
+def test_exec_dialog_requires_the_supported_exec_method():
+    with pytest.raises(TypeError, match=r"does not provide exec\(\)"):
+        qt_helpers.exec_dialog(SimpleNamespace(exec_=lambda: 1))
+
+
+def test_enum_value_does_not_search_nested_compatibility_namespaces():
+    namespace = SimpleNamespace(ItemDataRole=SimpleNamespace(UserRole=256))
+
+    assert qt_helpers.enum_value(namespace, "UserRole") is None
 
 
 def test_ensure_application_prefers_sigil_plugin_application(monkeypatch):

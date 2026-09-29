@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 import pytest
 
 from core.workflow import WorkflowCancelled, _report_progress
@@ -57,6 +59,7 @@ class _FakeProgressDialog:
         self.window_flags = []
         self.event_filters = []
         self.status_label = _FakeProgressLabel()
+        self.tooltip = ""
         self.minimum_widths = []
         self.fixed_widths = []
 
@@ -68,6 +71,12 @@ class _FakeProgressDialog:
 
     def label(self):
         return self.status_label
+
+    def setToolTip(self, value):
+        self.tooltip = value
+
+    def toolTip(self):
+        return self.tooltip
 
     def setWindowTitle(self, _title) -> None:
         return None
@@ -170,7 +179,27 @@ def test_progress_reporter_elides_long_filename_and_keeps_full_tooltip():
     assert len(reporter.dialog.labels[-1]) < len(filename) + 40
     assert "…" in reporter.dialog.labels[-1]
     assert filename not in reporter.dialog.labels[-1]
-    assert reporter.dialog.label().toolTip() == filename
+    assert reporter.dialog.toolTip() == filename
+
+
+def test_progress_filename_truncation_uses_fixed_55_character_limit():
+    class FontMetrics:
+        def __init__(self, _font):
+            pass
+
+        def elidedText(self, _value, _mode, _width):
+            return "pixel-measured"
+
+    class QtWithFontMetrics:
+        QApplication = _FakeApplication
+        QProgressDialog = _FakeProgressDialog
+        Qt = SimpleNamespace(ElideMiddle="middle")
+        QtGui = SimpleNamespace(QFontMetrics=FontMetrics)
+
+    reporter = preview_window.ProgressReporter(QtWithFontMetrics, 1)
+    filename = "Text/" + "chapter-name-" * 24 + ".xhtml"
+
+    assert len(reporter._elided_filename(filename)) == 55
 
 
 def test_progress_reporter_scopes_modality_to_parent_and_closes_once():

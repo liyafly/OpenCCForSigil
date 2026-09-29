@@ -120,33 +120,20 @@ def _install_qt_base_translation(qt_widgets: Any, application: Any, language: st
 
 
 def exec_dialog(dialog: Any) -> Any:
-    """Execute a modal dialog across Qt 5 and Qt 6 bindings."""
+    """Execute a modal dialog using the supported Qt API."""
 
-    execute = getattr(dialog, "exec", None) or getattr(dialog, "exec_", None)
+    execute = getattr(dialog, "exec", None)
     if not callable(execute):
-        raise TypeError("Qt dialog does not provide exec() or exec_()")
+        raise TypeError("Qt dialog does not provide exec()")
     return execute()
 
 
 def enum_value(namespace: Any, name: str) -> Any:
-    """Resolve an enum member across flat Qt 5 and nested Qt 6 APIs."""
+    """Resolve an enum member from the supported flat Qt namespace."""
 
     if namespace is None:
         return None
-    value = getattr(namespace, name, None)
-    if value is not None:
-        return value
-    for enum_name in (
-        "WindowType", "Key", "ItemDataRole", "Orientation", "SelectionBehavior",
-        "SelectionMode", "ResizeMode", "SizeAdjustPolicy", "ColorRole", "ShortcutContext",
-        "TextElideMode", "ToolButtonPopupMode",
-        "ToolButtonStyle", "ArrowType", "ButtonRole", "Corner",
-    ):
-        enum = getattr(namespace, enum_name, None)
-        value = getattr(enum, name, None) if enum is not None else None
-        if value is not None:
-            return value
-    return None
+    return getattr(namespace, name, None)
 
 
 def ask_confirmation(qt: Any, parent: Any, title: str, message: str, translator: Any) -> bool:
