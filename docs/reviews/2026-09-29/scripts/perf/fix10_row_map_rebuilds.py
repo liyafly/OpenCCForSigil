@@ -24,14 +24,13 @@ changes = tuple(TokenChange(source="旧", target="新", span=SourceSpan(i * 2, i
 p = PreviewSession(ConversionPlan(source_sha256="", file_id="f.xhtml", changes=changes))
 d = _PreviewDialog(make_with_table(), (SimpleNamespace(source=SimpleNamespace(file_id="f.xhtml", href="Text/f.xhtml", document_kind="xhtml"), plan=p.plan),), (p,), Translator("en"))
 d.status_filter.setCurrentIndex(d.status_filter.findData("undecided"))
-built = []
-orig = _PreviewDialog._visible_row_map
-def wrap(self, entries):
-    if not (self._visible_identity_to_row is not None and self._visible_identity_to_row_entries is entries):
-        built.append(len(entries))
-    return orig(self, entries)
-_PreviewDialog._visible_row_map = wrap
+refreshes = []
+orig = _PreviewDialog._refresh
+def wrap(self, *args, **kwargs):
+    refreshes.append(1)
+    return orig(self, *args, **kwargs)
+_PreviewDialog._refresh = wrap
 for k in range(5):
     d._set_current_row(100)
     d._accept_this()
-print("grouped accept x5 under undecided filter: row-map rebuilds =", len(built), "entries iterated =", sum(built))
+print("grouped accept x5 under undecided filter: full refreshes =", len(refreshes))

@@ -12,11 +12,12 @@ from ui.preview_window import _PreviewDialog
 def _change(
     change_id, *, file_id="chapter.xhtml", source="原文", target="目标",
     rule_source="UserRule:alpha", category="character", risk="LOW", target_id="",
+    group_id="",
 ):
     return TokenChange(
         source=source, target=target, span=SourceSpan(0, len(source)),
         rule_source=rule_source, change_id=change_id, file_id=file_id,
-        category=category, risk=risk, target_id=target_id,
+        category=category, risk=risk, target_id=target_id, group_id=group_id,
     )
 
 
@@ -169,6 +170,61 @@ def test_undecided_filter_accept_updates_only_the_affected_row(monkeypatch):
     assert len(dialog._visible_entries_cache) == before_count - 1
     assert dialog._current_entry()[1].change_id == "change-501"
     assert dialog.table_model.removed_ranges[-1] == (500, 500)
+
+
+def test_undecided_filter_group_accept_does_not_rescan_visible_rows(monkeypatch):
+    group_count = 10_000
+    changes = tuple(
+        _change(
+            f"change-{index}", rule_source=f"UserRule:{index // 2}",
+            category="user_rule", risk="HIGH", group_id=f"rules:occurrence-{index // 2}",
+        )
+        for index in range(group_count * 2)
+    )
+    dialog, _previews = _dialog(changes)
+    _filter(dialog, "status_filter", "undecided")
+
+    decision_calls = 0
+    total_visible_visits = 0
+    original_decision = PreviewSession.decision
+
+    def counted_decision(preview, change_id):
+        nonlocal decision_calls
+        decision_calls += 1
+        return original_decision(preview, change_id)
+
+    monkeypatch.setattr(PreviewSession, "decision", counted_decision)
+
+    for index in range(5):
+        visible = VisitCountingEntries(dialog._visible_entries_cache)
+        dialog._visible_entries_cache = visible
+        before_count = len(visible)
+        before_decisions = decision_calls
+        dialog._set_current_row(100)
+        dialog._accept_this()
+
+        total_visible_visits += visible.visits
+        assert visible.visits <= 1_000
+        assert decision_calls - before_decisions <= 1_000
+        assert len(dialog._visible_entries_cache) == before_count - 2
+        assert dialog._current_entry()[1].change_id == f"change-{100 + 2 * (index + 1)}"
+
+    assert total_visible_visits <= 1_000
+
+
+def test_incremental_row_removal_falls_back_when_model_rejects_range(monkeypatch):
+    dialog, _previews = _dialog((_change("first"), _change("second")))
+    _filter(dialog, "status_filter", "undecided")
+    prior_model_entries = dialog.table_model.rows.entries
+    monkeypatch.setattr(
+        dialog.table_model, "remove_rows", lambda _ranges: prior_model_entries)
+    dialog._set_current_row(0)
+
+    dialog._accept_this()
+
+    assert _visible_ids(dialog) == ("second",)
+    assert dialog.table_model.rowCount() == 1
+    assert dialog.table_model.rows.entries == dialog._visible_entries_cache
 
 
 def test_skipped_status_filter_matches_rejected_decisions():

@@ -260,7 +260,12 @@ def _table_dialog(entries, previews, *, current_row=0, category="all", file_id=N
     dialog._translator = Translator(language)
     dialog._previews = tuple(previews)
     dialog._entries = tuple(entries)
+    dialog._entry_position = {
+        (change.file_id, change.change_id): index
+        for index, (_preview, change) in enumerate(dialog._entries)
+    }
     dialog._visible_entries_cache = tuple(entries)
+    dialog._visible_positions = list(range(len(dialog._visible_entries_cache)))
     dialog._planned = ()
     dialog._href_by_id = {}
     dialog._source_by_id = {}

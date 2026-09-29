@@ -14,6 +14,7 @@ including the Qt event processing it triggers. No EPUB is written.
 from __future__ import annotations
 
 import argparse
+from dataclasses import replace
 import gc
 import json
 import platform
@@ -120,6 +121,56 @@ def main() -> int:
     measure("undo_after_accept_file", dialog._undo_preview_action, repeats=1)
     measure("accept_all", dialog._accept_all, repeats=1)
     measure("undo_accept_all", dialog._undo_preview_action, repeats=1)
+
+    # Attach synthetic two-row rule groups to otherwise unchanged preview rows.
+    # This isolates the grouped-decision path while retaining the full book size.
+    group_count = min(max(args.repeats, 1), len(dialog._entries) // 2)
+    if group_count:
+        entries = list(dialog._entries)
+        grouped_entries = {}
+        grouped_file_ids = {}
+        grouped_stats = {}
+        grouped_ids_by_file = {key: set(value)
+                               for key, value in dialog._group_ids_by_file.items()}
+        for group_index in range(group_count):
+            group_id = f"rules:benchmark-occurrence-{group_index}"
+            first = group_index * 2
+            pair = []
+            for row in (first, first + 1):
+                preview, change = entries[row]
+                updated = (preview, replace(change, group_id=group_id))
+                entries[row] = updated
+                pair.append(updated)
+            grouped_entries[group_id] = tuple(pair)
+            file_id = pair[0][1].file_id
+            grouped_file_ids[group_id] = frozenset((file_id,))
+            grouped_stats[group_id] = (2, 1)
+            grouped_ids_by_file.setdefault(file_id, set()).add(group_id)
+        dialog._entries = tuple(entries)
+        dialog._entry_position = {
+            (change.file_id, change.change_id): index
+            for index, (_preview, change) in enumerate(dialog._entries)
+        }
+        dialog._visible_entries_cache = dialog._entries
+        dialog._visible_positions = list(range(len(dialog._entries)))
+        dialog._group_entries_by_id.update(grouped_entries)
+        dialog._group_file_ids.update(grouped_file_ids)
+        dialog._group_stats.update(grouped_stats)
+        dialog._group_ids_by_file = {
+            key: frozenset(value) for key, value in grouped_ids_by_file.items()
+        }
+        dialog.table_model.set_entries(dialog._entries)
+        index = dialog.status_filter.findData("undecided")
+        dialog.status_filter.setCurrentIndex(index)
+        app.processEvents()
+
+        def accept_group():
+            dialog._set_current_row(0)
+            dialog._accept_this()
+
+        measure("accept_group_status_undecided", accept_group, repeats=group_count)
+    else:
+        results["accept_group_status_undecided"] = {"skipped": "fewer than two changes"}
 
     PreviewSession.decision = original_decision
     dialog._allow_reject = True

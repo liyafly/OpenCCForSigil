@@ -1683,6 +1683,10 @@ class _PreviewDialog:
             for preview, changes in preview_changes
             for change in changes
         )
+        self._entry_position = {
+            (change.file_id, change.change_id): index
+            for index, (_preview, change) in enumerate(self._entries)
+        }
         self._href_by_id = {
             item.source.file_id: item.source.href for item in self._planned
         }
@@ -1760,8 +1764,7 @@ class _PreviewDialog:
         self._recompute_counts()
         self._last_group_feedback = ""
         self._visible_entries_cache = self._entries
-        self._visible_identity_to_row = None
-        self._visible_identity_to_row_entries = None
+        self._visible_positions = list(range(len(self._entries)))
         self.applied = False
         self.back_to_settings = False
         self.checkpoint_notice_shown = False
@@ -2520,17 +2523,6 @@ class _PreviewDialog:
         )).casefold()
         return query in searchable
 
-    def _visible_row_map(self, entries):
-        if (self._visible_identity_to_row is not None
-                and self._visible_identity_to_row_entries is entries):
-            return self._visible_identity_to_row
-        self._visible_identity_to_row = {
-            (change.file_id, change.change_id): row
-            for row, (_preview, change) in enumerate(entries)
-        }
-        self._visible_identity_to_row_entries = entries
-        return self._visible_identity_to_row
-
     def _status_filter_value(self) -> str | None:
         combo = getattr(self, "status_filter", None)
         if combo is None or not callable(getattr(combo, "currentData", None)):
@@ -2616,7 +2608,7 @@ class _PreviewDialog:
             self._record_decision_change(
                 file_id, previous, preview.decision(change_id))
 
-    def _refresh_after_decision(self, affected, *, preferred_row=None) -> None:
+    def _refresh_after_decision(self, affected) -> None:
         """Refresh changed rows without rescanning a large status-filtered preview."""
 
         self._selection_advanced_scan_start = None
@@ -2631,9 +2623,6 @@ class _PreviewDialog:
             visible = self._visible_entries_cache
         affected = tuple(affected)
         current_row = self._current_row()
-        row_map = None
-        if preferred_row is None or len(affected) != 1:
-            row_map = self._visible_row_map(visible)
 
         removed_rows = []
         refreshed_rows = []
@@ -2645,13 +2634,13 @@ class _PreviewDialog:
 
         for preview, change in affected:
             identity = (change.file_id, change.change_id)
-            if (preferred_row is not None and len(affected) == 1
-                    and 0 <= preferred_row < len(visible)
-                    and (visible[preferred_row][1].file_id,
-                         visible[preferred_row][1].change_id) == identity):
-                row = preferred_row
-            else:
-                row = row_map.get(identity) if row_map is not None else None
+            position = self._entry_position.get(identity)
+            row = None
+            if position is not None:
+                candidate = bisect_left(self._visible_positions, position)
+                if (candidate < len(self._visible_positions)
+                        and self._visible_positions[candidate] == position):
+                    row = candidate
             non_status_match = self._matches_non_status_filters(
                 change, current=current_filter, query=query)
             now_visible = (
@@ -2678,14 +2667,25 @@ class _PreviewDialog:
 
         if ranges:
             next_entries = visible
+            next_positions = self._visible_positions
+            model = getattr(self, "table_model", None)
             for first, last in reversed(ranges):
+                model_entries = getattr(getattr(model, "rows", None), "entries", None)
+                if model_entries is not None and (
+                    first < 0 or last < first or last >= len(model_entries)
+                ):
+                    self._refresh(refresh_statuses=True)
+                    return
                 next_entries = next_entries[:first] + next_entries[last + 1:]
-                model = getattr(self, "table_model", None)
                 if model is not None:
-                    model.remove_rows(((first, last),))
+                    prior_model_entries = getattr(getattr(model, "rows", None), "entries", None)
+                    updated_model_entries = model.remove_rows(((first, last),))
+                    if updated_model_entries is prior_model_entries:
+                        self._refresh(refresh_statuses=True)
+                        return
+                next_positions = next_positions[:first] + next_positions[last + 1:]
             self._visible_entries_cache = next_entries
-            self._visible_identity_to_row = None
-            self._visible_identity_to_row_entries = None
+            self._visible_positions = next_positions
             if current_row in removed_rows:
                 self._selection_advanced_scan_start = current_row - 1
             current_row -= sum(row < current_row for row in removed_rows)
@@ -2934,8 +2934,7 @@ class _PreviewDialog:
                 preview.restore_decision(item.change_id, None)
         self._record_decision_changes(before)
         self._record_decision_action(before)
-        self._refresh_after_decision(
-            entries, preferred_row=self._current_row() if len(entries) == 1 else None)
+        self._refresh_after_decision(entries)
 
     def _current_row(self) -> int:
         table = getattr(self, "table_view", None)
@@ -3059,8 +3058,10 @@ class _PreviewDialog:
             else:
                 row = 0 if visible_entries else -1
         if visible_entries is not cached_entries:
-            self._visible_identity_to_row = None
-            self._visible_identity_to_row_entries = None
+            self._visible_positions = [
+                self._entry_position[(change.file_id, change.change_id)]
+                for _preview, change in visible_entries
+            ]
         self._visible_entries_cache = visible_entries
         if getattr(self, "table_model", None) is not None:
             prior_entries = self.table_model.rows.entries
@@ -3330,7 +3331,7 @@ class _PreviewDialog:
             self._record_decision_change(change.file_id, old_decision, after)
             self._record_decision_action(before)
             if self._status_filter_value() is not None:
-                self._refresh_after_decision((entry,), preferred_row=row)
+                self._refresh_after_decision((entry,))
             else:
                 self._refresh_current(rows=(row,))
         scan_start = self._selection_advanced_scan_start
