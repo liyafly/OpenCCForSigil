@@ -370,5 +370,8 @@ def test_history_dialog_button_defaults_and_empty_cleanup_state(monkeypatch, tmp
     dialog = history_window.show_history(tmp_path / "history", qt_widgets=qt)
 
     assert not dialog.cleanup_button.isEnabled()
+    assert "history_status_filter" not in dialog.__dict__
+    assert hasattr(dialog, "history_search")
+    assert hasattr(dialog, "history_direction_filter")
     assert dialog.history_buttons[1].isDefault()
     assert all(button.autoDefault() is False for button in dialog.history_buttons)

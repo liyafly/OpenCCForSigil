@@ -12,7 +12,6 @@ def filter_history_records(
     records: Sequence[Mapping[str, Any]],
     *,
     query: str = "",
-    status: str = "",
     direction: str = "",
     profile_names: Mapping[str, str] | None = None,
     translator: Any = None,
@@ -27,10 +26,7 @@ def filter_history_records(
         summary = record.get("summary", {})
         if not isinstance(summary, Mapping):
             summary = {}
-        record_status = str(summary.get("status", "") or "")
         config = str(summary.get("config", "") or "")
-        if status and record_status != status:
-            continue
         if direction and config != direction:
             continue
         if needle:

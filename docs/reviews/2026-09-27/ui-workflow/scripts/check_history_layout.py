@@ -75,22 +75,18 @@ def main():
 
         # AND intersection, including a localized user-facing metadata search.
         dialog.history_search.setText("bOoK 7")
-        dialog.history_status_filter.setCurrentIndex(
-            next(i for i in range(dialog.history_status_filter.count())
-                 if dialog.history_status_filter.itemData(i) == "success"))
         dialog.history_direction_filter.setCurrentIndex(
             next(i for i in range(dialog.history_direction_filter.count())
                  if dialog.history_direction_filter.itemData(i) == "s2tw"))
         app.processEvents()
         expected = [record for index, record in enumerate(records)
-                    if index % 17 == 7 and index % 3 == 0 and index % 4 == 1]
+                    if index % 17 == 7 and index % 4 == 1]
         checks["anded_filters_match_exact_metadata"] = (
             dialog.history_table.rowCount() == len(expected) and len(expected) > 0)
 
         # Search by a stable session ID yields one result. Sorting afterward must
         # not detach the UserRole session identity from the visible row.
         target = expected[0]
-        dialog.history_status_filter.setCurrentIndex(0)
         dialog.history_direction_filter.setCurrentIndex(0)
         dialog.history_search.setText(target["session_id"])
         app.processEvents()

@@ -145,18 +145,6 @@ def show_history(
     search_edit = qt_widgets.QLineEdit(dialog)
     search_edit.setPlaceholderText(translator.text("history.search_placeholder"))
     filters.addWidget(search_edit, 2)
-    status_filter = qt_widgets.QComboBox(dialog)
-    status_filter.addItem(translator.text("history.filter_all_statuses"), "")
-    statuses = sorted({str(record.get("summary", {}).get("status", "") or "")
-                       for record in records
-                       if isinstance(record.get("summary", {}), Mapping)
-                       and record.get("summary", {}).get("status")})
-    for value in statuses:
-        label = translator.text(f"history.status.{value}")
-        if label == f"history.status.{value}":
-            label = value or translator.text("history.unknown_status")
-        status_filter.addItem(label, value)
-    filters.addWidget(status_filter)
     direction_filter = qt_widgets.QComboBox(dialog)
     direction_filter.addItem(translator.text("history.filter_all_directions"), "")
     configs = sorted({str(record.get("summary", {}).get("config", "") or "")
@@ -246,7 +234,6 @@ def show_history(
         visible_records = filter_history_records(
             records,
             query=search_edit.text(),
-            status=str(status_filter.currentData() or ""),
             direction=str(direction_filter.currentData() or ""),
             profile_names=profile_names,
             translator=translator,
@@ -309,7 +296,6 @@ def show_history(
     table.doubleClicked.connect(lambda *_args: inspect())
     table.itemSelectionChanged.connect(update_actions)
     search_edit.textChanged.connect(refresh_filters)
-    status_filter.currentIndexChanged.connect(refresh_filters)
     direction_filter.currentIndexChanged.connect(refresh_filters)
     close_button.clicked.connect(dialog.close)
     count_label.setText(translator.text(
@@ -320,7 +306,6 @@ def show_history(
     dialog.cleanup_button = cleanup_button
     dialog.history_buttons = (cleanup_button, inspect_button, export_button, close_button)
     dialog.history_search = search_edit
-    dialog.history_status_filter = status_filter
     dialog.history_direction_filter = direction_filter
     dialog.history_count_label = count_label
     dialog.history_empty_label = empty

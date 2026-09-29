@@ -1,3 +1,5 @@
+from inspect import signature
+
 from ui.history_filters import filter_history_records
 from ui.i18n import Translator
 
@@ -21,10 +23,10 @@ def test_thousand_history_rows_use_anded_metadata_filters_and_normal_text():
     names = {"profile-read": "Taiwan Reading Profile", "profile-other": "Other"}
     tr = Translator("en")
     filtered = filter_history_records(
-        records, query="  bOoK 7 ", status="success", direction="s2tw",
+        records, query="  bOoK 7 ", direction="s2tw",
         profile_names=names, translator=tr)
     expected = [record for index, record in enumerate(records)
-                if index % 17 == 7 and index % 3 == 0 and index % 4 == 1]
+                if index % 17 == 7 and index % 4 == 1]
 
     assert filtered == expected
     assert len(filter_history_records(records, translator=tr)) == 1000
@@ -49,7 +51,5 @@ def test_same_book_sessions_remain_distinct_by_session_id():
         records, query="same book")] == ["first", "second"]
 
 
-def test_unknown_status_is_an_exact_filter_value():
-    records = _records()
-
-    assert len(filter_history_records(records, status="unknown_state")) == 333
+def test_history_filters_have_no_status_parameter():
+    assert "status" not in signature(filter_history_records).parameters

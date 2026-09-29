@@ -139,6 +139,12 @@ def test_simp19_ineffective_profile_summary_strings_are_removed_from_catalogs():
     assert all(not (set(catalog) & removed) for catalog in catalogs.values())
 
 
+def test_simp20_history_status_filter_string_is_removed_from_catalogs():
+    catalogs = load_catalogs()
+    removed = {"history.filter_all_statuses", "history.unknown_status"}
+    assert all(not (set(catalog) & removed) for catalog in catalogs.values())
+
+
 def test_one_term_per_concept():
     catalogs = load_catalogs()
 
