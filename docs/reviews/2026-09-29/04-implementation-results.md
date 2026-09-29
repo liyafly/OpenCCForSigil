@@ -134,3 +134,31 @@ Each item has its own commit on `main`; each commit records a regression that fa
 - `make check`: Ruff passed; **838 passed, 1 skipped** (`tests/unit/test_rules_window.py:470`, fake Qt does not calculate widget layout sizes); OpenCC payload manifest passed; OpenCC differential passed (28 cases); Jieba differential passed (10 cases); package metadata valid (`0.2.10`).
 - Real Qt `check_ui_acceptance.py --verify --width 960 --height 640`: **PASS**, all 13 scenarios. Output: `/tmp/opencc-phase7-ui-acceptance/acceptance.json`. Qt reported an 800×800 offscreen screen; requested dialog geometry was 960×640. This is offscreen evidence, not physical-display evidence.
 - `SIMP-17`, `SIMP-31`, and `SIMP-32`: **按 2026-09-29 决定不做**. Sigil-host acceptance: **Not verified**.
+
+## Phase 8 — SIMP-11 through SIMP-22 (SIMP-17 skipped)
+
+Each SIMP item below is an independent `main` commit. Every listed regression was run before its product change and failed there; the complete post-change regression set passes the Phase 8 gate. The signed baseline files under `evidence/` remain unchanged.
+
+| Item | Commit | Pre-fix failing test(s) | Post-fix result |
+| --- | --- | --- | --- |
+| SIMP-11 | `b235b05` | `test_rule_manager_has_no_rule_template_action` | Removed regex rule templates and their dead paths; regression passes in the phase gate. |
+| SIMP-12 | `493cbad` | `test_scope_dialog_has_no_checkpoint_banner_but_keeps_recovery_notice` | Removed the scope checkpoint banner; recovery notice remains covered and the regression passes. |
+| SIMP-13 | `501192a` | `test_legacy_diagnostic_panel_options_do_not_change_profile_comparison`; `test_diagnostic_options_are_not_exposed_in_run_options_panel`; `test_current_profile_drops_legacy_diagnostic_options_from_extras`; `test_diagnostic_option_strings_are_removed_from_catalogs` | Removed diagnostic option switches and stale catalog keys; all four regressions pass. |
+| SIMP-14 | `a1cba9b` | `test_more_menu_has_only_single_batch_path_for_decisions`; `test_language_group_action_strings_are_removed_from_catalogs` | Removed language-group decision buttons; updated real-Qt probe verifies item-level grouped decision and one-step Undo/Redo while preserving batch, reset, and undo checks. |
+| SIMP-15 | `d9e0705` | `test_json_import_skips_bad_records_and_preserves_record_numbers`; `test_json_import_options_scope_is_default_and_rebind_is_opt_in`; `test_skip_invalid_import_option_string_is_removed_from_catalogs` | Removed strict rule-import mode; the replacement importer regressions pass. |
+| SIMP-16 | `4a2b390` | `test_legacy_profile_field_names_remain_extras_and_round_trip`; `test_profile_migration_and_actionable_failure`; `test_language_region_aliases_normalize_during_profile_load`; `test_missing_or_corrupt_active_profile_falls_back_and_clears_preference` | Removed obsolete profile compatibility shims; profile loading regressions pass. |
+| SIMP-18 | `3eeb0e5` | `test_conversion_profile_rule_and_history_dialogs_construct`; `test_more_menu_exposes_settings_help_import_bulk_export_and_delete`; `test_new_rule_defaults_ignore_saved_ruleset_direction_and_scope`; `test_jieba_failure_reason_is_available_in_status_tooltip`; `test_simp18_redundant_action_strings_are_removed_from_catalogs` | Focused suite: **132 passed, 1 skipped**; updated run-summary probe passes. |
+| SIMP-19 | `22357fe` | `test_profile_summary_shows_quotation_mode_and_lists_full_profile_name`; `test_compare_covers_only_effective_profile_fields`; `test_simp19_ineffective_profile_summary_strings_are_removed_from_catalogs` | Focused profile-window, comparison, run-options, and i18n suite: **77 passed**. |
+| SIMP-20 | `f380381` | `test_history_filters_have_no_status_parameter`; `test_history_dialog_button_defaults_and_empty_cleanup_state`; `test_simp20_history_status_filter_string_is_removed_from_catalogs` | History suite: **45 passed**; real-Qt history-layout probe passes in en, zh-Hans, and zh-Hant. |
+| SIMP-21 | `e79ea24` | `test_inspect_without_input_uses_the_visible_selected_rule`; `test_test_page_places_input_before_test_buttons`; `test_rule_test_localizes_config_classification_and_rule_labels`; `test_error_report_dialog_constructs_after_dictionary_inspector_removal`; `test_simp21_dictionary_inspector_action_strings_are_removed_from_catalogs` | Focused rule suite: **154 passed, 1 skipped**; Rule-13 reproduction selects `乙方`. The §86 deviation is recorded in `docs/deviations.md`. |
+| SIMP-22 | `d100941` | `test_foreign_book_rule_is_labelled_other_book`; `test_simp22_foreign_owner_banner_string_is_removed_from_catalogs` | Focused rules-window and i18n suite: **110 passed, 1 skipped**. |
+
+`SIMP-17`: **按 2026-09-29 决定不做**.
+
+### Phase 8 gate at `865c29f3a6da8e8d4ac687044d7648213f2daea7`
+
+- `mise exec -- make check`: **PASS** — Ruff; **853 passed, 1 skipped** (`tests/unit/test_rules_window.py:485`, fake Qt does not calculate widget layout sizes); official payload manifest; OpenCC differential **28/28**; Jieba differential **10/10**; plugin metadata valid (`0.2.10`).
+- Real Qt `check_ui_acceptance.py --verify --width 960 --height 640`: **PASS**, all **13/13** scenarios. Evidence: `/tmp/opencc-phase8-final-ui-acceptance-r4/acceptance.json`. Qt's offscreen logical screen was 800×800; requested dialog size was 960×640.
+- D15 probe updates are in `865c29f`; `/tmp/opencc-phase8-preview-probe-r2/` and `/tmp/opencc-phase8-profile-probe-en-r2/` contain direct probe output. The diagnostic comparison field is explicitly expected to be absent; unrelated batch acceptance, reset, undo, and profile behavior checks remain.
+- `SIMP-31` and `SIMP-32`: **按 2026-09-29 决定不做**. Sigil-host acceptance: **Not verified**.
+- Phase 7 GitHub Actions rerun `36576356063` on `746771f15380d9df1dfab4a5e6fdc4fbd53e900d` completed with one failure on `macos-x86_64`: `tests/unit/test_preview_model.py::test_three_hundred_thousand_preview_build_filter_and_batch_accept_stay_bounded` measured `accept_all_seconds = 1.18194` against the existing `<1.0 s` bound. The other platform jobs passed. No benchmark limit was changed. This CI run was for the Phase 7 SHA; Phase 8 local gates above are green.
