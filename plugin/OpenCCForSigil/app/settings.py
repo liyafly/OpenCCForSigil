@@ -423,6 +423,15 @@ class RunSettings:
             self.active,
             ruleset_ids=tuple(item for item in self.active.ruleset_ids if item not in removed),
         )
+        load = getattr(self.storage, "load_preferences", None)
+        update = getattr(self.storage, "update_preferences", None)
+        if callable(load) and callable(update):
+            options = load().get("run_options")
+            saved_ids = options.get("ruleset_ids") if isinstance(options, dict) else None
+            if isinstance(saved_ids, list) and any(item in removed for item in saved_ids):
+                update({"run_options": {
+                    "ruleset_ids": [item for item in saved_ids if item not in removed],
+                }})
         for identifier in identifiers:
             self.rules.delete(identifier)
 

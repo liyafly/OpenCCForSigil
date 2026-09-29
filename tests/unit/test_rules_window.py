@@ -361,6 +361,12 @@ def test_rule_table_and_default_ruleset_use_localized_labels():
         "rules.help_details")
 
 
+def test_ruleset_menu_shows_tooltips():
+    manager = RuleManagerDialog(make_with_table(), (), translator=Translator("en"))
+
+    assert ("setToolTipsVisible", (True,)) in manager.ruleset_menu.calls
+
+
 def test_rule_conflicts_and_sandbox_have_dedicated_tabs():
     manager = RuleManagerDialog(make_with_table(), (), translator=Translator("en"))
 

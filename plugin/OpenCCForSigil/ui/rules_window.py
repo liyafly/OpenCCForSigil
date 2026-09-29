@@ -540,6 +540,9 @@ class RuleManagerDialog:
         if popup_mode is not None:
             self.ruleset_more_button.setPopupMode(popup_mode)
         self.ruleset_menu = qt.QMenu(self.ruleset_more_button)
+        set_tips = getattr(self.ruleset_menu, "setToolTipsVisible", None)
+        if callable(set_tips):
+            set_tips(True)
         self.ruleset_more_button.setMenu(self.ruleset_menu)
         self._ruleset_menu_actions = {}
         action_type = getattr(getattr(qt, "QtGui", None), "QAction", None)

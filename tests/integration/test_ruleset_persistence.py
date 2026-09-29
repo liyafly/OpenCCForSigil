@@ -12,6 +12,7 @@ from rules.engine import convert_with_overlay
 from core.preview import PreviewSession
 from rules.models import Rule
 from rules.store import RuleSet, RuleStore
+from sigil.storage import UserDataStore
 from tests.support.fake_qt import make_with_table
 from ui.i18n import Translator as CatalogTranslator
 from ui.rules_window import RuleManagerDialog, RuleWindowResult
@@ -228,6 +229,40 @@ def test_delete_ruleset_removes_profile_references_and_file(monkeypatch, tmp_pat
     assert profiles.load("other").ruleset_ids == ("default",)
     assert not (store.directory / "mine.json").exists()
     assert settings.take_missing_rulesets_notice() == ()
+
+
+def test_delete_ruleset_prunes_saved_run_options(monkeypatch, tmp_path):
+    storage = UserDataStore(tmp_path)
+    storage.update_preferences({
+        "run_options": {
+            "ruleset_ids": ["default", "mine"],
+            "builtin_rules_enabled": False,
+        },
+        "ui": {"rules_window": [810, 610]},
+    })
+    RuleStore(storage.paths.rules).save(RuleSet("mine", name="Mine"))
+    settings = RunSettings(
+        storage, SimpleNamespace(book_fingerprint=lambda: "book-hash"),
+        storage.load_preferences(), language="en", session_id="test-session")
+    monkeypatch.setattr(
+        "ui.rules_window.show_rules_window",
+        lambda *_args, **_kwargs: RuleWindowResult(
+            "default", (RuleSet("default"),), run_ruleset_ids=("default",),
+            deleted=("mine",)),
+    )
+
+    settings.edit_rules("s2t", Translator(), RuleDialogQt, object())
+
+    saved_preferences = storage.load_preferences()
+    assert saved_preferences["run_options"] == {
+        "ruleset_ids": ["default"],
+        "builtin_rules_enabled": False,
+    }
+    assert saved_preferences["ui"] == {"rules_window": [810, 610]}
+    next_settings = RunSettings(
+        storage, SimpleNamespace(book_fingerprint=lambda: "book-hash"),
+        storage.load_preferences(), language="en", session_id="next-session")
+    assert next_settings.take_missing_rulesets_notice() == ()
 
 
 def test_edit_rules_never_deletes_a_ruleset_saved_in_same_result(monkeypatch, tmp_path):
