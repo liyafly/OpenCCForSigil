@@ -13,7 +13,7 @@ from rules.precedence import applies_to, ordered_rules
 from rules.validators import validate_snapshot
 
 
-def _legacy_lock_spans(text, snapshot, *, config, profile_id=None, book_fingerprint=None):
+def _reference_lock_spans(text, snapshot, *, config, profile_id=None, book_fingerprint=None):
     validate_snapshot(snapshot)
     conflicts = validate_no_blocking_conflicts(snapshot.rules)
     assert not any(conflict.blocking for conflict in conflicts)
@@ -22,16 +22,51 @@ def _legacy_lock_spans(text, snapshot, *, config, profile_id=None, book_fingerpr
         if applies_to(rule, config=config, profile_id=profile_id,
                       book_fingerprint=book_fingerprint)
     )
-    spans = []
+    # FIX A-08 changed source locking so any exact match that overlaps a
+    # protection span is skipped, even when the exact match starts earlier.
+    # Reserve protections in their own left-to-right pass before scanning the
+    # remaining candidates, matching the documented production semantics.
+    protections = []
     cursor = 0
     while cursor < len(text):
-        match = next((rule for rule in candidates if text.startswith(rule.source, cursor)), None)
+        match = next((rule for rule in candidates
+                      if rule.type == "protect" and text.startswith(rule.source, cursor)), None)
         if match is None:
             cursor += 1
             continue
         end = cursor + len(match.source)
-        target = match.source if match.type == "protect" else match.target
-        spans.append(LockedSpan(cursor, end, match.source, target, match))
+        protections.append(LockedSpan(cursor, end, match.source, match.source, match))
+        cursor = end
+    spans = []
+    cursor = 0
+    protection_index = 0
+    while cursor < len(text):
+        while (protection_index < len(protections)
+               and protections[protection_index].end <= cursor):
+            protection_index += 1
+        if (protection_index < len(protections)
+                and protections[protection_index].start == cursor):
+            protection = protections[protection_index]
+            spans.append(protection)
+            cursor = protection.end
+            continue
+        match = None
+        for rule in candidates:
+            if not text.startswith(rule.source, cursor):
+                continue
+            end = cursor + len(rule.source)
+            overlaps_protection = any(
+                cursor < protection.end and end > protection.start
+                for protection in protections
+            )
+            if not overlaps_protection:
+                match = rule
+                break
+        if match is None:
+            cursor += 1
+            continue
+        end = cursor + len(match.source)
+        spans.append(LockedSpan(cursor, end, match.source, match.target, match))
         cursor = end
     return tuple(spans)
 
@@ -63,7 +98,7 @@ def _random_rules(rng, count, *, exclude=()):
     return tuple(rules)
 
 
-def test_compiled_lock_spans_matches_legacy_ordering_for_300_random_snapshots():
+def test_compiled_lock_spans_matches_reference_ordering_for_300_random_snapshots():
     rng = random.Random(20260923)
     alphabet = "词目汉字"
     for _ in range(300):
@@ -75,7 +110,7 @@ def test_compiled_lock_spans_matches_legacy_ordering_for_300_random_snapshots():
         text = "".join(parts)
         config = rng.choice(("s2t", "t2s"))
         assert lock_spans(text, snapshot, config=config, profile_id="profile",
-                          book_fingerprint="book") == _legacy_lock_spans(
+                          book_fingerprint="book") == _reference_lock_spans(
                               text, snapshot, config=config, profile_id="profile",
                               book_fingerprint="book")
 
@@ -140,7 +175,7 @@ def test_compiled_overlay_covers_prefixes_buckets_disabled_rules_and_conflicts()
     overlay = CompiledOverlay.build(snapshot, config="s2t")
     text = "词语深目A"
     assert len(overlay.index) == 3
-    assert lock_spans_compiled(text, overlay) == _legacy_lock_spans(
+    assert lock_spans_compiled(text, overlay) == _reference_lock_spans(
         text, snapshot, config="s2t")
     spans = lock_spans_compiled(text, overlay)
     assert [(span.source, span.target) for span in spans] == [
