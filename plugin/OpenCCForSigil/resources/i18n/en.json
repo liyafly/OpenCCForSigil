@@ -528,7 +528,6 @@
   "rules.import_tsv_quoted_field": "This TSV field is surrounded by quotes and contains doubled quotes; it was imported exactly as written.",
   "rules.import_header_skipped": "Line 1 is a header row and was skipped",
   "rules.import_format": "Format",
-  "rules.skip_invalid": "Skip invalid rows and report them",
   "rules.import_add": "Add imported rules",
   "rules.import_cancel": "Cancel",
   "rules.import_summary": "New: {new}\nDuplicates: {duplicates}\nDiscarded candidates: {discarded}\nError rows: {errors}",

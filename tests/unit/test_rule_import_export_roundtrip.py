@@ -7,7 +7,6 @@ import pytest
 from rules.exporters import export_rules, export_warnings
 from rules.importers import import_rules
 from rules.models import Rule, canonical_rules_json
-from rules.validators import RuleValidationError
 from tests.support.fake_qt import make_with_table
 from ui import rules_window
 from ui.i18n import Translator
@@ -85,10 +84,11 @@ def test_two_column_tsv_uses_selected_direction():
 
 
 def test_two_column_tsv_requires_an_explicit_direction():
-    with pytest.raises(RuleValidationError) as captured:
-        import_rules("软件\t軟件\n", format="tsv")
+    result = import_rules("软件\t軟件\n", format="tsv")
 
-    assert captured.value.message_key == "rules.import_needs_direction"
+    error, = [item for item in result.diagnostics if item.severity == "error"]
+    assert error.line == 1
+    assert error.message_key == "rules.import_needs_direction"
 
 
 def test_three_columns_without_direction_are_source_target_comment():
@@ -212,7 +212,7 @@ def test_opencc_txt_export_keeps_v2_literal_rules():
 
 def test_one_column_row_error_has_no_rule_prefix():
     imported = import_rules(
-        "direction\tsource\ttarget\nonlyone\n", format="tsv", strict=False)
+        "direction\tsource\ttarget\nonlyone\n", format="tsv")
 
     error, = [item for item in imported.diagnostics if item.severity == "error"]
     assert error.line == 2
@@ -369,7 +369,7 @@ def test_json_import_rebinds_foreign_owner_only_when_requested(scope, owner, oth
     ("#1\n#2\n#3\n#4\n#5\n\t目标\n", "txt", "s2t"),
 ])
 def test_delimited_validation_errors_report_physical_line(payload, format, direction):
-    result = import_rules(payload, format=format, direction=direction, strict=False)
+    result = import_rules(payload, format=format, direction=direction)
 
     errors = [item for item in result.diagnostics if item.severity == "error"]
     assert len(errors) == 1
@@ -381,14 +381,14 @@ def test_delimited_validation_errors_report_physical_line(payload, format, direc
                     (1, "info", "rules.import_header_skipped")]
 
 
-def test_lenient_json_import_skips_bad_records_and_preserves_record_numbers():
+def test_json_import_skips_bad_records_and_preserves_record_numbers():
     payload = [
         replacement_rule(id="first").to_dict(),
         {**replacement_rule(id="unknown").to_dict(), "unknown_field": True},
         "not a rule object",
         replacement_rule(id="last", source="末尾", target="尾部").to_dict(),
     ]
-    result = import_rules(StringIO(json.dumps(payload)), format="json", strict=False)
+    result = import_rules(StringIO(json.dumps(payload)), format="json")
 
     assert [rule.id for rule in result.rules] == ["first", "last"]
     assert [(item.line, item.location, item.severity) for item in result.diagnostics] == [
@@ -396,21 +396,10 @@ def test_lenient_json_import_skips_bad_records_and_preserves_record_numbers():
     assert "unknown rule fields" in result.diagnostics[0].message
 
 
-def test_strict_json_import_fails_on_first_invalid_record_without_result():
-    payload = [
-        replacement_rule(id="first").to_dict(),
-        {**replacement_rule(id="bad").to_dict(), "unknown_field": True},
-        replacement_rule(id="last").to_dict(),
-    ]
-
-    with pytest.raises(RuleValidationError, match="rule 2: unknown rule fields"):
-        import_rules(StringIO(json.dumps(payload)), format="json", strict=True)
-
-
 @pytest.mark.parametrize("payload", ["{broken", "{\"rules\": {}}", "true"])
-def test_lenient_json_import_still_rejects_broken_document_structure(payload):
+def test_json_import_still_rejects_broken_document_structure(payload):
     with pytest.raises((ValueError, json.JSONDecodeError)):
-        import_rules(StringIO(payload), format="json", strict=False)
+        import_rules(StringIO(payload), format="json")
 
 
 def replacement_rule(**values):

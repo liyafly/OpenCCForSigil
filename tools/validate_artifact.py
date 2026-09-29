@@ -311,7 +311,6 @@ _I18N_REQUIRED_KEYS = _I18N_REQUIRED_KEYS | frozenset(
         'rules.scope_book',
         'rules.scope_global',
         'rules.scope_profile',
-        'rules.skip_invalid',
         'rules.skipped_files',
         'rules.source',
         'rules.target',

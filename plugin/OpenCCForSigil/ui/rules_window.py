@@ -2017,7 +2017,6 @@ class RuleManagerDialog:
                 profile_id=self._profile_id or "",
                 book_fingerprint=self._book_fingerprint or "",
                 semantic_version=ruleset.semantic_version,
-                strict=False,
             )
             self._review_import_result(result)
         except Exception as exc:
@@ -2074,7 +2073,6 @@ class RuleManagerDialog:
                 book_fingerprint=self._book_fingerprint or "",
                 rebind_owner=options.get("rebind_owner", False),
                 semantic_version=self._rulesets[self._ruleset_id].semantic_version,
-                strict=options["strict"],
             )
             self._review_import_result(result)
         except Exception as exc:
@@ -2111,8 +2109,6 @@ class RuleManagerDialog:
             item = model.item(index) if model is not None and index >= 0 else None
             if item is not None:
                 item.setEnabled(False)
-        skip_invalid = qt.QCheckBox(self._labels["skip_invalid"])
-        skip_invalid.setChecked(True)
         scope_label = qt.QLabel(self._labels["scope"])
         rebind_owner = qt.QCheckBox(self._translator.text("rules.import_rebind_owner"))
         rebind_owner.setChecked(False)
@@ -2129,7 +2125,6 @@ class RuleManagerDialog:
         form.addRow(self._labels["direction"], direction_combo)
         form.addRow(scope_label, scope_combo)
         form.addRow(rebind_owner)
-        form.addRow(skip_invalid)
         layout.addLayout(form)
         buttons = qt.QHBoxLayout()
         cancel = qt.QPushButton(self._labels["import_cancel"])
@@ -2151,7 +2146,6 @@ class RuleManagerDialog:
             "direction": str(direction_combo.currentData()),
             "scope": str(scope_combo.currentData()),
             "rebind_owner": bool(rebind_owner.isChecked()),
-            "strict": not skip_invalid.isChecked(),
         }
 
     def _confirm_import(self, review: RuleImportReview) -> bool:

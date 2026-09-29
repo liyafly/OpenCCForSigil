@@ -528,7 +528,6 @@
   "rules.import_tsv_quoted_field": "此 TSV 欄位兩側帶引號且含有雙寫引號，已依原樣匯入。",
   "rules.import_header_skipped": "第 1 行是表頭，已略過",
   "rules.import_format": "格式",
-  "rules.skip_invalid": "略過錯誤列並回報",
   "rules.import_add": "加入匯入規則",
   "rules.import_cancel": "取消",
   "rules.import_summary": "新增：{new}\n重複：{duplicates}\n捨棄候選：{discarded}\n錯誤列：{errors}",

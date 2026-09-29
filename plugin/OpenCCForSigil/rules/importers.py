@@ -81,7 +81,6 @@ def import_rules(
     book_fingerprint: str = "",
     rebind_owner: bool = False,
     semantic_version: int = 2,
-    strict: bool = True,
 ) -> ImportResult:
     text, inferred = _read_source(source)
     fmt = (format or inferred or "json").lower().lstrip(".")
@@ -96,7 +95,6 @@ def import_rules(
             book_fingerprint=book_fingerprint,
             semantic_version=semantic_version,
             diagnostics=diagnostics,
-            strict=strict,
             tsv=True,
         )
     elif fmt == "csv":
@@ -108,7 +106,6 @@ def import_rules(
             book_fingerprint=book_fingerprint,
             semantic_version=semantic_version,
             diagnostics=diagnostics,
-            strict=strict,
         )
     elif fmt in {"txt", "opencc", "opencc-txt"}:
         if not direction:
@@ -117,7 +114,7 @@ def import_rules(
             )
         values = _opencc_rows(
             text, direction, scope, profile_id, book_fingerprint, diagnostics,
-            semantic_version=semantic_version, strict=strict)
+            semantic_version=semantic_version)
     elif fmt == "json":
         values = _json_rules(
             text,
@@ -126,7 +123,6 @@ def import_rules(
             profile_id=profile_id,
             book_fingerprint=book_fingerprint,
             diagnostics=diagnostics,
-            strict=strict,
             rebind_owner=rebind_owner,
         )
     else:
@@ -136,8 +132,6 @@ def import_rules(
         try:
             valid.append(validate_rule(value, index=None))
         except RuleValidationError as exc:
-            if strict:
-                raise
             diagnostics.append(ImportDiagnostic(
                 line, str(exc), "error", "record" if fmt == "json" else "line"))
     unique: list[Rule] = []
@@ -190,7 +184,6 @@ def _rows_to_rules(
     book_fingerprint: str,
     semantic_version: int,
     diagnostics: list[ImportDiagnostic],
-    strict: bool,
     tsv: bool = False,
 ) -> list[tuple[int, Rule]]:
     rows = list(rows)
@@ -245,8 +238,6 @@ def _rows_to_rules(
                     "rules.import_tsv_quoted_field",
                 ))
         except RuleValidationError as exc:
-            if strict:
-                raise
             diagnostics.append(ImportDiagnostic(
                 line, str(exc), "error", "line",
                 getattr(exc, "message_key", ""),
@@ -270,7 +261,6 @@ def _opencc_rows(
     diagnostics: list[ImportDiagnostic],
     *,
     semantic_version: int,
-    strict: bool,
 ) -> list[tuple[int, Rule]]:
     result: list[tuple[int, Rule]] = []
     for line, raw in enumerate(_physical_lines(text), 1):
@@ -307,15 +297,13 @@ def _opencc_rows(
                 ))
             )
         except RuleValidationError as exc:
-            if strict:
-                raise
             diagnostics.append(ImportDiagnostic(line, str(exc), "error"))
     return result
 
 
 def _json_rules(
     text: str, *, direction: str | None, scope: str, profile_id: str,
-    book_fingerprint: str, diagnostics: list[ImportDiagnostic], strict: bool,
+    book_fingerprint: str, diagnostics: list[ImportDiagnostic],
     rebind_owner: bool = False,
 ) -> list[tuple[int, Rule]]:
     payload = json.loads(text)
@@ -349,8 +337,6 @@ def _json_rules(
         except (TypeError, ValueError) as exc:
             error = (exc if isinstance(exc, RuleValidationError) else
                      RuleValidationError(str(exc), index=index))
-            if strict:
-                raise error from exc
             diagnostics.append(ImportDiagnostic(index, str(error), "error", "record"))
     return result
 

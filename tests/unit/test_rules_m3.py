@@ -20,7 +20,6 @@ from rules.exporters import export_rules, export_warnings
 from rules.importers import import_rules, reassign_colliding_ids
 from rules.models import Rule, RuleSnapshot
 from rules.store import RuleSet, RuleStore
-from rules.validators import RuleValidationError
 
 
 class _Backend:
@@ -209,12 +208,14 @@ def test_import_export_round_trip_and_opencc_diagnostic():
 
 
 def test_regex_is_explicitly_unsupported_and_snapshot_is_immutable():
-    with pytest.raises(RuleValidationError, match="V1.1"):
-        import_rules(
-            json.dumps(
-                {"rules": [{"type": "regex", "direction": "s2t", "source": "x", "target": "y"}]}
-            )
+    imported = import_rules(
+        json.dumps(
+            {"rules": [{"type": "regex", "direction": "s2t", "source": "x", "target": "y"}]}
         )
+    )
+    assert imported.rules == ()
+    assert len(imported.diagnostics) == 1
+    assert "V1.1" in imported.diagnostics[0].message
     original = RuleSnapshot.freeze([Rule(direction="s2t", source="a", target="b")])
     mutated = Rule(direction="s2t", source="a", target="c")
     assert original.rules[0].target == "b"
@@ -257,8 +258,10 @@ def test_snapshot_from_dict_checks_supplied_hash_and_requires_direction():
     payload["sha256"] = "0" * 64
     with pytest.raises(ValueError, match="sha256"):
         RuleSnapshot.from_dict(payload)
-    with pytest.raises(RuleValidationError, match="direction"):
-        import_rules('{"rules":[{"source":"a","target":"b"}]}')
+    imported = import_rules('{"rules":[{"source":"a","target":"b"}]}')
+    assert imported.rules == ()
+    assert len(imported.diagnostics) == 1
+    assert "direction" in imported.diagnostics[0].message
 
 
 def test_ruleset_schema_two_applies_defaults_and_preserves_enabled_state():

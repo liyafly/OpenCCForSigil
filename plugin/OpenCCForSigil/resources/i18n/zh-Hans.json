@@ -528,7 +528,6 @@
   "rules.import_tsv_quoted_field": "此 TSV 字段两侧带引号且含有双写引号，已按原样导入。",
   "rules.import_header_skipped": "第 1 行是表头，已跳过",
   "rules.import_format": "格式",
-  "rules.skip_invalid": "跳过错误行并报告",
   "rules.import_add": "加入导入规则",
   "rules.import_cancel": "取消",
   "rules.import_summary": "新增：{new}\n重复：{duplicates}\n丢弃候选：{discarded}\n错误行：{errors}",

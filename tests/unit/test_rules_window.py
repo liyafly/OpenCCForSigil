@@ -883,7 +883,7 @@ def test_import_tsv_uses_target_ruleset_semantic_version(tmp_path, semantic_vers
     manager._ui_preferences = {}
     manager._save_ui_preferences = None
     manager._import_options = lambda _path: {
-        "format": "tsv", "direction": "s2t", "scope": "global", "strict": True,
+        "format": "tsv", "direction": "s2t", "scope": "global",
     }
     manager._confirm_import = lambda _review: True
     manager._refresh = lambda: None
@@ -905,6 +905,7 @@ def test_json_import_options_scope_is_default_and_rebind_is_opt_in(monkeypatch):
 
     def accept_json_options(dialog):
         form = dialog._layout.children[0]
+        assert len(form.children) == 4
         scope_label, _scope_combo = form.children[2]
         rebind_owner = form.children[3][0]
         state["scope_label"] = scope_label.text()
@@ -923,6 +924,7 @@ def test_json_import_options_scope_is_default_and_rebind_is_opt_in(monkeypatch):
     }
     assert options["scope"] == "global"
     assert options["rebind_owner"] is True
+    assert "strict" not in options
 
 
 def test_bulk_paste_adds_rules_through_import_review(monkeypatch):
@@ -1004,14 +1006,13 @@ def test_rule_details_show_legacy_precedence_version():
     assert expected in manager.selection_details.toPlainText()
 
 
-def test_nonstrict_txt_import_reports_candidates_and_invalid_rows_with_scope():
+def test_txt_import_reports_candidates_and_invalid_rows_with_scope():
     imported = import_rules(
         "术语\t专名 其他候选\n空目标\t\n",
         format="txt",
         direction="s2t",
         scope="profile",
         profile_id="current-profile",
-        strict=False,
     )
 
     assert len(imported.rules) == 1
@@ -1068,7 +1069,7 @@ def test_import_reassigns_ids_colliding_with_any_saved_ruleset(tmp_path):
     manager._profile_id = None
     manager._book_fingerprint = None
     manager._import_options = lambda _path: {
-        "format": "json", "direction": "s2t", "scope": "global", "strict": True,
+        "format": "json", "direction": "s2t", "scope": "global",
     }
     reviews = []
     manager._confirm_import = lambda review: (reviews.append(review), True)[1]
@@ -1112,7 +1113,7 @@ def test_import_review_includes_conflicts_from_other_run_rulesets(tmp_path):
     manager._ui_preferences = {}
     manager._save_ui_preferences = None
     manager._import_options = lambda _path: {
-        "format": "json", "direction": "s2t", "scope": "global", "strict": True,
+        "format": "json", "direction": "s2t", "scope": "global",
     }
     reviews = []
     manager._confirm_import = lambda review: (reviews.append(review), False)[1]
