@@ -1,12 +1,36 @@
 # Changelog
 
-## Unreleased
+## 0.2.11 - 2026-09-30
+
+### Added
+
+- Report conflicts across selected rule sets before analysis, and preserve
+  current-run membership when a rule set is renamed.
+- Improve rule import feedback and ownership handling across TSV, CSV, TXT,
+  and JSON, including robust header recognition and Unicode line handling.
 
 ### Changed
+
+- Simplify conversion, preview, rule, and profile controls; use one rule-scope
+  precedence and derive NAV conversion from the selected file set.
+- Improve responsiveness for large previews when filtering, grouping, and
+  applying bulk decisions.
+- Keep regex execution timeouts per call while resetting hit and output limits
+  for each text fragment.
+- Reduce language-tag choices to keeping existing tags or updating Chinese
+  tags, while preserving legacy saved-profile behavior.
+
+### Fixed
 
 - Apply spec §11.2 scope precedence to every rule version. At the same source
   position, v0.2.5-and-later profile rules now lose to global rules; book rules
   remain highest.
+- Prevent rule-set deletion or rename flows from losing saved rules or current
+  run selections.
+- Aggregate zero-width regex diagnostics per rule and file, preserve delimited
+  export order, and retain representable V2 rules in OpenCC TXT exports.
+- Keep profile summaries, import ownership, and zero-count feedback consistent
+  with the selected conversion.
 
 ## 0.2.10 - 2026-09-28
 

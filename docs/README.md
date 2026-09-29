@@ -34,7 +34,7 @@ and [`release.md`](release.md).
 | Understand privacy-safe storage and logs | [`privacy.md`](privacy.md) |
 | Run local and release validation | [`testing.md`](testing.md) |
 | Build and publish plugin packages | [`release.md`](release.md) |
-| Read the v0.2.10 release notes | [`releases/v0.2.10.md`](releases/v0.2.10.md) |
+| Read the v0.2.11 release notes | [`releases/v0.2.11.md`](releases/v0.2.11.md) |
 | Record an implementation/specification deviation | [`deviations.md`](deviations.md) |
 | Read the project license and third-party license boundary | [`licensing.md`](licensing.md) |
 | Review the progress, packaging, and license changes | [`review-2026-09-08.md`](review-2026-09-08.md) |
