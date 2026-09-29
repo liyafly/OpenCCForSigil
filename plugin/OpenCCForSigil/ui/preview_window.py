@@ -786,7 +786,10 @@ def _diagnostic_records(
             start = raw_start if isinstance(raw_start, int) and not isinstance(raw_start, bool) else None
             end = raw_end if isinstance(raw_end, int) and not isinstance(raw_end, bool) else None
             span_key = (start, end) if start is not None and end is not None else None
-            identity = (file_id, code, span_key)
+            message = str(getattr(diagnostic, "message", "") or "")
+            identity = ((file_id, code, span_key, message)
+                        if code == "REGEX_ZERO_WIDTH_SKIPPED"
+                        else (file_id, code, span_key))
             if identity in seen:
                 continue
             seen.add(identity)
@@ -836,6 +839,13 @@ def _diagnostic_records(
             diagnostic_name = translator.text(f"diagnostic.name.{code}", code=code)
             if diagnostic_name == f"diagnostic.name.{code}":
                 diagnostic_name = translator.text("diagnostic.name.unknown", code=code)
+            description = diagnostic_summary(translator, code, 1)
+            if code == "REGEX_ZERO_WIDTH_SKIPPED":
+                match = re.match(r"rule (\S+): skipped (\d+) ", message)
+                if match:
+                    description = translator.text(
+                        "rules.zero_width_skipped",
+                        id=match.group(1), count=int(match.group(2)))
             if (source and (start is None or end is None
                             or not (0 <= start <= end <= len(source)))
                     and line is not None and column is not None):
@@ -847,7 +857,7 @@ def _diagnostic_records(
                 href=href,
                 code=code,
                 name=diagnostic_name,
-                description=diagnostic_summary(translator, code, 1),
+                description=description,
                 location=location,
                 excerpt=_diagnostic_excerpt(source, start, end, line, column, excerpt_starts),
                 related_changes=tuple(related),

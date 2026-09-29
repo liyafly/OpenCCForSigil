@@ -618,6 +618,7 @@
   "diagnostic.source_invalid": "已跳过不合法源文件：{count} 个",
   "diagnostic.unplanned_change": "发现计划文本区间以外的改动：{count} 处",
   "diagnostic.protected_attribute_changed": "发现受保护属性被意外改动：{count} 处",
+  "diagnostic.regex_zero_width_skipped": "零宽度命中已跳过：{count} 处",
   "diagnostic.unknown": "其他诊断 {code}：{count} 处",
   "profile.operation_failed": "无法保存或删除方案。",
   "rules.conflict.unknown": "规则冲突 {kind}： “{source}”。",
@@ -732,5 +733,6 @@
   "diagnostic.name.SOURCE_INVALID_XHTML": "已跳过格式错误的源文件",
   "diagnostic.name.UNPLANNED_CHANGE": "计划范围外的改动",
   "diagnostic.name.PROTECTED_ATTRIBUTE_CHANGED": "受保护属性发生变化",
+  "diagnostic.name.REGEX_ZERO_WIDTH_SKIPPED": "正则零宽度命中已跳过",
   "diagnostic.name.unknown": "其他诊断：{code}"
 }

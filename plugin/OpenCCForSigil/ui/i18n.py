@@ -161,6 +161,7 @@ def diagnostic_summary(translator: Translator, code: str, count: int = 1) -> str
         "SOURCE_INVALID_XHTML": "diagnostic.source_invalid",
         "UNPLANNED_CHANGE": "diagnostic.unplanned_change",
         "PROTECTED_ATTRIBUTE_CHANGED": "diagnostic.protected_attribute_changed",
+        "REGEX_ZERO_WIDTH_SKIPPED": "diagnostic.regex_zero_width_skipped",
     }.get(code, "diagnostic.unknown")
     return translator.text(key, count=count, code=code)
 

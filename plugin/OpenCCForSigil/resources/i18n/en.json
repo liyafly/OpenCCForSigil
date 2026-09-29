@@ -618,6 +618,7 @@
   "diagnostic.source_invalid": "Malformed source skipped: {count}",
   "diagnostic.unplanned_change": "A change was detected outside the planned text spans: {count}",
   "diagnostic.protected_attribute_changed": "A protected attribute changed unexpectedly: {count}",
+  "diagnostic.regex_zero_width_skipped": "Zero-width matches skipped: {count}",
   "diagnostic.unknown": "Other diagnostic {code}: {count}",
   "profile.operation_failed": "The profile could not be saved or deleted.",
   "rules.conflict.unknown": "Rule conflict {kind} for “{source}”.",
@@ -732,5 +733,6 @@
   "diagnostic.name.SOURCE_INVALID_XHTML": "Malformed source skipped",
   "diagnostic.name.UNPLANNED_CHANGE": "Change outside planned spans",
   "diagnostic.name.PROTECTED_ATTRIBUTE_CHANGED": "Protected attribute changed",
+  "diagnostic.name.REGEX_ZERO_WIDTH_SKIPPED": "Zero-width regex matches skipped",
   "diagnostic.name.unknown": "Other diagnostic: {code}"
 }

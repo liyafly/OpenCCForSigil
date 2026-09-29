@@ -308,6 +308,39 @@ def test_diagnostic_without_span_or_explicit_position_does_not_guess():
     assert "private planner text" not in record.description
 
 
+def test_zero_width_diagnostic_record_is_localized():
+    diagnostic = Diagnostic(
+        "REGEX_ZERO_WIDTH_SKIPPED", "rule z: skipped 10 zero-width match(es)")
+    planned = _planned("chapter", "Text/chapter.xhtml", "正文不能进入诊断", (diagnostic,))
+
+    for language in ("en", "zh-Hans", "zh-Hant"):
+        translator = Translator(language)
+        (record,) = _diagnostic_records((planned,), translator)
+
+        assert record.name == translator.text("diagnostic.name.REGEX_ZERO_WIDTH_SKIPPED")
+        assert "REGEX_ZERO_WIDTH_SKIPPED" not in record.name
+        assert record.description == translator.text("rules.zero_width_skipped", id="z", count=10)
+        assert "正文不能进入诊断" not in record.description + record.excerpt
+
+
+def test_zero_width_diagnostics_keep_one_record_per_rule():
+    planned = _planned(
+        "chapter", "Text/chapter.xhtml", "source",
+        (
+            Diagnostic("REGEX_ZERO_WIDTH_SKIPPED", "rule a: skipped 2 zero-width match(es)"),
+            Diagnostic("REGEX_ZERO_WIDTH_SKIPPED", "rule b: skipped 3 zero-width match(es)"),
+        ),
+    )
+
+    records = _diagnostic_records((planned,), Translator("en"))
+
+    assert len(records) == 2
+    assert [record.description for record in records] == [
+        Translator("en").text("rules.zero_width_skipped", id="a", count=2),
+        Translator("en").text("rules.zero_width_skipped", id="b", count=3),
+    ]
+
+
 def test_diagnostic_panel_filters_files_and_codes_and_can_navigate_without_deciding():
     source = "<p>甲<em>乙</em></p>"
     change = TokenChange(

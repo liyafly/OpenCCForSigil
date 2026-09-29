@@ -176,14 +176,28 @@ def test_zero_width_runtime_match_is_skipped_not_fatal():
     assert result.target == "他说「」然后「善」"
     assert apply_changes(source, result.changes) == result.target
     assert result.zero_width_skips == (("zero", 1),)
-    assert len(result.diagnostics) == 1
-    diagnostic = result.diagnostics[0]
-    assert diagnostic.code == "REGEX_ZERO_WIDTH_SKIPPED"
-    assert diagnostic.message == "rule zero: skipped 1 zero-width match(es)"
-    assert diagnostic.span is None
-    assert "他说" not in diagnostic.message
-    assert "「」" not in diagnostic.message
-    assert "好" not in diagnostic.message
+    assert result.diagnostics == ()
+
+
+def test_zero_width_skips_aggregate_to_one_diagnostic_per_rule_per_file():
+    rule = _rule(id="z", source=r"(?<=「)[^」]*", target="…")
+    source = "<html><body>" + "".join(
+        "<p>他说「」然后「好」</p>" for _ in range(10)) + "</body></html>"
+    sources = {f"chapter-{index:02d}": source for index in range(6)}
+
+    planned = ConversionWorkflow(
+        SigilBookAdapter(_Book(sources)), _Backend(), _request((rule,))).plan()
+
+    assert len(planned) == 6
+    for item in planned:
+        diagnostics = [
+            diagnostic for diagnostic in item.plan.diagnostics
+            if diagnostic.code == "REGEX_ZERO_WIDTH_SKIPPED"]
+        assert len(diagnostics) == 1
+        assert diagnostics[0].message == "rule z: skipped 10 zero-width match(es)"
+        assert "他说" not in diagnostics[0].message
+        assert "「」" not in diagnostics[0].message
+        assert "好" not in diagnostics[0].message
 
 
 def test_skipped_candidate_trace_does_not_change_patches():

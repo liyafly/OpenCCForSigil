@@ -287,13 +287,6 @@ class OfficialBackendConverter:
             for rule_id, count in budget.zero_width_skips.items()
             if count > zero_width_before.get(rule_id, 0)
         ))
-        diagnostics.extend(
-            Diagnostic(
-                "REGEX_ZERO_WIDTH_SKIPPED",
-                f"rule {rule_id}: skipped {count} zero-width match(es)",
-            )
-            for rule_id, count in zero_width_skips
-        )
         return ConvertResult(
             text,
             "".join(output),

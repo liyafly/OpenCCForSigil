@@ -58,6 +58,7 @@ def build_conversion_plan(
     changes = []
     change_strings: dict[str, str] = {}
     diagnostics = list(inline_boundary_diagnostics(document)) if document_kind in {"xhtml", "nav"} else []
+    zero_width_skips: dict[str, int] = {}
     block_tags = tuple(tag for tag in document.tags if tag.name.lower() in _BLOCK_LEVEL_ELEMENTS)
     block_tag_ends = tuple(tag.end for tag in block_tags)
     ignored_quote_ranges = _ignored_quotation_ranges(source, document.tags)
@@ -141,6 +142,8 @@ def build_conversion_plan(
         else:
             result = converter.convert(target.source_text, request, quotation_pairer=pairer)
         diagnostics.extend(result.diagnostics)
+        for rule_id, count in getattr(result, "zero_width_skips", ()):
+            zero_width_skips[rule_id] = zero_width_skips.get(rule_id, 0) + count
         for local_change in result.changes:
             change = _absolute_change(
                 file_id, target, local_change, source,
@@ -184,6 +187,13 @@ def build_conversion_plan(
                 for index in sorted(unbalanced_blocks)
             )
 
+    diagnostics.extend(
+        Diagnostic(
+            "REGEX_ZERO_WIDTH_SKIPPED",
+            f"rule {rule_id}: skipped {count} zero-width match(es)",
+        )
+        for rule_id, count in sorted(zero_width_skips.items())
+    )
     boundaries = [item.span for item in diagnostics if item.code == "INLINE_BOUNDARY" and item.span]
     before_boundaries = {span.start for span in boundaries}
     after_boundaries = {span.end for span in boundaries}
