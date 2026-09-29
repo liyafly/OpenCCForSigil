@@ -92,4 +92,22 @@
 | s2t | 4.168 s | 4.034 s | 4.058 s | `06781c1d491c31f7` |
 | s2twp | 4.976 s | 4.983 s | 5.048 s | `6284eef800e5b462` |
 
-The FIX-17 mismatch reproduces at seed `20260923`, case 0, config `s2t`, input `21字A0字字汉语0语汉词字目2A词目词词词A词汉词语0语词2目2词汉目1汉1`. The compiled path misses rule `r7` (`目2A → 目7`, `[14,17)`) and accepts `r21` (`2 → 2`, `[15,16)`); the full-scan path also finds `r67` (`1汉1 → 目67`, `[36,39)`). No phase-level `make check`, 960×640 Qt gate, or push was run after this failure. FIX-18 has not started. Sigil host acceptance: **Not verified**.
+
+## Batch 6 closeout — FIX-12, FIX-17, FIX-18
+
+The checkpoint above records the state before the user authorized continuation. Investigation showed the FIX-17 failure was in the old test oracle, not the prefix index: on the deterministic sample, indexed matching equals a full scan. The `r7` exact candidate overlaps the `r21` protection at `[15,16)`, and `r67` overlaps the `r0` protection at `[37,38)`. Both candidates are intentionally skipped by the A-08 protection-first rule, which is also stated in the rule guide and A-08 specification. The randomized regression now compares against a test-local two-pass reference that includes this rule; no product matching code changed. The required FIX-17 suite passes: **74 passed**.
+
+| Item | Commit | Result |
+| --- | --- | --- |
+| FIX-12 | `457e75e` | Four repaired 2026-09-28 probes and the three-run low-load PERF-06 evidence are recorded above. |
+| FIX-17 | `ff64375`, `fdd2554` | Added the specified coverage, then corrected the stale legacy oracle to model A-08 protection precedence. Required suite: 74 passed. |
+| FIX-18.1 | `dfcc653` | Added the book-entity matching note to the rule-writing section in Simplified Chinese, Traditional Chinese, and English. |
+| FIX-18.2 | `c6d9f9d` | TSV and CSV rows preserve input/list order. JSON export and canonical rule hashing use separate unchanged paths. The new regression checks both delimited formats. |
+| FIX-18.3 | `8ddfddc` | The diagnostics tab starts with the unique record count while its panel and display records stay lazy. Three source diagnostics with one duplicate show a count of two. |
+
+### Phase gates at `8ddfddc`
+
+- `make check`: Ruff passed; **832 passed, 1 skipped** (the existing fake-Qt geometry limitation); OpenCC payload manifest passed; OpenCC differential passed (28 cases); Jieba differential passed (10 cases); package metadata valid (`0.2.10`).
+- Real Qt `check_ui_acceptance.py --verify --width 960 --height 640`: **PASS**, all 13 scenarios; output: `/tmp/opencc-ui-acceptance-batch6/acceptance.json`. Requested geometry was 960×640; the offscreen logical screen reported by Qt was 800×800. Sigil-host acceptance remains **Not verified**.
+- FIX-18 focused suite: **82 passed**. The real-Qt preview benchmark on the committed code passed at **0.7355 s** dialog construction (limit ≤0.75 s), with 396,091 changes and 5,711 unique diagnostics; output: `/tmp/opencc-preview-ui-batch6-verified-3.json`. Repeated cold-process runs ranged from 0.7153 s to 0.8998 s; Qt font alias initialization and machine load varied. The recorded pass is within the requested limit.
+- Phase 6 validation is complete. FIX-16 remains skipped as decided earlier and is replaced by SIMP-22.
