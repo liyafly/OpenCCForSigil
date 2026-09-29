@@ -124,7 +124,6 @@ def _opencc_txt_rules(rules: Iterable[Rule]) -> tuple[Rule, ...]:
     return tuple(
         rule for rule in rules
         if rule.enabled
-        and rule.semantic_version == 1
         and rule.type == "exact"
         and rule.action == "override"
         and rule.match_type == "literal"

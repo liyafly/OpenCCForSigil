@@ -367,7 +367,7 @@ def test_json_import_keeps_ids_when_importing_into_empty_store(tmp_path):
 def test_opencc_txt_export_skips_targets_with_whitespace():
     rules = (
         Rule(direction="s2t", source="Apple", target="Apple Inc"),
-        Rule(direction="s2t", source="软件", target="軟體"),
+        Rule(semantic_version=2, direction="s2t", source="软件", target="軟體"),
     )
 
     assert export_warnings(rules, format="txt") == (True, 1)
@@ -376,7 +376,7 @@ def test_opencc_txt_export_skips_targets_with_whitespace():
 
 def test_opencc_txt_skips_every_unrepresentable_rule():
     rules = (
-        Rule(id="plain", direction="*", source="term", target="word"),
+        Rule(id="plain", semantic_version=2, direction="*", source="term", target="word"),
         Rule(id="regex", semantic_version=2, action="replace", stage="pre",
              match_type="regex", direction="s2t", source="term.+", target="word"),
         Rule(id="protect", direction="s2t", type="protect", source="protected",

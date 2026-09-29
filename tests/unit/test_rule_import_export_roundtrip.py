@@ -198,6 +198,18 @@ def test_opencc_txt_import_keeps_unicode_line_separators():
     assert imported.rules[0].target == target
 
 
+def test_opencc_txt_export_keeps_v2_literal_rules():
+    imported = import_rules("软件\t軟體\n", format="tsv", direction="s2t")
+    assert imported.rules[0].semantic_version == 2
+
+    exported = export_rules(imported.rules, format="txt")
+
+    assert exported == "软件\t軟體\n"
+    roundtrip = import_rules(exported, format="txt", direction="s2t")
+    assert [(rule.source, rule.target) for rule in roundtrip.rules] == [
+        ("软件", "軟體")]
+
+
 def test_one_column_row_error_has_no_rule_prefix():
     imported = import_rules(
         "direction\tsource\ttarget\nonlyone\n", format="tsv", strict=False)
