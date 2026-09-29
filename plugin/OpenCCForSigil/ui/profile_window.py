@@ -90,7 +90,7 @@ def _profile_summary_value(profile: Profile, name: str, translator: Translator) 
     if name in {"quotation_mode", "punctuation_mode", "language_metadata", "language_preset"}:
         return translator.text(f"options.{value}")
     if name == "language_region":
-        regions = {"": "no_region", "auto": "no_region", "zhTW": "zh-TW", "zhHK": "zh-HK"}
+        regions = {"": "no_region"}
         key = f"options.{regions.get(value, value)}"
         return translator.text(key)
     if name == "pivot_chain":

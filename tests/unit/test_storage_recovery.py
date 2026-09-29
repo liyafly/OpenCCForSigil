@@ -96,8 +96,10 @@ def test_missing_or_corrupt_active_profile_falls_back_and_clears_preference(tmp_
 
     assert settings.active.id == "conservative"
     assert settings.clear_profile_preference
-    assert settings.recovery_notice[0] == "profile_recovered"
-    backup = storage.paths.profiles / settings.recovery_notice[1]
+    assert not hasattr(settings, "recovery_notice")
+    notices = settings.take_recovery_notices()
+    assert notices[0][0] == "profile_recovered"
+    backup = storage.paths.profiles / notices[0][1]
     assert backup.read_text(encoding="utf-8") == "not json"
     assert not profile_path.exists()
 

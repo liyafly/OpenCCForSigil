@@ -41,54 +41,12 @@ _SUPPORTED_CONVERSIONS = {
     "tw2sp_jieba",
     "hk2sp_jieba",
 }
-_KNOWN_FIELDS = {
-    "schema_version",
-    "id",
-    "name",
-    "conversion",
-    "segmentation",
-    "scope",
-    "convert_nav",
-    "convert_ncx",
-    "convert_metadata",
-    "convert_alt",
-    "convert_title",
-    "convert_aria_label",
-    "convert_svg_text",
-    "convert_ruby_rt",
-    "convert_code_pre",
-    "decode_numeric_cjk_refs",
-    "quotation_mode",
-    "punctuation_mode",
-    "language_metadata",
-    "language_preset",
-    "language_region",
-    "ruleset_ids",
-    "builtin_rules_enabled",
-    "preview_required",
-    "pivot_chain",
-    "include_nav",
-    "include_ncx",
-    "include_metadata",
-    "attributes",
-    "protected_elements",
-    "svg_text",
-    "mathml",
-    "quotation",
-    "punctuation",
-    "numeric_cjk_char_refs",
-    "tofu_policy",
-    "regex_rules",
-    "force_pivot",
-    "review_annotations",
-    "checkpoint_notice",
-}
 _VALID_SCOPES = {"single", "all_xhtml", "spine", "selected"}
 _VALID_QUOTATION_MODES = {"keep", "curly", "corner", "nested_corner"}
 _VALID_PUNCTUATION_MODES = {"keep", "horizontal"}
 _VALID_LANGUAGE_METADATA = {"keep", "suggest", "force"}
 _VALID_LANGUAGE_PRESETS = {"legacy", "bcp47"}
-_VALID_LANGUAGE_REGIONS = {"", "auto", "zhTW", "zhHK", "zh-TW", "zh-HK"}
+_VALID_LANGUAGE_REGIONS = {"", "zh-TW", "zh-HK"}
 
 
 class ProfileValidationError(ValueError):
@@ -121,7 +79,7 @@ class Profile:
     punctuation_mode: str = "keep"
     language_metadata: str = "keep"
     language_preset: str = "legacy"
-    language_region: str = "auto"
+    language_region: str = ""
     ruleset_ids: tuple[str, ...] = ()
     builtin_rules_enabled: bool = True
     preview_required: bool = True
@@ -140,16 +98,12 @@ class Profile:
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any], *, migrate: bool = True) -> "Profile":
         values = migrate_profile_payload(payload) if migrate else dict(payload)
+        if "language_region" in values:
+            values["language_region"] = {
+                "auto": "", "zhTW": "zh-TW", "zhHK": "zh-HK",
+            }.get(values["language_region"], values["language_region"])
         _validate_payload(values)
-        aliases = {
-            "include_nav": "convert_nav",
-            "include_ncx": "convert_ncx",
-            "include_metadata": "convert_metadata",
-            "svg_text": "convert_svg_text",
-            "quotation": "quotation_mode",
-            "punctuation": "punctuation_mode",
-        }
-        normalized = {aliases.get(key, key): value for key, value in values.items()}
+        normalized = dict(values)
         for key in ("pivot_chain",):
             if key in normalized:
                 if not isinstance(normalized[key], (list, tuple)) or not all(
@@ -197,12 +151,6 @@ class Profile:
             normalized["ruleset_ids"] = tuple(normalized["ruleset_ids"])
         known = {
             "schema_version",
-            "include_nav",
-            "include_ncx",
-            "include_metadata",
-            "svg_text",
-            "quotation",
-            "punctuation",
             "id",
             "name",
             "conversion",
@@ -288,29 +236,6 @@ class Profile:
         payload.update(dict(self.extras))
         return payload
 
-    # Read-only compatibility views for existing controller code and profile
-    # fixtures while callers migrate to the canonical V1 names.
-    @property
-    def include_nav(self) -> bool:
-        return self.convert_nav
-
-    @property
-    def include_ncx(self) -> bool:
-        return self.convert_ncx
-
-    @property
-    def include_metadata(self) -> bool:
-        return self.convert_metadata
-
-    @property
-    def quotation(self) -> str:
-        return self.quotation_mode
-
-    @property
-    def punctuation(self) -> str:
-        return self.punctuation_mode
-
-
 def _validate_payload(payload: Mapping[str, Any]) -> None:
     if not isinstance(payload, Mapping):
         raise ProfileValidationError("profile must be a JSON object")
@@ -375,16 +300,6 @@ def migrate_profile_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
         raise ProfileFutureSchemaError(
             f"unsupported future profile schema_version {version}; requires a newer plugin; "
             "file was not changed")
-    if version == 0:
-        result["schema_version"] = CURRENT_PROFILE_SCHEMA
-        result.setdefault("id", result.get("name") or str(uuid.uuid4()))
-        result.setdefault("name", result["id"])
-        result.setdefault("conversion", "s2t")
-        result.setdefault("segmentation", "mmseg")
-        result.setdefault("ruleset_ids", [])
-        result.setdefault("builtin_rules_enabled", True)
-        result.setdefault("preview_required", True)
-        return result
     raise ProfileValidationError(
         f"unsupported profile schema_version {version!r}; supported version is 1"
     )

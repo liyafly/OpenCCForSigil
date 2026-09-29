@@ -26,8 +26,6 @@ ALIASES = {"include_nav": "convert_nav", "include_ncx": "convert_ncx",
 def profile_options(profile):
     values = profile.to_dict()
     values.update({key: values[value] for key, value in ALIASES.items()})
-    if values.get("language_region") == "auto":
-        values["language_region"] = ""
     return values
 
 
@@ -44,7 +42,6 @@ class RunSettings:
         self._reported_missing_rulesets: set[str] = set()
         self._ui_preferences: dict[str, object] = {}
         self._save_ui_preferences_callback = None
-        self.recovery_notice: tuple[str, str] | None = None
         self._recovery_notices: list[tuple[str, str]] = []
         self.clear_profile_preference = False
         self.preserve_profile_preference = False
@@ -203,8 +200,6 @@ class RunSettings:
     def _add_recovery_notice(self, notice):
         if notice not in self._recovery_notices:
             self._recovery_notices.append(notice)
-        if self.recovery_notice is None:
-            self.recovery_notice = notice
 
     def take_recovery_notices(self):
         notices = tuple(self._recovery_notices)

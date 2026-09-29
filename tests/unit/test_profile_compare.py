@@ -27,7 +27,7 @@ def test_empty_sequences_and_panel_defaults_normalize_consistently():
 
 def test_missing_profile_fields_and_empty_language_region_use_defaults():
     minimal = {"conversion": "s2t", "language_region": ""}
-    complete = Profile(conversion="s2t", language_region="auto")
+    complete = Profile(conversion="s2t", language_region="")
 
     assert compare_profile_settings(minimal, complete) == ()
     assert normalized_profile_values({"conversion": "s2t"})["convert_nav"] is True
@@ -72,7 +72,7 @@ def test_compare_covers_every_runtime_profile_field():
         punctuation_mode="horizontal",
         language_metadata="suggest",
         language_preset="bcp47",
-        language_region="zhTW",
+        language_region="zh-TW",
         ruleset_ids=("default", "other"),
         builtin_rules_enabled=False,
         preview_required=False,

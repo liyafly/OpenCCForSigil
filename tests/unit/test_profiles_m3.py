@@ -10,7 +10,7 @@ from rules.store import RuleSet, RuleStore
 from rules.validators import RuleValidationError
 
 
-def test_legacy_profile_fields_normalize_and_round_trip(tmp_path: Path):
+def test_legacy_profile_field_names_remain_extras_and_round_trip(tmp_path: Path):
     profile = Profile.from_dict(
         {
             "schema_version": 1,
@@ -27,23 +27,30 @@ def test_legacy_profile_fields_normalize_and_round_trip(tmp_path: Path):
             "ruleset_ids": ["global"],
         }
     )
-    assert profile.convert_nav is False
-    assert profile.convert_ncx is True
-    assert profile.convert_metadata is True
-    assert profile.quotation_mode == "corner"
+    assert profile.convert_nav is True
+    assert profile.convert_ncx is False
+    assert profile.convert_metadata is False
+    assert profile.quotation_mode == "keep"
     assert profile.ruleset_ids == ("global",)
     assert profile.attributes == ("alt",)
-    assert "include_nav" not in profile.to_dict()
+    assert dict(profile.extras) == {
+        "include_metadata": True,
+        "include_nav": False,
+        "include_ncx": True,
+        "punctuation": "keep",
+        "quotation": "corner",
+    }
+    assert not hasattr(profile, "include_nav")
     path = ProfileStore(tmp_path).save(profile)
     assert path.exists()
-    assert ProfileStore(tmp_path).load("legacy").to_dict()["convert_nav"] is False
+    assert ProfileStore(tmp_path).load("legacy").convert_nav is True
 
 
 def test_profile_migration_and_actionable_failure(tmp_path: Path):
-    migrated = migrate_profile_payload(
-        {"name": "old", "conversion": "s2t", "segmentation": "mmseg"}
-    )
-    assert migrated["schema_version"] == 1
+    with pytest.raises(ProfileValidationError, match="schema_version 0"):
+        migrate_profile_payload(
+            {"name": "old", "conversion": "s2t", "segmentation": "mmseg"}
+        )
     with pytest.raises(ProfileValidationError, match="segmentation"):
         Profile.from_dict(
             {
@@ -75,6 +82,23 @@ def test_profile_migration_and_actionable_failure(tmp_path: Path):
                 "regex_rules": True,
             }
         )
+
+
+@pytest.mark.parametrize(("legacy", "canonical"), (
+    ("auto", ""), ("zhTW", "zh-TW"), ("zhHK", "zh-HK"),
+))
+def test_language_region_aliases_normalize_during_profile_load(legacy, canonical):
+    profile = Profile.from_dict({
+        "schema_version": 1,
+        "id": "x",
+        "name": "x",
+        "conversion": "s2t",
+        "segmentation": "mmseg",
+        "language_region": legacy,
+    })
+
+    assert profile.language_region == canonical
+    assert Profile().language_region == ""
 
 
 def test_ruleset_store_round_trip_and_snapshot(tmp_path: Path):

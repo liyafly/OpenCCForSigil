@@ -23,8 +23,6 @@ def normalized_profile_values(profile: Profile | Mapping[str, object]) -> dict[s
             values[key] = default
     if values.get("scope") == "all":
         values["scope"] = "all_xhtml"
-    if values.get("language_region") == "auto":
-        values["language_region"] = ""
     return {key: _normalize(value) for key, value in values.items()}
 
 
