@@ -154,6 +154,22 @@ def test_single_scope_uses_one_row_selection_and_manual_selection_is_independent
     assert dialog.selection.file_ids == ("one", "two")
 
 
+def test_single_initial_selection_accepts_as_selected_scope():
+    inventory = (
+        TextFile("one", "Text/one.xhtml"),
+        TextFile("two", "Text/two.xhtml"),
+    )
+    dialog = _ScopeDialog(
+        make_with_table(), inventory, ("one",), "en", Translator("en"),
+        initial_scope=Scope.SINGLE,
+    )
+
+    dialog._accept(close=False)
+
+    assert dialog.selection.scope is Scope.SELECTED
+    assert dialog.selection.file_ids == ("one",)
+
+
 def test_fixed_scope_modes_make_list_read_only():
     dialog = _ScopeDialog(
         make_with_table(), FILES, ("a",), "en", Translator("en"),

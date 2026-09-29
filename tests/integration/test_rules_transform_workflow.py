@@ -5,6 +5,7 @@ import pytest
 
 from app.profiles import Profile
 from app.settings import tokenizer_policy
+from core.converter import OfficialBackendConverter
 from core.models import ConvertRequest, RuleSnapshot
 from core.preview import PreviewSession
 from core.staging import apply_changes
@@ -116,6 +117,25 @@ def test_pivot_is_explicit_high_risk_and_apply_never_reconverts():
     flow.backend.convert = lambda *_args: pytest.fail("Apply reconverted frozen target")
     flow.commit(staged)
     assert book.writes == ["<p>漢漢</p>"]
+
+
+def test_spec_11_8_2_locked_span_regression_cases(shared_opencc_backend_factory):
+    rules = Rules.freeze((
+        Rule(direction="s2twp", source="服务器", target="服務器"),
+        Rule(direction="s2twp", type="protect", source="乾隆", target="乾隆"),
+        Rule(direction="s2twp", type="protect", source="着", target="着"),
+    ))
+    request = ConvertRequest(
+        "s2twp",
+        rules_snapshot=RuleSnapshot(rules_hash=rules.sha256, rules=rules.rules),
+        detailed_classification=False,
+        diagnose_mixed=False,
+    )
+    converter = OfficialBackendConverter(shared_opencc_backend_factory("s2twp"))
+
+    assert converter.convert("这台服务器着火了", request).target == "這臺服務器着火了"
+    assert converter.convert("乾隆时期的服务器", request).target == "乾隆時期的服務器"
+    assert converter.convert("穿着睡衣去着手处理", request).target == "穿着睡衣去着手處理"
 
 
 def test_rules_hash_mismatch_blocks_plan_and_accept_all_reconstructs_exactly():

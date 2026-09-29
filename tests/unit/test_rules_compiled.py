@@ -1,4 +1,5 @@
 import random
+import inspect
 
 import pytest
 
@@ -35,13 +36,16 @@ def _legacy_lock_spans(text, snapshot, *, config, profile_id=None, book_fingerpr
     return tuple(spans)
 
 
-def _random_rules(rng, count):
+def _random_rules(rng, count, *, exclude=()):
     rules = []
-    source_heads = "词目汉字天地AB"
+    alphabet = "词语深目汉字A012"
+    used_sources = set(exclude)
     for index in range(count):
-        # Vary the first character so the index is exercised beyond one trie
-        # bucket. Numeric suffixes also create overlapping prefixes (e.g. A1/A10).
-        source = f"{rng.choice(source_heads)}x{index}"
+        while True:
+            source = "".join(rng.choice(alphabet) for _ in range(rng.randrange(1, 4)))
+            if source not in used_sources:
+                used_sources.add(source)
+                break
         rule_type = rng.choice(("exact", "protect"))
         scope = rng.choice(("global", "profile", "book"))
         rules.append(Rule(
@@ -169,7 +173,9 @@ def test_prefix_indexed_lock_spans_equals_full_scan_for_300_random_snapshots():
     )
     alphabet = "词语深目汉字A012"
     for _ in range(300):
-        rules = (*_random_rules(rng, rng.randrange(201)), *explicit_rules)
+        rules = (*_random_rules(
+            rng, rng.randrange(201), exclude=tuple(rule.source for rule in explicit_rules)),
+            *explicit_rules)
         snapshot = RuleSnapshot.freeze(rules)
         overlay = CompiledOverlay.build(
             snapshot, config="s2t", profile_id="profile", book_fingerprint="book")
@@ -184,6 +190,103 @@ def test_prefix_indexed_lock_spans_equals_full_scan_for_300_random_snapshots():
         )
 
         assert lock_spans_compiled(text, overlay) == expected
+
+
+def test_prefix_indexed_replace_stage_equals_full_scan_for_random_rules():
+    from rules.compiled import CompiledOverlay, lock_spans_compiled
+    from rules.engine import LockedSpan
+    from rules.matching import RegexBudget, RuleExecutionError, replace_stage, source_matches
+
+    alphabet = "甲乙丙丁ab"
+
+    def outcome(call):
+        try:
+            return "ok", call()
+        except RuleExecutionError as exc:
+            return "error", str(exc)
+
+    for seed in range(300):
+        rng = random.Random(seed)
+        rules = []
+        for index in range(rng.randint(1, 25)):
+            kind = rng.choice(("protect", "override", "pre", "post",
+                               "regex_src", "regex_pre", "v1"))
+            source = "".join(rng.choice(alphabet) for _ in range(rng.randint(1, 3)))
+            target = "".join(rng.choice("XYZ") for _ in range(rng.randint(1, 2)))
+            common = dict(
+                id=f"r{index}", direction="s2t", priority=rng.randrange(-2, 3),
+                scope=rng.choice(("global", "profile")), profile_id="p")
+            if kind == "v1":
+                rule_type = rng.choice(("exact", "protect"))
+                rules.append(Rule(
+                    source=source,
+                    target=source if rule_type == "protect" else target,
+                    type=rule_type,
+                    **common,
+                ))
+            elif kind == "protect":
+                rules.append(Rule(
+                    semantic_version=2, type="protect", action="protect", stage="source",
+                    source=source, target=source, **common,
+                ))
+            elif kind == "override":
+                rules.append(Rule(
+                    semantic_version=2, action="override", stage="source",
+                    source=source, target=target, **common,
+                ))
+            elif kind in ("pre", "post"):
+                rules.append(Rule(
+                    semantic_version=2, action="replace", stage=kind,
+                    source=source, target=target, **common,
+                ))
+            else:
+                rules.append(Rule(
+                    semantic_version=2,
+                    action="override" if kind == "regex_src" else "replace",
+                    stage="source" if kind == "regex_src" else "pre",
+                    match_type="regex",
+                    source=rng.choice(("甲+", "[乙丙]", "a|b", "丁乙")),
+                    target=target,
+                    **common,
+                ))
+
+        try:
+            snapshot = RuleSnapshot.freeze(tuple(rules))
+            overlay = CompiledOverlay.build(
+                snapshot, config="s2t", profile_id="p")
+        except (RuleExecutionError, ValueError):
+            continue
+
+        for _ in range(5):
+            text = "".join(rng.choice(alphabet + "的")
+                           for _ in range(rng.randint(0, 30)))
+            fast_source = outcome(
+                lambda: lock_spans_compiled(text, overlay, RegexBudget()))
+            def full_source():
+                matches = source_matches(
+                    text, overlay.source_rules, overlay.regex_patterns, RegexBudget())
+                return tuple(LockedSpan(
+                    match.start, match.end, text[match.start:match.end],
+                    match.target, match.rule) for match in matches)
+            assert fast_source == outcome(full_source), (seed, "source", text)
+
+            for stage in ("pre", "post"):
+                stage_rules = getattr(overlay, f"{stage}_rules")
+                fast_kwargs = {
+                    "literal_index": getattr(overlay, f"{stage}_literal_index"),
+                    "order": getattr(overlay, f"{stage}_rule_order"),
+                }
+                if "regex_rules" in inspect.signature(replace_stage).parameters:
+                    fast_kwargs["regex_rules"] = getattr(
+                        overlay, f"{stage}_regex_rules")
+                if "include_single_char_rules" in inspect.signature(replace_stage).parameters:
+                    fast_kwargs["include_single_char_rules"] = getattr(
+                        overlay, f"{stage}_has_single_char_literals")
+                fast_stage = outcome(lambda: replace_stage(
+                    text, stage_rules, overlay.regex_patterns, RegexBudget(), **fast_kwargs))
+                full_stage = outcome(lambda: replace_stage(
+                    text, stage_rules, overlay.regex_patterns, RegexBudget()))
+                assert fast_stage == full_stage, (seed, stage, text)
 
 
 def test_lock_spans_passes_only_prefix_candidates(monkeypatch):

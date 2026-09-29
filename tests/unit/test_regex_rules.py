@@ -278,6 +278,20 @@ def test_runaway_regex_in_one_fragment_still_stops(monkeypatch):
             "甲乙丙丁", (rule,), {rule.id: regex.compile(rule.source, regex.VERSION1)}, RegexBudget())
 
 
+def test_single_regex_search_timeout_still_stops():
+    rule = _rule(
+        id="evil", source=r"(a|aa)+$", target="x", direction="s2t")
+    regex = load_regex_module()
+
+    with pytest.raises(RuleExecutionError, match="evil.*timed out"):
+        replace_stage(
+            "a" * 40 + "b",
+            (rule,),
+            {rule.id: regex.compile(rule.source, regex.VERSION1)},
+            RegexBudget(),
+        )
+
+
 def test_regex_candidate_budget_is_per_rule_and_fragment(monkeypatch):
     monkeypatch.setattr("rules.matching.REGEX_MAX_CANDIDATES_PER_FRAGMENT", 2)
     rule = _rule(id="candidates", source=r".", target="X")

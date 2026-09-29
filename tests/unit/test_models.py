@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 import pytest
 
 from core.models import SourceSpan, TokenChange
@@ -28,6 +30,8 @@ def test_change_models_use_slots():
     assert SourceSpan(0, 1) == span
     assert hash(SourceSpan(0, 1)) == hash(span)
     assert TokenChange("旧", "新", span, "test") == change
+    updated = replace(change, target="改")
+    assert updated.target == "改" and updated.span is change.span and not hasattr(updated, "__dict__")
 
 
 def test_tokenizer_does_not_copy_target_context():
