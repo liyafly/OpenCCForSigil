@@ -61,3 +61,17 @@
 - Real Qt `check_ui_acceptance.py --verify --width 960 --height 640`: **PASS**, 13 scenarios, no failures; output: `/tmp/opencc-ui-acceptance-batch4/acceptance.json`.
 - Real Qt 396,091-row benchmark: `accept_group_status_undecided` median **19.9 ms** (target ≤25 ms); existing `accept_this_no_filter`, `accept_this_status_undecided`, and `accept_file` medians were **6.4 ms**, **19.0 ms**, and **9.9 ms**, all within their existing limits. Full output: `/tmp/opencc-preview-ui-batch4-final.json`.
 - FIX-09 and FIX-10 acceptance checks: complete. Sigil host acceptance: **Not verified**.
+
+## Batch 5 — FIX-11, FIX-13, FIX-14
+
+| Item | Commit | Pre-fix failing test(s) | Post-fix result | Acceptance and reproduction |
+| --- | --- | --- | --- | --- |
+| FIX-11 | `9a0e677` | `test_batch_feedback_omits_zero_groups`; `test_non_cancel_results_have_no_zero_count_fragments` (9 language/scenario cases) | Preview batch, result-count, i18n, artifact-validator, and conversion integration tests: 127 passed. | Batch feedback omits linked-group counts when there are no groups; result rows omit zero-valued details. `fix11_zero_count_fragments.py` reports `zero lines: none` for all 3 locales and all 3 result scenarios. Cancel remains one line and the save reminder remains covered. |
+| FIX-13 | `0c09a2f` | `test_one_term_per_concept`; `test_traditional_chinese_separates_accepting_changes_from_applying_them` | `tests/unit/test_i18n.py`: 20 passed. | All locale catalogs use the agreed test-output wording; Traditional Chinese result rows use 寫回; English checkpoint capitalization is corrected. No `沙箱` or `sandbox` terms remain in locale catalogs. The deferred `rules.version_v1`, `rules.version_v2`, and `rules.detail_version` keys remain for SIMP-24. |
+| FIX-14 | `20bdfb1` | `test_ruleset_menu_shows_tooltips`; `test_delete_ruleset_prunes_saved_run_options` | Rules-window and ruleset-persistence suites: 101 passed, 1 skipped (fake-Qt layout limitation); the strengthened persistence regression also passed after confirming unrelated preferences remain. | Real Qt reports `menu.toolTipsVisible(): True`. The persisted-preferences reproduction removes the deleted ID and reports `next launch: missing-ruleset notice = ()`; unrelated run options and UI preferences remain intact. |
+
+### Batch verification at `20bdfb1d58255e7a32b535d5a28304a9e55f1aff`
+
+- `make check`: Ruff passed; **826 passed, 1 skipped** (fake-Qt layout limitation); vendor manifest passed; OpenCC differential passed (28 cases); Jieba differential passed (10 cases); plugin metadata valid (`0.2.10`).
+- Real Qt `check_ui_acceptance.py --verify --width 960 --height 640`: **PASS**, all 13 scenarios; output: `/tmp/opencc-ui-acceptance-batch5-final/acceptance.json`.
+- FIX-11, FIX-13, and FIX-14 acceptance checks: complete. FIX-16 remains skipped per the review decision and is replaced by SIMP-22. Sigil host acceptance: **Not verified**.
