@@ -33,6 +33,10 @@ and their limits are recorded in the [implementation results](reviews/2026-09-27
   (always for ‘all XHTML’, when checked for ‘selected files’, when present in
   the spine for ‘reading order’). This keeps the §6.2 default of converting NAV
   when it exists.
+- Language tags offer Keep and Update. The separate ‘suggest’ mode of spec §15
+  is folded into Update: for generic Traditional Chinese with the Legacy preset
+  and no explicit region, analysis is blocked with the region prompt instead of
+  silently changing nothing. Saved ‘suggest’ values load as Update.
 - Native conversion cannot be forcibly interrupted mid-call. Worker cancellation
   is cooperative at target boundaries and never writes a partial plan.
 - The optional Jieba probe constructs and exercises only `s2t_jieba`; all

@@ -11,6 +11,7 @@ from ui.i18n import (
     show_error_details,
 )
 from ui.qt import enum_value, exec_dialog
+from transforms.language_tags import normalize_language_mode
 
 _ADVANCED_FIELDS = frozenset({
     "convert_alt", "convert_title", "convert_aria_label", "convert_svg_text",
@@ -50,6 +51,9 @@ class RunOptionsPanel:
         self._qt = qt
         self._tr = translator
         self._initial = dict(initial) if isinstance(initial, dict) else {}
+        if "language_metadata" in self._initial:
+            self._initial["language_metadata"] = normalize_language_mode(
+                self._initial["language_metadata"])
         self._metadata_available = True if metadata_available is None else bool(metadata_available)
         self._services = services
         self._ui_preferences = dict(ui_preferences or {})
@@ -145,7 +149,7 @@ class RunOptionsPanel:
         language_group = qt.QGroupBox(translator.text("options.language_tags"))
         self._named_groups.append((language_group, "options.language_tags"))
         language_form = qt.QFormLayout(language_group)
-        self._add_combo(language_form, "language_metadata", ("keep", "suggest", "force"))
+        self._add_combo(language_form, "language_metadata", ("keep", "force"))
         self._add_combo(language_form, "language_preset", ("legacy", "bcp47"))
         self._add_combo(language_form, "language_region", ("", "zh-TW", "zh-HK"))
         self.language_note = qt.QLabel(translator.text("options.language_note"))
@@ -579,6 +583,8 @@ class RunOptionsPanel:
                     if callable(validate_profile):
                         profile = validate_profile(profile)
                     values = profile_options(profile)
+                    values["language_metadata"] = normalize_language_mode(
+                        values.get("language_metadata", "keep"))
                     # Validate the profile before touching the active settings.
                     self._set_config(profile.conversion)
                     self._updating = True

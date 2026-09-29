@@ -22,20 +22,20 @@ def test_option_enablement_truth_table():
         ("s2t", {"force_pivot": False, "language_metadata": "keep"},
          {"force_pivot": True, "pivot_chain": False, "language_preset": False,
           "language_region": False, "include_metadata": True}),
-        ("s2t", {"force_pivot": True, "language_metadata": "suggest"},
+        ("s2t", {"force_pivot": True, "language_metadata": "force"},
          {"force_pivot": True, "pivot_chain": True, "language_preset": True,
           "language_region": True, "include_metadata": True}),
         ("s2twp", {"force_pivot": True, "language_metadata": "force",
                     "language_preset": "bcp47"},
          {"force_pivot": True, "pivot_chain": True, "language_preset": True,
           "language_region": False, "include_metadata": True}),
-        ("t2s", {"force_pivot": True, "language_metadata": "suggest"},
+        ("t2s", {"force_pivot": True, "language_metadata": "force"},
          {"force_pivot": True, "pivot_chain": True, "language_preset": True,
           "language_region": False, "include_metadata": True}),
         ("tw2t", {"force_pivot": True, "language_metadata": "force"},
          {"force_pivot": False, "pivot_chain": False, "language_preset": True,
           "language_region": True, "include_metadata": True}),
-        ("hk2t", {"force_pivot": False, "language_metadata": "suggest",
+        ("hk2t", {"force_pivot": False, "language_metadata": "force",
                    "language_preset": "legacy"},
          {"force_pivot": False, "pivot_chain": False, "language_preset": True,
           "language_region": True, "include_metadata": True}),
@@ -78,6 +78,33 @@ def test_run_options_do_not_expose_nav_conversion_toggle():
 
     assert "include_nav" not in panel.checks
     assert "include_nav" not in panel.values()
+
+
+def test_saved_suggest_language_mode_loads_as_update():
+    profile = Profile.from_dict({
+        "schema_version": 1,
+        "id": "legacy-suggest",
+        "name": "Legacy suggest",
+        "conversion": "s2t",
+        "segmentation": "mmseg",
+        "language_metadata": "suggest",
+    })
+    panel = _live_options_panel({"language_metadata": "suggest"})
+    assert panel.combos["language_metadata"].currentData() == "force"
+    panel._services = SimpleNamespace(
+        pick_profile=lambda *_args: profile,
+        active=SimpleNamespace(id="active", ruleset_ids=()),
+    )
+    panel._get_config = lambda: "s2t"
+    panel._set_config = lambda _value: None
+    panel._parent = None
+    panel._update_profile_label = lambda _config: None
+    panel.update_enablement("s2t")
+
+    panel._tool("profiles")
+
+    assert panel._combo_values["language_metadata"] == ("keep", "force")
+    assert panel.combos["language_metadata"].currentData() == "force"
 
 
 def test_pivot_chain_profile_list_uses_string_item_key():

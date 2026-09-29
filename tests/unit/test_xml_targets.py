@@ -3,6 +3,7 @@ import threading
 import time
 
 from document.xml_processor import tokenize_xml, XMLDocumentError
+from transforms import language_tags
 from transforms.language_tags import is_han_language, target_language, with_language_targets
 from document.tokenizer import TokenizerOptions, tokenize_xhtml
 
@@ -168,9 +169,12 @@ def test_raw_text_closing_tags_inside_cdata_or_comments_are_ignored(source):
 
 
 def test_language_modes_do_not_assign_generic_traditional_to_taiwan():
-    assert target_language('s2t', 'suggest', 'legacy') is None
+    assert language_tags.normalize_language_mode("suggest") == "force"
+    with pytest.raises(ValueError, match='explicit'):
+        target_language('s2t', 'suggest', 'legacy')
     with pytest.raises(ValueError, match='explicit'):
         target_language('s2t', 'force', 'legacy')
+    assert target_language('s2t', 'suggest', 'legacy', 'zh-HK') == 'zh-HK'
     assert target_language('s2t', 'suggest', 'bcp47') == 'zh-Hant'
     assert target_language('s2twp_jieba', 'suggest', 'bcp47') == 'zh-Hant-TW'
     assert target_language('t2s', 'force', 'legacy') == 'zh-CN'

@@ -74,7 +74,7 @@ def test_compare_covers_only_effective_profile_fields():
         decode_numeric_cjk_refs=True,
         quotation_mode="curly",
         punctuation_mode="horizontal",
-        language_metadata="suggest",
+        language_metadata="force",
         language_preset="bcp47",
         language_region="zh-TW",
         ruleset_ids=("default", "other"),

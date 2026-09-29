@@ -14,7 +14,12 @@ def is_han_language(value: str) -> bool:
     )
 
 
+def normalize_language_mode(mode: str) -> str:
+    return "force" if mode == "suggest" else mode
+
+
 def target_language(config: str, mode="keep", preset="legacy", region="") -> str | None:
+    mode = normalize_language_mode(mode)
     if mode not in {"keep", "suggest", "force"} or preset not in {"legacy", "bcp47"}:
         raise ValueError("invalid language mode or preset")
     if mode == "keep":

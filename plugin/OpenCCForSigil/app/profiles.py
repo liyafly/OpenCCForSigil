@@ -102,6 +102,11 @@ class Profile:
             values["language_region"] = {
                 "auto": "", "zhTW": "zh-TW", "zhHK": "zh-HK",
             }.get(values["language_region"], values["language_region"])
+        if "language_metadata" in values:
+            from transforms.language_tags import normalize_language_mode
+
+            values["language_metadata"] = normalize_language_mode(
+                values["language_metadata"])
         _validate_payload(values)
         normalized = dict(values)
         for key in ("pivot_chain",):

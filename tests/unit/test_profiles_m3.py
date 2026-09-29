@@ -114,6 +114,19 @@ def test_language_region_aliases_normalize_during_profile_load(legacy, canonical
     assert Profile().language_region == ""
 
 
+def test_saved_suggest_language_mode_loads_as_update():
+    profile = Profile.from_dict({
+        "schema_version": 1,
+        "id": "legacy-suggest",
+        "name": "Legacy suggest",
+        "conversion": "s2t",
+        "segmentation": "mmseg",
+        "language_metadata": "suggest",
+    })
+
+    assert profile.language_metadata == "force"
+
+
 def test_ruleset_store_round_trip_and_snapshot(tmp_path: Path):
     store = RuleStore(tmp_path)
     rules = (Rule(direction="s2t", source="软件", target="軟件"),)
