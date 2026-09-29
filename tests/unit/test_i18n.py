@@ -94,7 +94,22 @@ def test_one_term_per_concept():
     assert catalogs["en"]["rules.output"] == "Test output"
     assert catalogs["zh-Hans"]["rules.output"] == "测试输出"
     assert catalogs["zh-Hant"]["rules.output"] == "測試輸出"
-    assert catalogs["en"]["scope.checkpoint_close"] == "Close Checkpoint reminder"
+    obsolete_scope_checkpoint_keys = {
+        "scope.checkpoint_notice",
+        "scope.checkpoint_hide",
+        "scope.checkpoint_close",
+        "a11y.banner.dismiss_checkpoint",
+    }
+    assert all(not (set(catalog) & obsolete_scope_checkpoint_keys)
+               for catalog in catalogs.values())
+    for key in (
+        "preview.checkpoint_title",
+        "preview.checkpoint_confirm",
+        "preview.checkpoint_confirm_yes",
+        "preview.checkpoint_confirm_back",
+        "preview.checkpoint_hide",
+    ):
+        assert all(catalog[key] for catalog in catalogs.values())
     assert "已寫回" in catalogs["zh-Hant"]["result.row.written"]
     assert "已寫回" in catalogs["zh-Hant"]["result.row.written_accepted"]
 

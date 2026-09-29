@@ -267,14 +267,12 @@ def test_scope_labels_are_buddied_and_filter_list_have_accessible_names():
         (),
         "en",
         Translator("en"),
-        checkpoint_notice_enabled=True,
         embedded=True,
     )
 
     assert dialog.language_label.buddy() is dialog.language_combo
     assert dialog.filter_edit.accessibleName()
     assert dialog.list_widget.accessibleName()
-    assert dialog.checkpoint_close_button.accessibleName()
 
 
 def test_scope_language_change_retranslates_guide_navigation_and_recovery_notice():
@@ -326,17 +324,28 @@ def test_scope_notice_banners_use_information_icons_and_palette_surface():
         "en",
         Translator("en"),
         recovery_notices=(("preferences_corrupt", "preferences.json"),),
-        checkpoint_notice_enabled=True,
         embedded=True,
     )
 
-    for banner in (dialog.recovery_notice_banner, dialog.checkpoint_banner):
-        assert "#f5f5f5" in banner.styleSheet()
-        assert banner.palette().requested_roles == [qt.QtGui.QPalette.AlternateBase]
-        assert banner.style().requested_icon == qt.QStyle.SP_MessageBoxInformation
+    banner = dialog.recovery_notice_banner
+    assert "#f5f5f5" in banner.styleSheet()
+    assert banner.palette().requested_roles == [qt.QtGui.QPalette.AlternateBase]
+    assert banner.style().requested_icon == qt.QStyle.SP_MessageBoxInformation
 
-    assert ("setFixedWidth", (24,)) in dialog.checkpoint_close_button.calls
-    assert ("setFlat", (True,)) in dialog.checkpoint_close_button.calls
+
+def test_scope_dialog_has_no_checkpoint_banner_but_keeps_recovery_notice():
+    dialog = _ScopeDialog(
+        make_with_table(),
+        (TextFile("chapter", "Text/chapter.xhtml"),),
+        (),
+        "en",
+        Translator("en"),
+        recovery_notices=(("preferences_corrupt", "preferences.json"),),
+        embedded=True,
+    )
+
+    assert not hasattr(dialog, "checkpoint_banner")
+    assert dialog.recovery_notice_banner is not None
 
 
 def test_selected_file_count_remains_visible_when_filter_hides_it():

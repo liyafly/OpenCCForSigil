@@ -158,8 +158,6 @@ class Controller:
             missing_rulesets = settings.take_missing_rulesets_notice()
             if missing_rulesets:
                 recovery_notices.append(("rulesets_missing", ", ".join(missing_rulesets)))
-            checkpoint_notice_enabled = settings.checkpoint_notice_enabled()
-
             def available_conversion_configs():
                 list_configs = getattr(jieba_probe, "available_configs_nonblocking", None)
                 return (list_configs() if callable(list_configs)
@@ -196,8 +194,6 @@ class Controller:
                     initial_language=language,
                     translator=translator,
                     notice=tuple(recovery_notices),
-                    checkpoint_notice_enabled=checkpoint_notice_enabled,
-                    hide_checkpoint_notice=settings.hide_checkpoint_notice,
                     ui_preferences=ui_preferences,
                     save_ui_preferences=save_run_ui_preferences,
                     **merged_dialog_options(),
@@ -207,14 +203,12 @@ class Controller:
                     adapter,
                     initial_language=language,
                     translator=translator,
-                    checkpoint_notice_enabled=checkpoint_notice_enabled,
-                    hide_checkpoint_notice=settings.hide_checkpoint_notice,
                     ui_preferences=ui_preferences,
                     save_ui_preferences=save_run_ui_preferences,
                     **merged_dialog_options(),
                 )
             pending_config_choice = getattr(scope_outcome, "configuration", None)
-            checkpoint_notice_shown = bool(scope_outcome.checkpoint_notice_shown)
+            checkpoint_notice_shown = False
             language = scope_outcome.language
             translator.set_language(language)
             settings.language = language
@@ -231,7 +225,6 @@ class Controller:
                 nonlocal language, preferences, ui_preferences, targets
                 nonlocal default_config
                 nonlocal pending_config_choice
-                nonlocal checkpoint_notice_shown
                 preferences = self.storage.load_preferences()
                 default_config = _preferred_config(preferences, default_config)
                 saved_ui = preferences.get("ui")
@@ -242,13 +235,10 @@ class Controller:
                     initial_language=language,
                     translator=translator,
                     initial_selection=previous_selection,
-                    checkpoint_notice_enabled=False,
                     ui_preferences=ui_preferences,
                     save_ui_preferences=save_run_ui_preferences,
                     **merged_dialog_options(),
                 )
-                checkpoint_notice_shown = (
-                    checkpoint_notice_shown or scope_outcome.checkpoint_notice_shown)
                 language = scope_outcome.language
                 translator.set_language(language)
                 settings.language = language

@@ -101,7 +101,6 @@ class ScopeOutcome:
     accepted: bool
     selection: TargetSelection | None
     language: str
-    checkpoint_notice_shown: bool = False
     configuration: object | None = None
 
 
@@ -304,8 +303,6 @@ def choose_scope(
     initial_language: str = "en",
     notice=(),
     initial_selection: TargetSelection | None = None,
-    checkpoint_notice_enabled: bool = False,
-    hide_checkpoint_notice=None,
     translator: Translator | None = None,
     ui_preferences=None,
     save_ui_preferences=None,
@@ -362,8 +359,6 @@ def choose_scope(
         nav_id=nav_id,
         recovery_notices=notice,
         initial_scope=initial_scope,
-        checkpoint_notice_enabled=checkpoint_notice_enabled,
-        hide_checkpoint_notice=hide_checkpoint_notice,
         embedded=True,
         container=scope_page,
         parent_dialog=outer,
@@ -498,13 +493,11 @@ def choose_scope(
                 state["main_dialog_size"] = [int(width()), int(height())]
         save_ui_preferences(state)
     if not config_dialog.accepted or not scope_dialog.accepted:
-        return ScopeOutcome(
-            False, None, scope_dialog.language, scope_dialog.checkpoint_notice_shown)
+        return ScopeOutcome(False, None, scope_dialog.language)
     translator.set_language(scope_dialog.language)
     selection = scope_dialog.selection
     return ScopeOutcome(
-        True, selection, scope_dialog.language, scope_dialog.checkpoint_notice_shown,
-        config_dialog.selected_config,
+        True, selection, scope_dialog.language, config_dialog.selected_config,
     )
 
 
@@ -3702,8 +3695,6 @@ class _ScopeDialog:
         nav_id: str | None = None,
         recovery_notices=(),
         initial_scope: Scope | None = None,
-        checkpoint_notice_enabled: bool = False,
-        hide_checkpoint_notice=None,
         embedded=True,
         container=None,
         parent_dialog=None,
@@ -3724,9 +3715,6 @@ class _ScopeDialog:
         self._manual_selection_ids = set(initial_ids)
         self._recovery_notices = tuple(recovery_notices)
         self._updating_items = False
-        self.checkpoint_notice_shown = bool(checkpoint_notice_enabled)
-        self._hide_checkpoint_notice_callback = hide_checkpoint_notice
-        self._checkpoint_notice_hidden = False
         self.dialog = parent_dialog or qt_widgets.QDialog()
         layout = qt_widgets.QVBoxLayout(container or self.dialog)
         self.recovery_notice_label = None
@@ -3747,9 +3735,6 @@ class _ScopeDialog:
             recovery_layout.addWidget(self.recovery_notice_label, 1)
             _set_scope_banner_surface(self.recovery_notice_banner, qt_widgets)
             layout.addWidget(self.recovery_notice_banner)
-        self._build_checkpoint_banner(
-            qt_widgets, layout, translator, checkpoint_notice_enabled)
-
         self.language_label = qt_widgets.QLabel(translator.text("language.label"))
         self.language_combo = qt_widgets.QComboBox()
         self.language_label.setBuddy(self.language_combo)
@@ -3909,23 +3894,6 @@ class _ScopeDialog:
         self.list_widget.setAccessibleName(self._translator.text("a11y.scope.file_list"))
         self.select_visible.setText(self._translator.text("scope.select_visible"))
         self.clear_visible.setText(self._translator.text("scope.clear_visible"))
-        if self.checkpoint_banner is not None:
-            self.checkpoint_notice_label.setText(
-                self._translator.text("scope.checkpoint_notice"))
-            self.checkpoint_hide_checkbox.setText(
-                self._translator.text("scope.checkpoint_hide"))
-            self.checkpoint_close_button.setToolTip(
-                self._translator.text("scope.checkpoint_close"))
-            set_accessible_name = getattr(
-                self.checkpoint_close_button, "setAccessibleName", None)
-            if callable(set_accessible_name):
-                set_accessible_name(
-                    self._translator.text("a11y.banner.dismiss_checkpoint"))
-            set_icon_accessible_name = getattr(
-                self.checkpoint_icon_label, "setAccessibleName", None)
-            if callable(set_icon_accessible_name):
-                set_icon_accessible_name(
-                    self._translator.text("a11y.scope.information"))
         self._refresh_count()
         self._update_analyze_enabled()
         if callable(self._language_changed_callback):
@@ -3936,53 +3904,6 @@ class _ScopeDialog:
         if item.file_id == self.nav_id:
             label += " " + self._translator.text("scope.navigation_suffix")
         return label
-
-    def _checkpoint_notice_preference_changed(self, checked: bool) -> None:
-        if not checked or self._checkpoint_notice_hidden:
-            return
-        self._checkpoint_notice_hidden = True
-        if callable(self._hide_checkpoint_notice_callback):
-            self._hide_checkpoint_notice_callback()
-        if self.checkpoint_banner is not None:
-            self.checkpoint_banner.hide()
-
-    def _build_checkpoint_banner(self, qt_widgets, layout, translator, enabled):
-        self.checkpoint_banner = None
-        if not enabled:
-            return
-        self.checkpoint_banner = qt_widgets.QWidget()
-        checkpoint_layout = qt_widgets.QHBoxLayout(self.checkpoint_banner)
-        self.checkpoint_icon_label = _information_icon_label(
-            qt_widgets, self.checkpoint_banner, translator)
-        checkpoint_layout.addWidget(self.checkpoint_icon_label)
-        self.checkpoint_notice_label = qt_widgets.QLabel(
-            translator.text("scope.checkpoint_notice"))
-        self.checkpoint_notice_label.setWordWrap(True)
-        checkpoint_layout.addWidget(self.checkpoint_notice_label, 1)
-        self.checkpoint_hide_checkbox = qt_widgets.QCheckBox(
-            translator.text("scope.checkpoint_hide"))
-        self.checkpoint_hide_checkbox.toggled.connect(
-            self._checkpoint_notice_preference_changed)
-        checkpoint_layout.addWidget(self.checkpoint_hide_checkbox)
-        self.checkpoint_close_button = qt_widgets.QPushButton("×")
-        set_fixed_width = getattr(self.checkpoint_close_button, "setFixedWidth", None)
-        if callable(set_fixed_width):
-            set_fixed_width(24)
-        set_flat = getattr(self.checkpoint_close_button, "setFlat", None)
-        if callable(set_flat):
-            set_flat(True)
-        set_auto_default = getattr(self.checkpoint_close_button, "setAutoDefault", None)
-        if callable(set_auto_default):
-            set_auto_default(False)
-        self.checkpoint_close_button.setToolTip(
-            translator.text("scope.checkpoint_close"))
-        set_accessible_name = getattr(self.checkpoint_close_button, "setAccessibleName", None)
-        if callable(set_accessible_name):
-            set_accessible_name(translator.text("a11y.banner.dismiss_checkpoint"))
-        self.checkpoint_close_button.clicked.connect(self.checkpoint_banner.hide)
-        checkpoint_layout.addWidget(self.checkpoint_close_button)
-        _set_scope_banner_surface(self.checkpoint_banner, qt_widgets)
-        layout.addWidget(self.checkpoint_banner)
 
     def _checked_ids(self) -> Tuple[str, ...]:
         checked = self._qt.Qt.Checked

@@ -235,7 +235,8 @@ def test_scope_cancel_preserves_checkpoint_and_window_preferences(monkeypatch, t
     book = ConversionBook()
 
     def cancel_after_hiding(_adapter, initial_language, **kwargs):
-        kwargs["hide_checkpoint_notice"]()
+        assert "checkpoint_notice_enabled" not in kwargs
+        assert "hide_checkpoint_notice" not in kwargs
         return _scope_outcome(False, None, initial_language)
 
     monkeypatch.setattr("ui.preview_window.choose_scope", cancel_after_hiding)
@@ -243,7 +244,7 @@ def test_scope_cancel_preserves_checkpoint_and_window_preferences(monkeypatch, t
     assert Controller(book, data_dir=data_dir).run() == 1
 
     saved = json.loads(preferences_path.read_text(encoding="utf-8"))
-    assert saved["checkpoint_notice"] is False
+    assert saved["checkpoint_notice"] is True
     assert saved["ui"]["main_dialog_size"] == [820, 620]
     assert saved["ui"]["run_options_advanced_expanded"] is True
     assert saved["ui"]["language"] == "en"
