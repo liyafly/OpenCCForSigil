@@ -33,14 +33,12 @@ def _labels(translator: Any) -> CatalogView:
 _PROFILE_SUMMARY_KEYS = {
     "conversion": "profile.conversion",
     "segmentation": "profile.segmentation",
-    "scope": "profile.scope",
     "convert_nav": "options.include_nav",
     "convert_ncx": "options.include_ncx",
     "convert_metadata": "options.include_metadata",
     "convert_alt": "options.convert_alt",
     "convert_title": "options.convert_title",
     "convert_aria_label": "options.convert_aria_label",
-    "convert_svg_text": "profile.convert_svg_text",
     "convert_ruby_rt": "options.convert_ruby_rt",
     "convert_code_pre": "options.convert_code_pre",
     "decode_numeric_cjk_refs": "options.decode_numeric_cjk_refs",
@@ -51,24 +49,22 @@ _PROFILE_SUMMARY_KEYS = {
     "language_region": "options.language_region",
     "ruleset_ids": "profile.rules",
     "builtin_rules_enabled": "options.builtin_rules_enabled",
-    "preview_required": "profile.preview_required",
     "attributes": "profile.attributes",
     "protected_elements": "profile.protected_elements",
     "mathml": "profile.mathml",
-    "numeric_cjk_char_refs": "profile.numeric_cjk_char_refs",
-    "tofu_policy": "profile.tofu_policy",
-    "regex_rules": "profile.regex_rules",
     "force_pivot": "options.force_pivot",
     "pivot_chain": "options.pivot_chain",
-    "review_annotations": "profile.review_annotations",
-    "checkpoint_notice": "profile.checkpoint_notice",
 }
 
 _PROFILE_SUMMARY_NON_OPTIONS = {"schema_version", "id", "name", "extras"}
+_PROFILE_SUMMARY_OMITTED_FIELDS = {
+    "scope", "preview_required", "tofu_policy", "regex_rules",
+    "convert_svg_text", "review_annotations", "checkpoint_notice",
+    "numeric_cjk_char_refs",
+}
 _PROFILE_COMPARISON_PRIORITY = (
-    "conversion", "segmentation", "ruleset_ids", "scope", "force_pivot",
-    "pivot_chain", "regex_rules", "tofu_policy", "mathml",
-    "decode_numeric_cjk_refs", "numeric_cjk_char_refs", "builtin_rules_enabled",
+    "conversion", "segmentation", "ruleset_ids", "force_pivot",
+    "pivot_chain", "mathml", "decode_numeric_cjk_refs", "builtin_rules_enabled",
 )
 
 
@@ -84,9 +80,6 @@ def _profile_summary_value(profile: Profile, name: str, translator: Translator) 
     if name == "segmentation":
         key = "profile.segmentation.jieba" if value == "jieba" else "profile.segmentation.mmseg"
         return translator.text(key)
-    if name == "scope":
-        scope_value = {"all_xhtml": "all"}.get(value, value)
-        return translator.text(f"scope.{scope_value}")
     if name in {"quotation_mode", "punctuation_mode", "language_metadata", "language_preset"}:
         return translator.text(f"options.{value}")
     if name == "language_region":
@@ -115,10 +108,6 @@ def _profile_summary_value(profile: Profile, name: str, translator: Translator) 
         return ", ".join(labels) or translator.text("profile.no_value")
     if name == "ruleset_ids":
         return ", ".join(value) or translator.text("profile.no_value")
-    if name == "tofu_policy":
-        key = f"profile.tofu_policy.{value}"
-        label = translator.text(key)
-        return str(value) if label == key else label
     if name == "numeric_cjk_char_refs":
         key = f"options.{value}"
         label = translator.text(key)
@@ -386,7 +375,7 @@ class ProfileManagerDialog:
             return
 
         all_options = self._profile_options_text(profile)
-        main_names = ("conversion", "segmentation", "scope", "ruleset_ids",
+        main_names = ("conversion", "segmentation", "ruleset_ids",
                       "builtin_rules_enabled", "force_pivot", "pivot_chain")
         main_options = [self._profile_option_text(profile, name)
                         for name in main_names if hasattr(profile, name)]
@@ -424,7 +413,10 @@ class ProfileManagerDialog:
     def _profile_options_text(self, profile: Profile) -> list[str]:
         return [self._profile_option_text(profile, profile_field.name)
                 for profile_field in fields(profile)
-                if profile_field.name not in _PROFILE_SUMMARY_NON_OPTIONS]
+                if profile_field.name not in {
+                    *_PROFILE_SUMMARY_NON_OPTIONS,
+                    *_PROFILE_SUMMARY_OMITTED_FIELDS,
+                }]
 
     def _profile_option_text(self, profile: Profile, name: str) -> str:
         value = _profile_summary_value(profile, name, self._translator)

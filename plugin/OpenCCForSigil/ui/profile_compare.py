@@ -9,6 +9,11 @@ from app.profiles import Profile
 
 
 _NON_RUNTIME_FIELDS = {"schema_version", "id", "name", "extras"}
+_INEFFECTIVE_PROFILE_FIELDS = {
+    "scope", "preview_required", "tofu_policy", "regex_rules",
+    "convert_svg_text", "review_annotations", "checkpoint_notice",
+    "numeric_cjk_char_refs",
+}
 _OBSOLETE_PANEL_OPTIONS = {"diagnose_mixed", "detailed_classification"}
 
 
@@ -35,14 +40,14 @@ def compare_profile_settings(
     before = normalized_profile_values(current)
     after = normalized_profile_values(candidate)
     names = tuple(field.name for field in fields(Profile)
-                  if field.name not in _NON_RUNTIME_FIELDS)
+                  if field.name not in _NON_RUNTIME_FIELDS | _INEFFECTIVE_PROFILE_FIELDS)
     return tuple((name, before.get(name), after.get(name)) for name in names
                  if before.get(name) != after.get(name))
 
 
 def profile_runtime_fields() -> tuple[str, ...]:
     return tuple(field.name for field in fields(Profile)
-                 if field.name not in _NON_RUNTIME_FIELDS)
+                 if field.name not in _NON_RUNTIME_FIELDS | _INEFFECTIVE_PROFILE_FIELDS)
 
 
 def _normalize(value):

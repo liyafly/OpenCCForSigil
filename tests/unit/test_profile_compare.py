@@ -1,7 +1,11 @@
 from dataclasses import fields, replace
 
 from app.profiles import Profile
-from ui.profile_compare import compare_profile_settings, normalized_profile_values
+from ui.profile_compare import (
+    compare_profile_settings,
+    normalized_profile_values,
+    profile_runtime_fields,
+)
 
 
 def test_names_and_ids_do_not_count_as_conversion_changes():
@@ -51,7 +55,7 @@ def test_legacy_diagnostic_panel_options_do_not_change_profile_comparison():
     assert "detailed_classification" not in normalized
 
 
-def test_compare_covers_every_runtime_profile_field():
+def test_compare_covers_only_effective_profile_fields():
     current = Profile(id="a", name="Current")
     candidate = replace(
         current,
@@ -89,7 +93,15 @@ def test_compare_covers_every_runtime_profile_field():
     )
     changed = {name for name, _before, _after in
                compare_profile_settings(current, candidate)}
+    ineffective_fields = {
+        "scope", "preview_required", "tofu_policy", "regex_rules",
+        "convert_svg_text", "review_annotations", "checkpoint_notice",
+        "numeric_cjk_char_refs",
+    }
     expected = {item.name for item in fields(Profile)
-                if item.name not in {"schema_version", "id", "name", "extras"}}
+                if item.name not in {
+                    "schema_version", "id", "name", "extras", *ineffective_fields,
+                }}
 
     assert changed == expected
+    assert not (set(profile_runtime_fields()) & ineffective_fields)

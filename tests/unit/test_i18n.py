@@ -122,6 +122,23 @@ def test_simp18_redundant_action_strings_are_removed_from_catalogs():
     assert all(not (set(catalog) & removed) for catalog in catalogs.values())
 
 
+def test_simp19_ineffective_profile_summary_strings_are_removed_from_catalogs():
+    catalogs = load_catalogs()
+    removed = {
+        "profile.scope",
+        "profile.preview_required",
+        "profile.tofu_policy",
+        "profile.tofu_policy.native_default_include",
+        "profile.regex_rules",
+        "profile.convert_svg_text",
+        "profile.review_annotations",
+        "profile.checkpoint_notice",
+        "profile.numeric_cjk_char_refs",
+    }
+
+    assert all(not (set(catalog) & removed) for catalog in catalogs.values())
+
+
 def test_one_term_per_concept():
     catalogs = load_catalogs()
 

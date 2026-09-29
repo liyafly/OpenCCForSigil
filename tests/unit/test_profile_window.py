@@ -245,12 +245,23 @@ def test_profile_summary_shows_quotation_mode_and_lists_full_profile_name():
     assert first_manager.summary.toPlainText() != second_manager.summary.toPlainText()
     assert translator.text("options.quotation_mode") in first_manager.summary.toPlainText()
     summary = first_manager.summary.toPlainText()
+    ineffective_fields = {
+        "scope", "preview_required", "tofu_policy", "regex_rules",
+        "convert_svg_text", "review_annotations", "checkpoint_notice",
+        "numeric_cjk_char_refs",
+    }
     option_fields = {field.name for field in fields(Profile)} - {
         "schema_version", "id", "name", "extras",
+        *ineffective_fields,
     }
     assert set(_PROFILE_SUMMARY_KEYS) == option_fields
     assert len(summary.splitlines()) == len(option_fields)
     assert all(translator.text(key) in summary for key in _PROFILE_SUMMARY_KEYS.values())
+    assert all(field not in _PROFILE_SUMMARY_KEYS for field in ineffective_fields)
+    assert all(
+        translator.text(f"profile.{field}") not in summary
+        for field in ineffective_fields
+    )
     assert first_manager.profile_list.item(0).toolTip() == first.name
     assert first_manager.ruleset_note.text() == translator.text(
         "profile.rulesets_session_only"
