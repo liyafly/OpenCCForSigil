@@ -35,9 +35,7 @@ rejects patterns that match empty input; at runtime, zero-width matches found
 in text are skipped and counted in a diagnostic that contains only the rule ID
 and count. The plugin also bounds pattern size, per-rule and total hits,
 replacement output, and total matching time. A timeout or exceeded limit stops
-the entire analysis before it can produce a partial writeback plan. The rule
-manager includes templates for author-credit protection, marked text,
-contextual replacement, and horizontal whitespace cleanup.
+the entire analysis before it can produce a partial writeback plan.
 
 Rules have an explicit standard direction (all 16 are supported) or `*`, and
 global, profile, or book scope. Jieba runs use the corresponding standard rule

@@ -9,11 +9,9 @@ from core.converter import OfficialBackendConverter
 from core.models import ConvertRequest, RuleSnapshot as RequestRuleSnapshot
 from core.workflow import ConversionWorkflow
 from core.staging import apply_changes
-from rules.compiled import CompiledOverlay, lock_spans_compiled
 from rules.matching import RegexBudget, RuleExecutionError, collect_matches, replace_stage
 from rules.models import Rule, RuleSnapshot
 from rules.regex_runtime import load_regex_module
-from rules.templates import collapse_horizontal_spaces, signature_protection
 from rules.validators import RuleValidationError, validate_rules
 from sigil.adapter import SigilBookAdapter
 
@@ -77,22 +75,6 @@ def _request(rules, *, punctuation="keep"):
         detailed_classification=False,
         diagnose_mixed=False,
     )
-
-
-def test_signature_template_protects_marked_credit_and_horizontal_spacing():
-    rule = Rule.from_dict({
-        **signature_protection(),
-        "id": "signature",
-        "direction": "*",
-        "scope": "global",
-    })
-    snapshot = RuleSnapshot.freeze((rule,))
-    overlay = CompiledOverlay.build(snapshot, config="s2t")
-
-    for source in ("◎著", "◎ 著", "◎  【著】", "◎\u3000著"):
-        spans = lock_spans_compiled(source, overlay)
-        assert [(span.source, span.target) for span in spans] == [(source, source)]
-    assert lock_spans_compiled("普通的著作", overlay) == ()
 
 
 def test_regex_final_wording_locks_actual_match_and_skips_backend():
@@ -242,10 +224,19 @@ def test_overlapping_regex_candidates_do_not_count_as_hits():
     assert budget.regex_hits == 1
 
 
-def test_collapse_spaces_template_plans_600_matches_across_60_files():
-    values = collapse_horizontal_spaces(1)
-    values.update(id="collapse-spaces", direction="*", scope="global")
-    rule = Rule.from_dict(values)
+def test_collapse_spaces_rule_plans_600_matches_across_60_files():
+    rule = Rule.from_dict({
+        "id": "collapse-spaces",
+        "semantic_version": 2,
+        "type": "exact",
+        "action": "replace",
+        "match_type": "regex",
+        "stage": "post",
+        "source": r"[ \t\u3000]{2,}",
+        "target": " ",
+        "direction": "*",
+        "scope": "global",
+    })
     snapshot = RuleSnapshot.freeze((rule,))
     request = ConvertRequest(
         "s2t",

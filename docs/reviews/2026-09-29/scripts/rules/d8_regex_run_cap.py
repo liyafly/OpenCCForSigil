@@ -15,11 +15,12 @@ import sys, time
 from pathlib import Path
 from rules.matching import RegexBudget, replace_stage, RuleExecutionError
 from rules.models import Rule
-from rules.templates import collapse_horizontal_spaces
 from rules.regex_runtime import load_regex_module
 regex = load_regex_module()
-values = collapse_horizontal_spaces(1); values.update(id="collapse", direction="*", scope="global")
-rule = Rule.from_dict(values)
+rule = Rule.from_dict(dict(
+    id="collapse", semantic_version=2, type="exact", action="replace",
+    match_type="regex", stage="post", source=r"[ \t\u3000]{2,}", target=" ",
+    direction="*", scope="global"))
 patterns = {rule.id: regex.compile(rule.source, regex.VERSION1)}
 budget = RegexBudget()
 para = "　　" + "他走进房间看了一眼窗外的雨然后坐下来开始写信" * 2   # ~50 chars

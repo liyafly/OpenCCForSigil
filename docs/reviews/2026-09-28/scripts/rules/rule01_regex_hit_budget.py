@@ -12,7 +12,6 @@ from core.workflow import ConversionWorkflow
 from rules.matching import RegexBudget, collect_matches, replace_stage, RuleExecutionError
 from rules.models import Rule, RuleSnapshot
 from rules.regex_runtime import load_regex_module
-from rules.templates import collapse_horizontal_spaces
 from sigil.adapter import SigilBookAdapter
 
 
@@ -57,11 +56,12 @@ try:
 except RuleExecutionError as exc:
     print("(b) 600-char paragraph:", type(exc).__name__, exc)
 
-# (c) Built-in template 'collapse spaces' on a normal multi-file book:
+# (c) A user regex that collapses horizontal spaces on a normal multi-file book:
 #     60 files x 10 paragraphs, each paragraph has one double space -> 600 real matches.
-tmpl = collapse_horizontal_spaces(1)
-tmpl.update(id="spaces", direction="*", scope="global")
-spaces = Rule.from_dict(tmpl)
+spaces = Rule.from_dict(dict(
+    id="spaces", semantic_version=2, type="exact", action="replace",
+    match_type="regex", stage="post", source=r"[ \t\u3000]{2,}", target=" ",
+    direction="*", scope="global"))
 frozen = RuleSnapshot.freeze((spaces,))
 request = ConvertRequest("s2t", rules_snapshot=ReqSnap(rules_hash=frozen.sha256, rules=frozen.rules),
                          quotation_mode="keep", diagnose_mixed=False, detailed_classification=False)

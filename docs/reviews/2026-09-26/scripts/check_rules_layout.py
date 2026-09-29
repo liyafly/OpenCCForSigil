@@ -191,24 +191,9 @@ def main():
         "long_rule_text_available_in_details": full_detail_text_visible,
     }
     template_window = RuleManagerDialog(qt, (), translator=Translator("en"))
-    template_window.dialog.show()
-    template_window.tabs.setCurrentIndex(1)
-    app.processEvents()
-    template_window._mark_test_result_current()
-    original_input_dialog = getattr(qt, "QInputDialog", None)
-    qt.QInputDialog = type("InputDialog", (), {
-        "getItem": staticmethod(lambda *_args: (
-            template_window._labels["template_signature"], True)),
-    })
-    template_window._fill_template()
-    keyboard["template_fill_marks_test_result_stale"] = (
-        template_window.test_result_status.isVisible()
-        and not template_window.rules
-        and bool(template_window.source_edit.text()))
-    if original_input_dialog is None:
-        del qt.QInputDialog
-    else:
-        qt.QInputDialog = original_input_dialog
+    keyboard["rule_templates_are_absent"] = (
+        not hasattr(template_window, "template_button")
+        and not hasattr(template_window, "_fill_template"))
 
     import_window = RuleManagerDialog(qt, (), translator=Translator("en"))
     import_window.dialog.show()

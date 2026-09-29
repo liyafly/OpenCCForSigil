@@ -281,7 +281,6 @@ def test_enter_in_rule_editor_submits_without_opening_ruleset_prompt():
             manager.add_button,
             manager.update_button,
             manager.remove_button,
-            manager.template_button,
             manager.test_button,
             manager.inspect_button,
             manager.ruleset_settings_close_button,
@@ -1549,21 +1548,11 @@ def test_switching_rulesets_resolves_editor_draft(action):
             assert manager._rulesets["one"].rules == (first,)
 
 
-def test_template_enter_adds_instead_of_overwriting_selected_rule():
-    existing = Rule(id="existing", source="old", target="old target", direction="s2t")
-    manager = RuleManagerDialog(make_with_table(), (existing,), translator=Translator("en"))
-    manager.table.selectRow(0)
-    manager._load_selected()
-    manager._qt.QInputDialog = SimpleNamespace(getItem=lambda *_args, **_kwargs: (
-        manager._labels["template_signature"], True))
+def test_rule_manager_has_no_rule_template_action():
+    manager = RuleManagerDialog(make_with_table(), (), translator=Translator("en"))
 
-    manager._fill_template()
-    manager.source_edit.returnPressed.emit()
-
-    assert manager.rules[0] == existing
-    assert len(manager.rules) == 2
-    assert manager.rules[1].action == "protect"
-    assert manager._editing_rule_id is None
+    assert not hasattr(manager, "template_button")
+    assert not hasattr(manager, "_fill_template")
 
 
 def test_search_and_filter_update_the_stable_rule_id_in_a_large_set():

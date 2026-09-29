@@ -745,12 +745,9 @@ class RuleManagerDialog:
         self.add_button = qt.QPushButton(self._labels["add"])
         self.update_button = qt.QPushButton(self._labels["update"])
         self.remove_button = qt.QPushButton(self._labels["remove"])
-        self.template_button = qt.QPushButton(self._labels["templates"])
-        for button in (self.add_button, self.update_button, self.remove_button,
-                       self.template_button):
+        for button in (self.add_button, self.update_button, self.remove_button):
             button.setAutoDefault(False)
-        for button in (self.add_button, self.update_button, self.remove_button,
-                       self.template_button):
+        for button in (self.add_button, self.update_button, self.remove_button):
             buttons.addWidget(button)
         editor_layout.addWidget(editor_box)
 
@@ -817,7 +814,6 @@ class RuleManagerDialog:
         self.add_button.clicked.connect(self._add)
         self.update_button.clicked.connect(self._update_selected)
         self.remove_button.clicked.connect(self._remove)
-        self.template_button.clicked.connect(self._fill_template)
         self.test_button.clicked.connect(self._test)
         self.inspect_button.clicked.connect(self._inspect)
         self.apply_button.clicked.connect(self._apply)
@@ -1788,79 +1784,6 @@ class RuleManagerDialog:
         self.target_edit.setEnabled(not is_protect)
         if is_protect:
             self.target_edit.clear()
-
-    def _fill_template(self) -> None:
-        if not self._resolve_editor_draft():
-            return
-        from rules.templates import (
-            collapse_horizontal_spaces,
-            contextual_replacement,
-            protect_between_markers,
-            signature_protection,
-        )
-
-        names = ("template_signature", "template_markers", "template_context",
-                 "template_spaces")
-        selected, accepted = self._qt.QInputDialog.getItem(
-            self.dialog,
-            plugin_window_title(self._translator, self._labels["templates"]),
-            self._labels["templates"],
-            [self._labels[name] for name in names],
-            0,
-            False,
-        )
-        if not accepted:
-            return
-        selected_index = next((index for index, name in enumerate(names)
-                               if self._labels[name] == str(selected)), -1)
-        if selected_index < 0:
-            return
-
-        def ask_text(label_key):
-            value, ok = self._qt.QInputDialog.getText(
-                self.dialog, self._labels["templates"], self._labels[label_key])
-            return str(value) if ok else None
-
-        try:
-            if selected_index == 0:
-                values = signature_protection()
-            elif selected_index == 1:
-                left, right = ask_text("template_left"), ask_text("template_right")
-                if left is None or right is None:
-                    return
-                values = protect_between_markers(left, right)
-            elif selected_index == 2:
-                before = ask_text("template_before")
-                term = ask_text("template_term")
-                after = ask_text("template_after")
-                replacement = ask_text("template_replacement")
-                if None in (before, term, after, replacement):
-                    return
-                values = contextual_replacement(before, term, after, replacement)
-            else:
-                count, ok = self._qt.QInputDialog.getInt(
-                    self.dialog, self._labels["templates"],
-                    self._labels["template_spaces_count"], 1, 1, 16, 1)
-                if not ok:
-                    return
-                values = collapse_horizontal_spaces(count)
-        except ValueError as exc:
-            self._warn(str(exc))
-            return
-
-        action = values["action"]
-        stage = values["stage"]
-        editor_action = (
-            "protect" if action == "protect" else
-            "replace_pre" if stage == "pre" else "replace_post"
-        )
-        self._editing_rule_id = None
-        self.type_combo.setCurrentIndex(self.type_combo.findData(editor_action))
-        self.match_type_combo.setCurrentIndex(self.match_type_combo.findData(values["match_type"]))
-        self.source_edit.setText(str(values["source"]))
-        self.target_edit.setText(str(values["target"]))
-        self._type_changed()
-        self._refresh_editor_mode()
 
     def _selection_changed(self):
         if not self._resolve_editor_draft():
