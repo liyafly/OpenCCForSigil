@@ -20,6 +20,8 @@ and their limits are recorded in the [implementation results](reviews/2026-09-27
 - CDATA content is excluded from conversion targets in both XHTML and NCX.
 - A loaded profile never widens the target set already confirmed in the scope
   picker. Scope selection remains explicit on every invocation.
+- The read-only Dictionary Inspector (spec §86, SHOULD) is shown inline in the
+  rule test output instead of a separate dialog.
 - Native conversion cannot be forcibly interrupted mid-call. Worker cancellation
   is cooperative at target boundaries and never writes a partial plan.
 - The optional Jieba probe constructs and exercises only `s2t_jieba`; all

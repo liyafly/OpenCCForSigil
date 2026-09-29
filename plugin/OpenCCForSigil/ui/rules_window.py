@@ -1,4 +1,4 @@
-"""Qt rule manager, sandbox, and read-only dictionary inspector."""
+"""Qt rule manager and conversion sandbox."""
 
 from __future__ import annotations
 
@@ -187,94 +187,6 @@ def inspect_dictionary(
         converted.zero_width_skips,
         converted.skipped_rule_trace,
     )
-
-
-def show_dictionary_inspector(
-    text: str,
-    *,
-    config: str,
-    official_convert: Callable[[str], str] | object,
-    comparison_configs: Iterable[str] = (),
-    snapshot: RuleSnapshot | None = None,
-    profile_id: str | None = None,
-    book_fingerprint: str | None = None,
-    run_options: dict[str, object] | None = None,
-    translator: Any = None,
-    ui_preferences=None,
-    save_ui_preferences=None,
-) -> DictionaryInspection:
-    """Display read-only independent comparison results and return them."""
-
-    inspection = inspect_dictionary(
-        text,
-        config=config,
-        official_convert=official_convert,
-        comparison_configs=comparison_configs,
-        snapshot=snapshot,
-        profile_id=profile_id,
-        book_fingerprint=book_fingerprint,
-        run_options=run_options,
-    )
-    qt = load_qt()
-    active_translator = translator or Translator("en")
-    ensure_application(qt, language=active_translator.language)
-    dialog = qt.QDialog()
-    labels = _labels(active_translator)
-    separator = active_translator.text("common.label_separator")
-    dialog.setWindowTitle(plugin_window_title(
-        active_translator, labels["inspector_title"]))
-    restore_window_size(
-        dialog, ui_preferences, "dictionary_inspector_dialog_size", (720, 500))
-    layout = qt.QVBoxLayout(dialog)
-    view = qt.QPlainTextEdit()
-    view.setReadOnly(True)
-    lines = [
-        f"{labels['input_label']}{separator}{inspection.input}",
-        f"{labels['config_label']}{separator}"
-        f"{configuration_label(active_translator, inspection.config)}",
-    ]
-    lines.extend(
-        f"{configuration_label(active_translator, name)}{separator}{value}"
-        for name, value in inspection.comparisons
-    )
-    lines.append(f"{labels['final_label']}{separator}{inspection.final}")
-    attribution_key = (
-        "rules.attribution_opencc" if inspection.attribution.startswith("OpenCC")
-        else "rules.attribution_user"
-    )
-    lines.append(
-        f"{labels['attribution_label']}{separator}"
-        f"{active_translator.text(attribution_key)}")
-    for item in inspection.classifications:
-        category = active_translator.text(f"preview.category_value.{item.category}")
-        if category == f"preview.category_value.{item.category}":
-            category = active_translator.text("rules.category_unknown")
-        confidence = active_translator.text(
-            f"rules.confidence.{item.attribution_confidence or 'low'}")
-        stage = item.comparison_stage or config
-        stage_configs = tuple(stage.split("-vs-"))
-        stage_label = " / ".join(configuration_label(active_translator, value)
-                                 for value in stage_configs)
-        lines.append(active_translator.text(
-            "rules.classification",
-            source=item.source,
-            target=item.target,
-            category=category,
-            confidence=confidence,
-            stage=stage_label,
-        ))
-    if inspection.matched_rules:
-        lines.append(active_translator.text(
-            "rules.matched_rules", rules=", ".join(inspection.matched_rules)))
-    view.setPlainText("\n".join(lines))
-    layout.addWidget(view)
-    close = qt.QPushButton(labels["close"])
-    close.clicked.connect(dialog.accept)
-    layout.addWidget(close)
-    exec_dialog(dialog)
-    save_window_size(
-        dialog, "dictionary_inspector_dialog_size", save_ui_preferences)
-    return inspection
 
 
 def convert_for(config: str, text: str, backend: Any) -> str:
@@ -749,11 +661,8 @@ class RuleManagerDialog:
         test_layout.addWidget(self.test_context_label)
         test_buttons = qt.QHBoxLayout()
         self.test_button = qt.QPushButton(self._labels["test"])
-        self.inspect_button = qt.QPushButton(self._labels["inspect"])
-        for button in (self.test_button, self.inspect_button):
-            button.setAutoDefault(False)
+        self.test_button.setAutoDefault(False)
         test_buttons.addWidget(self.test_button)
-        test_buttons.addWidget(self.inspect_button)
         self.test_input = qt.QPlainTextEdit()
         self.test_input.setPlaceholderText(self._labels["input"])
         self.test_input.setMinimumHeight(72)
@@ -794,7 +703,6 @@ class RuleManagerDialog:
         self.update_button.clicked.connect(self._update_selected)
         self.remove_button.clicked.connect(self._remove)
         self.test_button.clicked.connect(self._test)
-        self.inspect_button.clicked.connect(self._inspect)
         self.apply_button.clicked.connect(self._apply)
         self.cancel_button.clicked.connect(self.dialog.reject)
         self.source_edit.returnPressed.connect(self._submit_editor)
@@ -1839,12 +1747,21 @@ class RuleManagerDialog:
             return
         if not self._resolve_editor_draft():
             return
+        text = self.test_input.toPlainText()
+        if not text:
+            index = self._rule_index_at_row(self.table.currentRow())
+            if 0 <= index < len(self.rules):
+                text = self.rules[index].source
+        if not text:
+            self.test_output.setPlainText(self._labels["input_required"])
+            return
         try:
             snapshot, context = self._sandbox_snapshot()
             self.test_context_label.setText(context)
             inspection = inspect_dictionary(
-                self.test_input.toPlainText(), config=self._config,
+                text, config=self._config,
                 official_convert=self._official_convert, snapshot=snapshot,
+                comparison_configs=self._comparison_configs,
                 profile_id=self._profile_id, book_fingerprint=self._book_fingerprint,
                 run_options=getattr(self, "_run_options", {}),
             )
@@ -1880,44 +1797,48 @@ class RuleManagerDialog:
                     start=skipped.start, end=skipped.end))
             if not trace:
                 lines.append(self._labels["no_hits"])
+            separator = self._translator.text("common.label_separator")
+            lines.append(
+                f"{self._labels['config_label']}{separator}"
+                f"{configuration_label(self._translator, inspection.config)}")
+            lines.extend(
+                f"{configuration_label(self._translator, name)}{separator}{value}"
+                for name, value in inspection.comparisons
+            )
+            lines.append(
+                f"{self._labels['final_label']}{separator}{inspection.final}")
+            attribution_key = (
+                "rules.attribution_opencc" if inspection.attribution.startswith("OpenCC")
+                else "rules.attribution_user"
+            )
+            lines.append(
+                f"{self._labels['attribution_label']}{separator}"
+                f"{self._translator.text(attribution_key)}")
+            for item in inspection.classifications:
+                category = self._translator.text(
+                    f"preview.category_value.{item.category}")
+                if category == f"preview.category_value.{item.category}":
+                    category = self._translator.text("rules.category_unknown")
+                confidence = self._translator.text(
+                    f"rules.confidence.{item.attribution_confidence or 'low'}")
+                stage = item.comparison_stage or inspection.config
+                stage_configs = tuple(stage.split("-vs-"))
+                stage_label = " / ".join(
+                    configuration_label(self._translator, value)
+                    for value in stage_configs)
+                lines.append(self._translator.text(
+                    "rules.classification",
+                    source=item.source,
+                    target=item.target,
+                    category=category,
+                    confidence=confidence,
+                    stage=stage_label,
+                ))
+            if inspection.matched_rules:
+                lines.append(self._translator.text(
+                    "rules.matched_rules", rules=", ".join(inspection.matched_rules)))
             self.test_output.setPlainText("\n".join(lines))
             self._mark_test_result_current()
-        except Exception as exc:
-            show_error_details(
-                self._qt, self.dialog, self._labels["title"],
-                self._labels["operation_failed"], str(exc),
-            )
-
-    def _inspect(self) -> None:
-        if self._official_convert is None:
-            self.test_output.setPlainText(self._labels["no_converter"])
-            return
-        if not self._resolve_editor_draft():
-            return
-        text = self.test_input.toPlainText()
-        if not text:
-            index = self._rule_index_at_row(self.table.currentRow())
-            if 0 <= index < len(self.rules):
-                text = self.rules[index].source
-        if not text:
-            self.test_output.setPlainText(self._labels["input_required"])
-            return
-        try:
-            snapshot, context = self._sandbox_snapshot()
-            self.test_context_label.setText(context)
-            show_dictionary_inspector(
-                text,
-                config=self._config,
-                official_convert=self._official_convert,
-                comparison_configs=self._comparison_configs,
-                snapshot=snapshot,
-                profile_id=self._profile_id,
-                book_fingerprint=self._book_fingerprint,
-                run_options=getattr(self, "_run_options", {}),
-                translator=self._translator,
-                ui_preferences=self._ui_preferences,
-                save_ui_preferences=self._save_ui_preferences,
-            )
         except Exception as exc:
             show_error_details(
                 self._qt, self.dialog, self._labels["title"],
@@ -2323,6 +2244,5 @@ __all__ = [
     "convert_for",
     "inspect_dictionary",
     "review_import",
-    "show_dictionary_inspector",
     "show_rules_window",
 ]

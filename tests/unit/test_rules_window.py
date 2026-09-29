@@ -282,7 +282,6 @@ def test_enter_in_rule_editor_submits_without_opening_ruleset_prompt():
             manager.update_button,
             manager.remove_button,
             manager.test_button,
-            manager.inspect_button,
             manager.ruleset_settings_close_button,
             manager.apply_button,
             manager.cancel_button,
@@ -306,21 +305,26 @@ def test_inspect_without_input_uses_the_visible_selected_rule(
     manager._official_convert = lambda _config, value: value
     manager._resolve_editor_draft = lambda: True
     manager._sandbox_snapshot = lambda: (None, "sandbox")
+    manager._translator = Translator("en")
+    manager._labels = rules_window._labels(manager._translator)
     manager.test_input = SimpleNamespace(toPlainText=lambda: "")
-    manager.test_context_label = Edit()
+    manager.test_context_label = SimpleNamespace(setText=lambda _text: None)
+    manager.test_output = SimpleNamespace(
+        setPlainText=lambda text: setattr(manager, "test_output_text", text))
     manager._comparison_configs = ()
-    manager._ui_preferences = {}
-    manager._save_ui_preferences = None
+    manager._run_options = {}
+    manager._resolve_editor_draft = lambda: True
+    manager._sandbox_snapshot = lambda: (RuleSnapshot.freeze(()), "sandbox")
+    manager._mark_test_result_current = lambda: None
     manager.dialog = object()
-    manager._labels["operation_failed"] = "Operation failed"
     seen = {}
-    monkeypatch.setattr(
-        rules_window,
-        "show_dictionary_inspector",
-        lambda text, **_kwargs: seen.setdefault("text", text),
-    )
+    def inspect(text, **_kwargs):
+        seen["text"] = text
+        return DictionaryInspection(input=text, config="s2t", comparisons=(), final=text)
 
-    manager._inspect()
+    monkeypatch.setattr(rules_window, "inspect_dictionary", inspect)
+
+    manager._test()
 
     assert seen["text"] == "乙方"
 
@@ -442,6 +446,7 @@ def test_more_menu_exposes_settings_help_import_bulk_export_and_delete(monkeypat
 
 def test_test_page_places_input_before_test_buttons():
     manager = RuleManagerDialog(make_with_table(), (), translator=Translator("en"))
+    assert not hasattr(manager, "inspect_button")
     children = manager.test_content._layout.children
     buttons_index = next(
         index for index, child in enumerate(children)
@@ -449,6 +454,19 @@ def test_test_page_places_input_before_test_buttons():
     )
 
     assert children.index(manager.test_input) < buttons_index
+
+
+def test_rule_test_requires_input_when_no_rule_is_selected():
+    manager = RuleManagerDialog(
+        make_with_table(), (), translator=Translator("en"),
+        official_convert=lambda _config, text: text, config="s2t",
+    )
+    manager._resolve_editor_draft = lambda: True
+    manager.table.currentRow = lambda: -1
+
+    manager._test()
+
+    assert manager.test_output.toPlainText() == Translator("en").text("rules.input_required")
 
 
 def test_rules_editor_labels_are_buddied_and_table_has_accessible_name():
@@ -1318,7 +1336,7 @@ def test_sandbox_scope_excludes_direction_and_owner_mismatches():
     assert inspection.matched_rules == ()
 
 
-def test_dictionary_inspector_localizes_config_classification_and_rule_labels(monkeypatch):
+def test_rule_test_localizes_config_classification_and_rule_labels(monkeypatch):
     inspection = DictionaryInspection(
         input="軟體", config="s2tw", comparisons=(("s2t", "软件"),),
         final="軟體", matched_rules=("mine",), attribution="OpenCC:s2tw/comparative_config_diff",
@@ -1327,30 +1345,40 @@ def test_dictionary_inspector_localizes_config_classification_and_rule_labels(mo
             attribution_confidence="high", comparison_stage="s2tw-vs-s2t",
         ),),
     )
-    qt = make_with_table()
-    captured = []
-
-    class CaptureText(qt.QPlainTextEdit):
-        def __init__(self, *args):
-            super().__init__(*args)
-            captured.append(self)
-
-    qt.QPlainTextEdit = CaptureText
-    monkeypatch.setattr(rules_window, "load_qt", lambda: qt)
-    monkeypatch.setattr(rules_window, "ensure_application", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(rules_window, "exec_dialog", lambda *_args: None)
-    monkeypatch.setattr(rules_window, "inspect_dictionary", lambda *_args, **_kwargs: inspection)
-
-    rules_window.show_dictionary_inspector(
-        "軟體", config="s2tw", official_convert=lambda *_args: "",
-        translator=Translator("zh-Hans"),
+    translator = Translator("zh-Hans")
+    manager = RuleManagerDialog(
+        make_with_table(), (), translator=translator,
+        official_convert=lambda _config, text: text, config="s2tw",
+        comparison_configs=("s2t",),
     )
-    text = captured[0].toPlainText()
+    manager.test_input.setPlainText("軟體")
+    seen = {}
+
+    def inspect(text, **kwargs):
+        seen["text"] = text
+        seen["comparison_configs"] = kwargs.get("comparison_configs")
+        return inspection
+
+    monkeypatch.setattr(rules_window, "inspect_dictionary", inspect)
+    manager._test()
+    text = manager.test_output.toPlainText()
 
     assert "s2tw" not in text
     assert "regional" not in text
     assert "high" not in text
     assert "'软件'" not in text
+    assert seen == {"text": "軟體", "comparison_configs": ("s2t",)}
+    assert (f"{translator.text('rules.config_label')}："
+            f"{configuration_label(translator, 's2tw')}") in text
+    assert f"{configuration_label(translator, 's2t')}：软件" in text
+    assert translator.text("rules.attribution_opencc") in text
+    category = translator.text("preview.category_value.regional")
+    confidence = translator.text("rules.confidence.high")
+    stage = " / ".join(
+        configuration_label(translator, value) for value in ("s2tw", "s2t"))
+    assert translator.text(
+        "rules.classification", source="软件", target="軟體", category=category,
+        confidence=confidence, stage=stage) in text
     assert "命中规则：mine" in text
 
 

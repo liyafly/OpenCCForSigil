@@ -273,7 +273,7 @@ def test_conversion_profile_rule_and_history_dialogs_construct(monkeypatch, tmp_
     assert history.history_table.rowCount() == 0
 
 
-def test_error_report_and_dictionary_detail_dialogs_construct(monkeypatch):
+def test_error_report_dialog_constructs_after_dictionary_inspector_removal(monkeypatch):
     qt = fake_qt.make_with_table()
     monkeypatch.setattr(preview_window, "_load_ui_qt", lambda _translator: qt)
     monkeypatch.setattr(preview_window, "exec_dialog", lambda _dialog: None)
@@ -285,15 +285,7 @@ def test_error_report_and_dictionary_detail_dialogs_construct(monkeypatch):
     )
     preview_window._show_report_text(qt, "report details", Translator("en"))
 
-    inspection = rules_window.DictionaryInspection(
-        input="sample", config="s2t", comparisons=(), final="result")
-    monkeypatch.setattr(rules_window, "load_qt", lambda: qt)
-    monkeypatch.setattr(rules_window, "exec_dialog", lambda _dialog: None)
-    monkeypatch.setattr(rules_window, "inspect_dictionary", lambda *_args, **_kwargs: inspection)
-    assert rules_window.show_dictionary_inspector(
-        "sample", config="s2t", official_convert=lambda _config, text: text,
-        translator=Translator("en"),
-    ) is inspection
+    assert not hasattr(rules_window, "show_dictionary_inspector")
 
 
 def _class_methods(node: ast.ClassDef, classes: dict[str, ast.ClassDef]) -> set[str]:

@@ -289,8 +289,6 @@ _I18N_REQUIRED_KEYS = _I18N_REQUIRED_KEYS | frozenset(
         'rules.input',
         'rules.input_label',
         'rules.input_required',
-        'rules.inspect',
-        'rules.inspector_title',
         'rules.invalid_ruleset',
         'rules.no_converter',
         'rules.no_hits',

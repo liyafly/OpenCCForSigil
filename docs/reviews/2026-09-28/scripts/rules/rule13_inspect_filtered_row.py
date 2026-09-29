@@ -1,5 +1,5 @@
 # ruff: noqa: E402
-"""RULE-13: '词典检查' with empty input inspects the wrong rule when the list is filtered."""
+"""RULE-13: the inline rule test uses the visible selected rule as empty input."""
 import os
 import sys
 from pathlib import Path
@@ -14,7 +14,15 @@ from ui.i18n import Translator
 from ui.rules_window import RuleManagerDialog
 
 seen = {}
-rules_window.show_dictionary_inspector = lambda text, **_k: seen.setdefault("text", text)
+inspect_dictionary = rules_window.inspect_dictionary
+
+
+def capture_input(text, **kwargs):
+    seen["text"] = text
+    return inspect_dictionary(text, **kwargs)
+
+
+rules_window.inspect_dictionary = capture_input
 rules = (Rule(id="r-a", direction="s2t", source="甲方", target="甲方案"),
          Rule(id="r-b", direction="s2t", source="乙方", target="乙方案"))
 w = RuleManagerDialog(make_with_table(), rules, translator=Translator("zh-Hans"),
@@ -24,5 +32,5 @@ w._filters_changed()
 w.table.selectRow(0)
 w._load_selected()
 print("visible rows:", w._visible_rule_ids, "| editor shows:", w.source_edit.text())
-w._inspect()
-print("inspector opened for:", seen.get("text"), "(expected 乙方)")
+w._test()
+print("rule test input:", seen.get("text"), "(expected 乙方)")

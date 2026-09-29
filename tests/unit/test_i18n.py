@@ -145,6 +145,12 @@ def test_simp20_history_status_filter_string_is_removed_from_catalogs():
     assert all(not (set(catalog) & removed) for catalog in catalogs.values())
 
 
+def test_simp21_dictionary_inspector_action_strings_are_removed_from_catalogs():
+    catalogs = load_catalogs()
+    removed = {"rules.inspect", "rules.inspector_title"}
+    assert all(not (set(catalog) & removed) for catalog in catalogs.values())
+
+
 def test_one_term_per_concept():
     catalogs = load_catalogs()
 
