@@ -1616,7 +1616,6 @@ class _PreviewDialog:
         }
         group_entries = {}
         entries_by_group = {}
-        groups_by_file = {}
         entries_by_file = {}
         for entry in self._entries:
             _preview, change = entry
@@ -1626,15 +1625,11 @@ class _PreviewDialog:
                 files.add(change.file_id)
                 group_entries[change.group_id] = (count + 1, files)
                 entries_by_group.setdefault(change.group_id, []).append(entry)
-                groups_by_file.setdefault(change.file_id, set()).add(change.group_id)
         self._group_entries_by_id = {
             group_id: tuple(entries) for group_id, entries in entries_by_group.items()
         }
         self._entries_by_file = {
             file_id: tuple(entries) for file_id, entries in entries_by_file.items()
-        }
-        self._group_ids_by_file = {
-            file_id: frozenset(group_ids) for file_id, group_ids in groups_by_file.items()
         }
         self._group_file_ids = {
             group_id: frozenset(files)
@@ -1712,24 +1707,6 @@ class _PreviewDialog:
 
         self.summary = qt.QLabel()
         layout.addWidget(self.summary)
-        group_row = qt.QHBoxLayout()
-        self.group_guidance = qt.QLabel()
-        self.accept_group_button = qt.QPushButton(
-            self._translator.text("preview.accept_language_group"))
-        self.reject_group_button = qt.QPushButton(
-            self._translator.text("preview.skip_language_group"))
-        self.accept_group_button.clicked.connect(
-            lambda: self._decide_current_file_groups(True))
-        self.reject_group_button.clicked.connect(
-            lambda: self._decide_current_file_groups(False))
-        self.accept_group_button.setVisible(False)
-        self.reject_group_button.setVisible(False)
-        self.group_guidance.setVisible(False)
-        group_row.addWidget(self.group_guidance)
-        group_row.addWidget(self.accept_group_button)
-        group_row.addWidget(self.reject_group_button)
-        layout.addLayout(group_row)
-
         filter_row = qt.QHBoxLayout()
         self.file_filter = qt.QComboBox()
         self.category_filter = qt.QComboBox()
@@ -1994,7 +1971,6 @@ class _PreviewDialog:
         action_type = getattr(getattr(qt, "QtGui", None), "QAction", None)
         action_type = action_type or getattr(qt, "QAction", None)
         self._more_actions = []
-        self._group_more_actions = []
         self._more_action_by_button = {}
         for button in (self.reset_current_button, self.export_button, self.batch_button):
             button.setVisible(False)
@@ -2005,14 +1981,6 @@ class _PreviewDialog:
                 self.more_menu.addAction(action)
                 self._more_actions.append(action)
                 self._more_action_by_button[button] = action
-        for button in (self.accept_group_button, self.reject_group_button):
-            button.setVisible(False)
-            action = action_type(button.text(), self.more_menu) if action_type is not None else None
-            if action is not None:
-                action.triggered.connect(lambda _checked=False, target=button: target.click())
-                self.more_menu.addAction(action)
-                self._more_actions.append(action)
-                self._group_more_actions.append(action)
         buttons.addWidget(self.more_button)
         layout.addLayout(buttons)
         actions = qt.QHBoxLayout()
@@ -2600,7 +2568,6 @@ class _PreviewDialog:
                 self._set_current_row(-1)
                 empty_key = "preview.no_filter_matches" if self._entries else "preview.no_changes"
                 self.detail.setPlainText(self._translator.text(empty_key))
-                self._update_group_controls(None)
         else:
             model = getattr(self, "table_model", None)
             if model is not None and refreshed_rows:
@@ -2918,7 +2885,6 @@ class _PreviewDialog:
         else:
             empty_key = "preview.no_filter_matches" if self._entries else "preview.no_changes"
             self.detail.setPlainText(self._translator.text(empty_key))
-            self._update_group_controls(None)
         count_label = getattr(self, "filter_count_label", None)
         if count_label is not None:
             count_label.setText(self._translator.text(
@@ -3074,7 +3040,6 @@ class _PreviewDialog:
             self.detail.clear()
             self.source_detail.clear()
             self.target_detail.clear()
-            self._update_group_controls(None)
             if hasattr(self, "undo_button"):
                 self._update_history_controls()
             return
@@ -3119,7 +3084,6 @@ class _PreviewDialog:
         )))
         self.source_detail.setPlainText(source_line)
         self.target_detail.setPlainText(target_line)
-        self._update_group_controls(change.file_id)
         if hasattr(self, "undo_button"):
             self._update_history_controls()
 
@@ -3209,57 +3173,6 @@ class _PreviewDialog:
             (preview.accept_this if accepted else preview.reject_this)(change.change_id)
             count += 1
         return count
-
-    def _groups_for_file(self, file_id):
-        if hasattr(self, "_group_ids_by_file"):
-            return self._group_ids_by_file.get(file_id, frozenset())
-        return {
-            change.group_id
-            for _preview, change in self._entries
-            if change.file_id == file_id and change.group_id
-        }
-
-    def _update_group_controls(self, file_id):
-        guidance = getattr(self, "group_guidance", None)
-        accept = getattr(self, "accept_group_button", None)
-        reject = getattr(self, "reject_group_button", None)
-        if guidance is None or accept is None or reject is None:
-            return
-        visible = any(
-            preview_group_kind(group_id) is PreviewGroupKind.LANGUAGE_METADATA
-            for group_id in self._groups_for_file(file_id)
-        )
-        guidance.setText(self._translator.text("preview.group_prompt"))
-        guidance.setVisible(visible)
-        accept.setVisible(visible)
-        reject.setVisible(visible)
-        for action in getattr(self, "_group_more_actions", ()):
-            action.setVisible(visible)
-            action.setEnabled(visible)
-
-    def _decide_current_file_groups(self, accepted):
-        entry = self._current_entry()
-        if entry is None:
-            return
-        groups = tuple(
-            group_id for group_id in self._groups_for_file(entry[1].file_id)
-            if preview_group_kind(group_id) is PreviewGroupKind.LANGUAGE_METADATA
-        )
-        affected = tuple(
-            entry for group_id in groups
-            for entry in getattr(self, "_group_entries_by_id", {}).get(group_id, ())
-        )
-        before = self._capture_decisions(affected)
-        count = sum(self._decide_group(group_id, accepted) for group_id in groups)
-        if count:
-            feedback_key = (
-                "preview.group_accepted" if accepted else "preview.group_skipped")
-            self._last_group_feedback = self._translator.text(feedback_key, count=count)
-        else:
-            self._last_group_feedback = ""
-        self._record_decision_changes(before)
-        self._record_decision_action(before)
-        self._refresh_after_decision(affected)
 
     def _refresh_current(self, *, rows=()) -> None:
         row = self._current_row()

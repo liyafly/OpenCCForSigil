@@ -118,7 +118,7 @@ def test_resolve_remaining_button_tracks_undecided_count():
     assert not dialog.resolve_remaining_button.isVisible()
 
 
-def test_more_menu_has_single_batch_path():
+def test_more_menu_has_only_single_batch_path_for_decisions():
     dialog, _preview, _model = _preview_dialog(change_count=1, current_row=0)
     actions = [action.text() for action in dialog._more_actions]
     translator = Translator("en")
@@ -127,10 +127,10 @@ def test_more_menu_has_single_batch_path():
         translator.text("preview.reset_current"),
         translator.text("preview.export"),
         translator.text("preview.batch_decide"),
-        translator.text("preview.accept_language_group"),
-        translator.text("preview.skip_language_group"),
     ]
     assert actions.count(translator.text("preview.batch_decide")) == 1
+    assert not hasattr(dialog, "accept_group_button")
+    assert not hasattr(dialog, "reject_group_button")
 
 
 def test_preview_detail_uses_translated_label_separator():
@@ -280,23 +280,18 @@ def _table_dialog(entries, previews, *, current_row=0, category="all", file_id=N
     dialog._group_stats = {}
     entries_by_group = {}
     files_by_group = {}
-    groups_by_file = {}
     dialog._preview_by_file_id = {}
     for preview, change in entries:
         dialog._preview_by_file_id.setdefault(change.file_id, preview)
         if change.group_id:
             entries_by_group.setdefault(change.group_id, []).append((preview, change))
             files_by_group.setdefault(change.group_id, set()).add(change.file_id)
-            groups_by_file.setdefault(change.file_id, set()).add(change.group_id)
     dialog._group_entries_by_id = {
         group_id: tuple(group_entries)
         for group_id, group_entries in entries_by_group.items()
     }
     dialog._group_file_ids = {
         group_id: frozenset(file_ids) for group_id, file_ids in files_by_group.items()
-    }
-    dialog._group_ids_by_file = {
-        file_id: frozenset(group_ids) for file_id, group_ids in groups_by_file.items()
     }
     dialog._undo_stack = []
     dialog._redo_stack = []
@@ -623,7 +618,7 @@ def test_filtered_group_decision_reaches_hidden_language_metadata_entries(monkey
     assert first.decision("character-visible").value == "accept_this"
 
 
-def test_file_scope_leaves_language_group_pending_until_separate_group_action(
+def test_file_scope_leaves_language_group_pending_until_an_item_decision(
     monkeypatch,
 ):
     changes = (
@@ -664,9 +659,14 @@ def test_file_scope_leaves_language_group_pending_until_separate_group_action(
     assert first.decision("language-a") is None
     assert second.decision("language-b") is None
 
-    dialog._decide_current_file_groups(True)
+    dialog._visible_entries_cache = entries
+    dialog._visible_positions = list(range(len(entries)))
+    dialog._set_current_row(0)
+    dialog._accept_this()
     assert first.decision("language-a").value == "accept_this"
     assert second.decision("language-b").value == "accept_this"
+    assert first.decision("normal-a").value == "accept_this"
+    assert second.decision("normal-b") is None
     second.accept_this("normal-b")
 
     workflow = object.__new__(ConversionWorkflow)
@@ -709,7 +709,7 @@ def test_file_scope_includes_this_files_atomic_rule_occurrences(monkeypatch):
     assert second.decision("rule-b") is None
 
 
-def test_language_group_control_does_not_decide_rule_occurrences_in_the_same_file():
+def test_language_group_item_decision_does_not_decide_rule_occurrences_in_the_same_file():
     language = TokenChange(
         source="zh-CN", target="zh-TW", span=SourceSpan(0, 5),
         rule_source="language_metadata", change_id="language-a",
@@ -740,13 +740,8 @@ def test_language_group_control_does_not_decide_rule_occurrences_in_the_same_fil
     entries = tuple((preview, change) for preview in (first, second)
                     for change in preview.changes)
     dialog = _table_dialog(entries, (first, second), current_row=0, file_id="a.xhtml")
-    dialog.accept_group_button = dialog._qt.QPushButton("Accept language tag group")
-    dialog.reject_group_button = dialog._qt.QPushButton("Skip language tag group")
-    dialog.group_guidance = dialog._qt.QLabel()
-    dialog._update_group_controls("a.xhtml")
-    dialog._refresh = lambda **_kwargs: None
 
-    dialog._decide_current_file_groups(True)
+    dialog._accept_this()
 
     assert first.decision("language-a").value == "accept_this"
     assert second.decision("language-b").value == "accept_this"
@@ -766,15 +761,10 @@ def test_rule_occurrence_is_not_labeled_as_a_language_tag_group():
     dialog = _table_dialog(entries, (preview,), current_row=0)
     dialog._group_stats = {"rules:occurrence-a": (2, 1)}
     dialog.table_model.rows.group_stats = dialog._group_stats
-    dialog.accept_group_button = dialog._qt.QPushButton("Accept language tag group")
-    dialog.reject_group_button = dialog._qt.QPushButton("Skip language tag group")
-    dialog.group_guidance = dialog._qt.QLabel()
 
-    dialog._update_group_controls("a.xhtml")
     dialog._show_current(0)
     row = dialog.table_model.rows.row_values(0)
 
-    assert dialog.accept_group_button.isVisible() is False
     assert "Language tag group" not in row[5]
     assert "rule occurrence" in row[5].lower()
     assert "language tag" not in _detail_text(dialog).lower()

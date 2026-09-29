@@ -257,7 +257,7 @@ def test_cross_file_language_group_current_file_action_undoes_as_one_change():
         _change("chapter-lang", file_id="chapter.xhtml", group_id="language_metadata"),
         _change("opf-lang", file_id="content.opf", group_id="language_metadata"),
     ))
-    dialog._decide_current_file_groups(True)
+    dialog._accept_this()
 
     assert all(preview.summary()["accepted"] == 1 for preview in previews)
     dialog._undo_preview_action()

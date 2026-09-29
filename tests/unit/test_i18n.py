@@ -92,6 +92,17 @@ def test_diagnostic_option_strings_are_removed_from_catalogs():
     assert all(not (set(catalog) & removed) for catalog in catalogs.values())
 
 
+def test_language_group_action_strings_are_removed_from_catalogs():
+    catalogs = load_catalogs()
+    removed = {
+        "preview.accept_language_group",
+        "preview.skip_language_group",
+        "preview.group_prompt",
+    }
+
+    assert all(not (set(catalog) & removed) for catalog in catalogs.values())
+
+
 def test_one_term_per_concept():
     catalogs = load_catalogs()
 
