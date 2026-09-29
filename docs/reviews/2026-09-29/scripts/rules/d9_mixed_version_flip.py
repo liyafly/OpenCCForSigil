@@ -13,7 +13,7 @@ sys.path.insert(0, str(REPO))
 
 import sys
 from pathlib import Path
-from rules.engine import lock_spans
+from rules.compiled import CompiledOverlay, lock_spans_compiled
 from rules.models import Rule, RuleSnapshot
 from rules.conflicts import find_conflicts
 g1 = Rule(id="v1-global", direction="s2t", source="软件", target="軟件(全局)", semantic_version=1)
@@ -22,7 +22,9 @@ p1 = Rule(id="v1-profile", direction="s2t", source="软件", target="軟體(方�
 v2_short = Rule(id="v2-short", direction="s2t", source="软", target="軟", semantic_version=2,
                 action="override", stage="source")
 def win(rules, text="软件"):
-    spans = lock_spans(text, RuleSnapshot.freeze(rules), config="s2t", profile_id="P")
+    overlay = CompiledOverlay.build(
+        RuleSnapshot.freeze(rules), config="s2t", profile_id="P")
+    spans = lock_spans_compiled(text, overlay)
     return [(s.rule.id, s.target) for s in spans]
 print("V1 global + V1 profile           :", win((g1, p1)))
 print("+ unrelated shorter V2 rule '软'  :", win((g1, p1, v2_short)))

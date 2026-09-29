@@ -13,7 +13,7 @@ sys.path.insert(0, str(REPO))
 
 import random, sys
 from rules.compiled import CompiledOverlay, lock_spans_compiled
-from rules.engine import LockedSpan
+from rules.compiled import LockedSpan
 from rules.matching import RegexBudget, RuleExecutionError, replace_stage, source_matches
 from rules.models import Rule, RuleSnapshot
 from rules.validators import validate_rules

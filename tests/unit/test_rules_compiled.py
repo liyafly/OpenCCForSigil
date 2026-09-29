@@ -1,5 +1,6 @@
 import random
 import inspect
+from importlib.util import find_spec
 
 import pytest
 
@@ -7,10 +8,18 @@ from core.models import ConvertRequest, RuleSnapshot as RequestRuleSnapshot
 from core.planner import build_conversion_plan
 from document.tokenizer import tokenize_xhtml
 from rules.conflicts import validate_no_blocking_conflicts
-from rules.engine import LockedSpan, lock_spans
+from rules.compiled import CompiledOverlay, LockedSpan, lock_spans_compiled
 from rules.models import Rule, RuleSnapshot
 from rules.precedence import applies_to, ordered_rules
 from rules.validators import validate_snapshot
+
+
+def test_legacy_rules_engine_pipeline_and_exports_are_removed():
+    import rules
+
+    assert find_spec("rules.engine") is None
+    assert not hasattr(rules, "convert_with_overlay")
+    assert not hasattr(rules, "lock_spans")
 
 
 def _reference_lock_spans(text, snapshot, *, config, profile_id=None, book_fingerprint=None):
@@ -99,6 +108,8 @@ def _random_rules(rng, count, *, exclude=()):
 
 
 def test_compiled_lock_spans_matches_reference_ordering_for_300_random_snapshots():
+    from rules.matching import RegexBudget, source_matches
+
     rng = random.Random(20260923)
     alphabet = "词目汉字"
     for _ in range(300):
@@ -109,10 +120,15 @@ def test_compiled_lock_spans_matches_reference_ordering_for_300_random_snapshots
                  else rng.choice(alphabet) for _ in range(rng.randrange(1, 25))]
         text = "".join(parts)
         config = rng.choice(("s2t", "t2s"))
-        assert lock_spans(text, snapshot, config=config, profile_id="profile",
-                          book_fingerprint="book") == _reference_lock_spans(
-                              text, snapshot, config=config, profile_id="profile",
-                              book_fingerprint="book")
+        overlay = CompiledOverlay.build(
+            snapshot, config=config, profile_id="profile", book_fingerprint="book")
+        expected = tuple(
+            LockedSpan(match.start, match.end, text[match.start:match.end],
+                       match.target, match.rule)
+            for match in source_matches(
+                text, overlay.source_rules, overlay.regex_patterns, RegexBudget())
+        )
+        assert lock_spans_compiled(text, overlay) == expected
 
 
 def test_rule_snapshot_is_validated_once_for_a_multi_file_plan(monkeypatch):
@@ -229,7 +245,6 @@ def test_prefix_indexed_lock_spans_equals_full_scan_for_300_random_snapshots():
 
 def test_prefix_indexed_replace_stage_equals_full_scan_for_random_rules():
     from rules.compiled import CompiledOverlay, lock_spans_compiled
-    from rules.engine import LockedSpan
     from rules.matching import RegexBudget, RuleExecutionError, replace_stage, source_matches
 
     alphabet = "甲乙丙丁ab"

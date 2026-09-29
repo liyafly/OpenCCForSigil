@@ -7,11 +7,11 @@ from types import SimpleNamespace
 REPO = Path(os.environ.get("OPENCC_SIGIL_REPO", Path(__file__).resolve().parents[5]))
 sys.path.insert(0, str(REPO / "plugin" / "OpenCCForSigil"))
 from core.models import ConvertRequest, RuleSnapshot as ReqSnap
+from core.converter import OfficialBackendConverter
 from core.preview import PreviewSession
 from core.workflow import ConversionWorkflow
 from rules.models import Rule, RuleSnapshot
 from rules.validators import validate_rules
-from rules.engine import convert_with_overlay
 from sigil.adapter import SigilBookAdapter
 
 class Backend:
@@ -47,6 +47,15 @@ z = Rule.from_dict(dict(id="z", semantic_version=2, type="exact", action="replac
                         stage="pre", direction="*", source="(?<=「)[^」]*", target="…"))
 print("validation of (?<=「)[^」]*:", "passes" if validate_rules((z,)) else "")
 try:
-    print(convert_with_overlay("他说「」然后", lambda s: s, config="s2t", snapshot=RuleSnapshot.freeze((z,))).final)
+    zero_snapshot = RuleSnapshot.freeze((z,))
+    zero_request = ConvertRequest(
+        "s2t",
+        rules_snapshot=ReqSnap(rules_hash=zero_snapshot.sha256, rules=zero_snapshot.rules),
+        detailed_classification=False,
+        diagnose_mixed=False,
+        include_rule_trace=True,
+    )
+    result = OfficialBackendConverter(Backend()).convert("他说「」然后", zero_request)
+    print(result.target, "zero-width skips:", result.zero_width_skips)
 except Exception as exc:
     print("runtime on '他说「」然后':", type(exc).__name__, exc)

@@ -44,7 +44,7 @@ import rules.matching as matching  # noqa: E402
 from core.models import ConvertRequest, RuleSnapshot as RequestRuleSnapshot  # noqa: E402
 from core.workflow import ConversionWorkflow  # noqa: E402
 from opencc_backend.backend import OpenCCBackend  # noqa: E402
-from rules.engine import LockedSpan  # noqa: E402
+from rules.compiled import LockedSpan  # noqa: E402
 from rules.models import Rule, RuleSnapshot  # noqa: E402
 from sigil.adapter import SigilBookAdapter  # noqa: E402
 

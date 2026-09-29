@@ -3,9 +3,12 @@
 import os
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 REPO = Path(os.environ.get("OPENCC_SIGIL_REPO", Path(__file__).resolve().parents[5]))
 sys.path.insert(0, str(REPO / "plugin" / "OpenCCForSigil"))
-from rules.engine import convert_with_overlay
+from core.converter import OfficialBackendConverter
+from core.models import ConvertRequest, RuleSnapshot as RequestRuleSnapshot
+from core.staging import apply_changes
 from rules.models import Rule, RuleSnapshot
 from rules.validators import validate_rules, RuleValidationError
 from rules.conflicts import find_conflicts
@@ -14,8 +17,17 @@ from rules.importers import import_rules
 
 def run(text, *rules):
     try:
-        r = convert_with_overlay(text, lambda s: s.replace("发", "發"), config="s2t", snapshot=RuleSnapshot.freeze(rules))
-        return r.final, len(r.changes), r.reconstruct() == r.final
+        snapshot = RuleSnapshot.freeze(rules)
+        request = ConvertRequest(
+            "s2t",
+            rules_snapshot=RequestRuleSnapshot(
+                rules_hash=snapshot.sha256, rules=snapshot.rules),
+            detailed_classification=False,
+            diagnose_mixed=False,
+        )
+        result = OfficialBackendConverter(SimpleNamespace(
+            convert=lambda value: value.replace("发", "發"))).convert(text, request)
+        return result.target, len(result.changes), apply_changes(text, result.changes) == result.target
     except Exception as e:
         return type(e).__name__ + ": " + str(e)[:90]
 V2 = dict(semantic_version=2, action="override", stage="source")

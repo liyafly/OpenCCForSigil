@@ -7,8 +7,8 @@ from app.errors import RuleConflictError
 from app.controller import Controller
 from app.settings import RunSettings
 from app.profiles import Profile, ProfileStore
-from core.models import RuleSnapshot as ConversionRuleSnapshot
-from rules.engine import convert_with_overlay
+from core.converter import OfficialBackendConverter
+from core.models import ConvertRequest, RuleSnapshot as ConversionRuleSnapshot
 from core.preview import PreviewSession
 from rules.models import Rule
 from rules.store import RuleSet, RuleStore
@@ -19,6 +19,18 @@ from ui.rules_window import RuleManagerDialog, RuleWindowResult
 from sigil.scope import Scope, TargetSelection
 from ui.preview_window import PreviewOutcome, ScopeOutcome, _ConversionConfigDialog, _ScopeDialog
 from ui.run_options import ConfigurationChoice
+
+
+def _convert_with_rules(text, official_convert, config, snapshot):
+    request = ConvertRequest(
+        config,
+        rules_snapshot=snapshot,
+        detailed_classification=False,
+        diagnose_mixed=False,
+        include_rule_trace=True,
+    )
+    backend = SimpleNamespace(convert=official_convert)
+    return OfficialBackendConverter(backend).convert(text, request)
 
 
 class Storage:
@@ -108,25 +120,21 @@ def test_builtin_tw2sp_protection_covers_bracketed_and_unbracketed_credits(tmp_p
 
         for marker in markers:
             credit = f"安迪·威爾（Andy Weir）{marker}"
-            converted = convert_with_overlay(
-                credit, official_convert, config=config, snapshot=snapshot,
-            )
-            assert converted.final == f"安迪·威尔（Andy Weir）{marker}"
+            converted = _convert_with_rules(credit, official_convert, config, snapshot)
+            assert converted.target == f"安迪·威尔（Andy Weir）{marker}"
 
-        ordinary = convert_with_overlay(
-            "奶茶店慰藉著旅者的味蕾", official_convert,
-            config=config, snapshot=snapshot,
-        )
-        assert ordinary.final == "奶茶店慰藉着旅者的味蕾"
+        ordinary = _convert_with_rules(
+            "奶茶店慰藉著旅者的味蕾", official_convert, config, snapshot)
+        assert ordinary.target == "奶茶店慰藉着旅者的味蕾"
 
     disabled_snapshot = settings.freeze_rules(Profile(
         id="test", conversion="tw2sp", builtin_rules_enabled=False))
-    unprotected = convert_with_overlay(
+    unprotected = _convert_with_rules(
         "安迪·威爾（Andy Weir）◎著",
         lambda text: text.replace("威爾", "威尔").replace("著", "着"),
-        config="tw2sp", snapshot=disabled_snapshot,
+        "tw2sp", disabled_snapshot,
     )
-    assert unprotected.final.endswith("◎着")
+    assert unprotected.target.endswith("◎着")
     assert not any(rule.id.startswith("builtin-") for rule in disabled_snapshot.rules)
 
 

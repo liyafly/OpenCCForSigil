@@ -24,6 +24,19 @@ from .matching import (
 
 
 @dataclass(frozen=True)
+class LockedSpan:
+    start: int
+    end: int
+    source: str
+    target: str
+    rule: Rule
+
+    @property
+    def rule_id(self) -> str:
+        return self.rule.id
+
+
+@dataclass(frozen=True)
 class CompiledOverlay:
     """Validated rules, ordered once and indexed by their first source character."""
 
@@ -179,7 +192,6 @@ def lock_spans_compiled(
 ):
     """Return deterministic matches after reserving all protected ranges."""
 
-    from .engine import LockedSpan
     budget = budget or RegexBudget()
     source_rules = candidate_cache.get(text) if candidate_cache is not None and len(text) <= 512 else None
     if source_rules is None:
@@ -211,4 +223,4 @@ def lock_spans_compiled(
     )
 
 
-__all__ = ["CompiledOverlay", "lock_spans_compiled"]
+__all__ = ["CompiledOverlay", "LockedSpan", "lock_spans_compiled"]

@@ -2,21 +2,72 @@ from __future__ import annotations
 
 import json
 from dataclasses import replace
+from types import SimpleNamespace
 
 import pytest
 
+from core.converter import OfficialBackendConverter
+from core.models import ConvertRequest, RuleSnapshot as RequestRuleSnapshot
+from core.staging import apply_changes
 from rules.conflicts import (
     BlockingRuleConflict,
     blocking_conflicts,
     find_conflicts,
     validate_no_blocking_conflicts,
 )
-from rules.engine import convert_with_overlay, lock_spans
+from rules.compiled import CompiledOverlay, lock_spans_compiled
 from rules.exporters import export_rules, export_warnings
 from rules.importers import import_rules, reassign_colliding_ids
 from rules.models import Rule, RuleSnapshot
 from rules.store import RuleSet, RuleStore
 from rules.validators import RuleValidationError
+
+
+class _Backend:
+    def __init__(self, official):
+        self.official = official
+        self.calls = []
+
+    def convert(self, text):
+        self.calls.append(text)
+        return self.official(text)
+
+    def convert_for_config(self, _config, text):
+        return self.convert(text)
+
+    def provenance(self):
+        return SimpleNamespace(as_dict=lambda: {"backend": "test"})
+
+
+def _request(snapshot, *, config="s2t", profile_id="", book_fingerprint=""):
+    return ConvertRequest(
+        config,
+        rules_snapshot=RequestRuleSnapshot(
+            rules_hash=snapshot.sha256,
+            rules=snapshot.rules,
+        ),
+        profile_id=profile_id,
+        book_fingerprint=book_fingerprint,
+        detailed_classification=False,
+        diagnose_mixed=False,
+        include_rule_trace=True,
+    )
+
+
+def _convert(text, official, snapshot, **options):
+    config = options.pop("config", "s2t")
+    return OfficialBackendConverter(_Backend(official)).convert(
+        text, _request(snapshot, config=config, **options))
+
+
+def _locked(text, snapshot, *, config, profile_id=None, book_fingerprint=None):
+    overlay = CompiledOverlay.build(
+        snapshot,
+        config=config,
+        profile_id=profile_id,
+        book_fingerprint=book_fingerprint,
+    )
+    return lock_spans_compiled(text, overlay)
 
 
 def test_locked_targets_are_never_reconverted_and_longest_match_wins():
@@ -33,10 +84,10 @@ def test_locked_targets_are_never_reconverted_and_longest_match_wins():
             Rule(direction="s2twp", source="服", target="服字"),
         ]
     )
-    result = convert_with_overlay("这台服务器着火了", official, config="s2twp", snapshot=snapshot)
-    assert result.final == "這臺服務器着火了"
+    result = _convert("这台服务器着火了", official, snapshot, config="s2twp")
+    assert result.target == "這臺服務器着火了"
     assert "服务器" not in "".join(calls)
-    assert result.protected_spans[0].source == "着"
+    assert next(trace for trace in result.rule_trace if trace.action == "protect").source == "着"
 
 
 def test_direction_scope_and_disabled_rules():
@@ -47,8 +98,8 @@ def test_direction_scope_and_disabled_rules():
             Rule(direction="s2t", source="软件", target="Z", scope="profile", profile_id="p"),
         ]
     )
-    assert lock_spans("软件", snapshot, config="s2t", profile_id="other") == ()
-    assert lock_spans("软件", snapshot, config="s2t", profile_id="p")[0].target == "Z"
+    assert _locked("软件", snapshot, config="s2t", profile_id="other") == ()
+    assert _locked("软件", snapshot, config="s2t", profile_id="p")[0].target == "Z"
 
 
 def test_v1_book_rule_beats_v2_global_rule_at_same_position():
@@ -59,12 +110,11 @@ def test_v1_book_rule_beats_v2_global_rule_at_same_position():
              scope="global", semantic_version=2, action="override", stage="source"),
     )
 
-    result = convert_with_overlay(
-        "头发", lambda value: value, config="s2t",
-        snapshot=RuleSnapshot.freeze(rules), book_fingerprint="B",
+    result = _convert(
+        "头发", lambda value: value, RuleSnapshot.freeze(rules), book_fingerprint="B",
     )
 
-    assert result.final == "頭髮(书)"
+    assert result.target == "頭髮(书)"
 
 
 def test_cross_version_same_source_different_target_is_blocking():
@@ -102,9 +152,9 @@ def test_all_standard_directions_and_jieba_base_direction():
     )
     for direction in directions:
         snapshot = RuleSnapshot.freeze([Rule(direction=direction, source="词", target="詞")])
-        assert lock_spans("词", snapshot, config=direction)[0].target == "詞"
+        assert _locked("词", snapshot, config=direction)[0].target == "詞"
     snapshot = RuleSnapshot.freeze([Rule(direction="s2t", source="词", target="詞")])
-    assert lock_spans("词", snapshot, config="s2t_jieba")[0].target == "詞"
+    assert _locked("词", snapshot, config="s2t_jieba")[0].target == "詞"
 
 
 def test_profile_and_book_selectors_do_not_cross_conflict():
@@ -144,7 +194,7 @@ def test_conflict_blocks_before_official_callback():
     )
     assert blocking_conflicts(snapshot.rules)
     with pytest.raises(BlockingRuleConflict):
-        convert_with_overlay("服务器", lambda value: value, config="s2t", snapshot=snapshot)
+        _convert("服务器", lambda value: value, snapshot)
 
 
 def test_import_export_round_trip_and_opencc_diagnostic():
@@ -177,27 +227,27 @@ def test_segment_changes_reconstruct_exact_final_with_adjacent_length_changes():
     def official(value: str) -> str:
         return value.replace("一", "壹").replace("二", "貳")
 
-    result = convert_with_overlay("一术语二", official, config="s2t", snapshot=snapshot)
-    assert result.final == "壹術語貳"
-    assert result.reconstruct() == result.final
+    source = "一术语二"
+    result = _convert(source, official, snapshot)
+    assert result.target == "壹術語貳"
+    assert apply_changes(source, result.changes) == result.target
 
 
 def test_non_string_backend_output_is_rejected():
     snapshot = RuleSnapshot.freeze(())
-    with pytest.raises(TypeError, match="must return str"):
-        convert_with_overlay("软件", lambda value: None, config="s2t", snapshot=snapshot)
+    with pytest.raises(TypeError):
+        _convert("软件", lambda value: None, snapshot)
 
 
 def test_repeated_protected_text_keeps_each_locked_boundary():
     snapshot = RuleSnapshot.freeze(
         [Rule(type="protect", direction="s2t", source="甲", target="甲")]
     )
-    result = convert_with_overlay(
-        "甲乙甲乙甲", lambda value: value.replace("乙", "乙字"), config="s2t", snapshot=snapshot
-    )
-    assert result.final == "甲乙字甲乙字甲"
-    assert len(result.protected_spans) == 3
-    assert result.reconstruct() == result.final
+    source = "甲乙甲乙甲"
+    result = _convert(source, lambda value: value.replace("乙", "乙字"), snapshot)
+    assert result.target == "甲乙字甲乙字甲"
+    assert sum(trace.action == "protect" for trace in result.rule_trace) == 3
+    assert apply_changes(source, result.changes) == result.target
 
 
 def test_snapshot_from_dict_checks_supplied_hash_and_requires_direction():
@@ -260,7 +310,7 @@ def test_legacy_ruleset_migration_keeps_v1_semantics_and_backs_up_source(tmp_pat
 
 def test_new_ruleset_precedence_changes_without_changing_legacy_order():
     def winning_target(rules):
-        spans = lock_spans(
+        spans = _locked(
             "术语", RuleSnapshot.freeze(rules), config="s2t", profile_id="profile")
         return spans[0].target
 

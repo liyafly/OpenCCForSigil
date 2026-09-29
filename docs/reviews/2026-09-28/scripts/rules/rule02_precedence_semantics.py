@@ -3,19 +3,32 @@
 import os
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 REPO = Path(os.environ.get("OPENCC_SIGIL_REPO", Path(__file__).resolve().parents[5]))
 sys.path.insert(0, str(REPO / "plugin" / "OpenCCForSigil"))
 
 from rules.conflicts import find_conflicts
-from rules.engine import convert_with_overlay
+from core.converter import OfficialBackendConverter
+from core.models import ConvertRequest, RuleSnapshot as RequestRuleSnapshot
 from rules.importers import import_rules
 from rules.models import Rule, RuleSnapshot
 
 
 def run(text, rules, **ctx):
     snap = RuleSnapshot.freeze(rules)
-    res = convert_with_overlay(text, lambda s: s, config="s2t", snapshot=snap, **ctx)
-    return res.final, [(h.rule_id, h.source, h.target) for h in res.rule_hits]
+    request = ConvertRequest(
+        "s2t",
+        rules_snapshot=RequestRuleSnapshot(rules_hash=snap.sha256, rules=snap.rules),
+        profile_id=ctx.get("profile_id", ""),
+        book_fingerprint=ctx.get("book_fingerprint", ""),
+        detailed_classification=False,
+        diagnose_mixed=False,
+        include_rule_trace=True,
+    )
+    result = OfficialBackendConverter(SimpleNamespace(convert=lambda value: value)).convert(
+        text, request)
+    return result.target, [(trace.rule_id, trace.source, trace.target)
+                           for trace in result.rule_trace]
 
 
 print("== RULE-02: V1 book scope beats V2 global scope at the same position ==")

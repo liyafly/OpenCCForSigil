@@ -59,14 +59,21 @@ print("\nRULE-11 label of ruleset-level switch:", window.ruleset_enabled_check.t
 
 # What the '*' default does to a later t2s book (real vendored OpenCC):
 from opencc_backend.backend import OpenCCBackend
-from rules.engine import convert_with_overlay
+from core.converter import OfficialBackendConverter
+from core.models import ConvertRequest, RuleSnapshot as RequestRuleSnapshot
 from rules.models import RuleSnapshot
 backend = OpenCCBackend("t2s")
 try:
     text = "他每天走三公里去鄰里的學校。"
     plain = backend.convert(text)
-    ruled = convert_with_overlay(text, backend.convert, config="t2s",
-                                 snapshot=RuleSnapshot.freeze((added,))).final
+    snapshot = RuleSnapshot.freeze((added,))
+    request = ConvertRequest(
+        "t2s",
+        rules_snapshot=RequestRuleSnapshot(rules_hash=snapshot.sha256, rules=snapshot.rules),
+        detailed_classification=False,
+        diagnose_mixed=False,
+    )
+    ruled = OfficialBackendConverter(backend).convert(text, request).target
     print("  t2s without rule:", plain)
     print("  t2s with the '*' rule added during an s2t session:", ruled)
 finally:
