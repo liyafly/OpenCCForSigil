@@ -796,9 +796,9 @@ def test_foreign_book_rule_is_labelled_other_book():
         "rules.scope_book_other")
     assert Translator("en").text("rules.scope_book_other") in (
         manager.selection_details.toPlainText())
-    assert manager.foreign_owner_button.isVisible()
-    manager.foreign_owner_button.click()
-    assert manager.activity_filter.currentData() == "inactive"
+    assert not hasattr(manager, "foreign_owner_button")
+    assert not hasattr(manager, "_update_foreign_owner_button")
+    assert not hasattr(manager, "_filter_foreign_owner_rules")
     assert manager._visible_rule_ids == ["other-book"]
 
 

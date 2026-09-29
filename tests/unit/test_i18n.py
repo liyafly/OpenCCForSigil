@@ -151,6 +151,12 @@ def test_simp21_dictionary_inspector_action_strings_are_removed_from_catalogs():
     assert all(not (set(catalog) & removed) for catalog in catalogs.values())
 
 
+def test_simp22_foreign_owner_banner_string_is_removed_from_catalogs():
+    catalogs = load_catalogs()
+    assert all("rules.foreign_owner_count" not in catalog
+               for catalog in catalogs.values())
+
+
 def test_one_term_per_concept():
     catalogs = load_catalogs()
 

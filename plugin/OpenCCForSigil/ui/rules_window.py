@@ -514,11 +514,6 @@ class RuleManagerDialog:
         self.editor_panel = qt.QWidget()
         editor_layout = qt.QVBoxLayout(self.editor_panel)
         self.editor_scroll.setWidget(self.editor_panel)
-        self.foreign_owner_button = qt.QPushButton()
-        self.foreign_owner_button.setAutoDefault(False)
-        self.foreign_owner_button.setVisible(False)
-        self.foreign_owner_button.clicked.connect(self._filter_foreign_owner_rules)
-        content_layout.addWidget(self.foreign_owner_button)
         self.editor_splitter.addWidget(self.rule_list_panel)
         self.editor_splitter.addWidget(self.editor_scroll)
         content_layout.addWidget(self.editor_splitter, 1)
@@ -1155,7 +1150,6 @@ class RuleManagerDialog:
             self.dialog, plugin_window_title(self._translator, self._labels["title"]), message)
 
     def _refresh(self) -> None:
-        self._update_foreign_owner_button()
         selected_id = (self._rule_id_at_row(self.table.currentRow())
                        or getattr(self, "_selected_rule_id", None))
         search = str(self.search_edit.text()).casefold() if hasattr(self, "search_edit") else ""
@@ -1348,23 +1342,6 @@ class RuleManagerDialog:
         key = (f"scope_{foreign_scope}_other" if foreign_scope
                else f"scope_{rule.scope}")
         return self._labels.get(key, rule.scope)
-
-    def _update_foreign_owner_button(self) -> None:
-        button = getattr(self, "foreign_owner_button", None)
-        if button is None:
-            return
-        count = sum(self._foreign_owner_scope(rule) is not None for rule in self.rules)
-        button.setText(self._translator.text("rules.foreign_owner_count", count=count))
-        button.setVisible(count > 0)
-
-    def _filter_foreign_owner_rules(self) -> None:
-        index = self.activity_filter.findData("inactive")
-        if index < 0:
-            return
-        if self.activity_filter.currentIndex() == index:
-            self._filters_changed()
-        else:
-            self.activity_filter.setCurrentIndex(index)
 
     def _update_rebind_owner_button(self, *_args) -> None:
         button = getattr(self, "rebind_owner_button", None)
