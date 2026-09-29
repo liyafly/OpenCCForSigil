@@ -1345,10 +1345,26 @@ class RuleManagerDialog:
         conflicts = find_conflicts(self.rules)
         run_candidates = self._run_candidates()
         run_owners = getattr(self, "_run_candidate_rule_sets", {})
-        current_rule_objects = {id(rule) for rule in self.rules}
+        run_blocking = blocking_conflicts(run_candidates)
         other_conflicts = []
-        for conflict in blocking_conflicts(run_candidates):
-            if not any(id(rule) in current_rule_objects for rule in conflict.rules):
+        for conflict in run_blocking:
+            conflict_rule_sets = {
+                run_owners[id(rule)] for rule in conflict.rules if id(rule) in run_owners
+            }
+            if self._ruleset_id not in conflict_rule_sets:
+                names = tuple(dict.fromkeys(
+                    self._rulesets[item].name or item
+                    for item in sorted(conflict_rule_sets) if item in self._rulesets
+                ))
+                if not names:
+                    continue
+                summary = self._translator.text(
+                    "rules.conflict_between_rulesets",
+                    rulesets=(", ".join(names) if self._translator.language == "en"
+                              else "、".join(names)),
+                    detail=_conflict_summary(conflict, self._translator),
+                )
+                other_conflicts.append((conflict, summary))
                 continue
             other_rule_sets = {
                 run_owners[id(rule)] for rule in conflict.rules
@@ -1373,7 +1389,9 @@ class RuleManagerDialog:
         if conflicts_label is not None:
             conflicts_label.setText(self._labels["conflicts_count"].format(
                 count=len(conflicts)))
-        self.apply_button.setEnabled(not any(conflict.blocking for conflict in conflicts))
+        self.apply_button.setEnabled(
+            not any(conflict.blocking for conflict in conflicts)
+            and not run_blocking)
         set_visible = getattr(getattr(self, "conflicts_label", None), "setVisible", None)
         if callable(set_visible):
             set_visible(bool(conflicts))

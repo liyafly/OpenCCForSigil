@@ -466,6 +466,7 @@
   "rules.conflicts_title": "规则冲突",
   "rules.conflicts_count": "规则冲突（{count}）",
   "rules.conflict_other_ruleset": "与规则集 {ruleset} 冲突：{detail}",
+  "rules.conflict_between_rulesets": "规则集 {rulesets} 之间冲突：{detail}",
   "rules.direction_any": "任意方向",
   "rules.wildcard_direction_warning": "此规则也会用于其他方向（包括繁→简）",
   "rules.default_set_name": "默认规则集",

@@ -466,6 +466,7 @@
   "rules.conflicts_title": "Conflicts",
   "rules.conflicts_count": "Conflicts ({count})",
   "rules.conflict_other_ruleset": "Conflicts with rule set {ruleset}: {detail}",
+  "rules.conflict_between_rulesets": "Rule sets {rulesets} conflict: {detail}",
   "rules.direction_any": "Any direction",
   "rules.wildcard_direction_warning": "This rule also applies to other directions, including Traditional→Simplified.",
   "rules.default_set_name": "Default",

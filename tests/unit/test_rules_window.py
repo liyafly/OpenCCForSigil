@@ -565,6 +565,27 @@ def test_conflict_with_another_run_ruleset_is_listed_and_blocks_save():
     assert not manager.apply_button.isEnabled()
 
 
+def test_uninvolved_run_ruleset_view_keeps_save_blocked():
+    other = Rule(id="b1", source="软件", target="軟件", direction="s2t")
+    manager = RuleManagerDialog(
+        make_with_table(), (), translator=Translator("en"), config="s2t",
+        rulesets=(RuleSet("A", name="A"), RuleSet("B", (other,), name="B"),
+                  RuleSet("C", name="C")),
+        ruleset_id="A", run_ruleset_ids=("A", "B", "C"))
+    manager.source_edit.setText("软件")
+    manager.target_edit.setText("軟體")
+    manager.add_button.click()
+    assert manager.conflict_list.count() == 1
+    assert not manager.apply_button.isEnabled()
+
+    manager.ruleset_combo.setCurrentIndex(manager.ruleset_combo.findData("C"))
+
+    assert manager.conflict_list.count() == 1
+    assert "A" in manager.conflict_list.item(0).text()
+    assert "B" in manager.conflict_list.item(0).text()
+    assert not manager.apply_button.isEnabled()
+
+
 def test_rename_keeps_use_in_run_state_and_conflicts():
     current = Rule(id="a1", source="软件", target="軟體", direction="s2t")
     other = Rule(id="b1", source="软件", target="軟件", direction="s2t")

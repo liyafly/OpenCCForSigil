@@ -466,6 +466,7 @@
   "rules.conflicts_title": "規則衝突",
   "rules.conflicts_count": "規則衝突（{count}）",
   "rules.conflict_other_ruleset": "與規則集 {ruleset} 衝突：{detail}",
+  "rules.conflict_between_rulesets": "規則集 {rulesets} 之間衝突：{detail}",
   "rules.direction_any": "任何方向",
   "rules.wildcard_direction_warning": "此規則也會用於其他方向（包括繁→簡）",
   "rules.default_set_name": "預設規則集",
