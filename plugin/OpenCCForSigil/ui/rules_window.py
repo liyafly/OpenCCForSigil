@@ -9,7 +9,7 @@ from typing import Any, Callable, Iterable
 from rules.conflicts import blocking_conflicts, find_conflicts
 from rules.builtin import BUILTIN_RULES
 from rules.builtin import with_builtin_rules
-from rules.models import Rule, RuleSnapshot, SUPPORTED_DIRECTIONS
+from rules.models import Rule, RuleSnapshot
 from rules.precedence import applies_to, base_direction
 from rules.validators import RuleValidationError, validate_rules
 from core.converter import OfficialBackendConverter
