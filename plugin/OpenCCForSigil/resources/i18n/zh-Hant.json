@@ -88,8 +88,6 @@
   "scope.selected_file": "已選擇：{file}",
   "scope.ignored_non_xhtml": "已忽略 {count} 個選取的非 XHTML 檔案",
   "scope.none": "尚未選擇 XHTML 檔案",
-  "scope.analyze": "繼續選擇轉換方向",
-  "scope.back": "上一步：更改檔案",
   "scope.checkpoint_notice": "開始前建議先在 Sigil 中建立 Checkpoint（檢查點）；外掛程式執行期間無法操作 Sigil 主視窗。",
   "scope.checkpoint_hide": "以後不再提示",
   "scope.checkpoint_close": "關閉檢查點提醒",

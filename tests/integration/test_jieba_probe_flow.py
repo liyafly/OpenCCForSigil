@@ -6,7 +6,7 @@ from app.controller import Controller
 from opencc_backend.backend import JiebaProbe, SelfTestResult
 from opencc_backend.configs import JIEBA_CONFIGS, V1_CONFIGS
 from sigil.scope import Scope, TargetSelection
-from ui.preview_window import ConfigOutcome, PreviewOutcome, ScopeOutcome
+from ui.preview_window import PreviewOutcome, ScopeOutcome
 from ui.run_options import ConfigurationChoice
 
 
@@ -52,23 +52,17 @@ def test_controller_starts_optional_probe_before_scope_and_opens_settings_pendin
         def close(self):
             pass
 
-    def choose_scope(adapter, initial_language, **_kwargs):
+    def choose_scope(_adapter, initial_language, *, default_config, jieba_probe, **_kwargs):
         events.append("scope")
-        return ScopeOutcome(True, TargetSelection(Scope.SINGLE, ("a",)), initial_language)
-
-    def choose_config(_configs, *, default_config, jieba_probe, **_kwargs):
-        assert events[:2] == ["probe-start", "scope"]
         assert default_config == "s2t"
         assert jieba_probe.jieba_probe_state()[0] == "pending"
-        events.append("settings-pending")
-        return None
+        return ScopeOutcome(False, None, initial_language)
 
     monkeypatch.setattr("app.controller.OpenCCBackend", Backend)
     monkeypatch.setattr("ui.preview_window.choose_scope", choose_scope)
-    monkeypatch.setattr("ui.preview_window.choose_conversion_config", choose_config)
 
     assert Controller(Book(), data_dir=tmp_path).run() == 1
-    assert events == ["probe-start", "scope", "settings-pending"]
+    assert events == ["probe-start", "scope"]
 
 
 def test_probe_survives_settings_loop_and_preserves_jieba_choice(monkeypatch, tmp_path):
@@ -103,17 +97,13 @@ def test_probe_survives_settings_loop_and_preserves_jieba_choice(monkeypatch, tm
         return original_probe(probe)
 
     monkeypatch.setattr(JiebaProbe, "_probe_payload", count_probe)
-    monkeypatch.setattr(
-        "ui.preview_window.choose_scope",
-        lambda _adapter, initial_language, **_kwargs: ScopeOutcome(
-            True, TargetSelection(Scope.SINGLE, ("a",)), initial_language
-        ),
-    )
-    config_calls = []
+    scope_calls = []
 
-    def choose_config(available, *, default_config, jieba_probe, **_kwargs):
-        config_calls.append((tuple(available), default_config, jieba_probe))
-        if len(config_calls) == 1:
+    def choose_scope(
+        _adapter, initial_language, *, default_config, jieba_probe, available_configs, **_kwargs
+    ):
+        scope_calls.append((default_config, jieba_probe))
+        if len(scope_calls) == 1:
             deadline = time.monotonic() + 30
             while jieba_probe.jieba_probe_state()[0] == "pending":
                 if time.monotonic() >= deadline:
@@ -121,27 +111,32 @@ def test_probe_survives_settings_loop_and_preserves_jieba_choice(monkeypatch, tm
                 time.sleep(0.01)
             assert jieba_probe.jieba_probe_state()[0] == "available"
             assert set(JIEBA_CONFIGS) <= set(jieba_probe.available_configs_nonblocking())
-            return ConfigOutcome(
-                "continue", ConfigurationChoice("s2t_jieba", {})
+            return ScopeOutcome(
+                True,
+                TargetSelection(Scope.SINGLE, ("a",)),
+                initial_language,
+                configuration=ConfigurationChoice("s2t_jieba", {}),
             )
-        assert jieba_probe is config_calls[0][2]
         assert default_config == "s2t_jieba"
-        assert set(JIEBA_CONFIGS) <= set(available)
+        assert jieba_probe is scope_calls[0][1]
+        assert set(JIEBA_CONFIGS) <= set(available_configs)
         assert jieba_probe.jieba_probe_state()[0] == "available"
-        return ConfigOutcome("cancel")
+        return ScopeOutcome(False, None, initial_language)
 
-    monkeypatch.setattr("ui.preview_window.choose_conversion_config", choose_config)
+    monkeypatch.setattr("ui.preview_window.choose_scope", choose_scope)
     monkeypatch.setattr(
         "ui.preview_window.show_preview",
         lambda *_args, **_kwargs: PreviewOutcome(False, (), back_to_settings=True),
     )
-    monkeypatch.setattr("ui.preview_window.create_progress_reporter", lambda *_a, **_kw: NoProgress())
+    monkeypatch.setattr(
+        "ui.preview_window.create_progress_reporter", lambda *_a, **_kw: NoProgress()
+    )
 
     book = MutableBook()
     assert Controller(book, data_dir=tmp_path).run() == 1
 
-    assert len(config_calls) == 2
-    assert config_calls[1][1] == "s2t_jieba"
+    assert len(scope_calls) == 2
+    assert scope_calls[1][0] == "s2t_jieba"
     assert len(probe_runs) == 1
     assert book.writes == []
 
@@ -164,27 +159,23 @@ def test_probe_is_shared_across_scope_return_settings_and_preview(monkeypatch, t
 
     scope_calls = []
 
-    def choose_scope(_adapter, initial_language, **_kwargs):
-        scope_calls.append(True)
-        return ScopeOutcome(
-            True, TargetSelection(Scope.SINGLE, ("a",)), initial_language
-        )
+    def choose_scope(_adapter, initial_language, *, jieba_probe, **_kwargs):
+        scope_calls.append(jieba_probe)
+        if len(scope_calls) == 1:
+            return ScopeOutcome(
+                True,
+                TargetSelection(Scope.SINGLE, ("a",)),
+                initial_language,
+                configuration=ConfigurationChoice("t2s", {}),
+            )
+        return ScopeOutcome(False, None, initial_language)
 
     monkeypatch.setattr("ui.preview_window.choose_scope", choose_scope)
-    settings_calls = []
-
-    def choose_config(_available, *, jieba_probe, **_kwargs):
-        settings_calls.append(jieba_probe)
-        if len(settings_calls) == 1:
-            return ConfigOutcome("back_to_scope")
-        return ConfigOutcome("continue", ConfigurationChoice("t2s", {}))
-
-    monkeypatch.setattr("ui.preview_window.choose_conversion_config", choose_config)
     previews = []
 
     def show_preview(*_args, **_kwargs):
         previews.append(True)
-        return PreviewOutcome(False, ())
+        return PreviewOutcome(False, (), back_to_settings=True)
 
     monkeypatch.setattr("ui.preview_window.show_preview", show_preview)
     monkeypatch.setattr(
@@ -197,12 +188,14 @@ def test_probe_is_shared_across_scope_return_settings_and_preview(monkeypatch, t
     assert Controller(ChangingBook(), data_dir=tmp_path).run() == 1
 
     assert len(scope_calls) == 2
-    assert len(settings_calls) == 2
+    assert scope_calls[0] is scope_calls[1]
     assert previews == [True]
     assert len(constructed) >= 3
     session_probe = constructed[0][2]
-    assert settings_calls == [session_probe, session_probe]
-    assert all(actual_probe is session_probe for _config, _passed_probe, actual_probe in constructed)
+    assert scope_calls == [session_probe, session_probe]
+    assert all(
+        actual_probe is session_probe for _config, _passed_probe, actual_probe in constructed
+    )
     assert all(passed_probe is session_probe for _config, passed_probe, _actual in constructed[1:])
 
 

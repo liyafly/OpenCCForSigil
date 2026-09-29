@@ -213,8 +213,13 @@ def test_realistic_combo_signals_do_not_replace_saved_pivot_chain():
 )
 def test_opening_dialog_preserves_saved_pivot_chain(direction, chain):
     dialog = _ConversionConfigDialog(
-        make_fake_qt(), tuple(V1_CONFIGS), direction, {}, translator=Translator("en"),
+        make_fake_qt(),
+        tuple(V1_CONFIGS),
+        direction,
+        {},
+        translator=Translator("en"),
         initial_options={"force_pivot": True, "pivot_chain": chain},
+        embedded=True,
     )
     panel = dialog.options_panel
 
@@ -224,8 +229,13 @@ def test_opening_dialog_preserves_saved_pivot_chain(direction, chain):
 
 def test_manual_pivot_chain_selection_survives_direction_changes():
     dialog = _ConversionConfigDialog(
-        make_fake_qt(), tuple(V1_CONFIGS), "t2s", {}, translator=Translator("en"),
+        make_fake_qt(),
+        tuple(V1_CONFIGS),
+        "t2s",
+        {},
+        translator=Translator("en"),
         initial_options={"force_pivot": True, "pivot_chain": ("s2tw", "t2s")},
+        embedded=True,
     )
     panel = dialog.options_panel
     chain_combo = panel.combos["pivot_chain"]
@@ -532,58 +542,52 @@ def test_analyze_with_cross_ruleset_conflict_shows_localized_error(monkeypatch, 
     from rules.models import Rule
     from rules.store import RuleSet
 
-    storage = SimpleNamespace(paths=SimpleNamespace(
-        root=tmp_path, profiles=tmp_path / "profiles", rules=tmp_path / "rules"))
-    settings = RunSettings(
-        storage, SimpleNamespace(), {}, language="en", session_id="test-session")
-    settings.rules.save(RuleSet("A", (
-        Rule(id="a1", source="软件", target="軟體", direction="s2t"),)))
-    settings.rules.save(RuleSet("B", (
-        Rule(id="b1", source="软件", target="軟件", direction="s2t"),)))
-    settings.active = replace(
-        settings.active, ruleset_ids=("A", "B"), builtin_rules_enabled=False)
+    storage = SimpleNamespace(
+        paths=SimpleNamespace(
+            root=tmp_path, profiles=tmp_path / "profiles", rules=tmp_path / "rules"
+        )
+    )
+    settings = RunSettings(storage, SimpleNamespace(), {}, language="en", session_id="test-session")
+    settings.rules.save(
+        RuleSet("A", (Rule(id="a1", source="软件", target="軟體", direction="s2t"),))
+    )
+    settings.rules.save(
+        RuleSet("B", (Rule(id="b1", source="软件", target="軟件", direction="s2t"),))
+    )
+    settings.active = replace(settings.active, ruleset_ids=("A", "B"), builtin_rules_enabled=False)
     dialog = _ConversionConfigDialog(
-        make_fake_qt(), tuple(V1_CONFIGS), "s2t", {},
-        translator=Translator("en"), services=settings)
+        make_fake_qt(),
+        tuple(V1_CONFIGS),
+        "s2t",
+        {},
+        translator=Translator("en"),
+        services=settings,
+        embedded=True,
+    )
     shown = []
-    monkeypatch.setattr(
-        "ui.preview_window.show_error_details", lambda *args: shown.append(args[3]))
+    monkeypatch.setattr("ui.preview_window.show_error_details", lambda *args: shown.append(args[3]))
 
     dialog._accept(close=False)
 
     assert dialog.accepted is False
-    assert shown == [Translator("en").text(
-        "error.rule_conflict", rules="a1 (A), b1 (B)")]
+    assert shown == [Translator("en").text("error.rule_conflict", rules="a1 (A), b1 (B)")]
 
 
-def test_conversion_dialog_keeps_direction_panel_and_footer_in_order():
+def test_conversion_configuration_page_has_no_standalone_navigation():
     qt = make_fake_qt()
     dialog = _ConversionConfigDialog(
-        qt, ("s2t", "t2s"), "s2t", {}, translator=Translator("en"))
+        qt, ("s2t", "t2s"), "s2t", {}, translator=Translator("en"), embedded=True
+    )
     outer = dialog.dialog._layout.children
 
-    assert [type(item).__name__ for item in outer[:7]] == [
-        "QLabel", "QLabel", "QComboBox", "QLabel", "QCheckBox", "QPushButton",
-        "QScrollArea",
-    ]
-    footer = outer[7]
-    assert footer is dialog.options_panel.tool_layout
-    scroll_body = outer[6].widget()
-    scroll_children = scroll_body._layout.children
-    assert [type(item).__name__ for item in scroll_children[:4]] == [
-        "QHBoxLayout", "QHBoxLayout", "QCheckBox", "QGroupBox",
-    ]
-    assert isinstance(scroll_children[4], qt.QToolButton)
-    assert [type(item).__name__ for item in scroll_children[5:]] == ["QWidget", "str"]
-    assert scroll_body._layout.children[-1] == "<stretch>"
-    assert footer.children[0]._text == Translator("en").text("settings.tools")
-    assert footer.children[-1] is dialog.button_layout
-    assert dialog.button_layout.children == [
-        dialog.back_button, "<stretch>", dialog.cancel_button, dialog.continue_button,
-    ]
-    assert dialog.continue_button.isDefault()
-    assert dialog.cancel_button.text() == Translator("en").text("common.cancel")
-
+    assert dialog.explanation_label in outer
+    assert dialog.options_panel.tool_layout in outer
+    assert dialog.combo not in outer
+    assert dialog.direction_label not in outer
+    assert not hasattr(dialog, "back_button")
+    assert not hasattr(dialog, "cancel_button")
+    assert not hasattr(dialog, "continue_button")
+    assert dialog._continue_is_allowed()
 
 def test_save_profile_rejects_duplicate_names_case_insensitively(tmp_path):
     from app.settings import profile_options

@@ -17,7 +17,8 @@ from tests.support.fake_qt import make_with_table
 from ui.i18n import Translator as CatalogTranslator
 from ui.rules_window import RuleManagerDialog, RuleWindowResult
 from sigil.scope import Scope, TargetSelection
-from ui.preview_window import PreviewOutcome, ScopeOutcome, _ConversionConfigDialog
+from ui.preview_window import PreviewOutcome, ScopeOutcome, _ConversionConfigDialog, _ScopeDialog
+from ui.run_options import ConfigurationChoice
 
 
 class Storage:
@@ -622,34 +623,44 @@ def test_new_ruleset_is_applied_on_the_next_controller_run(monkeypatch, tmp_path
     monkeypatch.setattr("ui.rules_window.exec_dialog", execute_rule_dialog)
     config_dialogs = []
     original_config_init = _ConversionConfigDialog.__init__
+    scope_dialogs = []
+    original_scope_init = _ScopeDialog.__init__
+
+    def capture_scope_dialog(self, *args, **kwargs):
+        original_scope_init(self, *args, **kwargs)
+        scope_dialogs.append(self)
 
     def capture_config_dialog(self, *args, **kwargs):
         original_config_init(self, *args, **kwargs)
         config_dialogs.append(self)
 
-    monkeypatch.setattr(
-        "ui.preview_window._ConversionConfigDialog.__init__", capture_config_dialog)
+    monkeypatch.setattr("ui.preview_window._ConversionConfigDialog.__init__", capture_config_dialog)
+    monkeypatch.setattr("ui.preview_window._ScopeDialog.__init__", capture_scope_dialog)
     monkeypatch.setattr("ui.preview_window._load_ui_qt", lambda _translator: qt)
 
-    def execute_config_dialog(widget):
-        dialog = next(item for item in config_dialogs if item.dialog is widget)
+    def execute_merged_dialog(widget):
+        dialog = config_dialogs[-1]
+        scope = scope_dialogs[-1]
         if len(config_dialogs) == 1:
             dialog.options_panel._tool("rules")
-        dialog._accept()
+        scope.list_widget.item(0).setCheckState(qt.Qt.Checked)
+        widget._layout.children[-1].children[-1].click()
 
-    monkeypatch.setattr("ui.preview_window.exec_dialog", execute_config_dialog)
+    monkeypatch.setattr("ui.preview_window.exec_dialog", execute_merged_dialog)
     hashes = []
     sources = []
 
-    monkeypatch.setattr("ui.preview_window.choose_scope", lambda _adapter, initial_language, **_kw:
-                        ScopeOutcome(True, TargetSelection(Scope.SINGLE, ("a",)),
-                                     initial_language))
-    monkeypatch.setattr("ui.preview_window.show_preview", lambda planned, **_kwargs: (
-        hashes.append(planned[0].plan.rules_snapshot.rules_hash),
-        sources.append(tuple(change.rule_source for change in planned[0].plan.changes)),
-        _accept_all(planned),
-    )[-1])
-    monkeypatch.setattr("ui.preview_window.create_progress_reporter", lambda *_args, **_kwargs: NoProgress())
+    monkeypatch.setattr(
+        "ui.preview_window.show_preview",
+        lambda planned, **_kwargs: (
+            hashes.append(planned[0].plan.rules_snapshot.rules_hash),
+            sources.append(tuple(change.rule_source for change in planned[0].plan.changes)),
+            _accept_all(planned),
+        )[-1],
+    )
+    monkeypatch.setattr(
+        "ui.preview_window.create_progress_reporter", lambda *_args, **_kwargs: NoProgress()
+    )
     monkeypatch.setattr("ui.preview_window.show_result", lambda **_kwargs: None)
 
     first_book = Book()
@@ -666,45 +677,42 @@ def test_new_ruleset_is_applied_on_the_next_controller_run(monkeypatch, tmp_path
     assert all(any(value.startswith("UserRule:") for value in run) for run in sources)
 
 
-def test_deleted_ruleset_is_reported_once_by_controller_and_not_planned(
-    monkeypatch, tmp_path
-):
+def test_deleted_ruleset_is_reported_once_by_controller_and_not_planned(monkeypatch, tmp_path):
     data_dir = tmp_path / "plugin-data"
     controller = Controller(Book(), data_dir=data_dir)
-    controller.storage.update_preferences(
-        {"run_options": {"ruleset_ids": ["default", "deleted"]}})
+    controller.storage.update_preferences({"run_options": {"ruleset_ids": ["default", "deleted"]}})
     notices = []
     plans = []
 
     def choose_scope(_adapter, initial_language, *, notice=(), **_kwargs):
         notices.append(tuple(notice))
         return ScopeOutcome(
-            True, TargetSelection(Scope.SINGLE, ("a",)), initial_language
+            True,
+            TargetSelection(Scope.SINGLE, ("a",)),
+            initial_language,
+            configuration=ConfigurationChoice("s2t", {}),
         )
 
     monkeypatch.setattr("ui.preview_window.choose_scope", choose_scope)
-    monkeypatch.setattr(
-        "ui.preview_window.choose_conversion_config",
-        lambda *_args, **_kwargs: "s2t",
-    )
     monkeypatch.setattr(
         "ui.preview_window.show_preview",
         lambda planned, **_kwargs: plans.append(planned) or _accept_all(planned),
     )
     monkeypatch.setattr(
-        "ui.preview_window.create_progress_reporter", lambda *_args, **_kwargs: NoProgress())
+        "ui.preview_window.create_progress_reporter", lambda *_args, **_kwargs: NoProgress()
+    )
     monkeypatch.setattr("ui.preview_window.show_result", lambda **_kwargs: None)
 
     assert controller.run() == 0
 
     missing_notices = [
-        notice for call in notices for notice in call
-        if notice[0] == "rulesets_missing"
+        notice for call in notices for notice in call if notice[0] == "rulesets_missing"
     ]
     assert missing_notices == [("rulesets_missing", "deleted")]
     assert len(notices) == 1
     assert plans
     assert not any(
         change.rule_source.startswith("UserRule:")
-        for item in plans[0] for change in item.plan.changes
+        for item in plans[0]
+        for change in item.plan.changes
     )

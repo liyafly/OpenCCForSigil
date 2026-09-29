@@ -88,8 +88,6 @@
   "scope.selected_file": "Selected: {file}",
   "scope.ignored_non_xhtml": "Ignored {count} selected non-XHTML file(s)",
   "scope.none": "No XHTML files selected",
-  "scope.analyze": "Continue to direction",
-  "scope.back": "Previous: change files",
   "scope.checkpoint_notice": "Before starting, create a Sigil Checkpoint. The Sigil window is unavailable while the plugin runs.",
   "scope.checkpoint_hide": "Do not show again",
   "scope.checkpoint_close": "Close Checkpoint reminder",

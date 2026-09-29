@@ -110,7 +110,6 @@ class Controller:
                 )
 
             from ui.preview_window import (
-                choose_conversion_config,
                 choose_scope,
                 create_progress_reporter,
                 show_result,
@@ -263,50 +262,12 @@ class Controller:
                 pending_config_choice = getattr(scope_outcome, "configuration", None)
                 return True
 
-            # The language choice is now settled before the direction dialog
-            # is constructed, including on a first launch with no preference.
+            # The merged chooser freezes direction and options with the target
+            # selection, including on a first launch with no preference.
             while True:
-                if pending_config_choice is not None:
-                    selected_config = pending_config_choice
-                    pending_config_choice = None
-                else:
-                    selected_config = choose_conversion_config(
-                        available_conversion_configs(),
-                        default_config=default_config,
-                        jieba_probe=jieba_probe,
-                        initial_options=initial_run_options(),
-                        metadata_available=adapter.metadata_supported(),
-                        nav_available=bool(
-                            adapter.nav_id() and adapter.nav_id() in targets.file_ids),
-                        services=settings,
-                        ui_preferences=ui_preferences,
-                        save_ui_preferences=save_run_ui_preferences,
-                        translator=translator,
-                    )
-                action = getattr(selected_config, "action", None)
-                if action == "back_to_scope":
-                    current_choice = getattr(selected_config, "configuration", None)
-                    if current_choice is not None:
-                        choice_options = dict(getattr(
-                            current_choice, "preference_options",
-                            getattr(current_choice, "options", {}),
-                        ))
-                        update_preferences({
-                            "last_conversion_config": str(current_choice),
-                            "run_options": choice_options,
-                        })
-                    if not reselect_scope(targets):
-                        return 1
-                    continue
-                if action == "cancel" or selected_config is None:
-                    update_preferences({"ui": {"language": language}})
-                    self.session.cancel()
-                    self.logger.summary(
-                        self._summary(status="cancelled", files_scanned=0, changes=0, files_changed=0)
-                    )
-                    return 1
-                if action == "continue":
-                    selected_config = selected_config.configuration
+                selected_config = pending_config_choice
+                pending_config_choice = None
+                assert selected_config is not None
                 options = dict(getattr(selected_config, "options", {}))
                 preference_options = dict(getattr(
                     selected_config, "preference_options", options))

@@ -60,8 +60,9 @@ class Probe:
 
 def _dialog(probe, *, preferred_jieba=True):
     dialog = object.__new__(_ConversionConfigDialog)
-    dialog._qt = SimpleNamespace(QMessageBox=SimpleNamespace(
-        information=lambda *args: setattr(dialog, "details", args)))
+    dialog._qt = SimpleNamespace(
+        QMessageBox=SimpleNamespace(information=lambda *args: setattr(dialog, "details", args))
+    )
     dialog.dialog = object()
     dialog._jieba_probe = probe
     dialog._jieba_configs = {}
@@ -77,19 +78,23 @@ def _dialog(probe, *, preferred_jieba=True):
     dialog.jieba_checkbox = Control(False)
     dialog.jieba_status = Control()
     dialog.jieba_details_button = Control()
-    dialog.continue_button = Control(True)
+    dialog._completion_enabled_callback = None
     dialog.options_panel = SimpleNamespace(update_enablement=lambda _config: None)
     return dialog
 
 
 def _full_dialog(probe):
     jieba_configs = {
-        base: config for base, config in JIEBA_CONFIG_BY_BASE.items()
-        if config in SUPPORTED_CONFIGS
+        base: config for base, config in JIEBA_CONFIG_BY_BASE.items() if config in SUPPORTED_CONFIGS
     }
     return _ConversionConfigDialog(
-        fake_qt.make(), SUPPORTED_CONFIGS, "s2t_jieba", jieba_configs,
-        translator=Translator(), jieba_probe=probe,
+        fake_qt.make(),
+        SUPPORTED_CONFIGS,
+        "s2t_jieba",
+        jieba_configs,
+        translator=Translator(),
+        jieba_probe=probe,
+        embedded=True,
     )
 
 
@@ -99,7 +104,7 @@ def test_pending_probe_disables_preferred_jieba_and_success_restores_it():
 
     dialog._poll_jieba_probe()
     assert not dialog.jieba_checkbox.enabled
-    assert not dialog.continue_button.enabled
+    assert not dialog._continue_is_allowed()
     assert dialog.jieba_status.text == "config.jieba_checking"
 
     probe.state = "available"
@@ -107,7 +112,7 @@ def test_pending_probe_disables_preferred_jieba_and_success_restores_it():
 
     assert dialog.jieba_checkbox.enabled
     assert dialog.jieba_checkbox.isChecked()
-    assert dialog.continue_button.enabled
+    assert dialog._continue_is_allowed()
     assert dialog._get_config() == "s2t_jieba"
 
 
@@ -117,7 +122,7 @@ def test_not_started_probe_disables_preferred_jieba_until_a_result_exists():
     dialog._poll_jieba_probe()
 
     assert not dialog.jieba_checkbox.enabled
-    assert not dialog.continue_button.enabled
+    assert not dialog._continue_is_allowed()
     assert dialog.jieba_status.text == "config.jieba_checking"
 
 
@@ -127,7 +132,7 @@ def test_unavailable_preferred_jieba_still_explains_block():
 
     dialog._poll_jieba_probe()
     assert not dialog.jieba_checkbox.enabled
-    assert not dialog.continue_button.enabled
+    assert not dialog._continue_is_allowed()
     assert dialog.jieba_checkbox.isVisible()
     assert dialog.jieba_status.isVisible()
     assert dialog.jieba_details_button.isVisible()
@@ -139,7 +144,7 @@ def test_unavailable_preferred_jieba_still_explains_block():
 
     dialog.combo.value = "t2s"
     dialog._direction_changed()
-    assert dialog.continue_button.enabled
+    assert dialog._continue_is_allowed()
 
 
 def test_unavailable_jieba_without_preference_is_hidden():
@@ -193,7 +198,12 @@ def test_reject_stops_jieba_probe_timer():
 
 def test_conversion_direction_label_is_buddied_to_its_combo():
     dialog = _ConversionConfigDialog(
-        fake_qt.make(), ("s2t", "t2s"), "s2t", {}, translator=Translator()
+        fake_qt.make(),
+        ("s2t", "t2s"),
+        "s2t",
+        {},
+        translator=Translator(),
+        embedded=True,
     )
 
     assert dialog.direction_label.buddy() is dialog.combo

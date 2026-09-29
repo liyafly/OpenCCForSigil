@@ -88,8 +88,6 @@
   "scope.selected_file": "已选择：{file}",
   "scope.ignored_non_xhtml": "已忽略 {count} 个所选的非 XHTML 文件",
   "scope.none": "尚未选择 XHTML 文件",
-  "scope.analyze": "继续选择转换方向",
-  "scope.back": "上一步：更改文件",
   "scope.checkpoint_notice": "开始前建议先在 Sigil 中建立 Checkpoint（检查点）；插件运行期间无法操作 Sigil 主窗口。",
   "scope.checkpoint_hide": "以后不再提示",
   "scope.checkpoint_close": "关闭检查点提醒",

@@ -33,12 +33,21 @@ class Book:
 
 
 def ui(monkeypatch, config="t2s"):
-    monkeypatch.setattr("ui.preview_window.choose_scope", lambda *_args, **_kw: ScopeOutcome(
-        True, TargetSelection(Scope.SINGLE, ("a",)), "en"))
-    monkeypatch.setattr("ui.preview_window.choose_conversion_config",
-                        lambda *_args, **_kw: config)
-    monkeypatch.setattr("ui.preview_window.create_progress_reporter", lambda *_args, **_kwargs: SimpleNamespace(
-        update=lambda *_a: None, close=lambda: None, cancelled=lambda: False))
+    monkeypatch.setattr(
+        "ui.preview_window.choose_scope",
+        lambda *_args, **_kw: ScopeOutcome(
+            True,
+            TargetSelection(Scope.SINGLE, ("a",)),
+            "en",
+            configuration=ConfigurationChoice(config, {}),
+        ),
+    )
+    monkeypatch.setattr(
+        "ui.preview_window.create_progress_reporter",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            update=lambda *_a: None, close=lambda: None, cancelled=lambda: False
+        ),
+    )
     monkeypatch.setattr("ui.preview_window.show_result", lambda **_kw: None)
 
 
@@ -53,11 +62,20 @@ def test_back_to_settings_discards_old_plan_and_rebuilds(monkeypatch, tmp_path):
     book = Book()
     ui(monkeypatch)
     configs = iter(("t2s", "s2t"))
-    monkeypatch.setattr("ui.preview_window.choose_conversion_config", lambda *_a, **_kw: next(configs))
+    monkeypatch.setattr(
+        "ui.preview_window.choose_scope",
+        lambda _adapter, initial_language, **_kw: ScopeOutcome(
+            True,
+            TargetSelection(Scope.SINGLE, ("a",)),
+            initial_language,
+            configuration=ConfigurationChoice(next(configs), {}),
+        ),
+    )
     calls = []
     results = []
-    monkeypatch.setattr("ui.preview_window.show_result",
-                        lambda **values: results.append(values) or "close")
+    monkeypatch.setattr(
+        "ui.preview_window.show_result", lambda **values: results.append(values) or "close"
+    )
 
     def preview(planned, **_kwargs):
         calls.append(planned)

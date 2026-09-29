@@ -95,8 +95,6 @@ _I18N_REQUIRED_KEYS = frozenset(
         "scope.navigation_suffix",
         "scope.ignored_non_xhtml",
         "scope.none",
-        "scope.analyze",
-        "scope.back",
         "scope.checkpoint_notice",
         "scope.checkpoint_hide",
         "scope.checkpoint_close",

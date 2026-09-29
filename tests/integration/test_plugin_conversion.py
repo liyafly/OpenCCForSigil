@@ -4,9 +4,25 @@ from app.controller import Controller
 from app.profiles import Profile, ProfileStore
 from core.preview import PreviewSession
 from sigil.scope import Scope, TargetSelection
-from ui.preview_window import ConfigOutcome, PreviewOutcome, ScopeOutcome
+from ui.preview_window import PreviewOutcome, ScopeOutcome as _ScopeOutcome
 from ui.run_options import ConfigurationChoice
 
+
+def _scope_outcome(
+    accepted,
+    selection,
+    language,
+    *,
+    config="t2s",
+    options=None,
+    preference_options=None,
+):
+    configuration = None
+    if accepted:
+        configuration = ConfigurationChoice(
+            config, options or {}, preference_options=preference_options
+        )
+    return _ScopeOutcome(accepted, selection, language, configuration=configuration)
 
 class ConversionBook:
     def __init__(self):
@@ -72,21 +88,17 @@ def _patch_scoped_ui(monkeypatch, events=None):
     def choose_scope(adapter, initial_language, **_kwargs):
         if events is not None:
             events.append("scope")
-        return ScopeOutcome(
+        return _scope_outcome(
             accepted=True,
             selection=TargetSelection(Scope.SINGLE, ("b",)),
             language=initial_language,
         )
 
-    def choose_config(available_configs, default_config, **_kwargs):
-        if events is not None:
-            events.append("direction")
-        return "t2s"
-
     monkeypatch.setattr("ui.preview_window.choose_scope", choose_scope)
-    monkeypatch.setattr("ui.preview_window.choose_conversion_config", choose_config)
     monkeypatch.setattr("ui.preview_window.show_preview", _accept_all_preview)
-    monkeypatch.setattr("ui.preview_window.create_progress_reporter", lambda _total, **_kwargs: _NoProgress())
+    monkeypatch.setattr(
+        "ui.preview_window.create_progress_reporter", lambda _total, **_kwargs: _NoProgress()
+    )
 
 
 def test_controller_runs_preview_stage_verify_commit(monkeypatch, tmp_path):
@@ -94,15 +106,11 @@ def test_controller_runs_preview_stage_verify_commit(monkeypatch, tmp_path):
 
     monkeypatch.setattr(
         "ui.preview_window.choose_scope",
-        lambda adapter, initial_language, **_kwargs: ScopeOutcome(
+        lambda adapter, initial_language, **_kwargs: _scope_outcome(
             accepted=True,
             selection=TargetSelection(Scope.SINGLE, ("chapter",)),
             language=initial_language,
         ),
-    )
-    monkeypatch.setattr(
-        "ui.preview_window.choose_conversion_config",
-        lambda available_configs, default_config, **_kwargs: "t2s",
     )
 
     def accept_all(planned, **_kwargs):
@@ -156,25 +164,20 @@ def test_post_preview_progress_covers_noncancellable_writeback(monkeypatch, tmp_
 
     monkeypatch.setattr(
         "ui.preview_window.choose_scope",
-        lambda _adapter, initial_language, **_kwargs: ScopeOutcome(
-            True, TargetSelection(Scope.SINGLE, ("chapter",)), initial_language),
-    )
-    monkeypatch.setattr(
-        "ui.preview_window.choose_conversion_config",
-        lambda *_args, **_kwargs: "t2s",
+        lambda _adapter, initial_language, **_kwargs: _scope_outcome(
+            True, TargetSelection(Scope.SINGLE, ("chapter",)), initial_language
+        ),
     )
     monkeypatch.setattr("ui.preview_window.show_preview", _accept_all_preview)
     monkeypatch.setattr("ui.preview_window.create_progress_reporter", create_progress)
-    monkeypatch.setattr(
-        "ui.preview_window.show_result", lambda **values: results.append(values))
+    monkeypatch.setattr("ui.preview_window.show_result", lambda **values: results.append(values))
 
     assert Controller(book, data_dir=tmp_path / "plugin-data").run() == 0
 
     post_preview = reporters[-1]
     assert post_preview.non_cancellable is True
     assert post_preview.cancelled() is False
-    assert {"staging", "verifying", "rechecking", "committing"} <= set(
-        post_preview.phases)
+    assert {"staging", "verifying", "rechecking", "committing"} <= set(post_preview.phases)
     assert post_preview.close_calls == 1
     assert len(book.writes) == 1
     assert results[-1]["status"] == "success"
@@ -189,7 +192,7 @@ def test_controller_always_chooses_scope_and_never_reads_or_writes_other_files(
 
     assert Controller(book, data_dir=tmp_path / "plugin-data").run() == 0
 
-    assert events == ["scope", "direction"]
+    assert events == ["scope"]
     assert book.reads == ["b", "b"]
     assert [file_id for file_id, _data in book.writes] == ["b"]
 
@@ -215,19 +218,25 @@ def test_scope_cancel_preserves_checkpoint_and_window_preferences(monkeypatch, t
     data_dir = tmp_path / "plugin-data"
     data_dir.mkdir()
     preferences_path = data_dir / "preferences.json"
-    preferences_path.write_text(json.dumps({
-        "schema_version": 1,
-        "checkpoint_notice": True,
-        "ui": {
-            "language": "en", "conversion_dialog_size": [820, 620],
-            "run_options_advanced_expanded": True,
-        },
-    }), encoding="utf-8")
+    preferences_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "checkpoint_notice": True,
+                "ui": {
+                    "language": "en",
+                    "main_dialog_size": [820, 620],
+                    "run_options_advanced_expanded": True,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
     book = ConversionBook()
 
     def cancel_after_hiding(_adapter, initial_language, **kwargs):
         kwargs["hide_checkpoint_notice"]()
-        return ScopeOutcome(False, None, initial_language)
+        return _scope_outcome(False, None, initial_language)
 
     monkeypatch.setattr("ui.preview_window.choose_scope", cancel_after_hiding)
 
@@ -235,29 +244,33 @@ def test_scope_cancel_preserves_checkpoint_and_window_preferences(monkeypatch, t
 
     saved = json.loads(preferences_path.read_text(encoding="utf-8"))
     assert saved["checkpoint_notice"] is False
-    assert saved["ui"]["conversion_dialog_size"] == [820, 620]
+    assert saved["ui"]["main_dialog_size"] == [820, 620]
     assert saved["ui"]["run_options_advanced_expanded"] is True
     assert saved["ui"]["language"] == "en"
 
 
-def test_cancel_after_profile_delete_does_not_restore_profile_preference(
-    monkeypatch, tmp_path
-):
+def test_cancel_after_profile_delete_does_not_restore_profile_preference(monkeypatch, tmp_path):
     data_dir = tmp_path / "plugin-data"
     data_dir.mkdir()
-    ProfileStore(data_dir / "profiles").save(
-        Profile(id="saved", name="Saved"))
+    ProfileStore(data_dir / "profiles").save(Profile(id="saved", name="Saved"))
     preferences_path = data_dir / "preferences.json"
-    preferences_path.write_text(json.dumps({
-        "schema_version": 1, "profile_id": "saved", "ui": {"language": "en"},
-    }), encoding="utf-8")
+    preferences_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "profile_id": "saved",
+                "ui": {"language": "en"},
+            }
+        ),
+        encoding="utf-8",
+    )
     book = ConversionBook()
 
-    monkeypatch.setattr(
-        "ui.preview_window.choose_scope",
-        lambda _adapter, initial_language, **_kwargs: ScopeOutcome(
-            True, TargetSelection(Scope.SINGLE, ("chapter",)), initial_language),
-    )
+    def cancel_scope(_adapter, initial_language, *, services, translator, **_kwargs):
+        services.pick_profile("s2t", {}, translator)
+        return _scope_outcome(False, None, initial_language)
+
+    monkeypatch.setattr("ui.preview_window.choose_scope", cancel_scope)
 
     def delete_profile(_profiles, *, store, on_delete, **_kwargs):
         store._path("saved").unlink()
@@ -265,12 +278,6 @@ def test_cancel_after_profile_delete_does_not_restore_profile_preference(
         return None
 
     monkeypatch.setattr("ui.profile_window.show_profile_window", delete_profile)
-
-    def cancel_settings(_available, *, services, translator, **_kwargs):
-        services.pick_profile("s2t", {}, translator)
-        return ConfigOutcome("cancel")
-
-    monkeypatch.setattr("ui.preview_window.choose_conversion_config", cancel_settings)
 
     assert Controller(book, data_dir=data_dir).run() == 1
 
@@ -286,22 +293,27 @@ def test_future_profile_selection_is_not_cleared_by_a_completed_run(monkeypatch,
     original = '{"schema_version": 2, "id": "future", "conversion": "s2tw"}\n'
     profile_path.write_text(original, encoding="utf-8")
     preferences_path = data_dir / "preferences.json"
-    preferences_path.write_text(json.dumps({
-        "schema_version": 1, "profile_id": "future", "ui": {"language": "en"},
-    }), encoding="utf-8")
+    preferences_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "profile_id": "future",
+                "ui": {"language": "en"},
+            }
+        ),
+        encoding="utf-8",
+    )
     book = ConversionBook()
     monkeypatch.setattr(
         "ui.preview_window.choose_scope",
-        lambda _adapter, initial_language, **_kwargs: ScopeOutcome(
-            True, TargetSelection(Scope.SINGLE, ("chapter",)), initial_language),
-    )
-    monkeypatch.setattr(
-        "ui.preview_window.choose_conversion_config",
-        lambda *_args, **_kwargs: "t2s",
+        lambda _adapter, initial_language, **_kwargs: _scope_outcome(
+            True, TargetSelection(Scope.SINGLE, ("chapter",)), initial_language
+        ),
     )
     monkeypatch.setattr("ui.preview_window.show_preview", _accept_all_preview)
     monkeypatch.setattr(
-        "ui.preview_window.create_progress_reporter", lambda _total, **_kwargs: _NoProgress())
+        "ui.preview_window.create_progress_reporter", lambda _total, **_kwargs: _NoProgress()
+    )
     monkeypatch.setattr("ui.preview_window.show_result", lambda **_kwargs: None)
 
     assert Controller(book, data_dir=data_dir).run() == 0
@@ -338,17 +350,11 @@ def test_controller_reports_unwritten_no_change_files_separately(monkeypatch, tm
     result_calls = []
     monkeypatch.setattr(
         "ui.preview_window.choose_scope",
-        lambda adapter, initial_language, **_kwargs: ScopeOutcome(
+        lambda adapter, initial_language, **_kwargs: _scope_outcome(
             accepted=True,
-            selection=TargetSelection(
-                Scope.ALL_XHTML, tuple(book.files)
-            ),
+            selection=TargetSelection(Scope.ALL_XHTML, tuple(book.files)),
             language=initial_language,
         ),
-    )
-    monkeypatch.setattr(
-        "ui.preview_window.choose_conversion_config",
-        lambda available_configs, default_config, **_kwargs: "t2s",
     )
     monkeypatch.setattr("ui.preview_window.show_preview", _accept_all_preview)
     monkeypatch.setattr(
@@ -392,15 +398,11 @@ def test_malformed_xhtml_is_skipped_while_other_files_convert(monkeypatch, tmp_p
     result_calls = []
     monkeypatch.setattr(
         "ui.preview_window.choose_scope",
-        lambda adapter, initial_language, **_kwargs: ScopeOutcome(
+        lambda adapter, initial_language, **_kwargs: _scope_outcome(
             accepted=True,
             selection=TargetSelection(Scope.ALL_XHTML, tuple(book.files)),
             language=initial_language,
         ),
-    )
-    monkeypatch.setattr(
-        "ui.preview_window.choose_conversion_config",
-        lambda available_configs, default_config, **_kwargs: "t2s",
     )
 
     def preview(planned, **_kwargs):
@@ -409,9 +411,11 @@ def test_malformed_xhtml_is_skipped_while_other_files_convert(monkeypatch, tmp_p
 
     monkeypatch.setattr("ui.preview_window.show_preview", preview)
     monkeypatch.setattr(
-        "ui.preview_window.create_progress_reporter", lambda _total, **_kwargs: _NoProgress())
+        "ui.preview_window.create_progress_reporter", lambda _total, **_kwargs: _NoProgress()
+    )
     monkeypatch.setattr(
-        "ui.preview_window.show_result", lambda **values: result_calls.append(values))
+        "ui.preview_window.show_result", lambda **values: result_calls.append(values)
+    )
 
     assert Controller(book, data_dir=tmp_path / "plugin-data").run() == 0
 
@@ -419,10 +423,12 @@ def test_malformed_xhtml_is_skipped_while_other_files_convert(monkeypatch, tmp_p
     assert bad.source.file_id == "bad"
     assert bad.plan.changes == ()
     assert any(item.code == "SOURCE_INVALID_XHTML" for item in bad.plan.diagnostics)
-    assert any(item.span is None and "line 1, column" in item.message
-               for item in bad.plan.diagnostics)
+    assert any(
+        item.span is None and "line 1, column" in item.message for item in bad.plan.diagnostics
+    )
     invalid_diagnostic = next(
-        item for item in bad.plan.diagnostics if item.code == "SOURCE_INVALID_XHTML")
+        item for item in bad.plan.diagnostics if item.code == "SOURCE_INVALID_XHTML"
+    )
     assert invalid_diagnostic.line == 1
     assert invalid_diagnostic.column == 12
     assert good.source.file_id == "good"
@@ -430,17 +436,16 @@ def test_malformed_xhtml_is_skipped_while_other_files_convert(monkeypatch, tmp_p
     assert [file_id for file_id, _data in book.writes] == ["good"]
     assert result_calls[-1]["files_scanned"] == 2
     assert result_calls[-1]["files_changed"] == 1
-    assert result_calls[-1]["diagnostics"][0][:2] == (
-        "Text/bad.xhtml", "SOURCE_INVALID_XHTML")
+    assert result_calls[-1]["diagnostics"][0][:2] == ("Text/bad.xhtml", "SOURCE_INVALID_XHTML")
 
 
-def test_returning_from_preview_reselects_scope_and_discards_old_plan(
-    monkeypatch, tmp_path
-):
+def test_returning_from_preview_reselects_scope_and_discards_old_plan(monkeypatch, tmp_path):
     class Book:
         def __init__(self):
-            self.files = {key: f"<p>{value}</p>" for key, value in (
-                ("a", "漢字"), ("b", "漢字"), ("c", "漢字"))}
+            self.files = {
+                key: f"<p>{value}</p>"
+                for key, value in (("a", "漢字"), ("b", "漢字"), ("c", "漢字"))
+            }
             self.reads = []
             self.writes = []
 
@@ -462,7 +467,7 @@ def test_returning_from_preview_reselects_scope_and_discards_old_plan(
     def choose_scope(_adapter, initial_language, **_kwargs):
         scope_calls.append(True)
         selected = "a" if len(scope_calls) == 1 else "c"
-        return ScopeOutcome(
+        return _scope_outcome(
             accepted=True,
             selection=TargetSelection(Scope.SINGLE, (selected,)),
             language=initial_language,
@@ -475,13 +480,10 @@ def test_returning_from_preview_reselects_scope_and_discards_old_plan(
         return _accept_all_preview(planned)
 
     monkeypatch.setattr("ui.preview_window.choose_scope", choose_scope)
-    monkeypatch.setattr(
-        "ui.preview_window.choose_conversion_config",
-        lambda available_configs, default_config, **_kwargs: "t2s",
-    )
     monkeypatch.setattr("ui.preview_window.show_preview", show_preview)
     monkeypatch.setattr(
-        "ui.preview_window.create_progress_reporter", lambda _total, **_kwargs: _NoProgress())
+        "ui.preview_window.create_progress_reporter", lambda _total, **_kwargs: _NoProgress()
+    )
 
     assert Controller(book, data_dir=tmp_path / "plugin-data").run() == 0
 
@@ -496,21 +498,20 @@ def test_cancelling_preview_shows_cancelled_result_without_writing(monkeypatch, 
     result_calls = []
     monkeypatch.setattr(
         "ui.preview_window.choose_scope",
-        lambda _adapter, initial_language, **_kwargs: ScopeOutcome(
-            True, TargetSelection(Scope.SINGLE, ("chapter",)), initial_language),
+        lambda _adapter, initial_language, **_kwargs: _scope_outcome(
+            True, TargetSelection(Scope.SINGLE, ("chapter",)), initial_language
+        ),
     )
     monkeypatch.setattr(
-        "ui.preview_window.choose_conversion_config",
-        lambda *_args, **_kwargs: "t2s",
+        "ui.preview_window.create_progress_reporter", lambda _total, **_kwargs: _NoProgress()
     )
-    monkeypatch.setattr(
-        "ui.preview_window.create_progress_reporter", lambda _total, **_kwargs: _NoProgress())
     monkeypatch.setattr(
         "ui.preview_window.show_preview",
         lambda planned, **_kwargs: PreviewOutcome(accepted=False, previews=()),
     )
     monkeypatch.setattr(
-        "ui.preview_window.show_result", lambda **values: result_calls.append(values))
+        "ui.preview_window.show_result", lambda **values: result_calls.append(values)
+    )
 
     assert Controller(book, data_dir=tmp_path / "plugin-data").run() == 1
 
@@ -549,19 +550,20 @@ def test_noop_result_skips_preview_and_offers_scope_return(monkeypatch, tmp_path
     monkeypatch.setattr(OpenCCBackend, "convert", track_content_conversion)
     monkeypatch.setattr(
         "ui.preview_window.choose_scope",
-        lambda _adapter, initial_language, **_kwargs: ScopeOutcome(
-            True, TargetSelection(Scope.SINGLE, ("chapter",)), initial_language),
+        lambda _adapter, initial_language, **_kwargs: _scope_outcome(
+            True, TargetSelection(Scope.SINGLE, ("chapter",)), initial_language
+        ),
     )
-    monkeypatch.setattr(
-        "ui.preview_window.choose_conversion_config", lambda *_args, **_kwargs: "t2s")
     monkeypatch.setattr(
         "ui.preview_window.show_preview",
         lambda _planned: (_ for _ in ()).throw(AssertionError("preview must be skipped")),
     )
     monkeypatch.setattr(
-        "ui.preview_window.create_progress_reporter", lambda _total, **_kwargs: _NoProgress())
+        "ui.preview_window.create_progress_reporter", lambda _total, **_kwargs: _NoProgress()
+    )
     monkeypatch.setattr(
-        "ui.preview_window.show_result", lambda **values: results.append(values) or "close")
+        "ui.preview_window.show_result", lambda **values: results.append(values) or "close"
+    )
 
     data_dir = tmp_path / "plugin-data"
     assert Controller(book, data_dir=data_dir).run() == 0
@@ -573,13 +575,14 @@ def test_noop_result_skips_preview_and_offers_scope_return(monkeypatch, tmp_path
     assert results[0]["accepted_changes"] == 0
     assert results[0]["return_to_scope"] is True
     assert len(results[0]["diagnostic_documents"]) == 1
-    assert [diagnostic.code for diagnostic in
-            results[0]["diagnostic_documents"][0].plan.diagnostics] == [
-                "SOURCE_INVALID_XHTML"]
+    assert [
+        diagnostic.code for diagnostic in results[0]["diagnostic_documents"][0].plan.diagnostics
+    ] == ["SOURCE_INVALID_XHTML"]
     assert results[0].get("report_text") is None
     log_text = "\n".join(
         path.read_text(encoding="utf-8")
-        for path in (data_dir / "logs").rglob("*") if path.is_file()
+        for path in (data_dir / "logs").rglob("*")
+        if path.is_file()
     )
     assert "SECRET_DIAGNOSTIC_CONTEXT" not in log_text
 
@@ -609,28 +612,27 @@ def test_noop_return_to_scope_restarts_with_new_selection(monkeypatch, tmp_path)
     def choose_scope(_adapter, initial_language, **kwargs):
         scopes.append(kwargs.get("initial_selection"))
         file_id = "a" if len(scopes) == 1 else "c"
-        return ScopeOutcome(
-            True, TargetSelection(Scope.SINGLE, (file_id,)), initial_language)
+        config_defaults.append(kwargs.get("default_config"))
+        return _scope_outcome(
+            True, TargetSelection(Scope.SINGLE, (file_id,)), initial_language, config="s2tw"
+        )
 
     def show_result(**values):
         results.append(values)
         return "back_to_scope" if len(results) == 1 else "close"
 
     monkeypatch.setattr("ui.preview_window.choose_scope", choose_scope)
-    def choose_config(_available, *, default_config, **_kwargs):
-        config_defaults.append(default_config)
-        return "s2tw"
-
-    monkeypatch.setattr("ui.preview_window.choose_conversion_config", choose_config)
-    monkeypatch.setattr(
-        "ui.preview_window.show_result", show_result)
+    monkeypatch.setattr("ui.preview_window.show_result", show_result)
     monkeypatch.setattr(
         "ui.preview_window.show_preview",
-        lambda planned, **_kwargs: previews.append(tuple(item.source.file_id for item in planned))
-        or _accept_all_preview(planned),
+        lambda planned, **_kwargs: (
+            previews.append(tuple(item.source.file_id for item in planned))
+            or _accept_all_preview(planned)
+        ),
     )
     monkeypatch.setattr(
-        "ui.preview_window.create_progress_reporter", lambda _total, **_kwargs: _NoProgress())
+        "ui.preview_window.create_progress_reporter", lambda _total, **_kwargs: _NoProgress()
+    )
 
     assert Controller(book, data_dir=tmp_path / "plugin-data").run() == 0
 
@@ -641,38 +643,6 @@ def test_noop_return_to_scope_restarts_with_new_selection(monkeypatch, tmp_path)
     assert scopes[1].file_ids == ("a",)
     assert previews == [("c",)]
     assert [file_id for file_id, _data in book.writes] == ["c"]
-
-
-def test_settings_back_to_scope_preserves_selected_direction(monkeypatch, tmp_path):
-    book = ConversionBook()
-    defaults = []
-    scope_calls = []
-
-    def choose_scope(_adapter, initial_language, **_kwargs):
-        scope_calls.append(True)
-        return ScopeOutcome(
-            True, TargetSelection(Scope.SINGLE, ("chapter",)), initial_language
-        )
-
-    def choose_config(_available, *, default_config, **_kwargs):
-        defaults.append(default_config)
-        if len(defaults) == 1:
-            return ConfigOutcome(
-                "back_to_scope",
-                ConfigurationChoice("s2tw", {"quotation_mode": "corner"}),
-            )
-        return None
-
-    monkeypatch.setattr("ui.preview_window.choose_scope", choose_scope)
-    monkeypatch.setattr("ui.preview_window.choose_conversion_config", choose_config)
-
-    assert Controller(book, data_dir=tmp_path).run() == 1
-
-    assert len(scope_calls) == 2
-    assert defaults[1] == "s2tw"
-    preferences = json.loads((tmp_path / "preferences.json").read_text(encoding="utf-8"))
-    assert preferences["last_conversion_config"] == "s2tw"
-    assert book.writes == []
 
 
 def test_nav_preference_is_saved_while_nav_is_outside_scope(monkeypatch, tmp_path):
@@ -711,23 +681,23 @@ def test_nav_preference_is_saved_while_nav_is_outside_scope(monkeypatch, tmp_pat
             if scope_number == 1
             else TargetSelection(Scope.SELECTED, ("chapter", "nav"))
         )
-        return ScopeOutcome(True, selection, initial_language)
-
-    def choose_config(_available, *, initial_options, nav_available, **_kwargs):
+        nav_available = "nav" in selection.file_ids
+        initial_options = _kwargs["initial_options"]
         config_calls.append((dict(initial_options), nav_available))
-        return ConfigOutcome(
-            "continue",
-            ConfigurationChoice(
-                "s2t", {"include_nav": bool(nav_available)},
-                preference_options={"include_nav": True},
-            ),
+        return _scope_outcome(
+            True,
+            selection,
+            initial_language,
+            config="s2t",
+            options={"include_nav": nav_available},
+            preference_options={"include_nav": True},
         )
 
     monkeypatch.setattr("ui.preview_window.choose_scope", choose_scope)
-    monkeypatch.setattr("ui.preview_window.choose_conversion_config", choose_config)
     monkeypatch.setattr("ui.preview_window.show_preview", _accept_all_preview)
     monkeypatch.setattr(
-        "ui.preview_window.create_progress_reporter", lambda _total, **_kwargs: _NoProgress())
+        "ui.preview_window.create_progress_reporter", lambda _total, **_kwargs: _NoProgress()
+    )
     monkeypatch.setattr("ui.preview_window.show_result", lambda **_kwargs: None)
 
     assert Controller(book, data_dir=data_dir).run() == 0
@@ -736,5 +706,9 @@ def test_nav_preference_is_saved_while_nav_is_outside_scope(monkeypatch, tmp_pat
     assert config_calls[0][1] is False
     assert config_calls[1][1] is True
     assert config_calls[1][0]["include_nav"] is True
-    assert json.loads((data_dir / "preferences.json").read_text(encoding="utf-8"))[
-        "run_options"]["include_nav"] is True
+    assert (
+        json.loads((data_dir / "preferences.json").read_text(encoding="utf-8"))["run_options"][
+            "include_nav"
+        ]
+        is True
+    )

@@ -15,7 +15,6 @@ from ui.i18n import Translator
 from ui.preview_window import (
     _PreviewDialog,
     _ScopeDialog,
-    choose_conversion_config,
 )
 from ui.profile_window import ProfileManagerDialog
 from ui.rules_window import RuleManagerDialog
@@ -48,6 +47,10 @@ def _preview_inputs():
     return planned, (preview,)
 
 
+def test_scope_flow_has_no_standalone_conversion_config_entrypoint():
+    obsolete_entrypoint = "choose_" + "conversion_config"
+    assert not hasattr(preview_window, obsolete_entrypoint)
+
 def test_preview_dialog_constructs_with_and_without_export_service():
     planned, previews = _preview_inputs()
 
@@ -77,14 +80,13 @@ def test_scope_dialog_constructs_and_single_file_can_continue_after_row_change()
         "en",
         Translator("en"),
         initial_scope=Scope.SINGLE,
-        ui_preferences={"scope_dialog_size": [820, 620]},
+        embedded=True,
     )
 
-    assert (dialog.dialog.width(), dialog.dialog.height()) == (820, 620)
-    assert dialog.dialog.windowTitle() == "OpenCCForSigil — Choose files to convert"
-    assert dialog.analyze_button.isEnabled()
-    assert not dialog.single_radio.isVisible()
+    assert not hasattr(dialog, "analyze_button")
+    assert not hasattr(dialog, "single_radio")
     assert dialog.selected_radio.isChecked()
+    assert dialog._selection_is_valid()
     assert dialog.selected_ids() == ("a",)
     assert [dialog.list_widget.item(i).checkState() for i in range(3)] == [
         qt.Qt.Checked,
@@ -93,12 +95,12 @@ def test_scope_dialog_constructs_and_single_file_can_continue_after_row_change()
     ]
 
     dialog.list_widget.setCurrentRow(1)
-    assert dialog.analyze_button.isEnabled()
+    assert dialog._selection_is_valid()
     assert dialog.selected_ids() == ("a",)
     dialog.list_widget.item(1).setCheckState(qt.Qt.Checked)
     assert dialog.selected_ids() == ("a", "b")
     dialog.all_radio.setChecked(True)
-    assert dialog.analyze_button.isEnabled()
+    assert dialog._selection_is_valid()
     dialog.selected_radio.setChecked(True)
     dialog._accept(close=False)
     assert dialog.selection.scope is Scope.SELECTED
@@ -225,8 +227,6 @@ def test_merged_dialog_language_change_keeps_analyze_label(monkeypatch):
 def test_conversion_profile_rule_and_history_dialogs_construct(monkeypatch, tmp_path):
     qt = fake_qt.make()
     monkeypatch.setattr("ui.preview_window._load_ui_qt", lambda _translator: qt)
-    outcome = choose_conversion_config(("s2t",), translator=Translator("en"))
-    assert outcome.action == "cancel"
 
     profile_dialog = ProfileManagerDialog(
         fake_qt.make(),

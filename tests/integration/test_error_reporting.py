@@ -10,6 +10,7 @@ from logging_ext.logger import SessionLogger
 from sigil.scope import Scope, TargetSelection
 from ui.preview_window import PreviewOutcome, ScopeOutcome
 from ui.i18n import Translator
+from ui.run_options import ConfigurationChoice
 
 
 class Book:
@@ -57,10 +58,14 @@ def _patch_ui(monkeypatch, *, preview_callback=None, results=None, errors=None):
     # converts every file without depending on BookContainer-specific IDs.
     def choose_scope(adapter, initial_language, **_kwargs):
         ids = tuple(file_id for file_id, _href in adapter.text_files(Scope.ALL_XHTML))
-        return ScopeOutcome(True, TargetSelection(Scope.ALL_XHTML, ids), initial_language)
+        return ScopeOutcome(
+            True,
+            TargetSelection(Scope.ALL_XHTML, ids),
+            initial_language,
+            configuration=ConfigurationChoice("s2t", {}),
+        )
 
     monkeypatch.setattr("ui.preview_window.choose_scope", choose_scope)
-    monkeypatch.setattr("ui.preview_window.choose_conversion_config", lambda *_a, **_kw: "s2t")
 
     def show_preview(planned, **_kwargs):
         if preview_callback:
@@ -68,11 +73,17 @@ def _patch_ui(monkeypatch, *, preview_callback=None, results=None, errors=None):
         return _accept_all(planned)
 
     monkeypatch.setattr("ui.preview_window.show_preview", show_preview)
-    monkeypatch.setattr("ui.preview_window.create_progress_reporter", lambda *_a, **_kwargs: NoProgress())
-    monkeypatch.setattr("ui.preview_window.show_result", lambda **values: results.append(values)
-                        if results is not None else None)
-    monkeypatch.setattr("ui.preview_window.show_error", lambda **values: errors.append(values)
-                        if errors is not None else None)
+    monkeypatch.setattr(
+        "ui.preview_window.create_progress_reporter", lambda *_a, **_kwargs: NoProgress()
+    )
+    monkeypatch.setattr(
+        "ui.preview_window.show_result",
+        lambda **values: results.append(values) if results is not None else None,
+    )
+    monkeypatch.setattr(
+        "ui.preview_window.show_error",
+        lambda **values: errors.append(values) if errors is not None else None,
+    )
 
 
 def _assert_one_prewrite_error(monkeypatch, tmp_path, book, expected_code, *, preview_callback=None,

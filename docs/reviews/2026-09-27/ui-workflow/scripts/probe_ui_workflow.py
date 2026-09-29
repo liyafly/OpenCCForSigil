@@ -59,6 +59,7 @@ def probe(qt, app, output, language, storage_root):
     config = _ConversionConfigDialog(
         qt, tuple(V1_CONFIGS), "s2t", {}, translator=tr, services=services,
         initial_options=profile_options(services.active),
+        embedded=True,
     )
     panel = config.options_panel
     panel.checks["builtin_rules_enabled"].setChecked(False)

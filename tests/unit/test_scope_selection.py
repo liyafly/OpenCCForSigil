@@ -1,6 +1,12 @@
 import pytest
 
-from sigil.scope import Scope, ScopeSelectionError, TargetSelection, TextFile, resolve_target_selection
+from sigil.scope import (
+    Scope,
+    ScopeSelectionError,
+    TargetSelection,
+    TextFile,
+    resolve_target_selection,
+)
 from sigil.adapter import SigilBookAdapter
 from tests.support.fake_qt import make_with_table
 from ui.i18n import Translator
@@ -132,15 +138,28 @@ def test_single_scope_uses_one_row_selection_and_manual_selection_is_independent
         TextFile("two", "Text/two.xhtml"),
     )
     dialog = _ScopeDialog(
-        make_with_table(), inventory, ("one",), "en", Translator("en"),
+        make_with_table(),
+        inventory,
+        ("one",),
+        "en",
+        Translator("en"),
         initial_scope=Scope.SINGLE,
+        embedded=True,
     )
 
-    assert not dialog.single_radio.isVisible()
+    assert not hasattr(dialog, "single_radio")
     assert dialog.selected_radio.isChecked()
-    assert sum(radio.isVisible() for radio in (
-        dialog.single_radio, dialog.selected_radio, dialog.spine_radio, dialog.all_radio,
-    )) == 3
+    assert (
+        sum(
+            radio.isVisible()
+            for radio in (
+                dialog.selected_radio,
+                dialog.spine_radio,
+                dialog.all_radio,
+            )
+        )
+        == 3
+    )
     assert dialog.list_widget.item(0).checkState() == dialog._qt.Qt.Checked
     assert dialog.selected_ids() == ("one",)
 
@@ -160,8 +179,13 @@ def test_single_initial_selection_accepts_as_selected_scope():
         TextFile("two", "Text/two.xhtml"),
     )
     dialog = _ScopeDialog(
-        make_with_table(), inventory, ("one",), "en", Translator("en"),
+        make_with_table(),
+        inventory,
+        ("one",),
+        "en",
+        Translator("en"),
         initial_scope=Scope.SINGLE,
+        embedded=True,
     )
 
     dialog._accept(close=False)
@@ -172,8 +196,13 @@ def test_single_initial_selection_accepts_as_selected_scope():
 
 def test_fixed_scope_modes_make_list_read_only():
     dialog = _ScopeDialog(
-        make_with_table(), FILES, ("a",), "en", Translator("en"),
+        make_with_table(),
+        FILES,
+        ("a",),
+        "en",
+        Translator("en"),
         spine_ids=("a", "b"),
+        embedded=True,
     )
     checkable = dialog._qt.Qt.ItemIsUserCheckable
 
@@ -186,20 +215,24 @@ def test_fixed_scope_modes_make_list_read_only():
             item = dialog.list_widget.item(index)
             assert item.flags() & checkable == 0
             original = item.checkState()
-            attempt = (dialog._qt.Qt.Unchecked if original == dialog._qt.Qt.Checked
-                       else dialog._qt.Qt.Checked)
+            attempt = (
+                dialog._qt.Qt.Unchecked
+                if original == dialog._qt.Qt.Checked
+                else dialog._qt.Qt.Checked
+            )
             item.setCheckState(attempt)
             assert item.checkState() == original
             assert (original == dialog._qt.Qt.Checked) is (file_id in checked_ids)
 
     dialog.selected_radio.setChecked(True)
-    assert all(dialog.list_widget.item(index).flags() & checkable
-               for index in range(dialog.list_widget.count()))
+    assert all(
+        dialog.list_widget.item(index).flags() & checkable
+        for index in range(dialog.list_widget.count())
+    )
 
 
 def test_scope_filter_enter_focuses_first_visible_row_without_accepting():
-    dialog = _ScopeDialog(
-        make_with_table(), FILES, (), "en", Translator("en"))
+    dialog = _ScopeDialog(make_with_table(), FILES, (), "en", Translator("en"), embedded=True)
     dialog.filter_edit.setText("nested")
     dialog.filter_edit.textChanged.emit("nested")
 
@@ -207,22 +240,18 @@ def test_scope_filter_enter_focuses_first_visible_row_without_accepting():
 
     assert dialog.list_widget.currentRow() == 1
     assert dialog.accepted is False
-    assert dialog.analyze_button.isDefault()
-    assert dialog.analyze_button.autoDefault() is False
+    assert not hasattr(dialog, "analyze_button")
     assert all(
         button.autoDefault() is False
         for button in (
             dialog.select_visible,
             dialog.clear_visible,
-            dialog.cancel_button,
-            dialog.analyze_button,
         )
     )
 
 
 def test_filter_enter_guard_consumes_key_and_focuses_first_row():
-    dialog = _ScopeDialog(
-        make_with_table(), FILES, (), "en", Translator("en"))
+    dialog = _ScopeDialog(make_with_table(), FILES, (), "en", Translator("en"), embedded=True)
     dialog.filter_edit.setText("nested")
     dialog.filter_edit.textChanged.emit("nested")
 
@@ -233,8 +262,13 @@ def test_filter_enter_guard_consumes_key_and_focuses_first_row():
 
 def test_scope_labels_are_buddied_and_filter_list_have_accessible_names():
     dialog = _ScopeDialog(
-        make_with_table(), FILES, (), "en", Translator("en"),
+        make_with_table(),
+        FILES,
+        (),
+        "en",
+        Translator("en"),
         checkpoint_notice_enabled=True,
+        embedded=True,
     )
 
     assert dialog.language_label.buddy() is dialog.language_combo
@@ -245,8 +279,7 @@ def test_scope_labels_are_buddied_and_filter_list_have_accessible_names():
 
 def test_scope_language_change_retranslates_guide_navigation_and_recovery_notice():
     translator = Translator("zh-Hans")
-    inventory = (TextFile("chapter", "Text/chapter.xhtml"),
-                 TextFile("nav", "Text/nav.xhtml"))
+    inventory = (TextFile("chapter", "Text/chapter.xhtml"), TextFile("nav", "Text/nav.xhtml"))
     dialog = _ScopeDialog(
         make_with_table(),
         inventory,
@@ -255,6 +288,7 @@ def test_scope_language_change_retranslates_guide_navigation_and_recovery_notice
         translator,
         nav_id="nav",
         recovery_notices=(("preferences_corrupt", "preferences.json"),),
+        embedded=True,
     )
     assert "导航" in dialog.list_widget.item(1).text()
     assert "损坏" in dialog.recovery_notice_label.text()
@@ -264,21 +298,23 @@ def test_scope_language_change_retranslates_guide_navigation_and_recovery_notice
     english = Translator("en")
     assert dialog.guide_label.text() == english.text("scope.selection_guide")
     assert dialog.list_widget.item(1).text() == (
-        "Text/nav.xhtml " + english.text("scope.navigation_suffix"))
+        "Text/nav.xhtml " + english.text("scope.navigation_suffix")
+    )
     assert dialog.recovery_notice_label.text() == english.text(
-        "recovery.preferences_corrupt", value="preferences.json")
+        "recovery.preferences_corrupt", value="preferences.json"
+    )
 
 
 def test_scope_list_middle_elides_and_keeps_complete_path_in_tooltip():
     qt = make_with_table()
     inventory = (TextFile("nav", "Text/very/long/navigation/path/nav.xhtml"),)
-    dialog = _ScopeDialog(
-        qt, inventory, (), "en", Translator("en"), nav_id="nav")
+    dialog = _ScopeDialog(qt, inventory, (), "en", Translator("en"), nav_id="nav", embedded=True)
 
     assert ("setTextElideMode", (qt.Qt.ElideMiddle,)) in dialog.list_widget.calls
     assert dialog.list_widget.item(0).toolTip() == inventory[0].href
-    assert dialog.list_widget.item(0).text().endswith(
-        Translator("en").text("scope.navigation_suffix"))
+    assert (
+        dialog.list_widget.item(0).text().endswith(Translator("en").text("scope.navigation_suffix"))
+    )
 
 
 def test_scope_notice_banners_use_information_icons_and_palette_surface():
@@ -291,6 +327,7 @@ def test_scope_notice_banners_use_information_icons_and_palette_surface():
         Translator("en"),
         recovery_notices=(("preferences_corrupt", "preferences.json"),),
         checkpoint_notice_enabled=True,
+        embedded=True,
     )
 
     for banner in (dialog.recovery_notice_banner, dialog.checkpoint_banner):
@@ -304,8 +341,13 @@ def test_scope_notice_banners_use_information_icons_and_palette_surface():
 
 def test_selected_file_count_remains_visible_when_filter_hides_it():
     dialog = _ScopeDialog(
-        make_with_table(), FILES, ("a",), "en", Translator("en"),
+        make_with_table(),
+        FILES,
+        ("a",),
+        "en",
+        Translator("en"),
         initial_scope=Scope.SINGLE,
+        embedded=True,
     )
     dialog.filter_edit.setText("nested/a.xhtml")
     dialog.filter_edit.textChanged.emit("nested/a.xhtml")
