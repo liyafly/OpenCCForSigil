@@ -76,7 +76,6 @@ def _read_member(source: Path, name: str) -> object:
     [
         "OpenCCForSigil/README.md",
         "OpenCCForSigil/resources/rule-guide.md",
-        "OpenCCForSigil/resources/defaults/conservative.json",
         "OpenCCForSigil/resources/i18n/en.json",
         "OpenCCForSigil/resources/i18n/zh-Hans.json",
         "OpenCCForSigil/resources/i18n/zh-Hant.json",
@@ -101,18 +100,6 @@ def test_validator_rejects_corrupt_runtime_json(artifact: Path, tmp_path: Path):
     _rewrite_archive(artifact, target, {name: b"{"})
 
     with pytest.raises(SystemExit, match="invalid JSON resource.*en\\.json"):
-        validate_artifact(target)
-
-
-def test_validator_rejects_profile_missing_controller_field(artifact: Path, tmp_path: Path):
-    name = "OpenCCForSigil/resources/defaults/conservative.json"
-    profile = _read_member(artifact, name)
-    assert isinstance(profile, dict)
-    profile.pop("scope")
-    target = tmp_path / "profile-missing.zip"
-    _rewrite_archive(artifact, target, {name: json.dumps(profile).encode("utf-8")})
-
-    with pytest.raises(SystemExit, match="profile resource missing keys.*scope"):
         validate_artifact(target)
 
 

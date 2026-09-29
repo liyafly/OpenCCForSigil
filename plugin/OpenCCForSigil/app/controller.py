@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from app.errors import RuleConflictError, UserCancelled
+from app.profiles import Profile
 from app.session import Session, SessionState
 from app.settings import RunSettings, profile_options, settings_hash, tokenizer_policy
 from app.version import PLUGIN_VERSION
@@ -64,10 +65,9 @@ class Controller:
         files_written = 0
         translator = Translator("en")
         try:
-            profile = _load_conservative_profile()
             preferences = self.storage.load_preferences(
                 default={
-                    "last_conversion_config": str(profile["conversion"]),
+                    "last_conversion_config": Profile().conversion,
                     "ui": {},
                 }
             )
@@ -88,7 +88,7 @@ class Controller:
                 return preferences
 
             preference_recovery = self.storage.take_recovery_notice()
-            default_config = _preferred_config(preferences, str(profile["conversion"]))
+            default_config = _preferred_config(preferences, Profile().conversion)
             self.session.transition(SessionState.SCANNING)
             # Always preflight the stable standard backend first. An optional
             # Jieba preference is resolved only after the selected payload has
@@ -908,26 +908,3 @@ def _show_error_safely(logger: SessionLogger, **values: object) -> None:
 def _preferred_config(preferences: Dict[str, object], fallback: str) -> str:
     candidate = preferences.get("last_conversion_config", fallback)
     return candidate if isinstance(candidate, str) and candidate in SUPPORTED_CONFIGS else fallback
-
-
-def _load_conservative_profile() -> Dict[str, object]:
-    profile_path = (
-        Path(__file__).resolve().parents[1] / "resources" / "defaults" / "conservative.json"
-    )
-    with profile_path.open("r", encoding="utf-8") as handle:
-        profile = json.load(handle)
-    if not isinstance(profile, dict):
-        raise ValueError("conservative profile must be a JSON object")
-    required = {
-        "id",
-        "conversion",
-        "scope",
-        "attributes",
-        "protected_elements",
-        "svg_text",
-        "mathml",
-    }
-    missing = sorted(required - profile.keys())
-    if missing:
-        raise ValueError("conservative profile missing keys: " + ", ".join(missing))
-    return profile

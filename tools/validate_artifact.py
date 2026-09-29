@@ -39,18 +39,6 @@ MAX_PLATFORM_ARTIFACT_SIZE_BYTES = 7_000_000
 MAX_FIRST_STAGE_FAT_ARTIFACT_SIZE_BYTES = 30_000_000
 MAX_THIRD_STAGE_FAT_ARTIFACT_SIZE_BYTES = 12_000_000
 
-_PROFILE_REQUIRED_FIELDS = {
-    "schema_version",
-    "id",
-    "conversion",
-    "segmentation",
-    "scope",
-    "attributes",
-    "protected_elements",
-    "svg_text",
-    "mathml",
-}
-_PROFILE_SCOPES = {"single", "all_xhtml", "spine", "selected"}
 _I18N_LANGUAGES = ("en", "zh-Hans", "zh-Hant")
 _PLACEHOLDER = re.compile(r"{([A-Za-z_][A-Za-z0-9_]*)}")
 _I18N_REQUIRED_KEYS = frozenset(
@@ -418,7 +406,6 @@ _REQUIRED_MEMBERS = {
     "OpenCCForSigil/resources/rule-guide.md",
     "OpenCCForSigil/LICENSE",
     "OpenCCForSigil/NOTICE",
-    "OpenCCForSigil/resources/defaults/conservative.json",
     "OpenCCForSigil/resources/i18n/en.json",
     "OpenCCForSigil/resources/i18n/zh-Hans.json",
     "OpenCCForSigil/resources/i18n/zh-Hant.json",
@@ -468,34 +455,6 @@ def _read_json_member(archive: zipfile.ZipFile, name: str) -> object:
         raise SystemExit(f"invalid JSON resource: {name}") from exc
 
 
-def _validate_profile(profile: object, name: str) -> None:
-    if not isinstance(profile, dict):
-        raise SystemExit(f"profile resource must be a JSON object: {name}")
-    missing = sorted(_PROFILE_REQUIRED_FIELDS - set(profile))
-    if missing:
-        raise SystemExit(f"profile resource missing keys ({name}): {', '.join(missing)}")
-    if not isinstance(profile["id"], str) or not profile["id"]:
-        raise SystemExit(f"profile resource has an invalid id: {name}")
-    if profile["schema_version"] != 1:
-        raise SystemExit(f"profile resource has an unsupported schema version: {name}")
-    if not isinstance(profile["conversion"], str) or not profile["conversion"]:
-        raise SystemExit(f"profile resource has an invalid conversion: {name}")
-    if not isinstance(profile["segmentation"], str) or profile["segmentation"] not in {
-        "mmseg",
-        "jieba",
-    }:
-        raise SystemExit(f"profile resource has an invalid segmentation: {name}")
-    if not isinstance(profile["scope"], str) or profile["scope"] not in _PROFILE_SCOPES:
-        raise SystemExit(f"profile resource has an invalid scope: {name}")
-    for key in ("attributes", "protected_elements"):
-        value = profile[key]
-        if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
-            raise SystemExit(f"profile resource has an invalid {key}: {name}")
-    for key in ("svg_text", "mathml"):
-        if not isinstance(profile[key], bool):
-            raise SystemExit(f"profile resource has an invalid {key}: {name}")
-
-
 def _validate_i18n(catalogs: dict[str, object], names: dict[str, str]) -> None:
     parsed: dict[str, dict[str, str]] = {}
     for language in _I18N_LANGUAGES:
@@ -524,8 +483,6 @@ def _validate_i18n(catalogs: dict[str, object], names: dict[str, str]) -> None:
 
 
 def _validate_runtime_resources(archive: zipfile.ZipFile) -> None:
-    profile_name = "OpenCCForSigil/resources/defaults/conservative.json"
-    _validate_profile(_read_json_member(archive, profile_name), profile_name)
     catalogs = {}
     names = {}
     for language in _I18N_LANGUAGES:
