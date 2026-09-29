@@ -332,7 +332,6 @@ def show_rules_window(
     rulesets: Iterable[RuleSet] | None = None,
     ruleset_id: str | None = None,
     rule_store: RuleStore | None = None,
-    jieba_pending: bool = False,
     ui_preferences=None,
     save_ui_preferences=None,
 ) -> RuleWindowResult | None:
@@ -358,7 +357,6 @@ def show_rules_window(
         rulesets=rulesets,
         ruleset_id=ruleset_id,
         rule_store=rule_store,
-        jieba_pending=jieba_pending,
         ui_preferences=ui_preferences,
         save_ui_preferences=save_ui_preferences,
     )
@@ -389,7 +387,6 @@ class RuleManagerDialog:
         rulesets: Iterable[RuleSet] | None = None,
         ruleset_id: str | None = None,
         rule_store: RuleStore | None = None,
-        jieba_pending: bool = False,
         ui_preferences=None,
         save_ui_preferences=None,
     ) -> None:
@@ -426,7 +423,6 @@ class RuleManagerDialog:
             str(identifier): tuple((str(profile_id), str(name)) for profile_id, name in profiles)
             for identifier, profiles in (ruleset_profiles or {}).items()
         }
-        self._jieba_pending = bool(jieba_pending)
         self._test_result_has_run = False
         self._ui_preferences = dict(ui_preferences or {})
         self._save_ui_preferences_callback = save_ui_preferences
@@ -520,11 +516,6 @@ class RuleManagerDialog:
     def _build(self) -> None:
         qt = self._qt
         layout = qt.QVBoxLayout(self.dialog)
-        self.jieba_notice = None
-        if self._jieba_pending:
-            self.jieba_notice = qt.QLabel(self._translator.text("config.jieba_checking"))
-            self.jieba_notice.setWordWrap(True)
-            layout.addWidget(self.jieba_notice)
         if self._storage_errors:
             notice = qt.QLabel(self._labels["skipped_files"].format(
                 files=", ".join(self._storage_errors)))
@@ -585,21 +576,11 @@ class RuleManagerDialog:
         content_layout = qt.QVBoxLayout(self.rules_page)
         self.test_page_layout = qt.QVBoxLayout(self.test_page)
 
-        self.default_direction_combo = qt.QComboBox()
-        for direction in (*sorted(SUPPORTED_DIRECTIONS - {"*"}), "*"):
-            label = (self._labels["direction_any"] if direction == "*"
-                     else configuration_label(self._translator, direction))
-            self.default_direction_combo.addItem(label, direction)
-        self.default_scope_combo = qt.QComboBox()
-        for scope in ("global", "profile", "book"):
-            self.default_scope_combo.addItem(self._labels[f"scope_{scope}"], scope)
         self.ruleset_settings_dialog = qt.QDialog(self.dialog)
         self.ruleset_settings_dialog.setWindowTitle(plugin_window_title(
             self._translator, self._translator.text("rules.ruleset_settings")))
         settings_layout = qt.QVBoxLayout(self.ruleset_settings_dialog)
         settings_form = qt.QFormLayout()
-        settings_form.addRow(self._labels["default_direction"], self.default_direction_combo)
-        settings_form.addRow(self._labels["default_scope"], self.default_scope_combo)
         settings_form.addRow(self.ruleset_enabled_check)
         settings_layout.addLayout(settings_form)
         settings_actions = qt.QHBoxLayout()
@@ -809,8 +790,6 @@ class RuleManagerDialog:
         self.rename_ruleset_button.clicked.connect(self._rename_ruleset)
         self.ruleset_enabled_check.stateChanged.connect(self._ruleset_enabled_changed)
         self.use_in_run_check.toggled.connect(self._use_in_run_changed)
-        self.default_direction_combo.currentIndexChanged.connect(self._ruleset_metadata_changed)
-        self.default_scope_combo.currentIndexChanged.connect(self._ruleset_metadata_changed)
         self.add_button.clicked.connect(self._add)
         self.update_button.clicked.connect(self._update_selected)
         self.remove_button.clicked.connect(self._remove)
@@ -884,26 +863,18 @@ class RuleManagerDialog:
         if self._ruleset_id in self._rulesets:
             current = self._rulesets[self._ruleset_id]
             enabled_check = getattr(self, "ruleset_enabled_check", None)
-            direction_combo = getattr(self, "default_direction_combo", None)
-            scope_combo = getattr(self, "default_scope_combo", None)
             self._rulesets[self._ruleset_id] = replace(
                 current,
                 rules=tuple(self.rules),
                 enabled=(enabled_check.isChecked() if enabled_check is not None
                          else current.enabled),
-                default_direction=(str(direction_combo.currentData())
-                                   if direction_combo is not None
-                                   else current.default_direction),
-                default_scope=(str(scope_combo.currentData()) if scope_combo is not None
-                               else current.default_scope),
             )
 
     def _load_ruleset_metadata(self) -> None:
         current = self._rulesets.get(self._ruleset_id)
         if current is None or not hasattr(self, "ruleset_enabled_check"):
             return
-        controls = [self.ruleset_enabled_check, self.default_direction_combo,
-                    self.default_scope_combo]
+        controls = [self.ruleset_enabled_check]
         if hasattr(self, "use_in_run_check"):
             controls.append(self.use_in_run_check)
         for control in controls:
@@ -911,10 +882,6 @@ class RuleManagerDialog:
         self.ruleset_enabled_check.setChecked(current.enabled)
         if hasattr(self, "use_in_run_check"):
             self.use_in_run_check.setChecked(self._ruleset_id in self._run_ruleset_ids)
-        direction_index = self.default_direction_combo.findData(current.default_direction)
-        self.default_direction_combo.setCurrentIndex(max(0, direction_index))
-        scope_index = self.default_scope_combo.findData(current.default_scope)
-        self.default_scope_combo.setCurrentIndex(max(0, scope_index))
         for control in controls:
             control.blockSignals(False)
 
@@ -965,8 +932,6 @@ class RuleManagerDialog:
         self._rulesets[self._ruleset_id] = replace(
             current,
             enabled=self.ruleset_enabled_check.isChecked(),
-            default_direction=str(self.default_direction_combo.currentData()),
-            default_scope=str(self.default_scope_combo.currentData()),
         )
         self._mark_test_result_stale()
 
@@ -974,14 +939,11 @@ class RuleManagerDialog:
         current = self._rulesets.get(self._ruleset_id)
         if current is None or not hasattr(self, "direction_combo"):
             return
-        default_direction = current.default_direction
-        if default_direction == "*":
-            default_direction = base_direction(self._config)
-        direction = self.direction_combo.findData(default_direction)
+        direction = self.direction_combo.findData(base_direction(self._config))
         if direction >= 0:
             self.direction_combo.setCurrentIndex(direction)
         self._update_direction_warning()
-        scope = self.scope_combo.findData(current.default_scope)
+        scope = self.scope_combo.findData("global")
         if scope >= 0:
             self.scope_combo.setCurrentIndex(scope)
 

@@ -653,7 +653,7 @@ def test_settings_windows_query_nonblocking_config_availability(tmp_path):
         storage, SimpleNamespace(), {}, language="en", session_id="test-session")
     settings.backend = Backend()
 
-    assert settings._available_config_options() == (("s2t",), True)
+    assert settings._available_config_options() == ("s2t",)
     assert calls == ["nonblocking"]
 
 
@@ -737,5 +737,5 @@ def test_settings_windows_use_nonblocking_configuration_availability():
         jieba_probe_pending=True,
     )
 
-    assert settings._available_config_options() == (("s2t",), True)
+    assert settings._available_config_options() == ("s2t",)
     assert calls == ["nonblocking"]

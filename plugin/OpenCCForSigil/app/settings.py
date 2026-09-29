@@ -229,13 +229,12 @@ class RunSettings:
             if preferences.get("profile_id") == identifier:
                 self.storage.update_preferences({"profile_id": None})
 
-        available_configs, jieba_pending = self._available_config_options()
+        available_configs = self._available_config_options()
 
         selected = show_profile_window(
             values, translator=translator, store=self.profiles,
             selected_id=draft.id,
             available_configs=available_configs,
-            jieba_pending=jieba_pending,
             available_rulesets=("default", *(ruleset.id for ruleset in rulesets)),
             current_profile=draft,
             active_profile=self.current_profile(
@@ -251,7 +250,7 @@ class RunSettings:
         """Validate the selected profile and its rule snapshot before activation."""
 
         if self.backend is not None:
-            available, _pending = self._available_config_options()
+            available = self._available_config_options()
             if profile.conversion not in available:
                 raise ValueError("profile configuration is unavailable on this host")
         candidate = replace(
@@ -305,12 +304,11 @@ class RunSettings:
             for identifier in profile.ruleset_ids:
                 ruleset_profiles.setdefault(identifier, []).append(
                     (profile.id, profile.name or profile.id))
-        available_configs, jieba_pending = self._available_config_options()
+        available_configs = self._available_config_options()
         result = show_rules_window(
             values[initial_id].rules, translator=translator, official_convert=self.backend,
             config=config, profile_id=self.active.id, book_fingerprint=self.book_fingerprint,
             available_configs=available_configs,
-            jieba_pending=jieba_pending,
             comparison_configs=comparison_configs(config),
             storage_errors=self._storage_error_labels(errors, translator),
             run_options=(profile_options(self.active) if run_options is None
@@ -377,10 +375,10 @@ class RunSettings:
 
     def _available_config_options(self):
         if self.backend is None:
-            return (), False
+            return ()
         nonblocking = getattr(self.backend, "available_configs_nonblocking", None)
         available = nonblocking() if callable(nonblocking) else self.backend.available_configs()
-        return tuple(available), bool(getattr(self.backend, "jieba_probe_pending", False))
+        return tuple(available)
 
     def _replace_ruleset_references(self, renames):
         replacements = dict(renames)

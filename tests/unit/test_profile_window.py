@@ -52,7 +52,7 @@ def _manager(profiles, store, *, active=None, current=None, selected_id=None,
     manager._translator = Translator("en")
     manager._labels = {
         "title": "Profiles", "use": "Use", "rename": "Rename", "copy": "Copy",
-        "delete": "Delete", "from_current": "From current settings", "close": "Close",
+        "delete": "Delete", "close": "Close",
         "summary": "Summary", "conversion": "Direction", "rules": "Rule sets",
         "options": "Options", "jieba": "Advanced Jieba", "unavailable": "unavailable",
         "ask_name": "Profile name", "duplicate_name": "duplicate", "invalid_name": "empty",
@@ -60,7 +60,6 @@ def _manager(profiles, store, *, active=None, current=None, selected_id=None,
         "copied": " copy", "skipped_files": "skipped: {files}", "not_selected": "select",
     }
     manager._available_config_ids = set()
-    manager._jieba_pending = False
     manager._available_rulesets = ("default", "mine")
     manager._selected_id = selected_id
     manager._current_profile = current or (profiles[0] if profiles else None)

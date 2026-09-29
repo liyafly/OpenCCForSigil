@@ -427,15 +427,6 @@ def choose_scope(
             }
             details.append(translator.text("scope.run_summary_risks", items=" · ".join(
                 translator.text(risk_names[name]) for name in data["risks"])))
-        capability = None
-        if config_dialog._probe_state == "pending":
-            capability = translator.text("config.jieba_checking")
-        elif config_dialog._probe_state == "unavailable" and config_dialog._preferred_jieba:
-            capability = translator.text("config.jieba_reselect")
-        elif config_dialog.jieba_checkbox.isChecked():
-            capability = translator.text("config.jieba_available")
-        if capability:
-            details.append(capability)
         if details:
             summary_text += "\n" + " · ".join(details)
         summary.setText(summary_text)
@@ -3342,12 +3333,6 @@ class _ConversionConfigDialog:
         self.jieba_checkbox = qt_widgets.QCheckBox(self._translator.text("config.jieba"))
         self.jieba_checkbox.setToolTip(self._translator.text("config.jieba_tooltip"))
         layout.addWidget(self.jieba_checkbox)
-        self.jieba_details_button = qt_widgets.QPushButton(
-            self._translator.text("config.jieba_details"))
-        self.jieba_details_button.setEnabled(False)
-        self.jieba_details_button.setVisible(False)
-        layout.addWidget(self.jieba_details_button)
-
         from ui.run_options import RunOptionsPanel
         self.options_panel = RunOptionsPanel(
             qt_widgets, translator, layout, initial=initial_options,
@@ -3359,7 +3344,6 @@ class _ConversionConfigDialog:
         self._completion_enabled_callback = None
         self.combo.currentIndexChanged.connect(self._direction_changed)
         self.jieba_checkbox.stateChanged.connect(self._update_jieba_state)
-        self.jieba_details_button.clicked.connect(self._show_jieba_details)
         selected_index = self.combo.findData(self._default_base)
         if selected_index >= 0:
             self.combo.setCurrentIndex(selected_index)
@@ -3432,12 +3416,10 @@ class _ConversionConfigDialog:
         self.jieba_checkbox.setToolTip(tooltip)
         self.jieba_status.setToolTip(tooltip)
         self.jieba_status.setText(status)
-        self.jieba_details_button.setEnabled(bool(self._probe_error))
         controls_visible = not (
             self._probe_state == "unavailable" and not self._preferred_jieba)
         self.jieba_checkbox.setVisible(controls_visible)
         self.jieba_status.setVisible(controls_visible)
-        self.jieba_details_button.setVisible(controls_visible and bool(self._probe_error))
         self.options_panel.update_enablement(self._get_config())
         callback = self._completion_enabled_callback
         if callable(callback):
@@ -3463,16 +3445,6 @@ class _ConversionConfigDialog:
         self._update_jieba_state()
         if state != "pending":
             self._stop_probe_timer()
-
-    def _show_jieba_details(self):
-        if not self._probe_error:
-            return
-        self._qt.QMessageBox.information(
-            self.dialog,
-            plugin_window_title(
-                self._translator, self._translator.text("config.jieba_details_title")),
-            self._probe_error,
-        )
 
     def _stop_probe_timer(self):
         timer = getattr(self, "_probe_timer", None)
@@ -3529,7 +3501,6 @@ class _ConversionConfigDialog:
             self.combo.setCurrentIndex(selected_index)
         self.jieba_checkbox.setText(self._translator.text("config.jieba"))
         self.jieba_checkbox.setToolTip(self._translator.text("config.jieba_tooltip"))
-        self.jieba_details_button.setText(self._translator.text("config.jieba_details"))
         self.options_panel.retranslate()
         self._apply_jieba_state()
 

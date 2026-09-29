@@ -358,7 +358,8 @@ def _probe_state(qt, app, language, state):
         assert not report["analyze_enabled"]
         expected = ("config.jieba_checking" if state == "pending"
                     else "config.jieba_reselect")
-        assert translator.text(expected) in report["summary"]
+        assert translator.text(expected) in captured["config"].jieba_status.text()
+        assert translator.text(expected) not in report["summary"]
     return report
 
 

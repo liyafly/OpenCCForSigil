@@ -108,6 +108,20 @@ def test_skip_invalid_import_option_string_is_removed_from_catalogs():
     assert all("rules.skip_invalid" not in catalog for catalog in catalogs.values())
 
 
+def test_simp18_redundant_action_strings_are_removed_from_catalogs():
+    catalogs = load_catalogs()
+    removed = {
+        "profile.from_current",
+        "profile.checking",
+        "rules.default_direction",
+        "rules.default_scope",
+        "config.jieba_details",
+        "config.jieba_details_title",
+    }
+
+    assert all(not (set(catalog) & removed) for catalog in catalogs.values())
+
+
 def test_one_term_per_concept():
     catalogs = load_catalogs()
 

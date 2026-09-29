@@ -435,11 +435,9 @@ def test_more_menu_exposes_settings_help_import_bulk_export_and_delete(monkeypat
         for widget in row
         if isinstance(widget, fake_qt.Base)
     }
-    assert {
-        manager.default_direction_combo,
-        manager.default_scope_combo,
-        manager.ruleset_enabled_check,
-    } <= settings_controls
+    assert settings_controls == {manager.ruleset_enabled_check}
+    assert not hasattr(manager, "default_direction_combo")
+    assert not hasattr(manager, "default_scope_combo")
 
 
 def test_test_page_places_input_before_test_buttons():
@@ -500,6 +498,17 @@ def test_new_rule_in_fresh_default_set_uses_current_direction():
     manager._add()
 
     assert manager.rules[-1].direction == "s2t"
+
+
+def test_new_rule_defaults_ignore_saved_ruleset_direction_and_scope():
+    manager = RuleManagerDialog(
+        make_with_table(), (), translator=Translator("en"), config="s2t",
+        rulesets=(RuleSet("mine", default_direction="t2s", default_scope="book"),),
+        ruleset_id="mine",
+    )
+
+    assert manager.direction_combo.currentData() == "s2t"
+    assert manager.scope_combo.currentData() == "global"
 
 
 def test_wildcard_direction_shows_reverse_warning():

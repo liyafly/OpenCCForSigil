@@ -234,7 +234,6 @@ _I18N_REQUIRED_KEYS = _I18N_REQUIRED_KEYS | frozenset(
         'profile.delete',
         'profile.delete_modified',
         'profile.duplicate_name',
-        'profile.from_current',
         'profile.invalid_name',
         'profile.not_selected',
         'profile.operation_failed',

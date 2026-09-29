@@ -138,7 +138,6 @@ def show_profile_window(
     active_profile: Profile | None = None,
     on_delete=None,
     storage_errors: Iterable[str] = (),
-    jieba_pending: bool = False,
     ui_preferences=None,
     save_ui_preferences=None,
 ) -> Profile | None:
@@ -149,7 +148,7 @@ def show_profile_window(
         qt, tuple(profiles), translator=active_translator, store=store, selected_id=selected_id,
         available_configs=available_configs, available_rulesets=available_rulesets,
         current_profile=current_profile, active_profile=active_profile, on_delete=on_delete,
-        storage_errors=storage_errors, jieba_pending=jieba_pending,
+        storage_errors=storage_errors,
         ui_preferences=ui_preferences,
     )
     exec_dialog(manager.dialog)
@@ -172,7 +171,6 @@ class ProfileManagerDialog:
         active_profile: Profile | None = None,
         on_delete=None,
         storage_errors: Iterable[str] = (),
-        jieba_pending: bool = False,
         ui_preferences=None,
     ) -> None:
         self._qt = qt_widgets
@@ -182,7 +180,6 @@ class ProfileManagerDialog:
         self._store = store
         self._on_delete = on_delete
         self._storage_errors = tuple(storage_errors)
-        self._jieba_pending = bool(jieba_pending)
         self._ui_preferences = dict(ui_preferences or {})
         self._current_profile = current_profile or (self._profiles[0] if self._profiles else None)
         self._active_profile = active_profile
@@ -207,11 +204,6 @@ class ProfileManagerDialog:
     def _build(self) -> None:
         qt = self._qt
         root = qt.QVBoxLayout(self.dialog)
-        self.jieba_notice = None
-        if self._jieba_pending:
-            self.jieba_notice = qt.QLabel(self._translator.text("config.jieba_checking"))
-            self.jieba_notice.setWordWrap(True)
-            root.addWidget(self.jieba_notice)
         if self._storage_errors:
             notice = qt.QLabel(self._labels["skipped_files"].format(
                 files=", ".join(self._storage_errors)))
@@ -271,10 +263,8 @@ class ProfileManagerDialog:
         self.rename_button = qt.QPushButton(self._labels["rename"])
         self.copy_button = qt.QPushButton(self._labels["copy"])
         self.delete_button = qt.QPushButton(self._labels["delete"])
-        self.from_current_button = qt.QPushButton(self._labels["from_current"])
         self.close_button = qt.QPushButton(self._labels["close"])
-        for button in (self.from_current_button, self.rename_button,
-                       self.copy_button, self.delete_button):
+        for button in (self.rename_button, self.copy_button, self.delete_button):
             actions.addWidget(button)
         actions.addStretch(1)
         actions.addWidget(self.close_button)
@@ -287,7 +277,6 @@ class ProfileManagerDialog:
         self.rename_button.clicked.connect(self._rename)
         self.copy_button.clicked.connect(self._copy)
         self.delete_button.clicked.connect(self._delete)
-        self.from_current_button.clicked.connect(self._from_current)
         self.close_button.clicked.connect(self.dialog.reject)
 
     def _refresh(self) -> None:
@@ -441,8 +430,7 @@ class ProfileManagerDialog:
         value = _profile_summary_value(profile, name, self._translator)
         if name == "conversion":
             if profile.conversion not in self._available_config_ids:
-                status = (self._labels["checking"] if profile.conversion.endswith("_jieba")
-                          and self._jieba_pending else self._labels["unavailable"])
+                status = self._labels["unavailable"]
             else:
                 status = self._labels["available"]
             value += self._translator.text("profile.status", status=status)
@@ -464,8 +452,7 @@ class ProfileManagerDialog:
         if name == "conversion":
             label = configuration_label(self._translator, value).replace(" → ", " to ")
             if value not in self._available_config_ids:
-                status = (self._labels["checking"] if value.endswith("_jieba")
-                          and self._jieba_pending else self._labels["unavailable"])
+                status = self._labels["unavailable"]
             else:
                 status = self._labels["available"]
             return f"{label} ({status})"
@@ -543,21 +530,6 @@ class ProfileManagerDialog:
         self._profiles.append(copied)
         self._selected_id = copied.id
         self._restore_id = copied.id
-        self._refresh()
-
-    def _from_current(self) -> None:
-        if self._current_profile is None or self._store is None:
-            return
-        name = self._ask_name(
-            self._labels["ask_name"], profile_display_name(self._current_profile, self._translator))
-        if name is None:
-            return
-        created = replace(self._current_profile, id=str(uuid4()), name=name)
-        if not self._save_profile(created):
-            return
-        self._profiles.append(created)
-        self._selected_id = created.id
-        self._restore_id = created.id
         self._refresh()
 
     def _delete(self) -> None:

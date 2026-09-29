@@ -77,7 +77,6 @@ def _dialog(probe, *, preferred_jieba=True):
     dialog.combo = Control("s2t")
     dialog.jieba_checkbox = Control(False)
     dialog.jieba_status = Control()
-    dialog.jieba_details_button = Control()
     dialog._completion_enabled_callback = None
     dialog.options_panel = SimpleNamespace(update_enablement=lambda _config: None)
     return dialog
@@ -126,7 +125,7 @@ def test_not_started_probe_disables_preferred_jieba_until_a_result_exists():
     assert dialog.jieba_status.text == "config.jieba_checking"
 
 
-def test_unavailable_preferred_jieba_still_explains_block():
+def test_unavailable_preferred_jieba_explains_block_in_status_tooltip():
     probe = Probe("unavailable", "native library requires a newer operating system")
     dialog = _dialog(probe)
 
@@ -135,12 +134,8 @@ def test_unavailable_preferred_jieba_still_explains_block():
     assert not dialog._continue_is_allowed()
     assert dialog.jieba_checkbox.isVisible()
     assert dialog.jieba_status.isVisible()
-    assert dialog.jieba_details_button.isVisible()
     assert probe.reason in dialog.jieba_checkbox.tooltip
-    assert dialog.jieba_details_button.enabled
-
-    dialog._show_jieba_details()
-    assert probe.reason in dialog.details[-1]
+    assert probe.reason in dialog.jieba_status.tooltip
 
     dialog.combo.value = "t2s"
     dialog._direction_changed()
@@ -157,7 +152,6 @@ def test_unavailable_jieba_without_preference_is_hidden():
 
     assert not dialog.jieba_checkbox.isVisible()
     assert not dialog.jieba_status.isVisible()
-    assert not dialog.jieba_details_button.isVisible()
 
 
 def test_user_can_uncheck_preferred_jieba():
@@ -209,10 +203,11 @@ def test_conversion_direction_label_is_buddied_to_its_combo():
     assert dialog.direction_label.buddy() is dialog.combo
 
 
-def test_jieba_details_is_hidden_without_error_and_visible_after_failure():
+def test_jieba_details_button_is_removed_and_failure_reason_is_available_in_tooltip():
     dialog = _full_dialog(Probe("available"))
-    assert not dialog.jieba_details_button.isVisible()
+    assert not hasattr(dialog, "jieba_details_button")
 
     failed_dialog = _full_dialog(Probe("unavailable", "native probe failed"))
 
-    assert failed_dialog.jieba_details_button.isVisible()
+    assert not hasattr(failed_dialog, "jieba_details_button")
+    assert "native probe failed" in failed_dialog.jieba_status.toolTip()
