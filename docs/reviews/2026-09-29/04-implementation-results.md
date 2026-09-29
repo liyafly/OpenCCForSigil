@@ -75,3 +75,21 @@
 - `make check`: Ruff passed; **826 passed, 1 skipped** (fake-Qt layout limitation); vendor manifest passed; OpenCC differential passed (28 cases); Jieba differential passed (10 cases); plugin metadata valid (`0.2.10`).
 - Real Qt `check_ui_acceptance.py --verify --width 960 --height 640`: **PASS**, all 13 scenarios; output: `/tmp/opencc-ui-acceptance-batch5-final/acceptance.json`.
 - FIX-11, FIX-13, and FIX-14 acceptance checks: complete. FIX-16 remains skipped per the review decision and is replaced by SIMP-22. Sigil host acceptance: **Not verified**.
+
+## Batch 6 checkpoint — FIX-12 complete; FIX-17 stopped
+
+| Item | Commit | Validation and result |
+| --- | --- | --- |
+| FIX-12 | `457e75e` | All four repaired 2026-09-28 probes ran. UXS-02 Enter values were `[False, False, False, False]`; rules viewport showed 10 rows and the add button in view at default size and 960×640; both RULE-05 rulesets showed the conflict and disabled Save; RULE-11 run ruleset IDs remained unchanged. The 2026-09-28 results corrections were appended only. |
+| FIX-17 | `ff64375` | Required suite: **73 passed, 1 failed**. The failure is `test_compiled_lock_spans_matches_legacy_ordering_for_300_random_snapshots`, exposed after changing random literal sources to the text alphabet. Per the FIX-17 instruction, this is recorded without changing product code or weakening assertions; later batch work is stopped here. |
+
+### FIX-12 PERF-06 low-load runs
+
+`probe_default_diagnostics.py` ran three times with the first `vm.loadavg` values at start of 1.90, 2.48, and 1.88 (all below 4). Each run preserved identical plan digests. Median plan times across the three runs:
+
+| Config | Current | Evidence | Evidence + memo | Digest |
+| --- | ---: | ---: | ---: | --- |
+| s2t | 4.168 s | 4.034 s | 4.058 s | `06781c1d491c31f7` |
+| s2twp | 4.976 s | 4.983 s | 5.048 s | `6284eef800e5b462` |
+
+The FIX-17 mismatch reproduces at seed `20260923`, case 0, config `s2t`, input `21字A0字字汉语0语汉词字目2A词目词词词A词汉词语0语词2目2词汉目1汉1`. The compiled path misses rule `r7` (`目2A → 目7`, `[14,17)`) and accepts `r21` (`2 → 2`, `[15,16)`); the full-scan path also finds `r67` (`1汉1 → 目67`, `[36,39)`). No phase-level `make check`, 960×640 Qt gate, or push was run after this failure. FIX-18 has not started. Sigil host acceptance: **Not verified**.
