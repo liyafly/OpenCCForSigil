@@ -185,4 +185,12 @@ Each item has its own commit on `main`; each commit records tests that failed be
 - Real Qt `check_ui_acceptance.py --verify --width 960 --height 640`: **PASS**, all **13/13** scenarios. Evidence: `/tmp/opencc-phase9-final-ui-acceptance/acceptance.json`. PySide6/Qt 6.11.2 used an 800×800 offscreen logical screen; requested geometry was 960×640.
 - Real Qt run-summary D15 probe: **PASS**. Evidence: `/tmp/opencc-phase9-final-summary/summary-en.json`.
 - `git diff origin/main -- docs/reviews/2026-09-29/evidence`: empty. The signed review evidence directory is unchanged.
-- `SIMP-17`, `SIMP-31`, and `SIMP-32`: **按 2026-09-29 决定不做**. Sigil-host acceptance: **Not verified**. GitHub Actions for Phase 9 will be recorded after the staged push.
+- `SIMP-17`, `SIMP-31`, and `SIMP-32`: **按 2026-09-29 决定不做**. Sigil-host acceptance: **Not verified**. The first remote run and its performance follow-up are recorded below.
+
+## Phase 9 post-push performance follow-up
+
+- Initial GitHub Actions run [`36595943990`](https://github.com/liyafly/OpenCCForSigil/actions/runs/36595943990) on `f66113a0a084f191392bd959dd797329d30ed4b7` failed only on macOS x86_64 at `test_three_hundred_thousand_preview_build_filter_and_batch_accept_stay_bounded`: `accept_all_seconds = 1.82905` against the unchanged `<1.0 s` bound. The other five payload jobs passed; **859 passed, 1 skipped** in the failing job. Package assembly and smoke jobs were skipped after the matrix failure.
+- Follow-up commit `6ff11aaeb69d93f37cfd4d20926b750d9ef3cb08` adds batched decision restoration per preview session and per-file count updates. The new `test_preview_session_restores_many_decisions_with_one_revision` was run red before implementation. The 300k performance test passes locally; no performance threshold was changed.
+- `mise exec -- make check` at `6ff11aaeb69d93f37cfd4d20926b750d9ef3cb08`: **PASS** — Ruff; **861 passed, 1 skipped** (`tests/unit/test_rules_window.py:477`, fake Qt does not calculate widget layout sizes); official payload manifest valid; OpenCC differential **28/28**; Jieba differential **10/10**; plugin metadata valid (`0.2.10`).
+- Real Qt acceptance after the follow-up: **PASS**, all **13/13** scenarios. Evidence: `/tmp/opencc-postci-bulk-preview-ui/acceptance.json`; PySide6/Qt 6.11.2, 800×800 offscreen logical screen, requested geometry 960×640.
+- Follow-up GitHub Actions run [`36598487777`](https://github.com/liyafly/OpenCCForSigil/actions/runs/36598487777) on `6ff11aaeb69d93f37cfd4d20926b750d9ef3cb08`: **SUCCESS**. All six payload jobs, cross-platform Jieba comparison, plugin package assembly, and all six package smoke jobs passed. Tag-only attestation and GitHub Release jobs were skipped for this branch push.
