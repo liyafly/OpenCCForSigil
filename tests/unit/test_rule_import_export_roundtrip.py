@@ -248,6 +248,19 @@ def test_tsv_export_skips_fields_with_line_breaks_and_reports_count():
     assert export_warnings((safe, unsafe), format="tsv") == (True, 1)
 
 
+def test_tsv_export_preserves_list_order():
+    rules = (
+        Rule(id="b", source="second", target="第二", direction="s2t"),
+        Rule(id="a", source="first", target="第一", direction="s2t"),
+    )
+
+    tsv_rows = export_rules(rules, format="tsv").splitlines()
+    csv_rows = export_rules(rules, format="csv").splitlines()
+
+    assert tsv_rows[1].split("\t")[1] == "second"
+    assert csv_rows[1].split(",")[1] == "second"
+
+
 def test_csv_quotes_and_multiline_fields_keep_csv_behavior():
     payload = '"direction","source","target","comment"\n'
     payload += '"s2t","""引号""","目标","第一行\n第二行"\n'

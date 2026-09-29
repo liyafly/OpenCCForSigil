@@ -144,7 +144,7 @@ def _delimited(rules: Iterable[Rule], delimiter: str) -> str:
         output.write("\t".join(header) + "\n")
     else:
         writer.writerow(header)
-    for rule in sorted(rules, key=lambda item: item.id):
+    for rule in rules:
         fields = (
             rule.direction,
             rule.source,
