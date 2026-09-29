@@ -646,7 +646,7 @@ def test_noop_return_to_scope_restarts_with_new_selection(monkeypatch, tmp_path)
     assert [file_id for file_id, _data in book.writes] == ["c"]
 
 
-def test_nav_preference_is_saved_while_nav_is_outside_scope(monkeypatch, tmp_path):
+def test_nav_in_selected_files_is_always_converted(monkeypatch, tmp_path):
     class Book:
         def __init__(self):
             self.files = {
@@ -671,45 +671,32 @@ def test_nav_preference_is_saved_while_nav_is_outside_scope(monkeypatch, tmp_pat
 
     book = Book()
     data_dir = tmp_path / "plugin-data"
-    scope_number = 0
-    config_calls = []
+    preview_document_kinds = []
 
     def choose_scope(_adapter, initial_language, **_kwargs):
-        nonlocal scope_number
-        scope_number += 1
-        selection = (
-            TargetSelection(Scope.SELECTED, ("chapter",))
-            if scope_number == 1
-            else TargetSelection(Scope.SELECTED, ("chapter", "nav"))
-        )
-        nav_available = "nav" in selection.file_ids
-        initial_options = _kwargs["initial_options"]
-        config_calls.append((dict(initial_options), nav_available))
         return _scope_outcome(
             True,
-            selection,
+            TargetSelection(Scope.SELECTED, ("nav",)),
             initial_language,
             config="s2t",
-            options={"include_nav": nav_available},
-            preference_options={"include_nav": True},
+            options={"include_nav": False},
+            preference_options={"include_nav": False},
         )
 
+    def show_preview(planned, **_kwargs):
+        preview_document_kinds.extend(
+            (item.source.file_id, change.document_kind)
+            for item in planned for change in item.plan.changes)
+        return _accept_all_preview(planned)
+
     monkeypatch.setattr("ui.preview_window.choose_scope", choose_scope)
-    monkeypatch.setattr("ui.preview_window.show_preview", _accept_all_preview)
+    monkeypatch.setattr("ui.preview_window.show_preview", show_preview)
     monkeypatch.setattr(
         "ui.preview_window.create_progress_reporter", lambda _total, **_kwargs: _NoProgress()
     )
     monkeypatch.setattr("ui.preview_window.show_result", lambda **_kwargs: None)
 
     assert Controller(book, data_dir=data_dir).run() == 0
-    assert Controller(book, data_dir=data_dir).run() == 0
 
-    assert config_calls[0][1] is False
-    assert config_calls[1][1] is True
-    assert config_calls[1][0]["include_nav"] is True
-    assert (
-        json.loads((data_dir / "preferences.json").read_text(encoding="utf-8"))["run_options"][
-            "include_nav"
-        ]
-        is True
-    )
+    assert ("nav", "nav") in preview_document_kinds
+    assert book.writes == ["nav"]

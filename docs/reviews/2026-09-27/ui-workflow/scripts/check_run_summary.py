@@ -26,6 +26,13 @@ from ui.i18n import Translator  # noqa: E402
 from ui.qt import ensure_application, load_qt  # noqa: E402
 
 
+_NAV_OPTION_LABELS = {
+    "en": "Include NAV within the selected XHTML files",
+    "zh-Hans": "包含所选 XHTML 中的 NAV 目录",
+    "zh-Hant": "包含所選 XHTML 中的 NAV 目錄",
+}
+
+
 class MetadataAdapter:
     def __init__(self):
         self.reads = []
@@ -130,20 +137,11 @@ def _run_summary(qt, app, language, output_dir, width, height):
                             row for row in range(table.rowCount())
                             if table.item(row, 0).text() == rule_label
                         )
-                        nav_row = next(
-                            row for row in range(table.rowCount())
-                            if table.item(row, 0).text() == translator.text("options.include_nav")
-                        )
                         rules_tooltip = table.item(rule_row, 1).toolTip()
-                        nav_reason_tooltip = table.item(nav_row, 3).toolTip()
                         detail.setdefault("full_value_tooltips", []).append({
                             "rules": rules_tooltip,
-                            "nav_effective_reason": nav_reason_tooltip,
                         })
                         assert "a-long-rule-set-id" in rules_tooltip
-                        assert nav_reason_tooltip == table.item(nav_row, 3).text()
-                        assert translator.text("options.not_effective_reason").split("{")[0] \
-                            in nav_reason_tooltip
                         detail.setdefault("tables", []).append(rows)
                         detail["rows"] = rows
                         header = table.horizontalHeader()
@@ -222,13 +220,11 @@ def _run_summary(qt, app, language, output_dir, width, height):
                     detail["view_changes_clicked"] = True
                     config.options_panel.view_changes_button.click()
                     app.processEvents()
-                    nav_values = detail["rows"][translator.text("options.include_nav")]
-                    detail["nav_saved_current_effective"] = nav_values
+                    nav_label = _NAV_OPTION_LABELS[language]
+                    detail["nav_saved_current_effective"] = nav_label not in detail["rows"]
                     mathml_label = translator.text("profile.mathml")
                     detail["mathml_visible_when_unchanged"] = mathml_label in detail["rows"]
-                    assert nav_values[0] == translator.text("profile.enabled")
-                    assert nav_values[1] == translator.text("profile.enabled")
-                    assert translator.text("options.not_effective_reason").split("{")[0] in nav_values[2]
+                    assert nav_label not in detail["rows"]
                     assert detail["mathml_visible_when_unchanged"]
 
                     # A new direction refreshes the summary and marks an enabled
@@ -286,7 +282,7 @@ def _run_summary(qt, app, language, output_dir, width, height):
                     adapter, initial_language=language, translator=translator,
                     available_configs=("s2t", "s2tw", "t2jp"), default_config="s2t",
                     initial_options={
-                        "include_nav": True, "include_ncx": True,
+                        "include_ncx": True,
                         "include_metadata": True, "convert_alt": False,
                         "force_pivot": True, "pivot_chain": ("t2s", "s2t"),
                     }, services=services, metadata_available=True,

@@ -109,8 +109,6 @@ class SigilBookAdapter:
         """Freeze explicitly selected resources, without reading their bodies."""
         nav_id = self.nav_id()
         for file_id, href in self.text_files_for_targets(selection):
-            if file_id == nav_id and not selection.include_nav:
-                continue
             yield file_id, href, "nav" if file_id == nav_id else "xhtml"
         if selection.include_ncx:
             manifest = getattr(self._bk, "manifest_iter", None)

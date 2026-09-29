@@ -157,7 +157,6 @@ _I18N_REQUIRED_KEYS = frozenset(
         "options.language_tags",
         "options.high_risk",
         "options.active_rulesets",
-        "options.nav_unavailable",
         "settings.tools",
         "settings.self_test_check",
         "settings.self_test_result",

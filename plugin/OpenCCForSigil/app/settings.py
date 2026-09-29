@@ -19,8 +19,7 @@ from ui.qt import ask_confirmation, exec_dialog
 from ui.window_state import restore_window_size, save_window_size
 
 
-ALIASES = {"include_nav": "convert_nav", "include_ncx": "convert_ncx",
-           "include_metadata": "convert_metadata"}
+ALIASES = {"include_ncx": "convert_ncx", "include_metadata": "convert_metadata"}
 
 
 def profile_options(profile):

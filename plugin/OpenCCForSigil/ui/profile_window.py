@@ -33,7 +33,6 @@ def _labels(translator: Any) -> CatalogView:
 _PROFILE_SUMMARY_KEYS = {
     "conversion": "profile.conversion",
     "segmentation": "profile.segmentation",
-    "convert_nav": "options.include_nav",
     "convert_ncx": "options.include_ncx",
     "convert_metadata": "options.include_metadata",
     "convert_alt": "options.convert_alt",
@@ -60,7 +59,7 @@ _PROFILE_SUMMARY_NON_OPTIONS = {"schema_version", "id", "name", "extras"}
 _PROFILE_SUMMARY_OMITTED_FIELDS = {
     "scope", "preview_required", "tofu_policy", "regex_rules",
     "convert_svg_text", "review_annotations", "checkpoint_notice",
-    "numeric_cjk_char_refs",
+    "numeric_cjk_char_refs", "convert_nav",
 }
 _PROFILE_COMPARISON_PRIORITY = (
     "conversion", "segmentation", "ruleset_ids", "force_pivot",

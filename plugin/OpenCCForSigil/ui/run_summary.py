@@ -24,8 +24,7 @@ def run_summary_data(file_ids, nav_id, config, options):
         "file_count": len(selected),
         "config": str(config),
         "nav_available": nav_available,
-        "nav_requested": bool(active_options.get("include_nav", True)),
-        "nav_included": nav_available and bool(active_options.get("include_nav", True)),
+        "nav_included": nav_available,
         "additions": tuple(additions),
         "risks": tuple(risks),
     }

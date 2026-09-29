@@ -180,7 +180,6 @@ class Controller:
                     "jieba_probe": jieba_probe,
                     "initial_options": initial_run_options(),
                     "metadata_available": adapter.metadata_supported(),
-                    "nav_available": bool(adapter.nav_id()),
                     "services": settings,
                 }
 
@@ -266,8 +265,7 @@ class Controller:
                     selected_config, options.get("language_metadata", "keep"),
                     options.get("language_preset", "legacy"), options.get("language_region", ""),
                 )
-                targets = replace(targets, include_nav=options.get("include_nav", True),
-                                  include_ncx=options.get("include_ncx", False),
+                targets = replace(targets, include_ncx=options.get("include_ncx", False),
                                   include_metadata=options.get("include_metadata", False),
                                   update_language=bool(language_tag))
                 active_profile = settings.current_profile(selected_config, options)

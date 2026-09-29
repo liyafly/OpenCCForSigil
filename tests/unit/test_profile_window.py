@@ -175,7 +175,7 @@ def _profile_options_fixture(tmp_path):
     panel = RunOptionsPanel(
         qt, Translator("en"), qt.QVBoxLayout(),
         initial=profile_options(settings.active), metadata_available=True,
-        nav_available=True, services=settings,
+        services=settings,
     )
     panel.bind(lambda: "s2t", lambda _config: None, None)
     return settings, panel
@@ -228,7 +228,7 @@ def test_profile_summary_uses_localized_direction_and_option_labels(tmp_path):
     manager._refresh_summary()
 
     assert "s2twp" not in manager.summary_text
-    assert "包含所选 XHTML 中的 NAV 目录" in manager.summary_text
+    assert "profile.convert_nav" not in manager.summary_text
     assert "启用" in manager.summary_text
     assert Translator("zh-Hans").text("options.include_metadata") in manager.summary_text
 
@@ -248,7 +248,7 @@ def test_profile_summary_shows_quotation_mode_and_lists_full_profile_name():
     ineffective_fields = {
         "scope", "preview_required", "tofu_policy", "regex_rules",
         "convert_svg_text", "review_annotations", "checkpoint_notice",
-        "numeric_cjk_char_refs",
+        "numeric_cjk_char_refs", "convert_nav",
     }
     option_fields = {field.name for field in fields(Profile)} - {
         "schema_version", "id", "name", "extras",

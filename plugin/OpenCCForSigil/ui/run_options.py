@@ -30,7 +30,6 @@ def option_enablement(config: str, values: dict) -> dict[str, bool]:
     language_mode = values.get("language_metadata", "keep")
     language_preset = values.get("language_preset", "legacy")
     return {
-        "include_nav": bool(values.get("nav_available", True)),
         "force_pivot": bool(compatible_chains),
         "pivot_chain": bool(compatible_chains and values.get("force_pivot", False)),
         "language_preset": language_mode != "keep",
@@ -46,14 +45,13 @@ def option_enablement(config: str, values: dict) -> dict[str, bool]:
 class RunOptionsPanel:
     def __init__(
         self, qt, translator, layout, *, initial=None, metadata_available=None,
-        nav_available=True, services=None, ui_preferences=None,
+        services=None, ui_preferences=None,
     ):
         self._qt = qt
         self._tr = translator
         self._initial = dict(initial) if isinstance(initial, dict) else {}
         self._metadata_available = True if metadata_available is None else bool(metadata_available)
         self._services = services
-        self._nav_available = bool(nav_available)
         self._ui_preferences = dict(ui_preferences or {})
         self._advanced_expanded = bool(
             self._ui_preferences.get("run_options_advanced_expanded", False))
@@ -101,8 +99,7 @@ class RunOptionsPanel:
 
         self.documents_group = qt.QGroupBox(translator.text("options.documents"))
         documents_layout = qt.QVBoxLayout(self.documents_group)
-        for name, default in (("include_nav", True), ("include_ncx", False),
-                              ("include_metadata", False)):
+        for name, default in (("include_ncx", False), ("include_metadata", False)):
             self._add_check(documents_layout, name, default)
         body_layout.addWidget(self.documents_group)
 
@@ -182,9 +179,6 @@ class RunOptionsPanel:
         control = self._qt.QCheckBox(self._tr.text("options." + name))
         control.setChecked(bool(self._initial.get(name, default)))
         self.checks[name] = control
-        if name == "include_nav" and not self._nav_available:
-            control.setVisible(False)
-            control.setToolTip(self._tr.text("options.nav_unavailable"))
         if name == "include_metadata" and not self._metadata_available:
             control.setEnabled(False)
         if hasattr(layout, "addRow"):
@@ -252,8 +246,6 @@ class RunOptionsPanel:
         )
         if not self._metadata_available:
             values["include_metadata"] = False
-        if not self._nav_available:
-            values["include_nav"] = False
         if not self._enablement.get("force_pivot", True):
             values["force_pivot"] = False
         return values
@@ -262,7 +254,7 @@ class RunOptionsPanel:
         """Return the user's selections, including temporarily disabled options."""
         values = self.values()
         checks = getattr(self, "checks", {})
-        for name in ("include_nav", "include_metadata", "force_pivot"):
+        for name in ("include_metadata", "force_pivot"):
             control = checks.get(name)
             if control is not None:
                 values[name] = control.isChecked()
@@ -316,12 +308,7 @@ class RunOptionsPanel:
 
         values = self.values()
         values["metadata_available"] = self._metadata_available
-        values["nav_available"] = self._nav_available
         self._enablement = option_enablement(str(config), values)
-        self.checks["include_nav"].setVisible(self._enablement["include_nav"])
-        self.checks["include_nav"].setToolTip(
-            "" if self._enablement["include_nav"]
-            else self._tr.text("options.nav_unavailable"))
         self.checks["force_pivot"].setEnabled(self._enablement["force_pivot"])
         combo.setEnabled(self._enablement["pivot_chain"])
         self.combos["language_preset"].setEnabled(self._enablement["language_preset"])
@@ -513,7 +500,6 @@ class RunOptionsPanel:
                 return effective
             preferred = self.preference_values()
             overrides = {
-                "convert_nav": preferred.get("include_nav", effective.convert_nav),
                 "convert_metadata": preferred.get("include_metadata", effective.convert_metadata),
                 "force_pivot": preferred.get("force_pivot", effective.force_pivot),
                 "pivot_chain": preferred.get("pivot_chain", effective.pivot_chain),
@@ -524,12 +510,9 @@ class RunOptionsPanel:
         config = self._get_config() if hasattr(self, "_get_config") else "s2t"
         enablement = option_enablement(str(config), {
             **self.values(), "metadata_available": self._metadata_available,
-            "nav_available": self._nav_available,
         })
         unavailable_reason = None
-        if name in {"convert_nav", "include_nav"} and not self._nav_available:
-            unavailable_reason = "options.nav_unavailable"
-        elif name in {"convert_metadata", "include_metadata"} and not self._metadata_available:
+        if name in {"convert_metadata", "include_metadata"} and not self._metadata_available:
             unavailable_reason = "options.metadata_unavailable"
         elif name in {"force_pivot", "pivot_chain"} and not enablement.get(name, False):
             unavailable_reason = "options.force_pivot_unavailable"
@@ -547,10 +530,6 @@ class RunOptionsPanel:
 
     def ui_state(self):
         return {"run_options_advanced_expanded": self._advanced_expanded}
-
-    def set_nav_available(self, available):
-        self._nav_available = bool(available)
-        self.update_enablement()
 
     def retranslate(self):
         """Refresh this panel's labels after its shared translator changes."""

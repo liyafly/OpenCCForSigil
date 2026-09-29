@@ -28,6 +28,11 @@ and their limits are recorded in the [implementation results](reviews/2026-09-27
   profile) for every rule.
 - `TextTarget` does not carry the `context` field listed in the spec §8 data
   model; preview context is computed from the frozen source when displayed.
+- NAV conversion follows the resolved file set. The optional NAV checkbox of
+  spec §6.1 is not offered: NAV is converted whenever it is in the chosen files
+  (always for ‘all XHTML’, when checked for ‘selected files’, when present in
+  the spine for ‘reading order’). This keeps the §6.2 default of converting NAV
+  when it exists.
 - Native conversion cannot be forcibly interrupted mid-call. Worker cancellation
   is cooperative at target boundaries and never writes a partial plan.
 - The optional Jieba probe constructs and exercises only `s2t_jieba`; all

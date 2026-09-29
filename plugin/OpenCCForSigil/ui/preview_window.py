@@ -311,7 +311,6 @@ def choose_scope(
     jieba_probe=None,
     initial_options=None,
     metadata_available=True,
-    nav_available=True,
     services=None,
 ) -> ScopeOutcome:
     """Choose a frozen XHTML target set after enumerating metadata only."""
@@ -366,7 +365,7 @@ def choose_scope(
     config_dialog = _ConversionConfigDialog(
         qt_widgets, configs, default_config, jieba_configs, translator=translator,
         jieba_probe=jieba_probe, initial_options=initial_options,
-        metadata_available=metadata_available, nav_available=nav_available,
+        metadata_available=metadata_available,
         services=services, ui_preferences=ui_preferences,
         embedded=True, container=config_page, parent_dialog=outer,
     )
@@ -394,9 +393,6 @@ def choose_scope(
 
     def update_analyze_enabled():
         selected_ids = scope_dialog.selected_ids()
-        nav_available_now = bool(nav_id and nav_id in selected_ids)
-        if config_dialog.options_panel._nav_available != nav_available_now:
-            config_dialog.options_panel.set_nav_available(nav_available_now)
         data = run_summary_data(
             selected_ids, nav_id, config_dialog._get_config(),
             {**config_dialog.options_panel.preference_values(),
@@ -410,8 +406,6 @@ def choose_scope(
             details.append(translator.text("scope.run_summary_empty"))
         if data["nav_included"]:
             details.append(translator.text("scope.run_summary_nav_included"))
-        elif data["nav_available"] and not data["nav_requested"]:
-            details.append(translator.text("scope.run_summary_nav_disabled"))
         elif not data["nav_available"]:
             details.append(translator.text("scope.run_summary_nav_unavailable"))
         details.extend(translator.text(
@@ -463,9 +457,6 @@ def choose_scope(
         scope_dialog._accept(close=False)
         if not scope_dialog.accepted:
             return
-        selected = scope_dialog.selection
-        config_dialog.options_panel.set_nav_available(
-            bool(nav_id and nav_id in selected.file_ids))
         config_dialog._accept(close=False)
         if not config_dialog.accepted:
             return
@@ -3272,7 +3263,6 @@ class _ConversionConfigDialog:
         jieba_probe=None,
         initial_options=None,
         metadata_available=True,
-        nav_available=True,
         services=None,
         ui_preferences=None,
         embedded=True,
@@ -3336,7 +3326,7 @@ class _ConversionConfigDialog:
         from ui.run_options import RunOptionsPanel
         self.options_panel = RunOptionsPanel(
             qt_widgets, translator, layout, initial=initial_options,
-            metadata_available=metadata_available, nav_available=nav_available,
+            metadata_available=metadata_available,
             services=services, ui_preferences=self._ui_preferences,
         )
         self.options_panel.bind(self._get_config, self._set_config, self.dialog)
