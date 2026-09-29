@@ -1,0 +1,4 @@
+skip BlockingRuleConflict blocking rule conflicts: BLOCKING CONFLICT: SAME_SOURCE_DIFFERENT_TARGET: '乙' (global/s2t → ZZ [r12], global/s2t → XY [r
+skip BlockingRuleConflict blocking rule conflicts: BLOCKING CONFLICT: SAME_SOURCE_DIFFERENT_TARGET: '丁乙' (profile/s2t → Z [r0], profile/s2t → Y [r
+skip BlockingRuleConflict blocking rule conflicts: BLOCKING CONFLICT: SAME_SOURCE_DIFFERENT_TARGET: '乙' (profile/s2t → Z [r17], profile/s2t → ZZ [
+texts=13440 mismatches=0 skipped_snapshots=312

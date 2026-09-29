@@ -1,0 +1,15 @@
+== UXS-03 batch feedback after 'Resolve remaining' (no linked groups) ==
+en feedback: 'Batch decision applied to 10 changes across 0 groups.' | zero lines: ['Batch decision applied to 10 changes across 0 groups.']
+zh-Hans feedback: '已批量处理 10 项修改，涉及 0 个组。' | zero lines: ['已批量处理 10 项修改，涉及 0 个组。']
+zh-Hant feedback: '已批次處理 10 項修改，涉及 0 個組。' | zero lines: ['已批次處理 10 項修改，涉及 0 個組。']
+
+== UXS-08 result box (non-cancel) ==
+en | success, nothing skipped, 1 unchanged-only file | zero lines: ['Written files: 2 (applied changes: 5, skipped changes: 0)', 'Files not written: 1 (no proposed changes: 0)']
+en | no-op, every file unchanged | zero lines: ['Written files: 0 (applied changes: 0, skipped changes: 0)']
+en | all skipped | zero lines: ['Written files: 0 (applied changes: 0, skipped changes: 4)', 'Files not written: 2 (no proposed changes: 0)']
+zh-Hans | success, nothing skipped, 1 unchanged-only file | zero lines: ['已写回：2 个文件（已接受 5 项变更，已跳过 0 项）', '未写回：1 个文件（其中没有建议变更：0 个）']
+zh-Hans | no-op, every file unchanged | zero lines: ['已写回：0 个文件（已接受 0 项变更，已跳过 0 项）']
+zh-Hans | all skipped | zero lines: ['已写回：0 个文件（已接受 0 项变更，已跳过 4 项）', '未写回：2 个文件（其中没有建议变更：0 个）']
+zh-Hant | success, nothing skipped, 1 unchanged-only file | zero lines: ['已寫入：2 個檔案（已接受 5 項變更，已跳過 0 項）', '未寫回：1 個檔案（其中沒有建議變更：0 個）']
+zh-Hant | no-op, every file unchanged | zero lines: ['已寫入：0 個檔案（已接受 0 項變更，已跳過 0 項）']
+zh-Hant | all skipped | zero lines: ['已寫入：0 個檔案（已接受 0 項變更，已跳過 4 項）', '未寫回：2 個檔案（其中沒有建議變更：0 個）']

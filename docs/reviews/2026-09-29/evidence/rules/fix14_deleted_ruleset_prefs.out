@@ -1,0 +1,3 @@
+session 1 active: ('default', 'X') | profile saved: False
+after delete: active: ('default',) | X.json exists: False
+next launch: missing-ruleset notice = ('X',)

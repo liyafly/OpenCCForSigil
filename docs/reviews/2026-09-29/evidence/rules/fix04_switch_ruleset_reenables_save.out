@@ -1,0 +1,4 @@
+viewing A: conflicts 1 save enabled False
+viewing C: conflicts 0 save enabled True
+saved result accepted: True | run ids: ('A', 'B', 'C')
+blocking conflicts in saved run sets: [['31f1217f-18b8-456b-9849-36ef630ae4cc', 'b1']]

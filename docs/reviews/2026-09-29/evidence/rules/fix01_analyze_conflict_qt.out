@@ -1,0 +1,23 @@
+qt.qpa.fonts: Populating font family aliases took 81 ms. Replace uses of missing font family "Sans Serif" with one that exists to avoid this cost. 
+This plugin does not support propagateSizeHints()
+Traceback (most recent call last):
+  File "plugin/OpenCCForSigil/app/settings.py", line 475, in freeze_rules
+    validate_no_blocking_conflicts(rules)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "plugin/OpenCCForSigil/rules/conflicts.py", line 146, in validate_no_blocking_conflicts
+    raise BlockingRuleConflict(conflicts)
+rules.conflicts.BlockingRuleConflict: blocking rule conflicts: BLOCKING CONFLICT: SAME_SOURCE_DIFFERENT_TARGET: '软件' (global/s2t → 軟體 [a1], global/s2t → 軟件 [b1])
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "plugin/OpenCCForSigil/ui/preview_window.py", line 3939, in _accept
+    self.options_panel.validate(config)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^
+  File "plugin/OpenCCForSigil/ui/run_options.py", line 349, in validate
+    self._services.freeze_rules(profile)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "plugin/OpenCCForSigil/app/settings.py", line 482, in freeze_rules
+    raise RuleConflictError(conflict_groups) from error
+app.errors.RuleConflictError: blocking rule conflicts: a1 (A), b1 (B)
+after click: accepted = False | dialog visible = True | message boxes = []

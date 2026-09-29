@@ -1,0 +1,20 @@
+=== A. rename a ruleset that is in the run ===
+before rename: use_in_run checked = True | active filter count = 1
+after rename A->B: _run_ruleset_ids = ('default', 'A') | use_in_run checked = False | rule a1 active = False | reason = rule set not included
+user ticked+unticked; result.run_ruleset_ids = ('default', 'A') renamed = (('A', 'B'),)
+edit_rules -> active.ruleset_ids = ('default', 'B') (user expected B removed)
+
+=== A2. cross-ruleset conflict hidden after rename ===
+before: conflicts listed = 1 save enabled = False
+after renaming B->B2: conflicts listed = 0 save enabled = True
+saved run ids = ('A', 'B2')
+freeze: RuleConflictError blocking rule conflicts: a1 (A), b1 (B2)
+
+=== B. delete X, then create a new X before Save ===
+window result: sets = ['default', 'X'] deleted = ('X',) run = ('default', 'X')
+X.json exists after save: False | active.ruleset_ids = ('default',) | saved profile = ('default',)
+modals: 1
+
+=== C. delete X, then rename Y -> X before Save ===
+window result: sets = ['default', 'X'] renamed = (('Y', 'X'),) deleted = ('X',) run = ('default', 'Y')
+files: [] | active.ruleset_ids = ('default',) | saved profile = ('default',)

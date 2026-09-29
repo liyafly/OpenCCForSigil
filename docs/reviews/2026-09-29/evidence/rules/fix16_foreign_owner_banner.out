@@ -1,0 +1,2 @@
+run_ids=('A',) banner='有 1 条规则属于其他书籍或方案。点击查看本次不生效的规则。' -> visible after click: 1 rules
+run_ids=() banner='有 1 条规则属于其他书籍或方案。点击查看本次不生效的规则。' -> visible after click: 10 rules

@@ -1,0 +1,4 @@
+V1 global + V1 profile           : [('v1-global', '軟件(全局)')]
++ unrelated shorter V2 rule '软'  : [('v1-profile', '軟體(方案)')]
+conflicts reported for the trio   : []
+same trio on text '软体' (V2 only): [('v2-short', '軟')]

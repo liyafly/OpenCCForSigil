@@ -1,0 +1,12 @@
+=== A3. rename A->B, then new A: new A's checkbox shows 'in run' but it is not ===
+new A: use_in_run checked = True
+result.run_ruleset_ids = ('default', 'A')
+active.ruleset_ids = ('default', 'B') (new A with the visible tick is NOT in run)
+
+=== D. confirming an addition silently persists an unconfirmed removal ===
+question asked: ['Add rule sets N to profile Saved?']
+saved profile now: ('default', 'N') (A removal was never asked about)
+
+=== E. modal count, one save with: disable shared set + delete referenced set + add new set ===
+in-window modals: disable=1 delete=1 | modals during Save (edit_rules)=1
+saved: ('default', 'S', 'N') other: ('S',)

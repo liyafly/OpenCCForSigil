@@ -1,0 +1,8 @@
+files planned: 6 changes: 60
+REGEX_ZERO_WIDTH_SKIPPED diagnostics total: 60 (6 files x 10 paragraphs, 1 rule)
+sample diagnostic: Diagnostic(code='REGEX_ZERO_WIDTH_SKIPPED', message='rule z: skipped 1 zero-width match(es)', span=None, line=None, column=None)
+en name: diagnostic.name.REGEX_ZERO_WIDTH_SKIPPED | fallback: Other diagnostic: REGEX_ZERO_WIDTH_SKIPPED
+zh-Hans name: diagnostic.name.REGEX_ZERO_WIDTH_SKIPPED | fallback: 其他诊断：REGEX_ZERO_WIDTH_SKIPPED
+sig: (planned_documents: 'Sequence[PlannedDocument]', translator: 'Translator') -> 'Tuple[_DiagnosticRecord, ...]'
+preview records for zero-width: 6
+first record: _DiagnosticRecord(file_id='c00', href='c00.xhtml', code='REGEX_ZERO_WIDTH_SKIPPED', name='其他诊断：REGEX_ZERO_WIDTH_SKIPPED', description='其他诊断 REGEX_ZERO_WIDTH_SKIPPED：1 处', location='位置不可用', excerpt='', related_changes=())

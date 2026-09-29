@@ -1,0 +1,5 @@
+qt.qpa.fonts: Populating font family aliases took 127 ms. Replace uses of missing font family "Sans Serif" with one that exists to avoid this cost. 
+delete action enabled: False | tooltip: 默认规则集不能删除。 | menu.toolTipsVisible(): False
+menu actions: ['规则集设置…', '规则行为说明', '导入', '批量添加…', '导出', '删除规则集…']
+ruleset row widgets: ['QPushButton:新建规则集…', 'QPushButton:重命名', 'QToolButton:更多…', 'QCheckBox:用于本次转换']
+ruleset_enabled_check parent is settings dialog: True

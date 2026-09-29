@@ -1,0 +1,6 @@
+tsv scope=global -> profile_id='CURRENT-PROFILE' book_fingerprint='CURRENT-BOOK'
+tsv scope=book   -> profile_id='CURRENT-PROFILE' book_fingerprint='CURRENT-BOOK'
+csv scope=global -> profile_id='CURRENT-PROFILE' book_fingerprint='CURRENT-BOOK'
+csv scope=book   -> profile_id='CURRENT-PROFILE' book_fingerprint='CURRENT-BOOK'
+txt scope=global -> profile_id='CURRENT-PROFILE' book_fingerprint='CURRENT-BOOK'
+txt scope=book   -> profile_id='CURRENT-PROFILE' book_fingerprint='CURRENT-BOOK'

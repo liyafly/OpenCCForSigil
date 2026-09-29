@@ -1,0 +1,3 @@
+default.json default_direction after s2t session: s2t
+editor preselected direction per session (config, preselected): [('s2t', 's2t'), ('t2s', 's2t')]
+rule added in t2s session: direction = s2t | applies to this t2s run: False

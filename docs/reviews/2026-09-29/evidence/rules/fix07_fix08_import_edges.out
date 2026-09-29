@@ -1,0 +1,28 @@
+== RULE-06 header false positives (first data row dropped silently) ==
+2-col list starting with 备注: rules=[('s2t', '软件', '軟體', '')] diags=[]
+2-col list starting with 目标: rules=[('s2t', '软件', '軟體', '')] diags=[]
+2-col list starting with 原文: rules=[('s2t', '软件', '軟體', '')] diags=[]
+en list starting with 'source': rules=[('s2t', 'color', 'colour', '')] diags=[]
+CSV starting with 方向 row that is data: rules=[('s2t', '软件', '軟體', '')] diags=[]
+3-col blank-direction row (was: dialog direction): rules=[] diags=[(1, 'error', 'source: source must not be empty')]
+
+== RULE-07 TSV line splitting vs allowed characters ==
+U+2028: export_skipped=0 reimported=[('软件', '軟')] diags=[(3, 'rule 3: direction: rules.import_needs_direction')]
+NEL U+0085: export_skipped=0 reimported=[('软件', '軟')] diags=[(3, 'rule 3: direction: rules.import_needs_direction')]
+U+2029: export_skipped=0 reimported=[('软件', '軟')] diags=[(3, 'rule 3: direction: rules.import_needs_direction')]
+
+== RULE-07 legacy exported TSV (csv.writer quoting) ==
+legacy quote-in-middle: rules=[('s2t', '"他说""好"""', '目标', '')] diags=[(1, 'warning', 'quoted field was imported literally')]
+legacy multi-line quoted comment: rules=[('s2t', '软件', '軟體', '"第一行'), ('s2t', '内存', '記憶體', '')] diags=[(2, 'error', 'rule 2: expected direction, source, target, comment')]
+
+== RULE-08 line numbers: CRLF / BOM / blank / CSV multi-line ==
+TSV CRLF+BOM bad row line 3: rules=[('s2t', '软件', '軟體', '')] diags=[(3, 'error', "direction: direction is required and must be a supported V1 config or '*'")]
+CSV multiline record then bad row (physical line 4): rules=[('s2t', '软件', '軟體', 'a\nb')] diags=[(4, 'error', "direction: direction is required and must be a supported V1 config or '*'")]
+CSV CRLF bad row line 3: rules=[('s2t', '软件', '軟體', '')] diags=[(3, 'error', "direction: direction is required and must be a supported V1 config or '*'")]
+TSV form-feed inside comment: rules=[('s2t', '软件', '軟體', 'A')] diags=[(2, 'error', 'rule 2: expected direction, source, target, comment'), (3, 'error', "direction: direction is required and must be a supported V1 config or '*'")]
+1-col row message prefix: rules=[] diags=[(2, 'error', 'rule 2: expected direction, source, target, comment')]
+
+== RULE-02 side effect: V2 import -> export warnings/TXT ==
+imported semantic_version: [2]
+TSV export_warnings (lossy, skipped): (True, 0)
+TXT export text: '' warnings: (True, 1)

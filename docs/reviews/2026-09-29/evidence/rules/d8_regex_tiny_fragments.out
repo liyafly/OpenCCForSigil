@@ -1,0 +1,4 @@
+rules=128 fragments=60000 len=8 scanned=212328 allowance=3.42s regex_seconds=3.42s wall=4.7s -> FAILED after 26540 fragments: rule re65: regular-expression run exceeded its 3.42466 second budget near offset 0
+rules=128 fragments=60000 len=150 scanned=6000000 allowance=15.00s regex_seconds=8.48s wall=11.6s -> ok
+rules=32 fragments=60000 len=8 scanned=480000 allowance=3.96s regex_seconds=1.95s wall=2.7s -> ok
+rules=128 fragments=20000 len=8 scanned=160000 allowance=3.32s regex_seconds=3.12s wall=4.3s -> ok
