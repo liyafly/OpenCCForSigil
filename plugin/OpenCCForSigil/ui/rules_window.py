@@ -1080,8 +1080,13 @@ class RuleManagerDialog:
         self._editing_rule_id = None
         self.source_edit.clear()
         self.target_edit.clear()
+        self._reset_wildcard_direction()
         self._mark_editor_clean()
         self._update_rebind_owner_button()
+
+    def _reset_wildcard_direction(self) -> None:
+        if str(self.direction_combo.currentData()) == "*":
+            self._apply_rule_defaults()
 
     def _resolve_editor_draft(self) -> bool:
         if not self._editor_dirty():
@@ -1164,7 +1169,7 @@ class RuleManagerDialog:
         self._rulesets[identifier] = RuleSet(
             identifier,
             semantic_version=2,
-            default_direction=base_direction(self._config),
+            default_direction="*",
             default_scope="global",
         )
         self._ruleset_id = identifier
@@ -1254,8 +1259,7 @@ class RuleManagerDialog:
         self._run_ruleset_ids = tuple(
             item for item in self._run_ruleset_ids if item != identifier)
         if not self._rulesets:
-            self._rulesets["default"] = RuleSet(
-                "default", default_direction=base_direction(self._config))
+            self._rulesets["default"] = RuleSet("default")
         self._ruleset_id = next(iter(self._rulesets))
         self.rules = list(self._rulesets[self._ruleset_id].rules)
         self._populate_rulesets()
@@ -1649,6 +1653,7 @@ class RuleManagerDialog:
         self._refresh()
         self.source_edit.clear()
         self.target_edit.clear()
+        self._reset_wildcard_direction()
         self._mark_editor_clean()
         self._mark_test_result_stale()
 
@@ -1676,6 +1681,7 @@ class RuleManagerDialog:
                                   comment=previous.comment, source_note=previous.source_note)
         self._editing_rule_id = previous.id
         self._refresh()
+        self._reset_wildcard_direction()
         self._mark_editor_clean()
         self._mark_test_result_stale()
 
@@ -1739,6 +1745,7 @@ class RuleManagerDialog:
             self._editing_rule_id = None
             self._refresh()
             self._clear_editor()
+            self._reset_wildcard_direction()
             self._mark_test_result_stale()
 
     def _load_selected(self) -> None:
@@ -2067,10 +2074,13 @@ class RuleManagerDialog:
             return
         try:
             ruleset = self._rulesets[self._ruleset_id]
+            bulk_direction = str(self.direction_combo.currentData() or "")
+            if bulk_direction in ("", "*"):
+                bulk_direction = base_direction(self._config)
             result = import_rules(
                 text,
                 format="tsv",
-                direction=str(self.direction_combo.currentData() or ""),
+                direction=bulk_direction,
                 scope=str(self.scope_combo.currentData() or "global"),
                 profile_id=self._profile_id or "",
                 book_fingerprint=self._book_fingerprint or "",

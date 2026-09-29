@@ -463,6 +463,37 @@ def test_run_ids_from_window_are_not_remapped_after_rename(monkeypatch, tmp_path
     assert settings.active.ruleset_ids == ("default", "B", "A")
 
 
+def test_default_set_new_rule_direction_follows_each_session(monkeypatch, tmp_path):
+    settings = RunSettings(
+        Storage(tmp_path), SimpleNamespace(book_fingerprint=lambda: "book-hash"),
+        {}, language="en", session_id="test-session")
+    settings.bind_run(
+        settings.active, SimpleNamespace(available_configs=lambda: {"s2t", "t2s"}))
+    observed = []
+
+    def open_rules(_rules, **kwargs):
+        manager = RuleManagerDialog(make_with_table(), (), **kwargs)
+        observed.append((kwargs["config"], manager.direction_combo.currentData()))
+        source, target = (("里", "裡") if kwargs["config"] == "s2t" else ("後", "后"))
+        manager.source_edit.setText(source)
+        manager.target_edit.setText(target)
+        manager._add()
+        if kwargs["config"] == "t2s":
+            observed.append(("t2s rule", manager.rules[-1]))
+        manager._apply()
+        return manager.result
+
+    monkeypatch.setattr("ui.rules_window.show_rules_window", open_rules)
+    settings.edit_rules("s2t", Translator(), make_with_table(), object())
+    default_path = tmp_path / "rules" / "default.json"
+    assert json.loads(default_path.read_text(encoding="utf-8"))["default_direction"] == "*"
+    settings.edit_rules("t2s", Translator(), make_with_table(), object())
+
+    assert observed[:2] == [("s2t", "s2t"), ("t2s", "t2s")]
+    assert observed[2][1].direction == "t2s"
+    assert settings.rules.load("default").default_direction == "*"
+
+
 def test_profile_selection_is_validated_before_activation(monkeypatch, tmp_path):
     settings, _profiles = _saved_profile_settings(tmp_path)
     active = settings.active

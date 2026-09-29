@@ -501,6 +501,23 @@ def test_wildcard_direction_shows_reverse_warning():
     assert warning not in manager.editor_mode_label.text()
 
 
+def test_removing_wildcard_rule_restores_current_direction():
+    wildcard = Rule(id="wildcard", source="里", target="裡", direction="*")
+    manager = RuleManagerDialog(
+        make_with_table(), (wildcard,), translator=Translator("en"), config="s2t",
+        rulesets=(RuleSet("default", (wildcard,)),), ruleset_id="default",
+        run_ruleset_ids=("default",))
+    manager.table.selectRow(0)
+    manager._load_selected()
+    manager._remove()
+
+    assert manager.direction_combo.currentData() == "s2t"
+    manager.source_edit.setText("面")
+    manager.target_edit.setText("麵")
+    manager._add()
+    assert manager.rules[-1].direction == "s2t"
+
+
 def test_rule_table_is_not_editable_and_conflict_can_select_a_rule():
     class View:
         NoEditTriggers = 0
@@ -899,6 +916,24 @@ def test_bulk_paste_adds_rules_through_import_review(monkeypatch):
                 ("s2t", "book", "软件", "軟件"),
                 ("s2t", "book", "詞語", "詞彙"),
             ]
+
+
+def test_bulk_paste_never_creates_wildcard_rules(monkeypatch):
+    manager = RuleManagerDialog(
+        make_with_table(), (), translator=Translator("zh-Hans"), config="s2t")
+    manager.direction_combo.setCurrentIndex(manager.direction_combo.findData("*"))
+    manager._confirm_import = lambda _review: True
+
+    def accept_bulk_dialog(dialog):
+        editor = next(child for child in dialog._layout.children
+                      if isinstance(child, manager._qt.QPlainTextEdit))
+        editor.setPlainText("里=裡\n软件=軟體")
+        dialog._layout.children[-1].children[-1].clicked.emit()
+
+    monkeypatch.setattr(rules_window, "exec_dialog", accept_bulk_dialog)
+    manager._bulk_add()
+
+    assert [rule.direction for rule in manager.rules] == ["s2t", "s2t"]
 
 
 def test_bulk_paste_cancel_keeps_rules_unchanged(monkeypatch):
