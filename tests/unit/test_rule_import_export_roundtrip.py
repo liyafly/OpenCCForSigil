@@ -207,6 +207,27 @@ def test_one_column_row_error_has_no_rule_prefix():
     assert not error.message.startswith("rule ")
 
 
+@pytest.mark.parametrize("format,payload", [
+    ("tsv", "软件\t軟體\n"),
+    ("csv", "软件,軟體\n"),
+    ("txt", "软件\t軟體\n"),
+])
+@pytest.mark.parametrize("scope", ["global", "profile", "book"])
+def test_delimited_import_fills_only_matching_owner(format, payload, scope):
+    imported = import_rules(
+        payload,
+        format=format,
+        direction="s2t",
+        scope=scope,
+        profile_id="CURRENT-PROFILE",
+        book_fingerprint="CURRENT-BOOK",
+    )
+
+    rule, = imported.rules
+    assert rule.profile_id == ("CURRENT-PROFILE" if scope == "profile" else "")
+    assert rule.book_fingerprint == ("CURRENT-BOOK" if scope == "book" else "")
+
+
 def test_legacy_quoted_tsv_field_warns_but_stays_unchanged():
     raw_field = '"""引号"""'
     result = import_rules(f"s2t\t{raw_field}\t目标\n", format="tsv")

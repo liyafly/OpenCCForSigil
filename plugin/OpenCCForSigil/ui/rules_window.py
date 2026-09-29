@@ -1524,11 +1524,11 @@ class RuleManagerDialog:
         if owner_scope == "book":
             if not self._book_fingerprint:
                 return
-            updated = replace(rule, book_fingerprint=self._book_fingerprint)
+            updated = replace(rule, book_fingerprint=self._book_fingerprint, profile_id="")
         elif owner_scope == "profile":
             if not self._profile_id:
                 return
-            updated = replace(rule, profile_id=self._profile_id)
+            updated = replace(rule, profile_id=self._profile_id, book_fingerprint="")
         else:
             return
         updated_at = datetime.now(timezone.utc).isoformat(timespec="microseconds").replace(

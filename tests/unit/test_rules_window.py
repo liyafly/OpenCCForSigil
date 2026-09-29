@@ -789,6 +789,22 @@ def test_rebind_button_binds_current_book_only_on_click():
     assert not manager.rebind_owner_button.isVisible()
 
 
+def test_window_rebind_clears_the_other_owner():
+    rule = Rule(
+        id="other-book", source="术语", target="专名", direction="s2t",
+        scope="book", profile_id="old-profile", book_fingerprint="old-book")
+    manager = RuleManagerDialog(
+        make_with_table(), (rule,), translator=Translator("en"),
+        profile_id="current-profile", book_fingerprint="current-book")
+    manager.table.selectRow(0)
+    manager._load_selected()
+
+    manager.rebind_owner_button.click()
+
+    assert manager.rules[0].book_fingerprint == "current-book"
+    assert manager.rules[0].profile_id == ""
+
+
 def test_rebind_button_is_disabled_when_current_book_is_unavailable():
     rule = Rule(
         id="other-book", source="术语", target="专名", direction="s2t",
