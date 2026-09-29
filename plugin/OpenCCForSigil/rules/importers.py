@@ -7,11 +7,22 @@ from dataclasses import dataclass, replace
 import io
 import json
 from pathlib import Path
+import re
 from typing import Any, Iterable, TextIO
 
 from .conflicts import RuleConflict, find_conflicts
 from .models import Rule, SUPPORTED_DIRECTIONS, new_rule_id
 from .validators import RuleValidationError, validate_rule
+
+_LINE_BREAK = re.compile(r"\r\n|\r|\n")
+_OPENCC_CANDIDATE_SEPARATOR = re.compile(r"[ \t]+")
+
+
+def _physical_lines(text: str) -> list[str]:
+    lines = _LINE_BREAK.split(text)
+    if lines and lines[-1] == "":
+        lines.pop()
+    return lines
 
 
 @dataclass(frozen=True)
@@ -181,7 +192,7 @@ def _delimited_rows(text: str, delimiter: str) -> list[tuple[int, list[str]]]:
     if delimiter == "\t":
         return [
             (line, row.split("\t"))
-            for line, row in enumerate(text.lstrip("\ufeff").splitlines(), 1)
+            for line, row in enumerate(_physical_lines(text.lstrip("\ufeff")), 1)
         ]
     reader = csv.reader(io.StringIO(text), delimiter=delimiter)
     result = []
@@ -229,8 +240,7 @@ def _rows_to_rules(
                 row_direction, source, target = first or (direction or ""), row[1], row[2]
                 comment = row[3] if len(row) > 3 else ""
             else:
-                raise RuleValidationError(
-                    "expected direction, source, target, comment", index=line)
+                raise RuleValidationError("expected direction, source, target, comment")
             values = {
                 "direction": row_direction,
                 "source": source,
@@ -283,14 +293,17 @@ def _opencc_rows(
     strict: bool,
 ) -> list[tuple[int, Rule]]:
     result: list[tuple[int, Rule]] = []
-    for line, raw in enumerate(text.splitlines(), 1):
+    for line, raw in enumerate(_physical_lines(text), 1):
         if not raw.strip() or raw.lstrip().startswith("#"):
             continue
         try:
             fields = raw.split("\t")
             if len(fields) < 2:
                 raise RuleValidationError("expected source<TAB>target", index=line)
-            candidates = fields[1].split()
+            candidates = [
+                candidate for candidate in _OPENCC_CANDIDATE_SEPARATOR.split(
+                    fields[1].strip(" \t")) if candidate
+            ]
             if not candidates:
                 raise RuleValidationError("target is empty", index=line)
             if len(candidates) > 1:

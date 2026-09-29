@@ -165,7 +165,46 @@ def test_tsv_export_import_roundtrip_with_quotes():
     assert len(imported.rules) == 1
     assert (imported.rules[0].source, imported.rules[0].target,
             imported.rules[0].comment) == (
-                original.source, original.target, original.comment)
+            original.source, original.target, original.comment)
+
+
+@pytest.mark.parametrize("separator", ["\u2028", "\u2029", "\x85"])
+def test_tsv_roundtrip_keeps_unicode_line_separators(separator):
+    original = Rule(
+        id="r", direction="s2t", source="软件", target=f"軟{separator}體")
+
+    imported = import_rules(export_rules((original,), format="tsv"), format="tsv")
+
+    assert imported.rules[0].target == original.target
+    assert [(item.severity, item.message_key) for item in imported.diagnostics] == [
+        ("info", "rules.import_header_skipped")]
+
+
+def test_tsv_roundtrip_keeps_form_feed_in_comment():
+    original = Rule(
+        id="r", direction="s2t", source="软件", target="軟體", comment="A\x0cB")
+
+    imported = import_rules(export_rules((original,), format="tsv"), format="tsv")
+
+    assert imported.rules[0].comment == original.comment
+
+
+def test_opencc_txt_import_keeps_unicode_line_separators():
+    target = "軟\u2028體"
+
+    imported = import_rules(f"软件\t{target}\n", format="txt", direction="s2t")
+
+    assert len(imported.rules) == 1
+    assert imported.rules[0].target == target
+
+
+def test_one_column_row_error_has_no_rule_prefix():
+    imported = import_rules(
+        "direction\tsource\ttarget\nonlyone\n", format="tsv", strict=False)
+
+    error, = [item for item in imported.diagnostics if item.severity == "error"]
+    assert error.line == 2
+    assert not error.message.startswith("rule ")
 
 
 def test_legacy_quoted_tsv_field_warns_but_stays_unchanged():
