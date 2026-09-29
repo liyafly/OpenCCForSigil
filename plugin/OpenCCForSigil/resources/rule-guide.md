@@ -28,6 +28,7 @@ TSV 和 CSV 文件每行可写 `源文本<Tab>目标文本`、`源文本<Tab>目
 - **转换后替换**：在 OpenCC、引号和标点处理后匹配，不再进入 OpenCC。
 
 规则按出现位置从左到右生效；范围和优先级只在同一起点的候选之间比较。与较早采用的规则或保护区间重叠的后续候选会跳过，并在“测试”页中显示。
+书中的 `&`、`<`、`>` 以实体形式保存（如 `&amp;`），含这些字符的规则在书中不会命中，规则测试里却会命中。
 
 “普通文字”会按字面匹配；“正则表达式”使用随插件附带的 `regex` VERSION1 方言。正则只匹配当前提取的文本或允许转换的属性值，不会跨越标签，也不会直接扫描或改写整份 XHTML。替换阶段同一轮只基于阶段输入匹配一次，新生成的文字不会在同阶段再次匹配。
 
@@ -96,6 +97,7 @@ TSV 和 CSV 檔案每列可寫 `來源文字<Tab>目標文字`、`來源文字<T
 - **轉換後取代**：在 OpenCC、引號和標點處理後比對，不再進入 OpenCC。
 
 規則依出現位置從左至右生效；範圍和優先級只在相同起點的候選之間比較。與較早採用的規則或保護區間重疊的後續候選會略過，並會顯示在「測試」頁。
+書中的 `&`、`<`、`>` 會以實體形式儲存（例如 `&amp;`）；包含這些字元的規則在書中不會命中，但在規則測試中會命中。
 
 「一般文字」會依字面比對；「正規表示式」使用隨附的 `regex` VERSION1 方言。正規表示式只比對目前擷取的文字或允許轉換的屬性值，不會跨越標籤，也不會直接掃描或改寫整份 XHTML。同一取代階段每輪只依階段輸入比對一次，新產生的文字不會在同階段再次比對。
 
@@ -164,6 +166,7 @@ Each TSV or CSV row can use `source<Tab>target`, `source<Tab>target<Tab>comment`
 - **Post-replacement** matches after OpenCC, quotation, and punctuation processing, and does not re-enter OpenCC.
 
 Rules take effect from left to right by occurrence position; scope and priority are compared only among candidates with the same start. Later candidates that overlap an earlier selected rule or protection span are skipped and shown on the **Test** tab.
+In a book, `&`, `<`, and `>` are stored as entities (for example, `&amp;`). Rules containing these characters will not match in the book, even though they match in the rule test.
 
 **Plain text** matches literally. **Regular expression** uses the bundled `regex` VERSION1 dialect. Expressions only match one extracted text or allowed attribute value; they do not cross tags or scan and rewrite whole XHTML. A stage matches its input once, so newly generated text is not matched again in the same stage.
 
