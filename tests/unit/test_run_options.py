@@ -499,6 +499,63 @@ def test_profile_validation_failure_leaves_config_options_and_active_profile_unc
     assert panel._services.active is active
 
 
+def test_profile_pick_with_conflicting_rulesets_shows_localized_error(monkeypatch):
+    import ui.run_options as run_options
+
+    from app.errors import RuleConflictError
+
+    conflict = RuleConflictError(((("a1", "A"), ("b1", "B")),))
+    panel = object.__new__(RunOptionsPanel)
+    panel._services = SimpleNamespace(
+        pick_profile=lambda *_args: Profile(),
+        validate_profile=lambda _profile: (_ for _ in ()).throw(conflict),
+    )
+    panel._qt = make_fake_qt()
+    panel._tr = Translator("en")
+    panel._get_config = lambda: "s2t"
+    panel.values = lambda: {}
+    panel._parent = None
+    shown = []
+    monkeypatch.setattr(
+        run_options, "show_error_details", lambda *args: shown.append(args[3]))
+
+    panel._tool("profiles")
+
+    assert shown == [Translator("en").text(
+        "error.rule_conflict", rules="a1 (A), b1 (B)")]
+
+
+def test_analyze_with_cross_ruleset_conflict_shows_localized_error(monkeypatch, tmp_path):
+    from dataclasses import replace
+
+    from app.settings import RunSettings
+    from rules.models import Rule
+    from rules.store import RuleSet
+
+    storage = SimpleNamespace(paths=SimpleNamespace(
+        root=tmp_path, profiles=tmp_path / "profiles", rules=tmp_path / "rules"))
+    settings = RunSettings(
+        storage, SimpleNamespace(), {}, language="en", session_id="test-session")
+    settings.rules.save(RuleSet("A", (
+        Rule(id="a1", source="软件", target="軟體", direction="s2t"),)))
+    settings.rules.save(RuleSet("B", (
+        Rule(id="b1", source="软件", target="軟件", direction="s2t"),)))
+    settings.active = replace(
+        settings.active, ruleset_ids=("A", "B"), builtin_rules_enabled=False)
+    dialog = _ConversionConfigDialog(
+        make_fake_qt(), tuple(V1_CONFIGS), "s2t", {},
+        translator=Translator("en"), services=settings)
+    shown = []
+    monkeypatch.setattr(
+        "ui.preview_window.show_error_details", lambda *args: shown.append(args[3]))
+
+    dialog._accept(close=False)
+
+    assert dialog.accepted is False
+    assert shown == [Translator("en").text(
+        "error.rule_conflict", rules="a1 (A), b1 (B)")]
+
+
 def test_conversion_dialog_keeps_direction_panel_and_footer_in_order():
     qt = make_fake_qt()
     dialog = _ConversionConfigDialog(

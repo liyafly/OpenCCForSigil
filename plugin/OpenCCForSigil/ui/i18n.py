@@ -105,6 +105,8 @@ def rule_validation_message(translator: Translator, error: BaseException) -> str
 def settings_error_message(translator: Translator, error: BaseException) -> str:
     """Map known settings validation failures to localized user-facing text."""
 
+    if getattr(error, "code", None) == "RULE_CONFLICT_ERROR":
+        return rule_conflict_message(translator, error)
     detail = str(error)
     if "explicit Legacy region" in detail:
         return translator.text("options.region_required")
@@ -113,6 +115,16 @@ def settings_error_message(translator: Translator, error: BaseException) -> str:
     if "configuration is unavailable on this host" in detail:
         return translator.text("profile.config_unavailable")
     return translator.text("options.invalid")
+
+
+def rule_conflict_message(translator: Translator, error: BaseException) -> str:
+    """Summarize conflicting rule IDs with their ruleset owners."""
+
+    groups = "; ".join(
+        ", ".join(f"{rule_id} ({ruleset_id})" for rule_id, ruleset_id in group)
+        for group in getattr(error, "conflict_groups", ())
+    )
+    return translator.text("error.rule_conflict", rules=groups)
 
 
 def configuration_label(translator: Translator, config: str) -> str:
@@ -213,6 +225,7 @@ __all__ = [
     "normalize_language",
     "diagnostic_summary",
     "rule_validation_message",
+    "rule_conflict_message",
     "settings_error_message",
     "show_error_details",
 ]

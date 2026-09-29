@@ -21,7 +21,7 @@ from opencc_backend.errors import RuntimeSelectionError
 from sigil.adapter import SigilBookAdapter
 from sigil.storage import UserDataStore, resolve_user_data_dir
 from transforms.language_tags import target_language
-from ui.i18n import Translator, choose_language
+from ui.i18n import Translator, choose_language, rule_conflict_message
 
 
 class Controller:
@@ -881,11 +881,7 @@ def _error_kind(error: BaseException) -> str:
 
 
 def _rule_conflict_summary(error: RuleConflictError, translator: Translator) -> str:
-    groups = "; ".join(
-        ", ".join(f"{rule_id} ({ruleset_id})" for rule_id, ruleset_id in group)
-        for group in error.conflict_groups
-    )
-    return translator.text("error.rule_conflict", rules=groups)
+    return rule_conflict_message(translator, error)
 
 
 def _runtime_selection_summary(error: RuntimeSelectionError, translator: Translator) -> str:

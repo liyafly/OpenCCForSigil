@@ -3924,6 +3924,7 @@ class _ConversionConfigDialog:
             timer.stop()
 
     def _accept(self, *, close=True) -> None:
+        from app.errors import RuleConflictError
         from transforms.language_tags import target_language
         from ui.run_options import ConfigurationChoice
 
@@ -3939,7 +3940,7 @@ class _ConversionConfigDialog:
             self.options_panel.validate(config)
             target_language(config, options["language_metadata"], options["language_preset"],
                             options["language_region"])
-        except ValueError as exc:
+        except (ValueError, RuleConflictError) as exc:
             show_error_details(
                 self._qt, self.dialog, self._translator.text("config.title"),
                 settings_error_message(self._translator, exc), str(exc),

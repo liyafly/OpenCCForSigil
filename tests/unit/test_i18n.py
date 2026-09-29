@@ -3,6 +3,7 @@ from pathlib import Path
 import re
 from types import SimpleNamespace
 
+from app.errors import RuleConflictError
 from ui.i18n import (
     Translator,
     choose_language,
@@ -221,6 +222,14 @@ def test_diagnostic_and_settings_errors_have_localized_summaries():
         assert settings_error_message(
             translator, ValueError("profile configuration is unavailable on this host")
         ) == translator.text("profile.config_unavailable")
+
+
+def test_settings_error_message_localizes_rule_conflict():
+    error = RuleConflictError(((("a1", "A"), ("b1", "B")),))
+    for language in ("en", "zh-Hans", "zh-Hant"):
+        translator = Translator(language)
+        assert settings_error_message(translator, error) == translator.text(
+            "error.rule_conflict", rules="a1 (A), b1 (B)")
 
 
 def test_error_dialog_keeps_original_exception_in_detailed_text():

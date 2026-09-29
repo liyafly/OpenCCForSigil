@@ -596,6 +596,7 @@ class RunOptionsPanel:
 
 
     def _tool(self, name):
+        from app.errors import RuleConflictError
         from app.settings import profile_options
         try:
             config = self._get_config()
@@ -641,7 +642,7 @@ class RunOptionsPanel:
             callback = self._summary_changed_callback
             if callable(callback):
                 callback()
-        except (ValueError, OSError) as exc:
+        except (ValueError, OSError, RuleConflictError) as exc:
             show_error_details(
                 self._qt, self._parent, self._tr.text("options.title"),
                 settings_error_message(self._tr, exc), str(exc),
