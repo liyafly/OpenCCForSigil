@@ -235,7 +235,7 @@ def probe_rules(qt, app, language, out):
     report["controls_rules_tab"], report["labels_rules_tab"] = visible_controls(qt, rules.dialog)
     report["help_text"] = tr.text("rules.help")
     report["tab_names"] = [rules.tabs.tabText(i) for i in range(rules.tabs.count())]
-    report["ruleset_enabled_label"] = rules.ruleset_enabled_check.text()
+    report["ruleset_enabled_label"] = rules.use_in_run_check.text()
     report["add_button"] = rules.add_button.text()
     report["update_button"] = rules.update_button.text()
     report["apply_button"] = rules.apply_button.text()

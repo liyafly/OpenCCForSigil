@@ -225,11 +225,20 @@ def test_one_term_per_concept():
         )
 
 
-def test_ruleset_enabled_label_describes_global_scope_not_this_run():
+def test_reenable_ruleset_label_exists_and_global_switch_labels_are_removed():
     catalogs = load_catalogs()
-    assert "本次" not in catalogs["zh-Hans"]["rules.ruleset_enabled"]
-    assert "本次" not in catalogs["zh-Hant"]["rules.ruleset_enabled"]
-    assert "this run" not in catalogs["en"]["rules.ruleset_enabled"].lower()
+    expected = {
+        "zh-Hans": "重新启用（此规则集已全局停用）",
+        "zh-Hant": "重新啟用（此規則集已全域停用）",
+        "en": "Re-enable (this rule set is disabled globally)",
+    }
+    removed = {
+        "rules.ruleset_enabled", "rules.ruleset_enabled_tooltip",
+        "rules.disable_shared_ruleset_confirm", "rules.ruleset_settings",
+    }
+    for language, catalog in catalogs.items():
+        assert catalog.get("rules.reenable_ruleset") == expected[language]
+        assert not (set(catalog) & removed)
 
 
 def test_rules_help_does_not_reference_below_sandbox():

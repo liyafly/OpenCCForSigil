@@ -459,7 +459,6 @@ class RuleManagerDialog:
         action_type = getattr(getattr(qt, "QtGui", None), "QAction", None)
         action_type = action_type or getattr(qt, "QAction", None)
         menu_items = (
-            ("settings", "rules.ruleset_settings", self._open_ruleset_settings),
             ("help", "rules.help_details", self._show_ruleset_help),
             ("import", "rules.import", self._import),
             ("bulk_add", "rules.bulk_add", self._bulk_add),
@@ -474,10 +473,12 @@ class RuleManagerDialog:
                 self.ruleset_menu.addAction(action)
                 self._ruleset_menu_actions[name] = action
         ruleset_row.addWidget(self.ruleset_more_button)
-        self.ruleset_enabled_check = qt.QCheckBox(self._labels["ruleset_enabled"])
-        self.ruleset_enabled_check.setChecked(True)
         self.use_in_run_check = qt.QCheckBox(self._translator.text("rules.use_in_run"))
         ruleset_row.addWidget(self.use_in_run_check)
+        self.reenable_ruleset_button = qt.QPushButton(
+            self._translator.text("rules.reenable_ruleset"))
+        self.reenable_ruleset_button.setAutoDefault(False)
+        ruleset_row.addWidget(self.reenable_ruleset_button)
         layout.addLayout(ruleset_row)
 
         self.tabs = qt.QTabWidget()
@@ -488,22 +489,6 @@ class RuleManagerDialog:
         layout.addWidget(self.tabs, 1)
         content_layout = qt.QVBoxLayout(self.rules_page)
         self.test_page_layout = qt.QVBoxLayout(self.test_page)
-
-        self.ruleset_settings_dialog = qt.QDialog(self.dialog)
-        self.ruleset_settings_dialog.setWindowTitle(plugin_window_title(
-            self._translator, self._translator.text("rules.ruleset_settings")))
-        settings_layout = qt.QVBoxLayout(self.ruleset_settings_dialog)
-        settings_form = qt.QFormLayout()
-        settings_form.addRow(self.ruleset_enabled_check)
-        settings_layout.addLayout(settings_form)
-        settings_actions = qt.QHBoxLayout()
-        settings_actions.addStretch(1)
-        self.ruleset_settings_close_button = qt.QPushButton(self._labels["close"])
-        self.ruleset_settings_close_button.setAutoDefault(False)
-        self.ruleset_settings_close_button.clicked.connect(
-            self.ruleset_settings_dialog.accept)
-        settings_actions.addWidget(self.ruleset_settings_close_button)
-        settings_layout.addLayout(settings_actions)
 
         self.editor_splitter = qt.QSplitter(_enum_value(qt.Qt, "Horizontal"))
         self.rule_list_panel = qt.QWidget()
@@ -693,8 +678,8 @@ class RuleManagerDialog:
         self.ruleset_combo.currentIndexChanged.connect(self._ruleset_changed)
         self.new_ruleset_button.clicked.connect(self._new_ruleset)
         self.rename_ruleset_button.clicked.connect(self._rename_ruleset)
-        self.ruleset_enabled_check.stateChanged.connect(self._ruleset_enabled_changed)
         self.use_in_run_check.toggled.connect(self._use_in_run_changed)
+        self.reenable_ruleset_button.clicked.connect(self._reenable_ruleset)
         self.add_button.clicked.connect(self._add)
         self.update_button.clicked.connect(self._update_selected)
         self.remove_button.clicked.connect(self._remove)
@@ -725,9 +710,6 @@ class RuleManagerDialog:
             connect = getattr(signal, "connect", None)
             if callable(connect):
                 connect(self._mark_test_result_stale)
-
-    def _open_ruleset_settings(self) -> None:
-        exec_dialog(self.ruleset_settings_dialog)
 
     def _show_ruleset_help(self) -> None:
         self._qt.QMessageBox.information(
@@ -760,65 +742,30 @@ class RuleManagerDialog:
         self.ruleset_combo.blockSignals(False)
         self._load_ruleset_metadata()
         self._apply_rule_defaults()
-        self._update_ruleset_enabled_tooltip()
         self._update_delete_ruleset_action()
 
     def _stash_ruleset(self) -> None:
         if self._ruleset_id in self._rulesets:
             current = self._rulesets[self._ruleset_id]
-            enabled_check = getattr(self, "ruleset_enabled_check", None)
             self._rulesets[self._ruleset_id] = replace(
-                current,
-                rules=tuple(self.rules),
-                enabled=(enabled_check.isChecked() if enabled_check is not None
-                         else current.enabled),
+                current, rules=tuple(self.rules),
             )
 
     def _load_ruleset_metadata(self) -> None:
         current = self._rulesets.get(self._ruleset_id)
-        if current is None or not hasattr(self, "ruleset_enabled_check"):
+        if current is None:
             return
-        controls = [self.ruleset_enabled_check]
+        if hasattr(self, "reenable_ruleset_button"):
+            self.reenable_ruleset_button.setVisible(not current.enabled)
+        controls = []
         if hasattr(self, "use_in_run_check"):
             controls.append(self.use_in_run_check)
         for control in controls:
             control.blockSignals(True)
-        self.ruleset_enabled_check.setChecked(current.enabled)
         if hasattr(self, "use_in_run_check"):
             self.use_in_run_check.setChecked(self._ruleset_id in self._run_ruleset_ids)
         for control in controls:
             control.blockSignals(False)
-
-    def _update_ruleset_enabled_tooltip(self) -> None:
-        if not hasattr(self, "ruleset_enabled_check"):
-            return
-        references = self._ruleset_profiles.get(self._ruleset_id, ())
-        profiles = ", ".join(name for _identifier, name in references)
-        if not profiles:
-            profiles = self._translator.text("rules.no_profile_references")
-        self.ruleset_enabled_check.setToolTip(self._translator.text(
-            "rules.ruleset_enabled_tooltip", profiles=profiles))
-
-    def _ruleset_enabled_changed(self, *_args) -> None:
-        if not self.ruleset_enabled_check.isChecked():
-            other_profiles = tuple(
-                name for profile_id, name in self._ruleset_profiles.get(self._ruleset_id, ())
-                if profile_id != self._profile_id
-            )
-            if other_profiles and not ask_confirmation(
-                self._qt,
-                self.dialog,
-                self._labels["title"],
-                self._translator.text(
-                    "rules.disable_shared_ruleset_confirm",
-                    profiles=", ".join(other_profiles)),
-                self._translator,
-            ):
-                self.ruleset_enabled_check.blockSignals(True)
-                self.ruleset_enabled_check.setChecked(True)
-                self.ruleset_enabled_check.blockSignals(False)
-                return
-        self._ruleset_metadata_changed()
 
     def _use_in_run_changed(self, checked: bool) -> None:
         if not self._ruleset_id:
@@ -829,14 +776,15 @@ class RuleManagerDialog:
         self._run_ruleset_ids = tuple(dict.fromkeys(identifiers))
         self._refresh()
 
-    def _ruleset_metadata_changed(self, *_args) -> None:
+    def _reenable_ruleset(self) -> None:
         current = self._rulesets.get(self._ruleset_id)
-        if current is None or not hasattr(self, "ruleset_enabled_check"):
+        if current is None or current.enabled:
             return
         self._rulesets[self._ruleset_id] = replace(
-            current,
-            enabled=self.ruleset_enabled_check.isChecked(),
+            current, enabled=True,
         )
+        self._populate_rulesets()
+        self._refresh()
         self._mark_test_result_stale()
 
     def _apply_rule_defaults(self) -> None:
@@ -1014,7 +962,6 @@ class RuleManagerDialog:
         self.rules = list(self._rulesets[self._ruleset_id].rules)
         self._load_ruleset_metadata()
         self._apply_rule_defaults()
-        self._update_ruleset_enabled_tooltip()
         self._update_delete_ruleset_action()
         self._refresh()
         self._mark_test_result_stale()

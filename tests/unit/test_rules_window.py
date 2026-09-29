@@ -282,7 +282,6 @@ def test_enter_in_rule_editor_submits_without_opening_ruleset_prompt():
             manager.update_button,
             manager.remove_button,
             manager.test_button,
-            manager.ruleset_settings_close_button,
             manager.apply_button,
             manager.cancel_button,
         )
@@ -405,10 +404,9 @@ def test_rules_page_has_no_checkable_disclosure_groupboxes():
     assert all(not group.isCheckable() for group in groupboxes)
 
 
-def test_more_menu_exposes_settings_help_import_bulk_export_and_delete(monkeypatch):
+def test_more_menu_exposes_help_import_bulk_export_and_delete(monkeypatch):
     triggered = []
     handlers = {
-        "settings": "_open_ruleset_settings",
         "help": "_show_ruleset_help",
         "import": "_import",
         "bulk_add": "_bulk_add",
@@ -426,20 +424,14 @@ def test_more_menu_exposes_settings_help_import_bulk_export_and_delete(monkeypat
     assert manager.ruleset_more_button.menu() is manager.ruleset_menu
     assert manager.ruleset_more_button.popupMode() == manager._qt.QToolButton.InstantPopup
     assert set(manager._ruleset_menu_actions) == {
-        "settings", "help", "import", "bulk_add", "export", "delete",
+        "help", "import", "bulk_add", "export", "delete",
     }
-    assert len(manager.ruleset_menu.actions()) == 6
+    assert len(manager.ruleset_menu.actions()) == 5
     for action in manager._ruleset_menu_actions.values():
         action.trigger()
     assert set(triggered) == set(handlers)
-    settings_form = manager.ruleset_settings_dialog._layout.children[0]
-    settings_controls = {
-        widget
-        for row in settings_form.children
-        for widget in row
-        if isinstance(widget, fake_qt.Base)
-    }
-    assert settings_controls == {manager.ruleset_enabled_check}
+    assert not hasattr(manager, "ruleset_settings_dialog")
+    assert not hasattr(manager, "ruleset_enabled_check")
     assert not hasattr(manager, "default_direction_combo")
     assert not hasattr(manager, "default_scope_combo")
 
@@ -700,23 +692,40 @@ def test_use_in_run_checkbox_tracks_selected_ruleset():
     assert manager.result.run_ruleset_ids == ("A", "B")
 
 
-def test_disabling_shared_ruleset_restores_check_when_confirmation_is_cancelled(monkeypatch):
+def test_disabled_ruleset_shows_reenable_button_and_click_enables():
     manager = RuleManagerDialog(
-        make_with_table(), (), translator=Translator("en"), profile_id="current",
-        rulesets=(RuleSet("shared"),), ruleset_id="shared",
-        ruleset_profiles={"shared": (("other", "Other profile"),)})
-    prompts = []
-    monkeypatch.setattr(
-        rules_window, "ask_confirmation",
-        lambda _qt, _parent, _title, message, _translator: (prompts.append(message), False)[1],
-    )
+        make_with_table(), (), translator=Translator("en"),
+        rulesets=(RuleSet("A", enabled=False),), ruleset_id="A")
 
-    assert "Other profile" in manager.ruleset_enabled_check.toolTip()
-    manager.ruleset_enabled_check.setChecked(False)
+    assert manager.reenable_ruleset_button.isVisible()
+    manager.reenable_ruleset_button.click()
 
-    assert len(prompts) == 1
-    assert manager.ruleset_enabled_check.isChecked()
-    assert manager._rulesets["shared"].enabled
+    assert manager._rulesets["A"].enabled is True
+    assert not manager.reenable_ruleset_button.isVisible()
+    manager._apply()
+    result = next(item for item in manager.result.rulesets if item.id == "A")
+    assert result.enabled is True
+
+
+def test_enabled_ruleset_hides_reenable_button():
+    manager = RuleManagerDialog(
+        make_with_table(), (), translator=Translator("en"),
+        rulesets=(RuleSet("A"),), ruleset_id="A")
+
+    assert not manager.reenable_ruleset_button.isVisible()
+
+
+def test_disabled_ruleset_remains_disabled_without_reenable():
+    manager = RuleManagerDialog(
+        make_with_table(), (), translator=Translator("en"),
+        rulesets=(RuleSet("A", enabled=False), RuleSet("B")), ruleset_id="A")
+
+    manager.ruleset_combo.setCurrentIndex(manager.ruleset_combo.findData("B"))
+    manager.ruleset_combo.setCurrentIndex(manager.ruleset_combo.findData("A"))
+    manager._apply()
+
+    result = next(item for item in manager.result.rulesets if item.id == "A")
+    assert result.enabled is False
 
 
 def test_default_ruleset_cannot_be_deleted():

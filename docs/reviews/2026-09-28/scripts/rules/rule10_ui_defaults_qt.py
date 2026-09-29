@@ -55,7 +55,7 @@ r = w2.rules[-1]
 print("  for comparison, rule in a user-created set: direction =", repr(r.direction),
       "| applies to s2twp run:", applies_to(r, config="s2twp"))
 
-print("\nRULE-11 label of ruleset-level switch:", window.ruleset_enabled_check.text())
+print("\nRULE-11 label of run-only ruleset control:", window.use_in_run_check.text())
 
 # What the '*' default does to a later t2s book (real vendored OpenCC):
 from opencc_backend.backend import OpenCCBackend

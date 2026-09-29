@@ -19,7 +19,9 @@ from ui.i18n import Translator
 
 root = Path(tempfile.mkdtemp())
 storage = SimpleNamespace(paths=SimpleNamespace(root=root, profiles=root / "profiles", rules=root / "rules"))
-RuleStore(root / "rules").save(RuleSet("shared", (Rule(id="r1", direction="s2t", source="软件", target="軟體"),)))
+RuleStore(root / "rules").save(RuleSet(
+    "shared", (Rule(id="r1", direction="s2t", source="软件", target="軟體"),),
+    enabled=False))
 ProfileStore(root / "profiles").save(Profile(id="novel-a", name="A", conversion="s2t", ruleset_ids=("shared",)))
 ProfileStore(root / "profiles").save(Profile(id="novel-b", name="B", conversion="s2t", ruleset_ids=("shared",)))
 
@@ -27,15 +29,11 @@ settings = RunSettings(storage, SimpleNamespace(book_fingerprint=lambda: "BOOK")
                        {"profile_id": "novel-a"}, language="zh-Hans", session_id="s")
 print("before: profile B freezes", [r.id for r in settings.freeze_rules(settings.profiles.load("novel-b")).rules])
 
-# The user, working on profile A, chooses to disable the shared set globally.
-disable_prompts = []
-rules_window.ask_confirmation = lambda _qt, _parent, _title, message, _translator: (
-    disable_prompts.append(message), True)[1]
-
-
+# The old shared.json is already disabled; profile B remains unaffected by it.
 def fake_window(rules, **kwargs):
     manager = rules_window.RuleManagerDialog(make_with_table(), rules, **kwargs)
-    manager.ruleset_enabled_check.setChecked(False)
+    print("re-enable button visible:", manager.reenable_ruleset_button.isVisible())
+    manager.reenable_ruleset_button.click()
     manager._apply()
     return manager.result
 
@@ -43,8 +41,7 @@ def fake_window(rules, **kwargs):
 rules_window.show_rules_window = fake_window
 settings.edit_rules("s2t", Translator("zh-Hans"), make_with_table(), None)
 
-print("label shown to the user:", Translator("zh-Hans").text("rules.ruleset_enabled"))
-print("other-profile confirmation:", disable_prompts)
+print("re-enable label:", Translator("zh-Hans").text("rules.reenable_ruleset"))
 print("after : shared.json enabled =", RuleStore(root / "rules").load("shared").enabled)
 print("after : profile B (never touched) freezes", [r.id for r in settings.freeze_rules(settings.profiles.load("novel-b")).rules])
 

@@ -379,39 +379,6 @@ def test_viewing_other_ruleset_does_not_add_it_to_run(monkeypatch, tmp_path):
     assert not RuleDialogQt.QMessageBox.questions
 
 
-def test_disabling_shared_ruleset_asks_when_other_profiles_reference_it(monkeypatch, tmp_path):
-    settings, profiles = _saved_profile_settings(tmp_path)
-    profiles.save(Profile(
-        id="other", name="Other profile", ruleset_ids=("default",)))
-    settings.rules.save(RuleSet("default"))
-    path = settings.rules.directory / "default.json"
-    before = path.read_bytes()
-    prompts = []
-    managers = []
-
-    def cancel_disable(_qt, _parent, _title, message, _translator):
-        prompts.append(message)
-        return False
-
-    def open_rules(*args, **kwargs):
-        manager = RuleManagerDialog(make_with_table(), args[0], **kwargs)
-        managers.append(manager)
-        manager.ruleset_enabled_check.setChecked(False)
-        manager._apply()
-        return manager.result
-
-    monkeypatch.setattr("ui.rules_window.ask_confirmation", cancel_disable)
-    monkeypatch.setattr("ui.rules_window.show_rules_window", open_rules)
-
-    settings.edit_rules("s2t", CatalogTranslator("en"), RuleDialogQt, object())
-
-    assert len(prompts) == 1
-    assert "Other profile" in prompts[0]
-    assert managers[0].ruleset_enabled_check.isChecked()
-    assert settings.rules.load("default").enabled
-    assert path.read_bytes() == before
-
-
 def test_clearing_persisted_default_ruleset_saves_empty_rules(monkeypatch, tmp_path):
     settings, _profiles = _saved_profile_settings(tmp_path)
     settings.rules.save(RuleSet("default", (

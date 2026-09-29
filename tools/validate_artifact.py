@@ -302,6 +302,7 @@ _I18N_REQUIRED_KEYS = _I18N_REQUIRED_KEYS | frozenset(
         'rules.replace_pre',
         'rules.remove',
         'rules.rename_ruleset',
+        'rules.reenable_ruleset',
         'rules.rule_hit',
         'rules.ruleset',
         'rules.scope',

@@ -74,22 +74,24 @@ with tempfile.TemporaryDirectory() as d:
     print("question asked:", log)
     print("saved profile now:", ps.load("saved").ruleset_ids, "(A removal was never asked about)")
 
-print("\n=== E. modal count, one save with: disable shared set + delete referenced set + add new set ===")
+print("\n=== E. modal count, one save with: delete referenced set + add new set ===")
 with tempfile.TemporaryDirectory() as d:
     st, ps = settings_with(Path(d), (RuleSet("S"), RuleSet("X")), ("default", "S", "X"),
                            others=(Profile(id="o", name="Other", ruleset_ids=("S", "X")),))
     def window(rules, **kw):
         m = RuleManagerDialog(make_with_table(), rules, **kw)
-        m.ruleset_combo.setCurrentIndex(m.ruleset_combo.findData("S"))
-        m.ruleset_enabled_check.setChecked(False)
-        n_disable = len(log)
         m.ruleset_combo.setCurrentIndex(m.ruleset_combo.findData("X")); m._delete_ruleset()
-        n_delete = len(log) - n_disable
-        m._qt.QInputDialog = names(["N"]); m._new_ruleset(); m.use_in_run_check.setChecked(True)
-        m._apply(); window.counts = (n_disable, n_delete); return m.result
+        n_delete = len(log)
+        new_name_calls = []
+        def get_new_name(*_args, **_kwargs):
+            new_name_calls.append(True)
+            return "N", True
+        m._qt.QInputDialog = SimpleNamespace(getText=get_new_name)
+        m._new_ruleset(); m.use_in_run_check.setChecked(True)
+        m._apply(); window.counts = (n_delete, len(new_name_calls)); return m.result
     rw.show_rules_window = window
     log.clear()
     st.edit_rules("s2t", Translator("en"), make_with_table(), None)
-    print("in-window modals: disable=%d delete=%d | modals during Save (edit_rules)=%d" % (
-        window.counts[0], window.counts[1], len(log) - sum(window.counts)))
+    print("in-window modals: delete=%d add=%d | confirmations during Save (edit_rules)=%d" % (
+        window.counts[0], window.counts[1], len(log) - window.counts[0]))
     print("saved:", ps.load("saved").ruleset_ids, "other:", ps.load("o").ruleset_ids)
