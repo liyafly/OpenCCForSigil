@@ -41,6 +41,14 @@ from ui.preview_batch import plan_batch_decision
 _DECISION_VALUES = tuple(PreviewDecision)
 _DECISION_TO_CODE = {decision: index + 1
                      for index, decision in enumerate(_DECISION_VALUES)}
+_ACCEPTED_DECISION_CODES = tuple(
+    _DECISION_TO_CODE[decision]
+    for decision in _DECISION_VALUES if decision.value.startswith("accept")
+)
+_REJECTED_DECISION_CODES = tuple(
+    _DECISION_TO_CODE[decision]
+    for decision in _DECISION_VALUES if not decision.value.startswith("accept")
+)
 _LINE_BREAK = re.compile(r"\r\n?|\n")
 
 
@@ -2250,14 +2258,11 @@ class _PreviewDialog:
             target = (PreviewDecision.ACCEPT_THIS if accepted
                       else PreviewDecision.REJECT_THIS)
             before_decisions = self._capture_compact_decisions(batch.entries)
-            for preview, change in batch.entries:
-                preview.restore_decision(change.change_id, target)
+            for file_id, change_ids, _states in before_decisions:
+                self._preview_by_file_id[file_id].restore_decisions(change_ids, target)
             self._record_scoped_bulk_decision_action(
                 before_decisions, target, batch.change_count)
-            for file_id, change_ids, states in before_decisions:
-                for state in states:
-                    previous = None if state == 0 else _DECISION_VALUES[state - 1]
-                    self._record_decision_change(file_id, previous, target)
+            self._record_decision_changes_bulk(before_decisions, target)
             feedback = self._translator.text(
                 "preview.batch_applied_main", changes=batch.change_count)
             if batch.group_count > 0:
@@ -2451,6 +2456,33 @@ class _PreviewDialog:
             self._accepted_count_by_file[file_id] = accepted
         else:
             self._accepted_count_by_file.pop(file_id, None)
+
+    def _record_decision_changes_bulk(self, before_decisions, after) -> None:
+        if not hasattr(self, "_totals"):
+            self._recompute_counts()
+        target_bucket = self._decision_bucket(after)
+        for file_id, change_ids, states in before_decisions:
+            count = len(change_ids)
+            old_undecided = states.count(0)
+            old_accepted = sum(states.count(code) for code in _ACCEPTED_DECISION_CODES)
+            old_rejected = sum(states.count(code) for code in _REJECTED_DECISION_CODES)
+            new_undecided = count if target_bucket == "undecided" else 0
+            new_accepted = count if target_bucket == "accepted" else 0
+            new_rejected = count if target_bucket == "rejected" else 0
+            self._totals["undecided"] += new_undecided - old_undecided
+            self._totals["accepted"] += new_accepted - old_accepted
+            self._totals["rejected"] += new_rejected - old_rejected
+
+            total, pending = self._file_filter_counts.get(file_id, (0, 0))
+            pending += new_undecided - old_undecided
+            self._file_filter_counts[file_id] = (total, pending)
+
+            accepted = self._accepted_count_by_file.get(file_id, 0)
+            accepted += new_accepted - old_accepted
+            if accepted:
+                self._accepted_count_by_file[file_id] = accepted
+            else:
+                self._accepted_count_by_file.pop(file_id, None)
 
     def _record_decision_changes(self, before) -> None:
         for file_id, change_id, previous in before:

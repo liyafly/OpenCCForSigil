@@ -138,6 +138,33 @@ class PreviewSession:
         if changed:
             self._decision_revision += 1
 
+    def restore_decisions(
+        self, change_ids, decision: Optional[PreviewDecision],
+    ) -> None:
+        """Restore a set of decisions while advancing the revision once."""
+
+        if decision is not None and not isinstance(decision, PreviewDecision):
+            raise TypeError("decision must be a PreviewDecision or None")
+        change_ids = tuple(change_ids)
+        if any(change_id not in self._changes for change_id in change_ids):
+            missing = next(change_id for change_id in change_ids
+                           if change_id not in self._changes)
+            raise PreviewError(f"unknown preview change id: {missing}")
+
+        decisions = self._decisions
+        if decision is None:
+            changed = any(change_id in decisions for change_id in change_ids)
+            if changed:
+                for change_id in change_ids:
+                    decisions.pop(change_id, None)
+        else:
+            changed = any(decisions.get(change_id) is not decision
+                          for change_id in change_ids)
+            if changed:
+                decisions.update(dict.fromkeys(change_ids, decision))
+        if changed:
+            self._decision_revision += 1
+
     def decision_snapshot(self) -> PreviewDecisionSnapshot:
         """Capture decisions without retaining any change text or plan objects."""
 

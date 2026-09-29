@@ -63,6 +63,29 @@ def test_preview_session_can_restore_a_decision_and_return_to_undecided():
         raise AssertionError("unknown change id must be rejected")
 
 
+def test_preview_session_restores_many_decisions_with_one_revision():
+    preview = PreviewSession(ConversionPlan(
+        source_sha256="", changes=(_change("one"), _change("two"))))
+
+    preview.restore_decisions(("one", "two"), PreviewDecision.ACCEPT_THIS)
+
+    assert preview.decision("one") is PreviewDecision.ACCEPT_THIS
+    assert preview.decision("two") is PreviewDecision.ACCEPT_THIS
+    assert preview.summary()["accepted"] == 2
+    assert preview.decision_revision == 1
+
+    preview.restore_decisions(("one", "two"), PreviewDecision.ACCEPT_THIS)
+    assert preview.decision_revision == 1
+
+    try:
+        preview.restore_decisions(("two", "missing"), None)
+    except PreviewError:
+        pass
+    else:
+        raise AssertionError("unknown IDs must be rejected before changing decisions")
+    assert preview.decision("two") is PreviewDecision.ACCEPT_THIS
+
+
 def test_decision_snapshot_is_read_only_and_cannot_cross_preview_sessions():
     first = PreviewSession(ConversionPlan(
         source_sha256="", changes=(_change("one"),)))
