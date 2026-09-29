@@ -52,6 +52,23 @@ class SkippedRuleMatch:
     end: int
 
 
+@dataclass(frozen=True)
+class LiteralPrefixIndex(Mapping[str, tuple[Rule, ...]]):
+    """Immutable literal-prefix buckets, with one-character buckets indexed separately."""
+
+    buckets: Mapping[str, tuple[Rule, ...]]
+    single_char_buckets: Mapping[str, tuple[Rule, ...]]
+
+    def __getitem__(self, key: str) -> tuple[Rule, ...]:
+        return self.buckets[key]
+
+    def __iter__(self):
+        return iter(self.buckets)
+
+    def __len__(self) -> int:
+        return len(self.buckets)
+
+
 class RegexBudget:
     """Cumulative work limit shared by all text targets in one conversion plan."""
 
@@ -142,17 +159,20 @@ def literal_candidates(
     text: str,
     index: Mapping[str, tuple[Rule, ...]],
     order: Mapping[str, int],
-    *,
-    include_single_char_rules: bool = True,
 ) -> tuple[Rule, ...]:
     """Return indexed literal rules whose one/two-character prefix occurs."""
 
-    if include_single_char_rules:
-        keys = set(text)
-        keys.update(text[position:position + 2] for position in range(len(text) - 1))
+    keys = {text[position:position + 2] for position in range(len(text) - 1)}
+    if isinstance(index, LiteralPrefixIndex):
+        buckets = index.buckets
+        found = [rule for key in keys for rule in buckets.get(key, ())]
+        if index.single_char_buckets:
+            single_buckets = index.single_char_buckets
+            found.extend(
+                rule for key in set(text) for rule in single_buckets.get(key, ()))
     else:
-        keys = {text[position:position + 2] for position in range(len(text) - 1)}
-    found = [rule for key in keys.intersection(index) for rule in index[key]]
+        keys.update(text)
+        found = [rule for key in keys for rule in index.get(key, ())]
     found.sort(key=lambda rule: order[rule.id])
     return tuple(found)
 
@@ -162,12 +182,8 @@ def _indexed_stage_candidates(
     regex_rules: tuple[Rule, ...],
     literal_index: Mapping[str, tuple[Rule, ...]],
     order: Mapping[str, int],
-    *,
-    include_single_char_rules: bool = True,
 ) -> tuple[Rule, ...]:
-    literals = literal_candidates(
-        text, literal_index, order,
-        include_single_char_rules=include_single_char_rules)
+    literals = literal_candidates(text, literal_index, order)
     if not literals:
         return regex_rules
     if not regex_rules:
@@ -264,6 +280,18 @@ def collect_matches(
     return tuple(matches)
 
 
+def _note_skipped(
+    skipped: list[SkippedRuleMatch] | None,
+    candidate: RuleMatch | list[RuleMatch],
+    winner: RuleMatch | None,
+) -> None:
+    if skipped is None or winner is None:
+        return
+    candidates = candidate if isinstance(candidate, list) else [candidate]
+    skipped.extend(SkippedRuleMatch(
+        item.rule.id, winner.rule.id, item.start, item.end) for item in candidates)
+
+
 def source_matches(
     text: str,
     rules: tuple[Rule, ...],
@@ -293,13 +321,7 @@ def source_matches(
     protected_winner: RuleMatch | None = None
     for start in sorted(protected_candidates):
         if start < cursor:
-            if skipped is not None and protected_winner is not None:
-                same_start = protected_candidates[start]
-                candidates_at_start = (same_start if isinstance(same_start, list)
-                                       else [same_start])
-                skipped.extend(SkippedRuleMatch(
-                    candidate.rule.id, protected_winner.rule.id,
-                    candidate.start, candidate.end) for candidate in candidates_at_start)
+            _note_skipped(skipped, protected_candidates[start], protected_winner)
             continue
         same_start = protected_candidates[start]
         chosen = _resolve_same_start(same_start) if isinstance(same_start, list) else same_start
@@ -309,67 +331,47 @@ def source_matches(
         cursor = chosen.end
         protected_winner = chosen
 
-    if not protected:
-        spans = []
-        cursor = 0
-        cursor_winner: RuleMatch | None = None
-        for start in sorted(override_candidates):
-            if start < cursor:
-                if skipped is not None and cursor_winner is not None:
-                    same_start = override_candidates[start]
-                    candidates_at_start = (same_start if isinstance(same_start, list)
-                                           else [same_start])
-                    skipped.extend(SkippedRuleMatch(
-                        candidate.rule.id, cursor_winner.rule.id,
-                        candidate.start, candidate.end) for candidate in candidates_at_start)
-                continue
-            same_start = override_candidates[start]
-            chosen = _resolve_same_start(same_start) if isinstance(same_start, list) else same_start
-            if chosen.rule.match_type == "regex":
-                budget.note_regex_hit(chosen.rule, chosen.start, fragment_hits)
-            budget.note_output(chosen.rule, len(chosen.target), chosen.start, stage="source")
-            spans.append(chosen)
-            cursor = chosen.end
-            cursor_winner = chosen
-        return tuple(spans)
-
-    spans = list(protected)
+    spans = []
     cursor = 0
     cursor_winner = None
     protected_index = 0
     for start in sorted(override_candidates):
         while protected_index < len(protected) and protected[protected_index].end <= start:
+            spans.append(protected[protected_index])
             protected_index += 1
         if start < cursor:
-            if skipped is not None and cursor_winner is not None:
-                same_start = override_candidates[start]
-                candidates_at_start = (same_start if isinstance(same_start, list)
-                                       else [same_start])
-                skipped.extend(SkippedRuleMatch(
-                    candidate.rule.id, cursor_winner.rule.id,
-                    candidate.start, candidate.end) for candidate in candidates_at_start)
+            _note_skipped(skipped, override_candidates[start], cursor_winner)
             continue
         same_start = override_candidates[start]
         blocker = (protected[protected_index]
                    if protected_index < len(protected) else None)
-        candidates_at_start = same_start if isinstance(same_start, list) else [same_start]
-        allowed = [candidate for candidate in candidates_at_start
-                   if blocker is None or candidate.end <= blocker.start]
-        if skipped is not None and blocker is not None:
-            skipped.extend(SkippedRuleMatch(
-                candidate.rule.id, blocker.rule.id, candidate.start, candidate.end)
-                for candidate in candidates_at_start
-                if candidate.end > blocker.start)
-        if not allowed:
-            continue
-        chosen = _resolve_same_start(allowed) if len(allowed) > 1 else allowed[0]
+        if isinstance(same_start, list):
+            allowed = (same_start if blocker is None else
+                       [candidate for candidate in same_start
+                        if candidate.end <= blocker.start])
+            if blocker is not None:
+                _note_skipped(
+                    skipped,
+                    [candidate for candidate in same_start
+                     if candidate.end > blocker.start],
+                    blocker,
+                )
+            if not allowed:
+                continue
+            chosen = _resolve_same_start(allowed) if len(allowed) > 1 else allowed[0]
+        else:
+            if blocker is not None and same_start.end > blocker.start:
+                _note_skipped(skipped, same_start, blocker)
+                continue
+            chosen = same_start
         if chosen.rule.match_type == "regex":
             budget.note_regex_hit(chosen.rule, chosen.start, fragment_hits)
         budget.note_output(chosen.rule, len(chosen.target), chosen.start, stage="source")
         spans.append(chosen)
         cursor = chosen.end
         cursor_winner = chosen
-    return tuple(sorted(spans, key=lambda item: (item.start, item.end)))
+    spans.extend(protected[protected_index:])
+    return tuple(spans)
 
 
 def replace_stage(
@@ -380,8 +382,6 @@ def replace_stage(
     *,
     literal_index: Mapping[str, tuple[Rule, ...]] | None = None,
     order: Mapping[str, int] | None = None,
-    regex_rules: tuple[Rule, ...] | None = None,
-    include_single_char_rules: bool = True,
     skipped: list[SkippedRuleMatch] | None = None,
 ) -> tuple[str, tuple[StageHit, ...]]:
     """Apply one stage's non-cascading replacements from a single input value."""
@@ -389,8 +389,10 @@ def replace_stage(
     if not rules:
         return text, ()
     if literal_index is not None and order is not None:
-        if regex_rules is None:
-            regex_rules = tuple(rule for rule in rules if rule.match_type == "regex")
+        regex_rules = (
+            tuple(rule for rule in rules if rule.match_type == "regex")
+            if regex_patterns else ()
+        )
         candidates = collect_matches(
             text,
             _indexed_stage_candidates(
@@ -398,7 +400,6 @@ def replace_stage(
                 regex_rules,
                 literal_index,
                 order,
-                include_single_char_rules=include_single_char_rules,
             ),
             regex_patterns,
             budget,
@@ -420,12 +421,7 @@ def replace_stage(
     cursor_winner: RuleMatch | None = None
     for start in sorted(by_start):
         if start < cursor:
-            if skipped is not None and cursor_winner is not None:
-                same_start = by_start[start]
-                candidates_at_start = same_start if isinstance(same_start, list) else [same_start]
-                skipped.extend(SkippedRuleMatch(
-                    candidate.rule.id, cursor_winner.rule.id,
-                    candidate.start, candidate.end) for candidate in candidates_at_start)
+            _note_skipped(skipped, by_start[start], cursor_winner)
             continue
         same_start = by_start[start]
         chosen = _resolve_same_start(same_start) if isinstance(same_start, list) else same_start

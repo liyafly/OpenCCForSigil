@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections import OrderedDict
 from dataclasses import dataclass
 from hashlib import sha256
 from types import MappingProxyType
@@ -15,6 +14,7 @@ from .validators import validate_rule, validate_rules
 from .matching import (
     REGEX_MAX_PATTERN_CHARS,
     REGEX_MAX_RULES,
+    LiteralPrefixIndex,
     RegexBudget,
     RuleExecutionError,
     SkippedRuleMatch,
@@ -49,9 +49,6 @@ class CompiledOverlay:
     source_rules: tuple[Rule, ...]
     pre_rules: tuple[Rule, ...]
     post_rules: tuple[Rule, ...]
-    source_regex_rules: tuple[Rule, ...]
-    pre_regex_rules: tuple[Rule, ...]
-    post_regex_rules: tuple[Rule, ...]
     guarded: bool
     source_rule_order: Mapping[str, int]
     pre_rule_order: Mapping[str, int]
@@ -59,9 +56,6 @@ class CompiledOverlay:
     source_literal_index: Mapping[str, tuple[Rule, ...]]
     pre_literal_index: Mapping[str, tuple[Rule, ...]]
     post_literal_index: Mapping[str, tuple[Rule, ...]]
-    source_has_single_char_literals: bool
-    pre_has_single_char_literals: bool
-    post_has_single_char_literals: bool
 
     @classmethod
     def build(
@@ -124,26 +118,22 @@ class CompiledOverlay:
             rule_order = MappingProxyType({
                 rule.id: position for position, rule in enumerate(stage_rules)
             })
-            regex_rules = tuple(rule for rule in stage_rules if rule.match_type == "regex")
             literal_buckets: dict[str, list[Rule]] = {}
-            has_single_char_literals = False
             for rule in stage_rules:
                 if rule.match_type == "literal" and rule.source:
                     prefix = rule.source[:2]
-                    if len(prefix) == 1:
-                        has_single_char_literals = True
                     literal_buckets.setdefault(prefix, []).append(rule)
-            literal_index = MappingProxyType({
+            literal_buckets = MappingProxyType({
                 key: tuple(values) for key, values in literal_buckets.items()
             })
-            return regex_rules, rule_order, literal_index, has_single_char_literals
+            single_char_buckets = MappingProxyType({
+                key: values for key, values in literal_buckets.items() if len(key) == 1
+            })
+            return rule_order, LiteralPrefixIndex(literal_buckets, single_char_buckets)
 
-        (source_regex_rules, source_rule_order, source_literal_index,
-         source_has_single_char_literals) = stage_indexes(source_rules)
-        pre_regex_rules, pre_rule_order, pre_literal_index, pre_has_single_char_literals = (
-            stage_indexes(pre_rules))
-        post_regex_rules, post_rule_order, post_literal_index, post_has_single_char_literals = (
-            stage_indexes(post_rules))
+        source_rule_order, source_literal_index = stage_indexes(source_rules)
+        pre_rule_order, pre_literal_index = stage_indexes(pre_rules)
+        post_rule_order, post_literal_index = stage_indexes(post_rules)
         return cls(
             rules_hash=actual_hash,
             config=config,
@@ -154,9 +144,6 @@ class CompiledOverlay:
             source_rules=source_rules,
             pre_rules=pre_rules,
             post_rules=post_rules,
-            source_regex_rules=source_regex_rules,
-            pre_regex_rules=pre_regex_rules,
-            post_regex_rules=post_regex_rules,
             guarded=any(
                 rule.match_type == "regex" or rule.action == "replace"
                 for rule in candidates
@@ -167,9 +154,6 @@ class CompiledOverlay:
             source_literal_index=source_literal_index,
             pre_literal_index=pre_literal_index,
             post_literal_index=post_literal_index,
-            source_has_single_char_literals=source_has_single_char_literals,
-            pre_has_single_char_literals=pre_has_single_char_literals,
-            post_has_single_char_literals=post_has_single_char_literals,
         )
 
 
@@ -178,28 +162,17 @@ def lock_spans_compiled(
     overlay: CompiledOverlay,
     budget: RegexBudget | None = None,
     *,
-    candidate_cache: OrderedDict[str, tuple[Rule, ...]] | None = None,
     skipped: list[SkippedRuleMatch] | None = None,
 ):
     """Return deterministic matches after reserving all protected ranges."""
 
     budget = budget or RegexBudget()
-    source_rules = candidate_cache.get(text) if candidate_cache is not None and len(text) <= 512 else None
-    if source_rules is None:
-        source_rules = _indexed_stage_candidates(
-            text,
-            overlay.source_regex_rules,
-            overlay.source_literal_index,
-            overlay.source_rule_order,
-            include_single_char_rules=overlay.source_has_single_char_literals,
-        )
-        if candidate_cache is not None and len(text) <= 512:
-            candidate_cache[text] = source_rules
-            candidate_cache.move_to_end(text)
-            if len(candidate_cache) > 256:
-                candidate_cache.popitem(last=False)
-    elif candidate_cache is not None:
-        candidate_cache.move_to_end(text)
+    regex_rules = (
+        tuple(rule for rule in overlay.source_rules if rule.match_type == "regex")
+        if overlay.regex_patterns else ()
+    )
+    source_rules = _indexed_stage_candidates(
+        text, regex_rules, overlay.source_literal_index, overlay.source_rule_order)
     return tuple(
         LockedSpan(
             match.start,

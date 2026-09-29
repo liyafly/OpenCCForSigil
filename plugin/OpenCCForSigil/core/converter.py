@@ -5,7 +5,6 @@ turns one backend result into source-relative changes that a planner can move
 to absolute document offsets.
 """
 
-from collections import OrderedDict
 from dataclasses import replace
 from hashlib import sha256
 import json
@@ -22,7 +21,7 @@ class OfficialBackendConverter:
     def __init__(self, backend: OpenCCBackend) -> None:
         self.backend = backend
         self._compiled_overlays = {}
-        self._source_candidate_cache = None
+        self._unlocked_request = None
         self._regex_budget = None
 
     def convert(self, text: str, request: ConvertRequest, *, quotation_pairer=None) -> ConvertResult:
@@ -159,19 +158,14 @@ class OfficialBackendConverter:
         budget = self._regex_budget or RegexBudget()
         zero_width_before = dict(budget.zero_width_skips)
         skipped_matches = [] if request.include_rule_trace else None
-        candidate_cache = self._source_candidate_cache
-        if candidate_cache is None or candidate_cache[0] is not overlay:
-            candidate_cache = (overlay, OrderedDict())
-            self._source_candidate_cache = candidate_cache
         spans = lock_spans_compiled(
-            text, overlay, budget, candidate_cache=candidate_cache[1],
-            skipped=skipped_matches)
+            text, overlay, budget, skipped=skipped_matches)
         skipped_rule_trace = [SkippedRuleTrace(
             item.rule_id, item.winner_id, "source", item.start, item.end)
             for item in skipped_matches or ()]
         pairer = quotation_pairer or QuotationPairer(request.quotation_mode)
         # Reuse the complete unlocked pipeline while avoiding a second rule pass.
-        cached_unlocked = getattr(self, "_unlocked_request", None)
+        cached_unlocked = self._unlocked_request
         if cached_unlocked is None or cached_unlocked[0] is not request:
             cached_unlocked = (
                 request, replace(request, rules_snapshot=type(request.rules_snapshot)())
@@ -197,8 +191,6 @@ class OfficialBackendConverter:
                         segment, pre_rules, regex_patterns, budget,
                         literal_index=overlay.pre_literal_index,
                         order=overlay.pre_rule_order,
-                        regex_rules=overlay.pre_regex_rules,
-                        include_single_char_rules=overlay.pre_has_single_char_literals,
                         skipped=pre_skipped)
                     converted = self.convert(
                         before_opencc, unlocked, quotation_pairer=pairer)
@@ -206,8 +198,6 @@ class OfficialBackendConverter:
                         converted.target, post_rules, regex_patterns, budget,
                         literal_index=overlay.post_literal_index,
                         order=overlay.post_rule_order,
-                        regex_rules=overlay.post_regex_rules,
-                        include_single_char_rules=overlay.post_has_single_char_literals,
                         skipped=post_skipped)
                 except RuleExecutionError:
                     raise

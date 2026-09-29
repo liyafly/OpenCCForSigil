@@ -1,5 +1,6 @@
 import random
 import inspect
+from dataclasses import fields
 from importlib.util import find_spec
 
 import pytest
@@ -20,6 +21,24 @@ def test_legacy_rules_engine_pipeline_and_exports_are_removed():
     assert find_spec("rules.engine") is None
     assert not hasattr(rules, "convert_with_overlay")
     assert not hasattr(rules, "lock_spans")
+
+
+def test_simp07_removes_unmeasured_matcher_fast_paths():
+    from core.converter import OfficialBackendConverter
+    from rules.compiled import CompiledOverlay, lock_spans_compiled
+    from rules.matching import replace_stage
+
+    assert "candidate_cache" not in inspect.signature(lock_spans_compiled).parameters
+    stage_parameters = set(inspect.signature(replace_stage).parameters)
+    assert stage_parameters == {
+        "text", "rules", "regex_patterns", "budget", "literal_index", "order", "skipped",
+    }
+    overlay_fields = {item.name for item in fields(CompiledOverlay)}
+    assert not any(name.endswith(("_regex_rules", "_has_single_char_literals"))
+                   for name in overlay_fields)
+    converter = OfficialBackendConverter(object())
+    assert not hasattr(converter, "_source_candidate_cache")
+    assert converter._unlocked_request is None
 
 
 def _reference_lock_spans(text, snapshot, *, config, profile_id=None, book_fingerprint=None):
@@ -326,12 +345,6 @@ def test_prefix_indexed_replace_stage_equals_full_scan_for_random_rules():
                     "literal_index": getattr(overlay, f"{stage}_literal_index"),
                     "order": getattr(overlay, f"{stage}_rule_order"),
                 }
-                if "regex_rules" in inspect.signature(replace_stage).parameters:
-                    fast_kwargs["regex_rules"] = getattr(
-                        overlay, f"{stage}_regex_rules")
-                if "include_single_char_rules" in inspect.signature(replace_stage).parameters:
-                    fast_kwargs["include_single_char_rules"] = getattr(
-                        overlay, f"{stage}_has_single_char_literals")
                 fast_stage = outcome(lambda: replace_stage(
                     text, stage_rules, overlay.regex_patterns, RegexBudget(), **fast_kwargs))
                 full_stage = outcome(lambda: replace_stage(
@@ -373,37 +386,6 @@ def test_lock_spans_passes_only_prefix_candidates(monkeypatch):
     assert len(seen) == 1
     assert not any(rule.match_type == "literal" for rule in seen[0])
     assert tuple(rule for rule in seen[0] if rule.match_type == "regex") == (regex_rule,)
-
-
-def test_compiled_source_candidate_cache_reuses_entries_and_stays_bounded(monkeypatch):
-    from collections import OrderedDict
-
-    import rules.compiled as compiled
-
-    overlay = compiled.CompiledOverlay.build(
-        RuleSnapshot.freeze((Rule(
-            id="common-name", source="专名", target="專名", direction="s2t"),)),
-        config="s2t",
-    )
-    calls = 0
-    original = compiled._indexed_stage_candidates
-
-    def count_candidate_builds(*args, **kwargs):
-        nonlocal calls
-        calls += 1
-        return original(*args, **kwargs)
-
-    monkeypatch.setattr(compiled, "_indexed_stage_candidates", count_candidate_builds)
-    cache = OrderedDict()
-    for _ in range(2):
-        compiled.lock_spans_compiled("专名", overlay, candidate_cache=cache)
-
-    assert calls == 1
-    for index in range(257):
-        compiled.lock_spans_compiled(f"text-{index}", overlay, candidate_cache=cache)
-
-    assert len(cache) == 256
-    assert "专名" not in cache
 
 
 def test_convert_rules_does_not_iterate_overlay_rules_per_target():
