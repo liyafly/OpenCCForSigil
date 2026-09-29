@@ -12,17 +12,12 @@ from ui.i18n import (
 )
 from ui.qt import enum_value, exec_dialog
 
-PANEL_OPTION_DEFAULTS = {
-    "diagnose_mixed": True,
-    "detailed_classification": True,
-}
-
 _ADVANCED_FIELDS = frozenset({
     "convert_alt", "convert_title", "convert_aria_label", "convert_svg_text",
     "convert_ruby_rt", "convert_code_pre", "decode_numeric_cjk_refs",
     "quotation_mode", "punctuation_mode", "language_metadata", "language_preset",
-    "language_region", "diagnose_mixed", "detailed_classification", "force_pivot",
-    "pivot_chain", "mathml", "regex_rules", "tofu_policy", "numeric_cjk_char_refs",
+    "language_region", "force_pivot", "pivot_chain", "mathml", "regex_rules",
+    "tofu_policy", "numeric_cjk_char_refs",
 })
 _HIGH_RISK_FIELDS = ("force_pivot", "convert_metadata", "regex_rules")
 
@@ -160,8 +155,6 @@ class RunOptionsPanel:
         self.language_note.setWordWrap(True)
         language_form.addRow(self.language_note)
         advanced_layout.addWidget(language_group)
-        self._add_option_group(
-            advanced_layout, "options.diagnostics", tuple(PANEL_OPTION_DEFAULTS.items()))
         high_risk = qt.QGroupBox(translator.text("options.high_risk"))
         self._named_groups.append((high_risk, "options.high_risk"))
         high_risk_layout = qt.QFormLayout(high_risk)
@@ -444,7 +437,7 @@ class RunOptionsPanel:
         saved_values = normalized_profile_values(self._services.active)
         current_values = normalized_profile_values(preferred_profile)
         effective_values = normalized_profile_values(effective_profile)
-        names = (*profile_runtime_fields(), *PANEL_OPTION_DEFAULTS)
+        names = profile_runtime_fields()
         table = self._qt.QTableWidget(len(names), 4, dialog)
         table.setHorizontalHeaderLabels([
             self._tr.text("options.change_field"),

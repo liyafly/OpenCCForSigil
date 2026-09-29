@@ -306,8 +306,6 @@ class Controller:
                         quotation_mode=active_profile.quotation_mode,
                         punctuation_mode=active_profile.punctuation_mode,
                         pivot_chain=active_profile.pivot_chain if active_profile.force_pivot else (),
-                        detailed_classification=bool(options.get("detailed_classification", True)),
-                        diagnose_mixed=bool(options.get("diagnose_mixed", True)),
                         profile_id=active_profile.id,
                         book_fingerprint=(settings.book_fingerprint if
                             any(rule.scope == "book" for rule in frozen_rules.rules) else ""),

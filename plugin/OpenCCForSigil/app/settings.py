@@ -121,7 +121,10 @@ class RunSettings:
     def current_profile(self, config, options):
         payload = self.active.to_dict()
         payload.update({ALIASES.get(key, key): value for key, value in options.items()
-                        if key not in {"id", "name", "schema_version", "profile_id"}})
+                        if key not in {
+                            "id", "name", "schema_version", "profile_id",
+                            "diagnose_mixed", "detailed_classification",
+                        }})
         payload["conversion"] = config
         payload["segmentation"] = "jieba" if config.endswith("_jieba") else "mmseg"
         payload["attributes"] = tuple(name for name, enabled in (

@@ -81,6 +81,17 @@ def test_supported_catalogs_have_same_keys_and_render_placeholders():
         assert "a.xhtml" in progress
 
 
+def test_diagnostic_option_strings_are_removed_from_catalogs():
+    catalogs = load_catalogs()
+    removed = {
+        "options.diagnostics",
+        "options.diagnose_mixed",
+        "options.detailed_classification",
+    }
+
+    assert all(not (set(catalog) & removed) for catalog in catalogs.values())
+
+
 def test_one_term_per_concept():
     catalogs = load_catalogs()
 

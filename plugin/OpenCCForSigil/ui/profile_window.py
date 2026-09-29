@@ -455,15 +455,12 @@ class ProfileManagerDialog:
     def _format_comparison(self, name, old, new) -> str:
         before = self._profile_value_text(name, old)
         after = self._profile_value_text(name, new)
-        label_key = (f"options.{name}" if name in {"diagnose_mixed", "detailed_classification"}
-                     else _PROFILE_SUMMARY_KEYS.get(name, f"profile.{name}"))
+        label_key = _PROFILE_SUMMARY_KEYS.get(name, f"profile.{name}")
         label = self._translator.text(label_key)
         return self._labels["comparison_change"].format(
             label=label, before=before, after=after)
 
     def _profile_value_text(self, name, value):
-        if name in {"diagnose_mixed", "detailed_classification"}:
-            return self._translator.text("profile.enabled" if value else "profile.disabled")
         if name == "conversion":
             label = configuration_label(self._translator, value).replace(" → ", " to ")
             if value not in self._available_config_ids:
@@ -615,23 +612,13 @@ class ProfileManagerDialog:
 
 
 def _profile_signature(profile: Profile) -> tuple:
-    payload = _with_panel_defaults(profile.to_dict())
+    payload = profile.to_dict()
+    payload.pop("diagnose_mixed", None)
+    payload.pop("detailed_classification", None)
     payload.pop("id", None)
     payload.pop("name", None)
     return tuple(sorted((key, tuple(value) if isinstance(value, list) else value)
                         for key, value in payload.items()))
-
-
-def _with_panel_defaults(options: dict) -> dict:
-    """Fill optional panel-only profile values before comparing profiles."""
-
-    from ui.run_options import PANEL_OPTION_DEFAULTS
-
-    values = dict(options)
-    for name, default in PANEL_OPTION_DEFAULTS.items():
-        if values.get(name) is None:
-            values[name] = default
-    return values
 
 
 __all__ = ["ProfileManagerDialog", "show_profile_window"]

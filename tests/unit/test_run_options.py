@@ -67,6 +67,15 @@ def test_run_options_content_stays_at_the_top_and_blank_labels_do_not_expand():
         assert ("setSizePolicy", (qt.QSizePolicy.Preferred, qt.QSizePolicy.Maximum)) in label.calls
 
 
+def test_diagnostic_options_are_not_exposed_in_run_options_panel():
+    qt = make_fake_qt()
+    panel = RunOptionsPanel(qt, Translator("en"), qt.QVBoxLayout())
+
+    assert "diagnose_mixed" not in panel.checks
+    assert "detailed_classification" not in panel.checks
+    assert all(title_key != "options.diagnostics" for _group, title_key in panel._option_groups)
+
+
 def test_pivot_chain_profile_list_uses_string_item_key():
     assert _pivot_chain_key(["t2s", "s2tw"]) == "t2s>s2tw"
     assert _decode_pivot_chain("t2s>s2tw") == ("t2s", "s2tw")
@@ -399,6 +408,21 @@ def test_current_profile_rebuilds_attributes_from_visible_checkboxes(tmp_path):
     assert current.convert_alt is False
     assert current.convert_title is True
     assert current.convert_aria_label is True
+
+
+def test_current_profile_drops_legacy_diagnostic_options_from_extras(tmp_path):
+    storage = SimpleNamespace(paths=SimpleNamespace(
+        root=tmp_path, profiles=tmp_path / "profiles", rules=tmp_path / "rules"))
+    settings = RunSettings(
+        storage, SimpleNamespace(), {}, language="en", session_id="test-session")
+    settings.active = Profile(id="conservative", name="Conservative")
+
+    current = settings.current_profile("s2t", {
+        "diagnose_mixed": False,
+        "detailed_classification": False,
+    })
+
+    assert not {"diagnose_mixed", "detailed_classification"} & dict(current.extras).keys()
 
 
 def test_profile_label_marks_changed_settings(tmp_path):

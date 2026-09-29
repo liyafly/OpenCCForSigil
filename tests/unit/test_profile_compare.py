@@ -14,19 +14,15 @@ def test_names_and_ids_do_not_count_as_conversion_changes():
 def test_empty_sequences_and_panel_defaults_normalize_consistently():
     current = {
         "conversion": "s2t", "scope": "all", "ruleset_ids": [],
-        "pivot_chain": [], "diagnose_mixed": None,
-        "detailed_classification": None,
+        "pivot_chain": [],
     }
     candidate = {
         "conversion": "s2t", "scope": "all_xhtml", "ruleset_ids": (),
-        "pivot_chain": (), "diagnose_mixed": True,
-        "detailed_classification": True,
+        "pivot_chain": (),
     }
 
     assert compare_profile_settings(current, candidate) == ()
     assert normalized_profile_values(current)["ruleset_ids"] == ()
-    assert normalized_profile_values(current)["diagnose_mixed"] is True
-    assert normalized_profile_values(current)["detailed_classification"] is True
 
 
 def test_missing_profile_fields_and_empty_language_region_use_defaults():
@@ -37,12 +33,22 @@ def test_missing_profile_fields_and_empty_language_region_use_defaults():
     assert normalized_profile_values({"conversion": "s2t"})["convert_nav"] is True
 
 
-def test_false_panel_default_remains_a_real_difference():
-    before = {"conversion": "s2t", "diagnose_mixed": True}
-    after = {"conversion": "s2t", "diagnose_mixed": False}
+def test_legacy_diagnostic_panel_options_do_not_change_profile_comparison():
+    before = {
+        "conversion": "s2t",
+        "diagnose_mixed": True,
+        "detailed_classification": True,
+    }
+    after = {
+        "conversion": "s2t",
+        "diagnose_mixed": False,
+        "detailed_classification": False,
+    }
 
-    assert compare_profile_settings(before, after) == (
-        ("diagnose_mixed", True, False),)
+    assert compare_profile_settings(before, after) == ()
+    normalized = normalized_profile_values(before)
+    assert "diagnose_mixed" not in normalized
+    assert "detailed_classification" not in normalized
 
 
 def test_compare_covers_every_runtime_profile_field():

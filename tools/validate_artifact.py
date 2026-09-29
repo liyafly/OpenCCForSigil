@@ -159,7 +159,6 @@ _I18N_REQUIRED_KEYS = frozenset(
         "options.content",
         "options.punctuation",
         "options.language_tags",
-        "options.diagnostics",
         "options.high_risk",
         "options.active_rulesets",
         "options.nav_unavailable",
