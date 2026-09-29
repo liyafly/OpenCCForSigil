@@ -47,3 +47,17 @@
 - `make check`: Ruff passed; **809 passed, 1 skipped** (fake-Qt layout limitation); vendor manifest passed; OpenCC differential passed (28 cases); Jieba differential passed (10 cases); plugin metadata valid (`0.2.10`).
 - Real Qt `check_ui_acceptance.py --verify --width 960 --height 640`: **PASS**, 13 scenarios, no failures. Output: `/tmp/opencc-ui-acceptance-batch3/acceptance.json/acceptance.json`.
 - FIX-07, FIX-08, and FIX-15 acceptance checks: complete. Sigil host acceptance: **Not verified**.
+
+## Batch 4 — FIX-09, FIX-10
+
+| Item | Commit | Pre-fix failing test(s) | Post-fix result | Acceptance and reproduction |
+| --- | --- | --- | --- | --- |
+| FIX-09 | `1acfbdc9a35d77b21bfc907389050ae464dfff96` | `test_zero_width_runtime_match_is_skipped_not_fatal`; `test_zero_width_skips_aggregate_to_one_diagnostic_per_rule_per_file`; `test_zero_width_diagnostic_record_is_localized`; `test_zero_width_diagnostics_keep_one_record_per_rule` | Regex, preview diagnostics, and i18n tests: 54 passed. | Converter results retain `zero_width_skips` without emitting per-fragment diagnostics; the planner aggregates counts by rule for each file. The probe now reports 6 diagnostics across 6 files, each saying 10 matches were skipped. Preview names and descriptions are localized in all three languages, include the rule ID/count, and contain no source text. |
+| FIX-10 | `95836e6a5674bc6277e5862002e1f87e1b741eee` | `test_undecided_filter_group_accept_does_not_rescan_visible_rows` (pre-fix traversal visited 20,000 rows in one action against a 1,000-row limit) | Preview filters, group scaling, decision history, and preview window tests: 65 passed. | A stable entry-position map plus a sorted visible-position list locates only affected rows; removal updates both cached lists incrementally. The model-range fallback refreshes if row removal is rejected. The updated repro reports 0 full refreshes across five grouped accepts; incremental-count fuzzing reports 400 seeds, 0 failures. |
+
+### Batch verification at `95836e6a5674bc6277e5862002e1f87e1b741eee`
+
+- `make check`: Ruff passed; **814 passed, 1 skipped** (fake-Qt layout limitation); vendor manifest passed; OpenCC differential passed (28 cases); Jieba differential passed (10 cases); plugin metadata valid (`0.2.10`).
+- Real Qt `check_ui_acceptance.py --verify --width 960 --height 640`: **PASS**, 13 scenarios, no failures; output: `/tmp/opencc-ui-acceptance-batch4/acceptance.json`.
+- Real Qt 396,091-row benchmark: `accept_group_status_undecided` median **19.9 ms** (target ≤25 ms); existing `accept_this_no_filter`, `accept_this_status_undecided`, and `accept_file` medians were **6.4 ms**, **19.0 ms**, and **9.9 ms**, all within their existing limits. Full output: `/tmp/opencc-preview-ui-batch4-final.json`.
+- FIX-09 and FIX-10 acceptance checks: complete. Sigil host acceptance: **Not verified**.
