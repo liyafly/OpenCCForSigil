@@ -25,7 +25,7 @@ for size in ((0, 0), (960, 640), (1280, 800)):
         "source_edit_in_viewport": inside(rules.source_edit),
         "editor_scroll_max": rules.editor_scroll.verticalScrollBar().maximum(),
         "table_viewport_height": tv.height(), "table_rows_visible": tv.height() // max(rh, 1),
-        "import_button_height": rules.import_button.height(), "import_button_width": rules.import_button.width(),
+        "import_button_height": rules.ruleset_more_button.height(), "import_button_width": rules.ruleset_more_button.width(),
         "splitter_orientation": int(rules.editor_splitter.orientation().value),
     }
     rules.dialog.grab().save(f"/tmp/opencc-rules-viewport-{size[0]}.png")

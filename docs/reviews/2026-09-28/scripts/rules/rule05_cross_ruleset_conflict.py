@@ -30,6 +30,7 @@ for identifier in ("taiwan-terms", "default"):
         make_with_table(), current.rules, translator=Translator("en"), config="s2t",
         run_options={"ruleset_ids": ["taiwan-terms", "default"]},
         rulesets=rulesets, ruleset_id=identifier,
+        run_ruleset_ids=("taiwan-terms", "default"),
     )
     shown = [manager.conflict_list.item(i).text()
              for i in range(manager.conflict_list.count())]

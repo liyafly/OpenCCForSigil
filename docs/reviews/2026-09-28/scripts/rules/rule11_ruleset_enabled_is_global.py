@@ -16,7 +16,6 @@ from rules.store import RuleSet, RuleStore
 from tests.support.fake_qt import make_with_table
 from ui import rules_window
 from ui.i18n import Translator
-from ui.rules_window import RuleWindowResult
 
 root = Path(tempfile.mkdtemp())
 storage = SimpleNamespace(paths=SimpleNamespace(root=root, profiles=root / "profiles", rules=root / "rules"))
@@ -54,7 +53,13 @@ RuleStore(root / "rules").save(RuleSet("other", (Rule(id="o1", direction="s2t", 
 fresh = RunSettings(storage, SimpleNamespace(book_fingerprint=lambda: "BOOK"), {},
                     language="zh-Hans", session_id="s2")
 print("run ruleset_ids before:", fresh.active.ruleset_ids)
-rules_window.show_rules_window = lambda *_a, rulesets, ruleset_id, **_k: RuleWindowResult(
-    "other", tuple(rulesets), (), run_ruleset_ids=())
+def view_other(rules, **kwargs):
+    manager = rules_window.RuleManagerDialog(make_with_table(), rules, **kwargs)
+    manager.ruleset_combo.setCurrentIndex(manager.ruleset_combo.findData("other"))
+    manager._apply()
+    return manager.result
+
+
+rules_window.show_rules_window = view_other
 fresh.edit_rules("s2t", Translator("zh-Hans"), make_with_table(), None)
 print("run ruleset_ids after :", fresh.active.ruleset_ids)
