@@ -1,5 +1,5 @@
 # ruff: noqa: E401, E402, E701, E702, E731, F401, F811, F841
-"""D8: the 100,000 per-run hit cap stops the built-in collapse-spaces template on a long novel.
+"""D8: many fragments are not stopped by a book-wide regex hit cap.
 
 Run from the repository root. Read-only: uses temporary directories, never the user's data.
 """
@@ -27,6 +27,6 @@ para = "　　" + "他走进房间看了一眼窗外的雨然后坐下来开始�
 try:
     for i in range(120_000):
         replace_stage(para, (rule,), patterns, budget)
-    print("ok", budget.regex_hits)
+    print("ok", i + 1)
 except RuleExecutionError as exc:
     print(f"FAILED at paragraph {i+1} (~{(i+1)*len(para)/1e6:.1f}M chars): {exc}")

@@ -1,5 +1,5 @@
 # ruff: noqa: E402,E702
-"""RULE-01: regex hit budget counts overlapping candidates and is per whole book."""
+"""RULE-01: overlapping regex candidates are distinct from applied hits."""
 import os
 import sys
 from pathlib import Path
@@ -45,7 +45,7 @@ applied_budget = RegexBudget()
 _result, applied = replace_stage(
     "你好世界再见", (r,), {"han": regex.compile(r.source, regex.VERSION1)}, applied_budget)
 print("(a) text='你好世界再见' pattern=\\p{Han}+ -> candidates:", len(cands),
-      "budget.regex_hits:", applied_budget.regex_hits,
+      "applied hits:", len(applied),
       "(only", len(applied), "replacement is applied)")
 
 # (b) a single 600-character paragraph aborts the analysis.

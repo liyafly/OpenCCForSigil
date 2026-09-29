@@ -180,11 +180,12 @@ def test_r09_empty_replacement_is_displayed_as_deletion():
     assert window.table.item(0, 3).text() != rule.source
 
 
-def test_r10_regex_final_wording_obeys_output_budget(monkeypatch):
-    monkeypatch.setattr("rules.matching.REGEX_MAX_OUTPUT_CHARS_PER_RUN", 4)
+def test_r10_regex_final_wording_obeys_candidate_output_limit(monkeypatch):
+    monkeypatch.setattr(
+        "rules.matching.REGEX_MAX_CANDIDATE_OUTPUT_CHARS_PER_FRAGMENT", 4)
     rule = replacement(
         action="override", stage="source", match_type="regex", source="x", target="12345")
-    with pytest.raises(RuleExecutionError, match="output"):
+    with pytest.raises(RuleExecutionError, match="candidate"):
         OfficialBackendConverter(IdentityBackend()).convert("x", request((rule,)))
 
 

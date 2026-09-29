@@ -49,7 +49,6 @@ class CompiledOverlay:
     source_rules: tuple[Rule, ...]
     pre_rules: tuple[Rule, ...]
     post_rules: tuple[Rule, ...]
-    guarded: bool
     source_rule_order: Mapping[str, int]
     pre_rule_order: Mapping[str, int]
     post_rule_order: Mapping[str, int]
@@ -144,10 +143,6 @@ class CompiledOverlay:
             source_rules=source_rules,
             pre_rules=pre_rules,
             post_rules=post_rules,
-            guarded=any(
-                rule.match_type == "regex" or rule.action == "replace"
-                for rule in candidates
-            ),
             source_rule_order=source_rule_order,
             pre_rule_order=pre_rule_order,
             post_rule_order=post_rule_order,

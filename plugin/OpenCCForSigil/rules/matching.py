@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import re
-import time
 from typing import Mapping
 
 from .models import Rule
@@ -12,15 +11,11 @@ from .precedence import scope_rank, type_rank
 
 
 REGEX_MATCH_TIMEOUT_SECONDS = 0.05
-REGEX_RUN_BUDGET_SECONDS = 3.0
 REGEX_MAX_RULES = 128
 REGEX_MAX_PATTERN_CHARS = 512
 REGEX_MAX_HITS_PER_RULE = 512
-REGEX_MAX_HITS_PER_RUN = 100_000
 REGEX_MAX_CANDIDATES_PER_FRAGMENT = 20_000
-REGEX_SECONDS_PER_MILLION_CHARS = 2.0
-REGEX_MAX_OUTPUT_CHARS_PER_RUN = 2_000_000
-REGEX_MAX_CANDIDATE_OUTPUT_CHARS_PER_RUN = 2_000_000
+REGEX_MAX_CANDIDATE_OUTPUT_CHARS_PER_FRAGMENT = 2_000_000
 
 
 class RuleExecutionError(RuntimeError):
@@ -70,68 +65,23 @@ class LiteralPrefixIndex(Mapping[str, tuple[Rule, ...]]):
 
 
 class RegexBudget:
-    """Cumulative work limit shared by all text targets in one conversion plan."""
+    """Collect per-fragment diagnostics for regex matches."""
 
     def __init__(self) -> None:
-        self.regex_seconds = 0.0
-        self.scanned_chars = 0
-        self.regex_hits = 0
-        self.output_chars = 0
-        self.candidate_output_chars = 0
         self.zero_width_skips: dict[str, int] = {}
 
-    def allowance(self) -> float:
-        return (REGEX_RUN_BUDGET_SECONDS
-                + REGEX_SECONDS_PER_MILLION_CHARS * self.scanned_chars / 1_000_000)
-
-    def note_scan(self, length: int) -> None:
-        self.scanned_chars += max(0, int(length))
-
-    def timeout_for(self, rule: Rule, position: int) -> float:
-        allowance = self.allowance()
-        remaining = allowance - self.regex_seconds
-        if remaining <= 0:
-            raise RuleExecutionError(
-                f"rule {rule.id}: regular-expression run exceeded its "
-                f"{allowance:g} second budget near offset {position}")
-        return min(REGEX_MATCH_TIMEOUT_SECONDS, remaining)
-
-    def note_regex_time(self, rule: Rule, elapsed: float, position: int) -> None:
-        self.regex_seconds += max(0.0, elapsed)
-        allowance = self.allowance()
-        if self.regex_seconds > allowance:
-            raise RuleExecutionError(
-                f"rule {rule.id}: regular-expression run exceeded its "
-                f"{allowance:g} second budget near offset {position}")
+    def timeout_for(self, _rule: Rule, _position: int) -> float:
+        return REGEX_MATCH_TIMEOUT_SECONDS
 
     def note_regex_hit(
         self, rule: Rule, position: int, fragment_hits: dict[str, int]
     ) -> None:
-        self.regex_hits += 1
         count = fragment_hits.get(rule.id, 0) + 1
         fragment_hits[rule.id] = count
         if count > REGEX_MAX_HITS_PER_RULE:
             raise RuleExecutionError(
                 f"rule {rule.id}: regular expression exceeded {REGEX_MAX_HITS_PER_RULE} "
                 f"hits near offset {position}")
-        if self.regex_hits > REGEX_MAX_HITS_PER_RUN:
-            raise RuleExecutionError(
-                f"rule {rule.id}: regular-expression rules exceeded "
-                f"{REGEX_MAX_HITS_PER_RUN} hits near offset {position}")
-
-    def note_candidate_output(self, rule: Rule, length: int, position: int) -> None:
-        if self.candidate_output_chars + length > REGEX_MAX_CANDIDATE_OUTPUT_CHARS_PER_RUN:
-            raise RuleExecutionError(
-                f"rule {rule.id}: replacement candidate memory exceeded "
-                f"{REGEX_MAX_CANDIDATE_OUTPUT_CHARS_PER_RUN} characters near offset {position}")
-        self.candidate_output_chars += length
-
-    def note_output(self, rule: Rule, length: int, position: int, *, stage: str) -> None:
-        if self.output_chars + length > REGEX_MAX_OUTPUT_CHARS_PER_RUN:
-            raise RuleExecutionError(
-                f"rule {rule.id}: {stage} replacement output exceeded "
-                f"{REGEX_MAX_OUTPUT_CHARS_PER_RUN} characters near offset {position}")
-        self.output_chars += length
 
 
 def _resolve_same_start(candidates: list[RuleMatch]) -> RuleMatch:
@@ -202,7 +152,7 @@ def collect_matches(
     """Collect candidates from one immutable stage input; matches may overlap."""
 
     matches: list[RuleMatch] = []
-    regex_scan_noted = False
+    candidate_output_chars = 0
     for rule in rules:
         if rule.match_type == "literal":
             source = rule.source
@@ -219,9 +169,6 @@ def collect_matches(
                 cursor = start + 1
             continue
 
-        if not regex_scan_noted:
-            budget.note_scan(len(text))
-            regex_scan_noted = True
         pattern = regex_patterns.get(rule.id)
         if pattern is None:
             raise RuleExecutionError(f"rule {rule.id}: compiled regular expression is missing")
@@ -229,20 +176,16 @@ def collect_matches(
         candidates = 0
         while cursor <= len(text):
             timeout = budget.timeout_for(rule, cursor)
-            started = time.monotonic()
             try:
                 found = pattern.search(text, cursor, timeout=timeout)
             except TimeoutError as exc:
-                budget.note_regex_time(rule, time.monotonic() - started, cursor)
                 raise RuleExecutionError(
                     f"rule {rule.id}: regular-expression matching timed out near "
                     f"offset {cursor}") from exc
             except Exception as exc:
-                budget.note_regex_time(rule, time.monotonic() - started, cursor)
                 raise RuleExecutionError(
                     f"rule {rule.id}: regular-expression matching failed near "
                     f"offset {cursor}: {exc}") from exc
-            budget.note_regex_time(rule, time.monotonic() - started, cursor)
             if found is None:
                 break
             if found.start() == found.end():
@@ -262,10 +205,10 @@ def collect_matches(
             else:
                 references = len(re.findall(r"\\(?:[1-9]|g<[^>]+>)", rule.target))
                 upper_bound = len(rule.target) + len(matched_text) * references
-                if upper_bound > REGEX_MAX_CANDIDATE_OUTPUT_CHARS_PER_RUN:
+                if candidate_output_chars + upper_bound > REGEX_MAX_CANDIDATE_OUTPUT_CHARS_PER_FRAGMENT:
                     raise RuleExecutionError(
                         f"rule {rule.id}: replacement candidate exceeds "
-                        f"{REGEX_MAX_CANDIDATE_OUTPUT_CHARS_PER_RUN} characters "
+                        f"{REGEX_MAX_CANDIDATE_OUTPUT_CHARS_PER_FRAGMENT} characters "
                         f"near offset {found.start()}")
                 try:
                     target = found.expand(rule.target)
@@ -273,7 +216,12 @@ def collect_matches(
                     raise RuleExecutionError(
                         f"rule {rule.id}: invalid replacement template at "
                         f"offset {found.start()}: {exc}") from exc
-                budget.note_candidate_output(rule, len(target), found.start())
+                candidate_output_chars += len(target)
+                if candidate_output_chars > REGEX_MAX_CANDIDATE_OUTPUT_CHARS_PER_FRAGMENT:
+                    raise RuleExecutionError(
+                        f"rule {rule.id}: replacement candidate memory exceeded "
+                        f"{REGEX_MAX_CANDIDATE_OUTPUT_CHARS_PER_FRAGMENT} characters "
+                        f"near offset {found.start()}")
             matches.append(RuleMatch(rule, found.start(), found.end(), target))
             # Advancing one code point preserves candidates that overlap this hit.
             cursor = found.start() + 1
@@ -366,7 +314,6 @@ def source_matches(
             chosen = same_start
         if chosen.rule.match_type == "regex":
             budget.note_regex_hit(chosen.rule, chosen.start, fragment_hits)
-        budget.note_output(chosen.rule, len(chosen.target), chosen.start, stage="source")
         spans.append(chosen)
         cursor = chosen.end
         cursor_winner = chosen
@@ -437,8 +384,6 @@ def replace_stage(
         output.append(match.target)
         if match.rule.match_type == "regex":
             budget.note_regex_hit(match.rule, match.start, fragment_hits)
-        budget.note_output(match.rule, len(match.target), match.start,
-                           stage=f"{match.rule.stage} stage")
         hits.append(StageHit(match.rule, match.start, match.end,
                              text[match.start:match.end], match.target))
         cursor = match.end
@@ -448,14 +393,11 @@ def replace_stage(
 
 __all__ = [
     "REGEX_MATCH_TIMEOUT_SECONDS",
-    "REGEX_RUN_BUDGET_SECONDS",
     "REGEX_MAX_RULES",
     "REGEX_MAX_PATTERN_CHARS",
     "REGEX_MAX_HITS_PER_RULE",
-    "REGEX_MAX_HITS_PER_RUN",
     "REGEX_MAX_CANDIDATES_PER_FRAGMENT",
-    "REGEX_SECONDS_PER_MILLION_CHARS",
-    "REGEX_MAX_OUTPUT_CHARS_PER_RUN",
+    "REGEX_MAX_CANDIDATE_OUTPUT_CHARS_PER_FRAGMENT",
     "RegexBudget",
     "RuleExecutionError",
     "StageHit",

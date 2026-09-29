@@ -1,5 +1,5 @@
 # ruff: noqa: E401, E402, E701, E702, E731, F401, F811, F841
-"""D8: time allowance scales with characters, not with fragments x regex rules.
+"""D8: many small fragments are no longer limited by an analysis-wide time budget.
 
 Run from the repository root. Read-only: uses temporary directories, never the user's data.
 """
@@ -32,8 +32,7 @@ def run(k_rules, n_fragments, frag_len):
         outcome = "ok"
     except RuleExecutionError as exc:
         outcome = f"FAILED after {i} fragments: {exc}"
-    return (f"rules={k_rules} fragments={n_fragments} len={frag_len} scanned={budget.scanned_chars} "
-            f"allowance={budget.allowance():.2f}s regex_seconds={budget.regex_seconds:.2f}s "
+    return (f"rules={k_rules} fragments={n_fragments} len={frag_len} "
             f"wall={time.perf_counter()-t0:.1f}s -> {outcome}")
 
 for args in [(128, 60_000, 8), (128, 60_000, 150), (32, 60_000, 8), (128, 20_000, 8)]:

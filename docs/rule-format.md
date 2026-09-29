@@ -20,16 +20,13 @@ context by the source-preserving planner.
 
 Regex patterns use the bundled `regex` VERSION1 dialect. They match only one
 extracted text fragment or an explicitly allowed attribute value. The
-runtime skips each zero-length match and enforces a 512-character pattern cap,
-512 applied hits per rule per text fragment and stage, and 100,000 applied hits
-per analysis. Overlapping candidates do not count as applied hits; candidate
-enumeration is separately capped at 20,000 per rule per text fragment to bound
-memory. Per analysis, the selected replacement output cap and the combined
-candidate expansion output cap are each 2,000,000 characters. Each regex call is limited to 50 ms, and
-the total runtime allowance is 3 seconds plus 2 seconds per million characters
-scanned. These limits are centralized in
-`rules/matching.py`. A timeout or exceeded limit aborts planning; it does not
-return a partial plan.
+runtime skips each zero-length match and enforces a 512-character pattern cap
+and 512 applied hits per rule per text fragment and stage. Overlapping candidates
+do not count as applied hits; candidate enumeration is separately capped at
+20,000 per rule per text fragment to bound memory. Candidate expansion output is
+capped at 2,000,000 characters per text fragment. Each regex search is limited
+to 50 ms. These limits are centralized in `rules/matching.py`. A timeout or
+exceeded limit aborts planning; it does not return a partial plan.
 
 JSON preserves every field. TSV and CSV rows can contain `source<Tab>target`,
 `source<Tab>target<Tab>comment`, or

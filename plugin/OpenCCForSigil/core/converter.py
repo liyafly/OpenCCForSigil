@@ -22,7 +22,6 @@ class OfficialBackendConverter:
         self.backend = backend
         self._compiled_overlays = {}
         self._unlocked_request = None
-        self._regex_budget = None
 
     def convert(self, text: str, request: ConvertRequest, *, quotation_pairer=None) -> ConvertResult:
         if not isinstance(text, str):
@@ -153,10 +152,7 @@ class OfficialBackendConverter:
             self._compiled_overlays[cache_key] = (request.rules_snapshot.rules, overlay)
         from rules.matching import RegexBudget
 
-        if overlay.guarded and self._regex_budget is None:
-            self._regex_budget = RegexBudget()
-        budget = self._regex_budget or RegexBudget()
-        zero_width_before = dict(budget.zero_width_skips)
+        budget = RegexBudget()
         skipped_matches = [] if request.include_rule_trace else None
         spans = lock_spans_compiled(
             text, overlay, budget, skipped=skipped_matches)
@@ -266,11 +262,7 @@ class OfficialBackendConverter:
                         rule_source=f"UserRule:{span.rule.id}", category="user_rule",
                         risk="HIGH" if len(span.source) != len(span.target) else "REVIEW"))
                 cursor = span.end
-        zero_width_skips = tuple(sorted(
-            (rule_id, count - zero_width_before.get(rule_id, 0))
-            for rule_id, count in budget.zero_width_skips.items()
-            if count > zero_width_before.get(rule_id, 0)
-        ))
+        zero_width_skips = tuple(sorted(budget.zero_width_skips.items()))
         return ConvertResult(
             text,
             "".join(output),

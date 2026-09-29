@@ -9,6 +9,7 @@ from core.converter import OfficialBackendConverter
 from core.models import ConvertRequest, RuleSnapshot as RequestRuleSnapshot
 from core.workflow import ConversionWorkflow
 from core.staging import apply_changes
+from rules import matching
 from rules.matching import RegexBudget, RuleExecutionError, collect_matches, replace_stage
 from rules.models import Rule, RuleSnapshot
 from rules.regex_runtime import load_regex_module
@@ -202,13 +203,26 @@ def test_skipped_candidate_trace_does_not_change_patches():
             for item in traced.skipped_rule_trace] == [("b", "g", 1, 4)]
 
 
-def test_expired_regex_budget_stops_with_rule_identity():
-    rule = _rule(id="bounded", source="x", target="y")
-    budget = RegexBudget()
-    budget.regex_seconds = 3.01
+def test_regex_search_timeout_is_per_call_not_cumulative(monkeypatch):
+    class Clock:
+        value = 0.0
 
-    with pytest.raises(RuleExecutionError, match="bounded.*budget"):
-        budget.timeout_for(rule, 17)
+    class Pattern:
+        def __init__(self):
+            self.timeouts = []
+
+        def search(self, _text, _position, *, timeout):
+            self.timeouts.append(timeout)
+            Clock.value += 0.5
+            return None
+
+    monkeypatch.setattr(
+        matching, "time", SimpleNamespace(monotonic=lambda: Clock.value), raising=False)
+    rules = tuple(_rule(id=f"slow-{index}", source="never") for index in range(8))
+    patterns = {rule.id: Pattern() for rule in rules}
+
+    assert collect_matches("x", rules, patterns, RegexBudget()) == ()
+    assert all(pattern.timeouts == [0.05] for pattern in patterns.values())
 
 
 def test_overlapping_regex_candidates_do_not_count_as_hits():
@@ -221,7 +235,6 @@ def test_overlapping_regex_candidates_do_not_count_as_hits():
 
     assert result == "X"
     assert len(hits) == 1
-    assert budget.regex_hits == 1
 
 
 def test_collapse_spaces_rule_plans_600_matches_across_60_files():
@@ -293,67 +306,37 @@ def test_regex_candidate_budget_is_per_rule_and_fragment(monkeypatch):
             "abc", (rule,), {rule.id: regex.compile(rule.source, regex.VERSION1)}, RegexBudget())
 
 
-def test_regex_budget_allowance_grows_with_scanned_text(monkeypatch):
-    class Clock:
-        value = 0.0
-
-    class Pattern:
-        def __init__(self, elapsed):
-            self.elapsed = elapsed
-
-        def search(self, _text, _position, *, timeout):
-            assert timeout <= 0.05
-            Clock.value += self.elapsed
-            return None
-
-    monkeypatch.setattr("rules.matching.time.monotonic", lambda: Clock.value)
-    rule = _rule(id="scaled", source="never", target="x")
+def test_regex_hits_are_limited_per_fragment_not_per_analysis():
+    rule = _rule(id="many-fragments", source="x", target="y")
     budget = RegexBudget()
 
-    collect_matches("x" * 1_000_000, (rule,), {rule.id: Pattern(4.9)}, budget)
+    for position in range(100_001):
+        budget.note_regex_hit(rule, position, {})
 
-    assert budget.scanned_chars == 1_000_000
-    assert budget.allowance() == 5.0
-    assert budget.regex_seconds == pytest.approx(4.9)
-
-    Clock.value = 0.0
-    slow = replace(rule, id="slow")
-    with pytest.raises(RuleExecutionError, match="slow.*exceeded its 3 second budget"):
-        collect_matches("x", (slow,), {"slow": Pattern(3.1)}, RegexBudget())
+    assert not hasattr(budget, "regex_hits")
 
 
-@pytest.mark.parametrize("stage,action", [
-    ("source", "override"), ("pre", "replace"), ("post", "replace")])
-def test_replacement_output_budget_covers_every_stage(monkeypatch, stage, action):
-    monkeypatch.setattr("rules.matching.REGEX_MAX_OUTPUT_CHARS_PER_RUN", 4)
-    rule = _rule(id=stage, stage=stage, action=action, source="x", target="12345")
+def test_candidate_output_limit_resets_for_each_fragment():
+    rule = _rule(id="fragment-output", source="x", target="1" * 1024)
+    regex = load_regex_module()
+    pattern = regex.compile(rule.source, regex.VERSION1)
+    budget = RegexBudget()
 
-    with pytest.raises(RuleExecutionError, match=f"{stage}.*output"):
-        OfficialBackendConverter(_Backend()).convert("x", _request((rule,)))
-
-
-def test_replacement_output_budget_accepts_exact_limit_and_protect_does_not_use_it(
-        monkeypatch):
-    monkeypatch.setattr("rules.matching.REGEX_MAX_OUTPUT_CHARS_PER_RUN", 4)
-    exact = _rule(id="exact", stage="source", action="override", source="x", target="1234")
-    converter = OfficialBackendConverter(_Backend())
-    assert converter.convert("x", _request((exact,))).target == "1234"
-
-    protect = Rule.from_dict({
-        "id": "protect", "type": "protect", "action": "protect",
-        "match_type": "literal", "stage": "source", "direction": "*",
-        "scope": "global", "source": "protected",
-    })
-    result = OfficialBackendConverter(_Backend()).convert("protected", _request((protect,)))
-    assert result.target == "protected"
+    for _ in range(2_050):
+        assert len(collect_matches("x", (rule,), {rule.id: pattern}, budget)) == 1
+    assert not hasattr(budget, "candidate_output_chars")
 
 
-def test_a_new_converter_starts_a_fresh_rule_output_budget(monkeypatch):
-    monkeypatch.setattr("rules.matching.REGEX_MAX_OUTPUT_CHARS_PER_RUN", 4)
-    rule = _rule(id="bounded", stage="source", action="override", source="x", target="1234")
+def test_selected_output_has_no_analysis_wide_limit():
+    target = "1" * 1_100_000
+    rule = _rule(
+        id="literal-output", match_type="literal", source="x", target=target)
+    budget = RegexBudget()
 
     for _ in range(2):
-        assert OfficialBackendConverter(_Backend()).convert("x", _request((rule,))).target == "1234"
+        output, _hits = replace_stage("x", (rule,), {}, budget)
+        assert output == target
+    assert not hasattr(budget, "output_chars")
 
 
 def test_optional_rule_trace_preserves_output_patches_and_reports_each_stage_hit():
