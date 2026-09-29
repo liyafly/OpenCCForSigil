@@ -268,6 +268,22 @@ def test_saved_profile_can_confirm_adding_ruleset(monkeypatch, tmp_path):
     assert before.ruleset_ids == ("default",)
 
 
+def test_confirming_addition_does_not_persist_unconfirmed_removal(monkeypatch, tmp_path):
+    settings, profiles = _saved_profile_settings(tmp_path)
+    profiles.save(Profile(id="saved", name="Saved", ruleset_ids=("default", "A")))
+    RuleDialogQt.QMessageBox.response = True
+    RuleDialogQt.QMessageBox.questions = []
+    monkeypatch.setattr(
+        "ui.rules_window.show_rules_window", lambda *_args, **_kwargs: RuleWindowResult(
+            "N", (RuleSet("default"), RuleSet("N")),
+            run_ruleset_ids=("default", "N")))
+
+    settings.edit_rules("s2t", CatalogTranslator("en"), RuleDialogQt, object())
+
+    assert profiles.load("saved").ruleset_ids == ("default", "A", "N")
+    assert settings.active.ruleset_ids == ("default", "N")
+
+
 def test_saved_profile_rejection_keeps_change_session_only(monkeypatch, tmp_path):
     settings, profiles = _saved_profile_settings(tmp_path)
     before = profiles.load("saved")

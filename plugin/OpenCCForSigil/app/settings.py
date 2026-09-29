@@ -388,7 +388,9 @@ class RunSettings:
                         translator.text("settings.add_rulesets_to_profile",
                                         rulesets=", ".join(added_names),
                                         profile=profile_display_name(self.active, translator)), translator):
-                    self.profiles.save(updated)
+                    saved = self.profiles.load(self.active.id)
+                    self.profiles.save(replace(saved, ruleset_ids=tuple(dict.fromkeys(
+                        (*saved.ruleset_ids, *newly_added_ids)))))
             self.active = updated
 
     def _available_config_options(self):
