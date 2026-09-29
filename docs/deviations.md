@@ -22,6 +22,10 @@ and their limits are recorded in the [implementation results](reviews/2026-09-27
   picker. Scope selection remains explicit on every invocation.
 - The read-only Dictionary Inspector (spec §86, SHOULD) is shown inline in the
   rule test output instead of a separate dialog.
+- Rule sets created since v0.2.5 (semantic version 2) accept any non-empty source;
+  the whitespace/punctuation-only source rejection of spec §11.8.3 applies to
+  version 1 rules only. Scope precedence follows spec §11.2 (book > global >
+  profile) for every rule.
 - Native conversion cannot be forcibly interrupted mid-call. Worker cancellation
   is cooperative at target boundaries and never writes a partial plan.
 - The optional Jieba probe constructs and exercises only `s2t_jieba`; all

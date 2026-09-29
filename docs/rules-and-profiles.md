@@ -51,17 +51,14 @@ marker is ambiguous and is not protected globally. The rule manager displays a
 short guide; the installable ZIP includes `OpenCCForSigil/resources/rule-guide.md`
 with examples for adding and testing other exact/protect rules.
 
-Protection wins first. V1 retains its book, global, profile ordering; V2 uses
-book, current profile, global, then built-in scope. At the same source position,
-if any candidate is V2, all candidates use the V2 scope order; otherwise all
-candidates use the V1 order. At the same precedence, longer actual matches win
-before the advanced priority. Rules take effect from left to right by their
-occurrence position; scope and priority are compared only among candidates
-with the same start. A later-starting candidate that overlaps an earlier
-selected rule is skipped. Conflicting
-same-source targets at the same precedence block planning; ambiguous dynamic
-regex matches with different outputs stop at that text position. Owners of
-separate profile/book scopes are independent.
+Protection wins first. At the same source position, scope order is book, global,
+profile, then built-in. At the same scope, longer actual matches win before the
+advanced priority. Rules take effect from left to right by their occurrence
+position; scope and priority are compared only among candidates with the same
+start. A later-starting candidate that overlaps an earlier selected rule is
+skipped. Conflicting same-source targets at the same precedence block planning;
+ambiguous dynamic regex matches with different outputs stop at that text
+position. Owners of separate profile/book scopes are independent.
 
 Import/export supports TSV, CSV, JSON, and OpenCC TXT. TXT import requires an
 explicit direction. Import diagnostics and conflicts are visible before

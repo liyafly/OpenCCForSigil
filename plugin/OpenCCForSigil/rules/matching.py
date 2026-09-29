@@ -85,12 +85,10 @@ class RegexBudget:
 
 
 def _resolve_same_start(candidates: list[RuleMatch]) -> RuleMatch:
-    legacy = all(candidate.rule.semantic_version <= 1 for candidate in candidates)
-
     def rank(candidate: RuleMatch) -> tuple[int, int, int, int]:
         rule = candidate.rule
         return (
-            type_rank(rule), scope_rank(rule, legacy=legacy),
+            type_rank(rule), scope_rank(rule),
             candidate.end - candidate.start, int(rule.priority),
         )
 

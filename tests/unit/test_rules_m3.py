@@ -311,7 +311,7 @@ def test_legacy_ruleset_migration_keeps_v1_semantics_and_backs_up_source(tmp_pat
     assert path.with_suffix(".json.v1.bak").read_bytes() == original_bytes
 
 
-def test_new_ruleset_precedence_changes_without_changing_legacy_order():
+def test_v1_and_v2_scope_precedence_both_follow_the_spec():
     def winning_target(rules):
         spans = _locked(
             "术语", RuleSnapshot.freeze(rules), config="s2t", profile_id="profile")
@@ -328,7 +328,36 @@ def test_new_ruleset_precedence_changes_without_changing_legacy_order():
     )
 
     assert winning_target(legacy) == "全局"
-    assert winning_target(current) == "方案"
+    assert winning_target(current) == "全局"
+
+
+def test_unrelated_v2_rule_does_not_flip_v1_scope_winner():
+    global_rule = Rule(
+        id="v1-global", direction="s2t", source="软件", target="軟件(全局)",
+        semantic_version=1)
+    profile_rule = Rule(
+        id="v1-profile", direction="s2t", source="软件", target="軟體(方案)",
+        scope="profile", profile_id="profile", semantic_version=1)
+    unrelated_v2_rule = Rule(
+        id="v2-short", direction="s2t", source="软", target="軟",
+        semantic_version=2, action="override", stage="source")
+
+    def winning_id(rules):
+        spans = _locked(
+            "软件", RuleSnapshot.freeze(rules), config="s2t", profile_id="profile")
+        return spans[0].rule.id
+
+    assert winning_id((global_rule, profile_rule)) == "v1-global"
+    assert winning_id((global_rule, profile_rule, unrelated_v2_rule)) == "v1-global"
+
+
+def test_v2_whitespace_source_remains_valid():
+    rule = Rule(
+        id="whitespace-v2", semantic_version=2, direction="s2t", source=" ", target="")
+
+    overlay = CompiledOverlay.build(RuleSnapshot.freeze((rule,)), config="s2t")
+
+    assert overlay.rules[0].source == " "
 
 
 def test_global_conflicts_ignore_inactive_profile_owner_fields():
@@ -405,6 +434,14 @@ def test_delimited_export_reports_lossy_rule_semantics():
     )
 
     assert export_warnings(rules, format="tsv") == (True, 0)
+
+
+def test_delimited_export_does_not_warn_for_v2_version_alone():
+    rule = Rule(
+        id="v2-exact", semantic_version=2, action="override", stage="source",
+        match_type="literal", direction="s2t", source="软件", target="軟體")
+
+    assert export_warnings((rule,), format="tsv") == (False, 0)
 
 
 def test_delimited_export_reports_all_semantic_fields_it_cannot_preserve():

@@ -42,15 +42,8 @@ def type_rank(rule: Rule) -> int:
         rule.action or ("protect" if rule.type == "protect" else "override"), 0)
 
 
-def scope_rank(rule: Rule, *, legacy: bool | None = None) -> int:
-    if legacy is None:
-        legacy = rule.semantic_version <= 1
-    if legacy:
-        # V1 order is book, global, profile. Preserve it for migrated rules.
-        return {"book": 3, "global": 2, "profile": 1, "builtin": 0}.get(
-            rule.scope, 0)
-    # V2 order is book, profile, global, built-in.
-    return {"book": 4, "profile": 3, "global": 2, "builtin": 1}.get(
+def scope_rank(rule: Rule) -> int:
+    return {"book": 3, "global": 2, "profile": 1, "builtin": 0}.get(
         rule.scope, 0)
 
 

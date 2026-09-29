@@ -157,6 +157,12 @@ def test_simp22_foreign_owner_banner_string_is_removed_from_catalogs():
                for catalog in catalogs.values())
 
 
+def test_simp24_version_precedence_strings_are_removed_from_catalogs():
+    catalogs = load_catalogs()
+    removed = {"rules.detail_version", "rules.version_v1", "rules.version_v2"}
+    assert all(not (set(catalog) & removed) for catalog in catalogs.values())
+
+
 def test_one_term_per_concept():
     catalogs = load_catalogs()
 

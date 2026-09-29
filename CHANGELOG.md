@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Apply spec §11.2 scope precedence to every rule version. At the same source
+  position, v0.2.5-and-later profile rules now lose to global rules; book rules
+  remain highest.
+
 ## 0.2.10 - 2026-09-28
 
 ### Added

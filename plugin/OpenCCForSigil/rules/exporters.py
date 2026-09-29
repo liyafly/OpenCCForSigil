@@ -107,7 +107,6 @@ def _delimited_loses_semantics(rule: Rule) -> bool:
 
     return (
         not rule.enabled
-        or rule.semantic_version != 1
         or rule.type != "exact"
         or rule.action != "override"
         or rule.match_type != "literal"

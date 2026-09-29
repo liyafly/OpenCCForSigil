@@ -1019,7 +1019,7 @@ def test_bulk_paste_cancel_keeps_rules_unchanged(monkeypatch):
     assert tuple(manager.rules) == before
 
 
-def test_rule_details_show_legacy_precedence_version():
+def test_rule_details_do_not_show_semantic_precedence_version():
     translator = Translator("zh-Hans")
     legacy_rule = Rule(
         id="legacy", semantic_version=1, source="词", target="詞", direction="s2t")
@@ -1028,9 +1028,8 @@ def test_rule_details_show_legacy_precedence_version():
     manager.table.selectRow(0)
     manager._refresh_selection_details()
 
-    expected = translator.text(
-        "rules.detail_version", version=translator.text("rules.version_v1"))
-    assert expected in manager.selection_details.toPlainText()
+    details = manager.selection_details.toPlainText()
+    assert "规则格式：" not in details
 
 
 def test_txt_import_reports_candidates_and_invalid_rows_with_scope():
