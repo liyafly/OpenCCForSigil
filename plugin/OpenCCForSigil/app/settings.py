@@ -369,9 +369,7 @@ class RunSettings:
                     if item not in deleted)
             else:
                 updated_rule_ids = tuple(dict.fromkeys(
-                    identifier for identifier in (
-                        replacements.get(item, item) for item in run_ruleset_ids)
-                    if identifier not in deleted))
+                    identifier for identifier in run_ruleset_ids if identifier not in deleted))
             updated = replace(self.active, ruleset_ids=updated_rule_ids)
             newly_added_ids = tuple(
                 identifier for identifier in updated_rule_ids

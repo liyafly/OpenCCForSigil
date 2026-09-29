@@ -1204,6 +1204,8 @@ class RuleManagerDialog:
         else:
             original, _current = self._renamed[previous]
             self._renamed[previous] = (original, identifier)
+        self._run_ruleset_ids = tuple(dict.fromkeys(
+            identifier if item == old else item for item in self._run_ruleset_ids))
         self._ruleset_id = identifier
         self.rules = list(ruleset.rules)
         references = self._ruleset_profiles.pop(old, ())

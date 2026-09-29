@@ -427,6 +427,26 @@ def test_renamed_ruleset_id_can_be_reused_without_deleting_the_new_set(
     assert profile_store.load("saved").ruleset_ids == ("default", "B", "A")
 
 
+def test_run_ids_from_window_are_not_remapped_after_rename(monkeypatch, tmp_path):
+    profiles = ProfileStore(tmp_path / "profiles")
+    profiles.save(Profile(id="saved", name="Saved", ruleset_ids=("default", "A")))
+    rules = RuleStore(tmp_path / "rules")
+    rules.save(RuleSet("A"))
+    settings = RunSettings(
+        Storage(tmp_path), SimpleNamespace(book_fingerprint=lambda: "book-hash"),
+        {"profile_id": "saved"}, language="en", session_id="test-session")
+    result = RuleWindowResult(
+        "B", (RuleSet("default"), RuleSet("B"), RuleSet("A")),
+        renamed=(("A", "B"),), run_ruleset_ids=("default", "B", "A"))
+    RuleDialogQt.QMessageBox.response = True
+    monkeypatch.setattr(
+        "ui.rules_window.show_rules_window", lambda *_args, **_kwargs: result)
+
+    settings.edit_rules("s2t", Translator(), RuleDialogQt, object())
+
+    assert settings.active.ruleset_ids == ("default", "B", "A")
+
+
 def test_profile_selection_is_validated_before_activation(monkeypatch, tmp_path):
     settings, _profiles = _saved_profile_settings(tmp_path)
     active = settings.active

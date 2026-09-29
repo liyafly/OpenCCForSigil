@@ -565,6 +565,25 @@ def test_conflict_with_another_run_ruleset_is_listed_and_blocks_save():
     assert not manager.apply_button.isEnabled()
 
 
+def test_rename_keeps_use_in_run_state_and_conflicts():
+    current = Rule(id="a1", source="软件", target="軟體", direction="s2t")
+    other = Rule(id="b1", source="软件", target="軟件", direction="s2t")
+    manager = RuleManagerDialog(
+        make_with_table(), (), translator=Translator("en"),
+        rulesets=(RuleSet("A", (current,)), RuleSet("B", (other,))),
+        ruleset_id="A", run_ruleset_ids=("A", "B"))
+    manager.ruleset_combo.setCurrentIndex(manager.ruleset_combo.findData("B"))
+    manager._qt.QInputDialog = SimpleNamespace(getText=lambda *_args, **_kwargs: ("B2", True))
+
+    manager._rename_ruleset()
+
+    assert manager._run_ruleset_ids == ("A", "B2")
+    assert manager.use_in_run_check.isChecked()
+    manager.ruleset_combo.setCurrentIndex(manager.ruleset_combo.findData("A"))
+    assert manager.conflict_list.count() == 1
+    assert not manager.apply_button.isEnabled()
+
+
 def test_unselected_ruleset_conflict_does_not_block_save():
     current = Rule(id="a1", source="软件", target="軟體", direction="s2t")
     other = Rule(id="b1", source="软件", target="軟件", direction="s2t")
