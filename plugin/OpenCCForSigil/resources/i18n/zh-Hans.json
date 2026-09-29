@@ -439,7 +439,7 @@
   "rules.discard_confirm": "放弃更改",
   "rules.discard_back": "返回编辑",
   "rules.input": "测试文本",
-  "rules.output": "沙箱输出",
+  "rules.output": "测试输出",
   "rules.direction": "方向",
   "rules.source": "源文本",
   "rules.target": "目标文本",

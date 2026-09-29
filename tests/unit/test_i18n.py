@@ -84,6 +84,20 @@ def test_supported_catalogs_have_same_keys_and_render_placeholders():
 def test_one_term_per_concept():
     catalogs = load_catalogs()
 
+    for language in ("en", "zh-Hans", "zh-Hant"):
+        for key, value in catalogs[language].items():
+            assert "沙箱" not in value and "sandbox" not in value.casefold(), key
+    for key, value in catalogs["zh-Hant"].items():
+        if key.startswith("result."):
+            assert "寫入" not in value, key
+
+    assert catalogs["en"]["rules.output"] == "Test output"
+    assert catalogs["zh-Hans"]["rules.output"] == "测试输出"
+    assert catalogs["zh-Hant"]["rules.output"] == "測試輸出"
+    assert catalogs["en"]["scope.checkpoint_close"] == "Close Checkpoint reminder"
+    assert "已寫回" in catalogs["zh-Hant"]["result.row.written"]
+    assert "已寫回" in catalogs["zh-Hant"]["result.row.written_accepted"]
+
     for key, value in catalogs["zh-Hans"].items():
         if key.startswith(("preview.", "a11y.preview.")):
             normalized = value.replace("待决定", "")
@@ -156,7 +170,7 @@ def test_traditional_chinese_separates_accepting_changes_from_applying_them():
         for key, value in catalog.items()
         if "accept" in key
     )
-    assert "已寫入" in catalog["result.row.written"]
+    assert "已寫回" in catalog["result.row.written"]
     assert "套用" in catalog["preview.apply"]
 
 
