@@ -240,13 +240,33 @@ def test_delimited_import_fills_only_matching_owner(format, payload, scope):
     assert rule.book_fingerprint == ("CURRENT-BOOK" if scope == "book" else "")
 
 
-def test_legacy_quoted_tsv_field_warns_but_stays_unchanged():
+def test_legacy_quoted_tsv_field_stays_unchanged_without_warning():
     raw_field = '"""引号"""'
     result = import_rules(f"s2t\t{raw_field}\t目标\n", format="tsv")
 
     assert result.rules[0].source == raw_field
-    assert [(item.severity, item.message_key) for item in result.diagnostics] == [
-        ("warning", "rules.import_tsv_quoted_field")]
+    assert result.diagnostics == ()
+
+
+def test_rule_model_does_not_accept_pattern_replacement_aliases():
+    with pytest.raises(ValueError, match="unknown rule fields"):
+        Rule.from_dict({
+            "id": "alias", "direction": "s2t", "pattern": "原文",
+            "replacement": "改写",
+        })
+
+
+def test_import_path_is_explicit_and_string_values_are_text(tmp_path):
+    path = tmp_path / "rules.tsv"
+    path.write_text("\ufeffs2t\t路径词\t路径结果\n", encoding="utf-8")
+
+    imported_path = import_rules(path)
+    string_value = import_rules(str(path), format="tsv")
+
+    assert [(rule.source, rule.target) for rule in imported_path.rules] == [
+        ("路径词", "路径结果")]
+    assert string_value.rules == ()
+    assert all(item.severity == "error" for item in string_value.diagnostics)
 
 
 def test_tsv_export_skips_fields_with_line_breaks_and_reports_count():

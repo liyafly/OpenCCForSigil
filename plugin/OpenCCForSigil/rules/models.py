@@ -111,10 +111,6 @@ class Rule:
             values["profile_id"] = profile_id
         if values.get("scope") == "book" and book_fingerprint and not values.get("book_fingerprint"):
             values["book_fingerprint"] = book_fingerprint
-        if "pattern" in values and "source" not in values:
-            values["source"] = values.pop("pattern")
-        if "replacement" in values and "target" not in values:
-            values["target"] = values.pop("replacement")
         if "action" in values and "type" not in values:
             values["type"] = "protect" if values["action"] == "protect" else "exact"
         values.setdefault(

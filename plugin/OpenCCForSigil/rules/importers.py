@@ -82,7 +82,7 @@ def import_rules(
     rebind_owner: bool = False,
     semantic_version: int = 2,
 ) -> ImportResult:
-    text, inferred = _read_source(source)
+    text, inferred = _read_import_text(source)
     fmt = (format or inferred or "json").lower().lstrip(".")
     diagnostics: list[ImportDiagnostic] = []
     if fmt in {"tsv", "tab"}:
@@ -95,7 +95,6 @@ def import_rules(
             book_fingerprint=book_fingerprint,
             semantic_version=semantic_version,
             diagnostics=diagnostics,
-            tsv=True,
         )
     elif fmt == "csv":
         values = _rows_to_rules(
@@ -148,25 +147,23 @@ def import_rules(
     return ImportResult(tuple(unique), tuple(diagnostics), tuple(duplicates), tuple(conflicts))
 
 
-def _read_source(source: str | bytes | Path | TextIO) -> tuple[str, str | None]:
+def _read_import_text(source: str | bytes | Path | TextIO) -> tuple[str, str | None]:
     if hasattr(source, "read"):
-        return str(source.read()).lstrip("\ufeff"), None
-    if isinstance(source, Path):
-        return source.read_text(encoding="utf-8-sig").lstrip("\ufeff"), source.suffix
-    if isinstance(source, bytes):
-        return source.decode("utf-8-sig").lstrip("\ufeff"), None
-    value = str(source)
-    path = Path(value)
-    if "\n" not in value and path.exists():
-        return path.read_text(encoding="utf-8-sig").lstrip("\ufeff"), path.suffix
-    return value.lstrip("\ufeff"), None
+        text, inferred = str(source.read()), None
+    elif isinstance(source, Path):
+        text, inferred = source.read_text(encoding="utf-8"), source.suffix
+    elif isinstance(source, bytes):
+        text, inferred = source.decode("utf-8"), None
+    else:
+        text, inferred = str(source), None
+    return text.lstrip("\ufeff"), inferred
 
 
 def _delimited_rows(text: str, delimiter: str) -> list[tuple[int, list[str]]]:
     if delimiter == "\t":
         return [
             (line, row.split("\t"))
-            for line, row in enumerate(_physical_lines(text.lstrip("\ufeff")), 1)
+            for line, row in enumerate(_physical_lines(text), 1)
         ]
     reader = csv.reader(io.StringIO(text), delimiter=delimiter)
     result = []
@@ -184,7 +181,6 @@ def _rows_to_rules(
     book_fingerprint: str,
     semantic_version: int,
     diagnostics: list[ImportDiagnostic],
-    tsv: bool = False,
 ) -> list[tuple[int, Rule]]:
     rows = list(rows)
     if rows and _is_header(rows[0][1]):
@@ -229,27 +225,12 @@ def _rows_to_rules(
             if comment:
                 values["comment"] = comment
             result.append((line, Rule.from_dict(values)))
-            if tsv and any(_is_legacy_quoted_tsv_field(value) for value in row):
-                diagnostics.append(ImportDiagnostic(
-                    line,
-                    "quoted field was imported literally",
-                    "warning",
-                    "line",
-                    "rules.import_tsv_quoted_field",
-                ))
         except RuleValidationError as exc:
             diagnostics.append(ImportDiagnostic(
                 line, str(exc), "error", "line",
                 getattr(exc, "message_key", ""),
             ))
     return result
-
-
-def _is_legacy_quoted_tsv_field(value: str) -> bool:
-    return (
-        len(value) >= 2 and value.startswith('"') and value.endswith('"')
-        and '""' in value[1:-1]
-    )
 
 
 def _opencc_rows(

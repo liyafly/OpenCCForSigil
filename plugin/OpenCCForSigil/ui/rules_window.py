@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Callable, Iterable
 
 from rules.conflicts import blocking_conflicts, find_conflicts
@@ -1923,7 +1924,7 @@ class RuleManagerDialog:
             if options is None:
                 return
             result = import_rules(
-                path,
+                Path(path),
                 format=options["format"],
                 direction=options["direction"],
                 scope=options["scope"],
@@ -2011,7 +2012,6 @@ class RuleManagerDialog:
         errors = sum(getattr(item, "severity", "") == "error" for item in diagnostics)
         discarded = sum(
             getattr(item, "severity", "") == "warning"
-            and getattr(item, "message_key", "") != "rules.import_tsv_quoted_field"
             for item in diagnostics
         )
         message = self._labels["import_summary"].format(
