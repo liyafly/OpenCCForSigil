@@ -1,3 +1,4 @@
+import re
 from core.models import ConversionPlan, SourceSpan, TokenChange
 from core.preview import PreviewDecision, PreviewSession
 from ui.preview_batch import plan_batch_decision
@@ -108,6 +109,36 @@ def test_resolve_remaining_preserves_manual_skips(monkeypatch):
     assert sum(preview.decision(change.change_id) is PreviewDecision.REJECT_THIS
                for preview, change in entries) == 3
     assert len(dialog._undo_stack) == 1
+
+
+def test_batch_feedback_omits_zero_groups(monkeypatch):
+    from types import SimpleNamespace
+
+    from tests.support.fake_qt import make_with_table
+    from ui import preview_window
+    from ui.i18n import Translator
+    from ui.preview_window import _PreviewDialog
+
+    entries, sessions, _groups, _group_files = _entries(
+        [(f"c{i}", "book", None) for i in range(10)])
+    for preview, change in entries[:2]:
+        preview.accept_this(change.change_id)
+    for preview, change in entries[2:5]:
+        preview.reject_this(change.change_id)
+    planned = (SimpleNamespace(
+        source=SimpleNamespace(
+            file_id="book", href="Text/book.xhtml", document_kind="xhtml"),
+        plan=sessions[0].plan,
+    ),)
+    translator = Translator("en")
+    dialog = _PreviewDialog(make_with_table(), planned, sessions, translator, None)
+    monkeypatch.setattr(preview_window, "exec_dialog", lambda _dialog: 1)
+
+    dialog._open_batch_decision(initial_scope="all")
+
+    assert dialog._last_group_feedback == translator.text(
+        "preview.batch_applied_main", changes=5)
+    assert re.search(r"(?<![\d.])0(?!\d)", dialog._last_group_feedback) is None
 
 
 def test_b2_explicit_overwrite_changes_eight_and_counts_three_overrides():

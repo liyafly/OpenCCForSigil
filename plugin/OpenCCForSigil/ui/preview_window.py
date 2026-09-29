@@ -1149,16 +1149,26 @@ def show_result(
         if files_not_written is None
         else max(int(files_not_written), 0)
     )
-    rows = [
-        translator.text("result.row.scanned", count=max(int(files_scanned), 0)),
-        translator.text(
-            "result.row.written", files=max(int(files_changed), 0),
-            accepted=max(int(accepted_changes), 0), skipped=max(int(skipped_changes), 0)),
-    ]
+    rows = [translator.text("result.row.scanned", count=max(int(files_scanned), 0))]
+    if files_changed > 0:
+        written_key = (
+            "result.row.written" if skipped_changes > 0
+            else "result.row.written_accepted")
+        written_values = {
+            "files": max(int(files_changed), 0),
+            "accepted": max(int(accepted_changes), 0),
+        }
+        if written_key == "result.row.written":
+            written_values["skipped"] = max(int(skipped_changes), 0)
+        rows.append(translator.text(written_key, **written_values))
     if not_written > 0:
-        rows.append(translator.text(
-            "result.row.unwritten", files=not_written,
-            unchanged=max(int(files_without_changes), 0)))
+        unwritten_key = (
+            "result.row.unwritten" if files_without_changes > 0
+            else "result.row.unwritten_plain")
+        unwritten_values = {"files": not_written}
+        if unwritten_key == "result.row.unwritten":
+            unwritten_values["unchanged"] = max(int(files_without_changes), 0)
+        rows.append(translator.text(unwritten_key, **unwritten_values))
     all_skipped = max(int(files_all_skipped), 0)
     if all_skipped > 0:
         rows.append(translator.text(
@@ -2374,11 +2384,16 @@ class _PreviewDialog:
                 ):
                     if count:
                         summary_parts.append(self._translator.text(key, count=count))
-                summary.setText(" ".join(summary_parts))
-                confirm.setText(self._translator.text(
+                separator = "" if self._translator.language.startswith("zh") else " "
+                summary.setText(separator.join(summary_parts))
+                confirm_key = (
+                    "preview.batch_confirm_none" if batch.change_count == 0 else
                     "preview.batch_confirm_overwrite"
                     if batch.overwrite_count and not only_check.isChecked()
-                    else "preview.batch_confirm",
+                    else "preview.batch_confirm"
+                )
+                confirm.setText(self._translator.text(
+                    confirm_key,
                     count=batch.change_count, overwrite=batch.overwrite_count,
                 ))
                 confirm.setEnabled(batch.change_count > 0)
@@ -2411,9 +2426,13 @@ class _PreviewDialog:
                 preview.restore_decision(change.change_id, target)
             self._record_scoped_bulk_decision_action(
                 before_decisions, target, batch.change_count)
-            self._last_group_feedback = self._translator.text(
-                "preview.batch_applied", changes=batch.change_count,
-                groups=batch.group_count)
+            feedback = self._translator.text(
+                "preview.batch_applied_main", changes=batch.change_count)
+            if batch.group_count > 0:
+                separator = "" if self._translator.language.startswith("zh") else " "
+                feedback += separator + self._translator.text(
+                    "preview.batch_applied_groups", groups=batch.group_count)
+            self._last_group_feedback = feedback
             self._recompute_counts()
             self._refresh(refresh_statuses=True)
             return

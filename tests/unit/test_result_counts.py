@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 from types import SimpleNamespace
 
 import pytest
@@ -66,6 +67,42 @@ class _MessageBox:
         cls.messages.append(message)
 
 
+@pytest.mark.parametrize("language", ("en", "zh-Hans", "zh-Hant"))
+@pytest.mark.parametrize(
+    ("files_scanned", "files_changed", "accepted_changes", "skipped_changes",
+     "files_not_written", "files_without_changes", "files_all_skipped"),
+    (
+        (3, 2, 5, 0, 1, 0, 0),
+        (3, 0, 0, 0, 3, 3, 0),
+        (2, 0, 0, 4, 2, 0, 2),
+    ),
+)
+def test_non_cancel_results_have_no_zero_count_fragments(
+    monkeypatch, language, files_scanned, files_changed, accepted_changes,
+    skipped_changes, files_not_written, files_without_changes, files_all_skipped,
+):
+    _MessageBox.messages = []
+    fake_qt = type("FakeQt", (), {"QMessageBox": _MessageBox})
+    monkeypatch.setattr(preview_window, "load_qt", lambda: fake_qt)
+    monkeypatch.setattr(preview_window, "ensure_application", lambda *_args, **_kwargs: None)
+
+    preview_window.show_result(
+        status="success",
+        files_scanned=files_scanned,
+        files_changed=files_changed,
+        accepted_changes=accepted_changes,
+        skipped_changes=skipped_changes,
+        files_not_written=files_not_written,
+        files_without_changes=files_without_changes,
+        files_all_skipped=files_all_skipped,
+        translator=Translator(language),
+    )
+
+    zero = re.compile(r"(?<![\d.])0(?!\d)")
+    assert len(_MessageBox.messages) == 1
+    assert all(zero.search(line) is None for line in _MessageBox.messages[0].splitlines())
+
+
 @pytest.mark.parametrize(
     (
         "language",
@@ -123,17 +160,23 @@ def test_result_done_states_unwritten_files_include_unchanged_subset(
     assert len(_MessageBox.messages) == 1
     lines = _MessageBox.messages[0].splitlines()
     assert str(files_scanned) in lines[2]
-    assert str(files_changed) in lines[3]
-    assert str(accepted_changes) in lines[3]
-    assert str(skipped_changes) in lines[3]
     expected_count_rows = []
+    count_rows_start = 3
+    if files_changed > 0:
+        written_key = (
+            "result.row.written" if skipped_changes > 0
+            else "result.row.written_accepted")
+        written_values = {"files": files_changed, "accepted": accepted_changes}
+        if skipped_changes > 0:
+            written_values["skipped"] = skipped_changes
+        expected_count_rows.append(translator.text(written_key, **written_values))
     if expected_unwritten is not None:
         expected_count_rows.append(expected_unwritten)
     if files_all_skipped > 0:
         expected_count_rows.append(translator.text(
             "result.files_all_skipped", count=files_all_skipped))
-    count_rows_end = 4 + len(expected_count_rows)
-    assert lines[4:count_rows_end] == expected_count_rows
+    count_rows_end = count_rows_start + len(expected_count_rows)
+    assert lines[count_rows_start:count_rows_end] == expected_count_rows
     assert lines[count_rows_end:] == ["", translator.text("result.save_reminder")]
 
 
@@ -210,17 +253,17 @@ def test_result_box_returns_after_report_is_viewed_and_closed(monkeypatch):
 
 @pytest.mark.parametrize("language", ("en", "zh-Hans", "zh-Hant"))
 @pytest.mark.parametrize(
-    ("status", "accepted", "skipped", "status_key", "reminder"),
+    ("status", "files_changed", "accepted", "skipped", "status_key", "reminder"),
     (
-        ("success", 1, 0, "result.status.success", True),
-        ("partial_failure", 2, 1, "result.status.partial", False),
-        ("cancelled", 0, 0, "result.status.cancelled_unchanged", False),
-        ("success", 0, 0, "result.status.noop", False),
-        ("success", 0, 2, "result.status.skipped", False),
+        ("success", 1, 1, 0, "result.status.success", True),
+        ("partial_failure", 1, 2, 1, "result.status.partial", False),
+        ("cancelled", 0, 0, 0, "result.status.cancelled_unchanged", False),
+        ("success", 0, 0, 0, "result.status.noop", False),
+        ("success", 0, 0, 2, "result.status.skipped", False),
     ),
 )
 def test_result_status_and_count_rows_are_localized_line_by_line(
-    monkeypatch, language, status, accepted, skipped, status_key, reminder,
+    monkeypatch, language, status, files_changed, accepted, skipped, status_key, reminder,
 ):
     _MessageBox.messages = []
     fake_qt = type("FakeQt", (), {"QMessageBox": _MessageBox})
@@ -231,7 +274,7 @@ def test_result_status_and_count_rows_are_localized_line_by_line(
     preview_window.show_result(
         status=status,
         files_scanned=4,
-        files_changed=1,
+        files_changed=files_changed,
         accepted_changes=accepted,
         skipped_changes=skipped,
         files_not_written=3,
@@ -250,13 +293,22 @@ def test_result_status_and_count_rows_are_localized_line_by_line(
         assert lines == [expected_status]
         return
     assert lines[2] == translator.text("result.row.scanned", count=4)
-    assert lines[3] == translator.text(
-        "result.row.written", files=1, accepted=accepted, skipped=skipped)
-    assert lines[4] == translator.text(
-        "result.row.unwritten", files=3, unchanged=1)
-    assert lines[5] == translator.text("result.files_all_skipped", count=2)
+    expected_rows = []
+    if files_changed > 0:
+        written_key = (
+            "result.row.written" if skipped > 0
+            else "result.row.written_accepted")
+        written_values = {"files": files_changed, "accepted": accepted}
+        if skipped > 0:
+            written_values["skipped"] = skipped
+        expected_rows.append(translator.text(written_key, **written_values))
+    expected_rows.extend((
+        translator.text("result.row.unwritten", files=3, unchanged=1),
+        translator.text("result.files_all_skipped", count=2),
+    ))
+    assert lines[3:3 + len(expected_rows)] == expected_rows
     if reminder:
-        assert lines[7] == translator.text("result.save_reminder")
+        assert lines[-1] == translator.text("result.save_reminder")
     else:
         assert translator.text("result.save_reminder") not in lines
 
