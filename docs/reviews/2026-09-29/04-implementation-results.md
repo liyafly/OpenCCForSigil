@@ -33,3 +33,17 @@
 - `make check`: Ruff passed; **787 passed, 1 skipped** (the existing fake-Qt layout limitation); vendor manifest passed; OpenCC differential passed (28 cases); Jieba differential passed (10 cases); plugin metadata valid (`0.2.10`).
 - Real Qt `check_ui_acceptance.py --verify --width 960 --height 640`: **PASS**, 13 scenarios, no failures; `acceptance.json` is at `/tmp/opencc-ui-acceptance-batch2/acceptance.json`.
 - FIX-04, FIX-05, and FIX-06 acceptance checks: complete. Sigil host acceptance: **Not verified**.
+
+## Batch 3 — FIX-07, FIX-08, FIX-15
+
+| Item | Commit | Pre-fix failing test(s) | Post-fix result | Acceptance and reproduction |
+| --- | --- | --- | --- | --- |
+| FIX-07 | `3a268c1faa123e4397a014271034bba5980011ee` | `test_chinese_tsv_header_is_skipped`; `test_data_row_starting_with_header_word_is_not_skipped` (4 cases); `test_header_row_skip_is_reported_as_info`; `test_three_column_row_with_blank_direction_uses_selected_direction` | Import roundtrip and i18n tests: 53 passed. | Header detection now requires both source and target column labels in the first row; skipped headers produce a localized info diagnostic. Header-like data stays in the import, blank-direction three-column rows use the chosen direction, and the discarded count only includes warnings (excluding the existing quoted-TSV warning). Both FIX-07 repro scripts pass. TSV and CSV formats are documented in all three guide locales and `docs/rule-format.md`. |
+| FIX-08 | `94658936c42ad56baee9509b2ff5f2eb06c2724a` | `test_tsv_roundtrip_keeps_unicode_line_separators` (3 valid XML separators); `test_tsv_roundtrip_keeps_form_feed_in_comment`; `test_opencc_txt_import_keeps_unicode_line_separators`; `test_one_column_row_error_has_no_rule_prefix` | Importer and M3 tests: 63 passed. | TSV and OpenCC TXT split only CRLF, CR, and LF; OpenCC candidate separation no longer treats Unicode line separators as whitespace. The repro preserves U+2028/U+2029/NEL and form-feed comments; one-column errors show the physical line only. CSV parsing is unchanged. Two constraints from the plan are adjusted: form-feed is not legal XML text in a rule target, so it is covered in a TSV comment instead; exported TSV now has the FIX-07 informational header diagnostic, so the roundtrip test expects that info item rather than an empty diagnostics tuple. |
+| FIX-15 | `43284ef0d82ad4980f4a48b0837a7f30b707b6cf` | `test_delimited_import_fills_only_matching_owner` (9 format/scope cases); `test_window_rebind_clears_the_other_owner` | Importer, rules-window, and M3 tests: 149 passed, 1 skipped (fake Qt layout limitation). | TSV/CSV/TXT imports set only the owner field matching the selected scope. Window rebinding also clears the other owner. Both FIX-15 reproduction scripts pass; `rule_dedup_key` was not changed. |
+
+### Batch verification at `43284ef0d82ad4980f4a48b0837a7f30b707b6cf`
+
+- `make check`: Ruff passed; **809 passed, 1 skipped** (fake-Qt layout limitation); vendor manifest passed; OpenCC differential passed (28 cases); Jieba differential passed (10 cases); plugin metadata valid (`0.2.10`).
+- Real Qt `check_ui_acceptance.py --verify --width 960 --height 640`: **PASS**, 13 scenarios, no failures. Output: `/tmp/opencc-ui-acceptance-batch3/acceptance.json/acceptance.json`.
+- FIX-07, FIX-08, and FIX-15 acceptance checks: complete. Sigil host acceptance: **Not verified**.
