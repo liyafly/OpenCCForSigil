@@ -111,3 +111,26 @@ The checkpoint above records the state before the user authorized continuation. 
 - Real Qt `check_ui_acceptance.py --verify --width 960 --height 640`: **PASS**, all 13 scenarios; output: `/tmp/opencc-ui-acceptance-batch6/acceptance.json`. Requested geometry was 960×640; the offscreen logical screen reported by Qt was 800×800. Sigil-host acceptance remains **Not verified**.
 - FIX-18 focused suite: **82 passed**. The real-Qt preview benchmark on the committed code passed at **0.7355 s** dialog construction (limit ≤0.75 s), with 396,091 changes and 5,711 unique diagnostics; output: `/tmp/opencc-preview-ui-batch6-verified-3.json`. Repeated cold-process runs ranged from 0.7153 s to 0.8998 s; Qt font alias initialization and machine load varied. The recorded pass is within the requested limit.
 - Phase 6 validation is complete. FIX-16 remains skipped as decided earlier and is replaced by SIMP-22.
+
+## Phase 7 — SIMP-01 through SIMP-10
+
+Each item has its own commit on `main`; each commit records a regression that failed before its change. The pre-fix baseline outputs under `evidence/` were left unchanged. Post-fix outputs and UI screenshots are under `/tmp/opencc-phase7-ui-acceptance/` and the SIMP-07 benchmark files listed below.
+
+| Item | Commit | Pre-fix failing test | Result |
+| --- | --- | --- | --- |
+| SIMP-01 | `b405fc98bc0df218e0027503a11e7c8f549eb6c1` | `test_scope_flow_has_no_standalone_conversion_config_entrypoint` | Removed the unreachable standalone conversion-config flow; regression and full phase gate pass. |
+| SIMP-02 | `c20bc9d86a9da57ebe34e8d1fcc28ab9883126b8` | `test_preview_keeps_primary_review_actions_visible_and_collapses_secondary_filters` | Removed hidden bulk controls and their dead call paths. Preview and updated probe checks pass; old probe assertions were redirected to the batch dialog without weakening decision, confirmation, or grouping checks. |
+| SIMP-03 | `9ce645a9648a7b7218ffecd61f430763a15b6f82` | `test_legacy_rules_engine_pipeline_and_exports_are_removed` | Removed `rules.engine` and migrated tests/probes to the production converter or compiled overlay. Required suites: 99 passed; 13,440 prefix fuzz inputs had 0 mismatches. Book digest stayed `8bab6319592d5abb`; median improved from 7.232 s to 7.133 s at this item. |
+| SIMP-04 | `7fedeac9cd341d7a5173fb3dfef9b85c9109c9d2` | `test_simp04_removes_unreferenced_modules_symbols_and_i18n_keys` | Removed unreferenced modules, aliases, and locale keys. Ruff passed; focused i18n/artifact/rules/package checks: 102 passed. |
+| SIMP-05 | `c42f16b01540268bc090eec09ec38a63797d8dc9` | `test_rule_window_result_run_ruleset_ids_defaults_to_empty_tuple` | Removed obsolete result shapes and fallback branches. Focused persistence/rules-window tests: 102 passed, 1 expected fake-Qt layout skip. |
+| SIMP-06 | `d15c5d4fed1e53af0d48ee466972b3d9b0b778e5` | `test_controller_default_comes_from_profile_without_duplicate_resource` | Profile defaults are the single source; focused validator/controller tests: 51 passed. |
+| SIMP-07 | `a1499b315600019ed933f2e911f01ece1aacd553` | `test_simp07_removes_unmeasured_matcher_fast_paths` | 40 focused tests passed; 13,440 fuzz inputs, 0 mismatches. `/tmp/opencc-simp07-benchmark-rules-final.out`: medians 0.798 s and 0.772 s (the configured limit is 0.8 s). Book digest `8bab6319592d5abb`, median 6.864 s versus 7.232 s baseline. |
+| SIMP-08 | `49003997bf89f13e63864b5ec0531ce17a0cfbf0` | `test_plugin_missing_book_apis_fails_with_localized_error` | Missing BookContainer APIs now fail with a localized error. Required session/integration suite: 83 passed. |
+| SIMP-09 | `41da3523b9489035dc3eca6c836c9b4ee0c774de` | `test_exec_dialog_requires_the_supported_exec_method` | Removed unreachable UI compatibility branches and the incorrect UserRole fallback; progress labels use the fixed 55-character limit. Focused preview/Qt/rules/progress checks passed; full `make check` passed. The older summary probe was updated to locate the actual merged-window controls; its previous attribute references raised before assertions ran. |
+| SIMP-10 | `640895d854195231d6e8fba6f71d316aa676513f` | `test_opencc_txt_export_keeps_v2_literal_rules` | V2 literal rules export to OpenCC TXT and round-trip without source/target changes. Required exporter/M3 suite: 74 passed. |
+
+### Phase 7 gate at `640895d854195231d6e8fba6f71d316aa676513f`
+
+- `make check`: Ruff passed; **838 passed, 1 skipped** (`tests/unit/test_rules_window.py:470`, fake Qt does not calculate widget layout sizes); OpenCC payload manifest passed; OpenCC differential passed (28 cases); Jieba differential passed (10 cases); package metadata valid (`0.2.10`).
+- Real Qt `check_ui_acceptance.py --verify --width 960 --height 640`: **PASS**, all 13 scenarios. Output: `/tmp/opencc-phase7-ui-acceptance/acceptance.json`. Qt reported an 800×800 offscreen screen; requested dialog geometry was 960×640. This is offscreen evidence, not physical-display evidence.
+- `SIMP-17`, `SIMP-31`, and `SIMP-32`: **按 2026-09-29 决定不做**. Sigil-host acceptance: **Not verified**.
