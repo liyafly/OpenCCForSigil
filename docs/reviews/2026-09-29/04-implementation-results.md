@@ -19,3 +19,17 @@
 - `make check`: Ruff passed; **782 passed, 1 skipped** (the existing fake-Qt layout limitation); vendor manifest passed; OpenCC differential passed (28 cases); Jieba differential passed (10 cases); plugin metadata valid (`0.2.10`).
 - Real Qt `check_ui_acceptance.py --verify --width 960 --height 640`: **PASS**, 13 scenarios, no failures; `acceptance.json` is at `/tmp/opencc-ui-acceptance/acceptance.json`.
 - FIX-02, FIX-03, and FIX-01 acceptance checks: complete. Sigil host acceptance: **Not verified**.
+
+## Batch 2 — FIX-04, FIX-05, FIX-06
+
+| Item | Commit | Pre-fix failing test(s) | Post-fix result | Acceptance and reproduction |
+| --- | --- | --- | --- | --- |
+| FIX-04 | `54a0743863d91a89f34bb08c97a05480edec8e2f` | `test_uninvolved_run_ruleset_view_keeps_save_blocked` | Focused rule-conflict and catalog tests: 23 passed. | Switching from A to unrelated C still shows the A/B conflict and leaves Save disabled. A conflict from an unselected ruleset still does not block Save. The reproduction prints `viewing C: conflicts 1 save enabled False`; baseline output remains unchanged in `evidence/rules/fix04_switch_ruleset_reenables_save.out`. |
+| FIX-05 | `76ad3c34ea64c27d6e68c2a341c675b039c3117d` | `test_confirming_addition_does_not_persist_unconfirmed_removal` | New regression plus confirmation/rejection tests: 3 passed. | Confirming N appends it to the saved profile while A remains saved; the active session uses only default and N. The reproduction prints `saved profile now: ('default', 'A', 'N')`; the save prompt count remains one. Baseline output remains unchanged in `evidence/rules/fix03_fix05_rename_new_confirm.out`. |
+| FIX-06 | `33f6305f851ae343cdffd3fc60d3885bb0b1240c` | `test_default_set_new_rule_direction_follows_each_session`; `test_removing_wildcard_rule_restores_current_direction`; `test_bulk_paste_never_creates_wildcard_rules` | Related rules window, persistence, and rules M3 suites: 122 passed, 1 skipped. The three new regressions also pass. | New default sets persist `default_direction='*'` and select the current session direction. Removing a `*` rule restores s2t for the next rule; bulk paste in `*` mode creates s2t rules. Existing wildcard rules remain explicit and retain their warning. Reproduction outputs match these expectations; baseline outputs remain unchanged under `evidence/rules/fix06_*.out`. |
+
+### Batch verification at `33f6305f851ae343cdffd3fc60d3885bb0b1240c`
+
+- `make check`: Ruff passed; **787 passed, 1 skipped** (the existing fake-Qt layout limitation); vendor manifest passed; OpenCC differential passed (28 cases); Jieba differential passed (10 cases); plugin metadata valid (`0.2.10`).
+- Real Qt `check_ui_acceptance.py --verify --width 960 --height 640`: **PASS**, 13 scenarios, no failures; `acceptance.json` is at `/tmp/opencc-ui-acceptance-batch2/acceptance.json`.
+- FIX-04, FIX-05, and FIX-06 acceptance checks: complete. Sigil host acceptance: **Not verified**.
