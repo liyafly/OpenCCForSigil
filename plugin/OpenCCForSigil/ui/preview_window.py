@@ -746,6 +746,37 @@ def _diagnostic_excerpt(
     return f"…{before}【{marker}】{after}…"
 
 
+def _diagnostic_record_count(planned_documents: Sequence[PlannedDocument]) -> int:
+    """Count unique diagnostic rows without building their display content."""
+
+    seen = set()
+    for planned in planned_documents:
+        source_document = getattr(planned, "source", None)
+        plan = getattr(planned, "plan", None)
+        if plan is None:
+            continue
+        file_id = str(
+            getattr(source_document, "file_id", "")
+            or getattr(plan, "file_id", "")
+        )
+        for diagnostic in getattr(plan, "diagnostics", ()) or ():
+            code = str(getattr(diagnostic, "code", "") or "")
+            if not code:
+                continue
+            span = getattr(diagnostic, "span", None)
+            raw_start = getattr(span, "start", None)
+            raw_end = getattr(span, "end", None)
+            start = raw_start if isinstance(raw_start, int) and not isinstance(raw_start, bool) else None
+            end = raw_end if isinstance(raw_end, int) and not isinstance(raw_end, bool) else None
+            span_key = (start, end) if start is not None and end is not None else None
+            identity = ((file_id, code, span_key,
+                         str(getattr(diagnostic, "message", "") or ""))
+                        if code == "REGEX_ZERO_WIDTH_SKIPPED"
+                        else (file_id, code, span_key))
+            seen.add(identity)
+    return len(seen)
+
+
 def _diagnostic_records(
     planned_documents: Sequence[PlannedDocument], translator: Translator,
 ) -> Tuple[_DiagnosticRecord, ...]:
@@ -1706,10 +1737,8 @@ class _PreviewDialog:
             if isinstance(getattr(item.source, "source", None), str)
         }
         self._diagnostic_records = None
-        self._has_diagnostics = any(
-            bool(getattr(getattr(item, "plan", None), "diagnostics", ()) or ())
-            for item in self._planned
-        )
+        self._diagnostic_count = _diagnostic_record_count(self._planned)
+        self._has_diagnostics = self._diagnostic_count > 0
         self._targets_by_id = {
             (item.source.file_id, target.node_id): target
             for item in self._planned
@@ -2050,7 +2079,8 @@ class _PreviewDialog:
             diagnostic_tab = qt.QWidget()
             self._diagnostic_tab_layout = qt.QVBoxLayout(diagnostic_tab)
             self._diagnostic_tab_index = self.detail_tabs.addTab(
-                diagnostic_tab, self._translator.text("preview.diagnostics_title"))
+                diagnostic_tab, self._translator.text(
+                    "preview.diagnostics_count", count=self._diagnostic_count))
             if self._diagnostic_tab_index is None:
                 self._diagnostic_tab_index = 1
             tab_changed = getattr(self.detail_tabs, "currentChanged", None)

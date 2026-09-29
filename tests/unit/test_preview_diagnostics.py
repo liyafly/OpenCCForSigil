@@ -249,6 +249,26 @@ def test_diagnostic_records_deduplicate_by_file_code_and_span():
         ("chapter", "before"), ("chapter", "after"))
 
 
+def test_diagnostics_tab_label_shows_count_before_opening():
+    duplicate = Diagnostic("QUOTE_UNBALANCED", "first", SourceSpan(0, 1))
+    planned = _planned(
+        "chapter", "Text/chapter.xhtml", "甲乙",
+        (duplicate, Diagnostic("QUOTE_UNBALANCED", "duplicate", SourceSpan(0, 1)),
+         Diagnostic("INLINE_BOUNDARY", "boundary", SourceSpan(1, 2))),
+    )
+    dialog = _PreviewDialog(
+        make_with_table(), (planned,), (PreviewSession(planned.plan),),
+        Translator("en"), None,
+    )
+
+    tab_labels = [arguments[1] for name, arguments in dialog.detail_tabs.calls
+                  if name == "addTab"]
+
+    assert dialog._diagnostic_records is None
+    assert tab_labels[-1] == Translator("en").text(
+        "preview.diagnostics_count", count=2)
+
+
 def test_existing_diagnostic_kinds_have_localized_names_and_summaries():
     planned = _planned(
         "chapter", "Text/chapter.xhtml", "甲乙丙丁",
