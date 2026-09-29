@@ -102,6 +102,11 @@ class PreviewSession:
         self._require_change(change_id)
         return self._decisions.get(change_id)
 
+    def decision_items(self) -> Tuple[Tuple[str, PreviewDecision], ...]:
+        """Return the current changed IDs and decisions without scanning the plan."""
+
+        return tuple(self._decisions.items())
+
     def undecided(self, scope: Optional[PreviewFilter] = None) -> Tuple[TokenChange, ...]:
         return tuple(
             change

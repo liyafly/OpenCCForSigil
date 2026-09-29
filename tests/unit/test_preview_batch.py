@@ -33,6 +33,36 @@ def _plan(entries, groups, group_files, **kwargs):
     return plan_batch_decision(entries, groups, group_files, **kwargs)
 
 
+def test_all_scope_undecided_batch_reuses_entries_without_decision_scan(monkeypatch):
+    entries, _sessions, groups, group_files = _entries(
+        [(f"c{i}", "book", None) for i in range(10)])
+    entries_by_file = {"book": entries}
+
+    def unexpected_decision_scan(_self, _change_id):
+        raise AssertionError("an untouched preview should use the all-scope fast path")
+
+    monkeypatch.setattr(PreviewSession, "decision", unexpected_decision_scan)
+    plan = _plan(entries, groups, group_files, scope="all", entries_by_file=entries_by_file)
+
+    assert plan.entries is entries
+    assert plan.change_count == 10
+    assert plan.file_count == 1
+    assert plan.overwrite_count == 0
+
+
+def test_all_scope_undecided_batch_preserves_existing_decisions():
+    entries, _sessions, groups, group_files = _entries(
+        [(f"c{i}", "book", None) for i in range(10)])
+    entries[0][0].accept_this(entries[0][1].change_id)
+
+    plan = _plan(
+        entries, groups, group_files, scope="all", entries_by_file={"book": entries})
+
+    assert plan.change_count == 9
+    assert all(change.change_id != "c0" for _preview, change in plan.entries)
+    assert plan.overwrite_count == 0
+
+
 def test_b1_only_undecided_default_preserves_manual_accepts_and_skips():
     entries, sessions, groups, group_files = _entries(
         [(f"c{i}", "book", None) for i in range(10)])

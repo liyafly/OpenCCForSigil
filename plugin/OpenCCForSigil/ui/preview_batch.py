@@ -91,6 +91,55 @@ def plan_batch_decision(
         )
         files.update(change.file_id for _preview, change in changes)
 
+    if (
+        scope == "all"
+        and not group_entries
+        and isinstance(entries, tuple)
+        and entries_by_file is not None
+        and sum(len(file_entries) for file_entries in entries_by_file.values()) == len(entries)
+    ):
+        decisions_by_file = []
+        all_undecided = True
+        for file_entries in entries_by_file.values():
+            decisions = dict(file_entries[0][0].decision_items()) if file_entries else {}
+            decisions_by_file.append((file_entries, decisions))
+            all_undecided = all_undecided and not decisions
+        if all_undecided:
+            selected = entries if isinstance(entries, tuple) else tuple(entries)
+            return BatchDecisionPlan(
+                selected, len(selected), 0,
+                sum(bool(file_entries) for file_entries in entries_by_file.values()),
+                0, 0, 0, 0, 0, 0,
+            )
+
+        selected = []
+        files = set()
+        overwrite_count = 0
+        for file_entries, decisions in decisions_by_file:
+            if not file_entries:
+                continue
+            if not decisions:
+                selected.extend(file_entries)
+                files.add(file_entries[0][1].file_id)
+                continue
+            file_selected = False
+            for entry in file_entries:
+                change = entry[1]
+                decision = decisions.get(change.change_id)
+                if undecided_only and decision is not None:
+                    continue
+                if decision is not None and _bucket(decision) == target_bucket:
+                    continue
+                overwrite_count += int(decision is not None)
+                selected.append(entry)
+                file_selected = True
+            if file_selected:
+                files.add(file_entries[0][1].file_id)
+        return BatchDecisionPlan(
+            tuple(selected), len(selected), 0, len(files), 0, overwrite_count,
+            0, 0, 0, 0,
+        )
+
     candidates = (
         entries_by_file.get(file_id, ())
         if scope == "file" and entries_by_file is not None
