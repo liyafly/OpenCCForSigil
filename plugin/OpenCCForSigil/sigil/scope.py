@@ -6,7 +6,6 @@ from typing import Iterable, Mapping, Tuple
 
 
 class Scope(str, Enum):
-    SINGLE = "single"
     ALL_XHTML = "all_xhtml"
     SPINE = "spine"
     SELECTED = "selected"
@@ -69,11 +68,9 @@ def resolve_target_selection(
         raise ScopeSelectionError("unknown XHTML target(s): " + ", ".join(unknown))
     if scope is Scope.ALL_XHTML:
         ids = tuple(item.file_id for item in inventory)
-    elif scope in {Scope.SINGLE, Scope.SELECTED}:
+    elif scope is Scope.SELECTED:
         ids = requested
-        if scope is Scope.SINGLE and len(ids) != 1:
-            raise ScopeSelectionError("single-file scope requires exactly one XHTML target")
-        if scope is Scope.SELECTED and not ids:
+        if not ids:
             raise ScopeSelectionError("at least one XHTML target is required")
     elif scope is Scope.SPINE:
         ids = requested

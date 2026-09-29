@@ -25,6 +25,10 @@ FILES = (
 )
 
 
+def test_scope_enum_contains_only_supported_modes():
+    assert {scope.value for scope in Scope} == {"all_xhtml", "spine", "selected"}
+
+
 def test_all_scope_preserves_text_iter_order():
     selection = resolve_target_selection(FILES, Scope.ALL_XHTML)
     assert selection.file_ids == ("a", "nested-a", "b")
@@ -36,14 +40,8 @@ def test_selected_scope_uses_manifest_ids_and_rejects_empty():
     assert selection.file_ids == ("nested-a", "b")
     with pytest.raises(ScopeSelectionError):
         resolve_target_selection(FILES, Scope.SELECTED)
-
-
-def test_single_scope_requires_exactly_one_known_file():
-    assert resolve_target_selection(FILES, Scope.SINGLE, ("b",)).file_ids == ("b",)
     with pytest.raises(ScopeSelectionError):
-        resolve_target_selection(FILES, Scope.SINGLE, ("a", "b"))
-    with pytest.raises(ScopeSelectionError):
-        resolve_target_selection(FILES, Scope.SINGLE, ("missing",))
+        resolve_target_selection(FILES, Scope.SELECTED, ("missing",))
 
 
 def test_target_selection_rejects_duplicate_ids():
@@ -73,7 +71,7 @@ def test_adapter_inventory_and_selection_are_metadata_only():
     adapter = SigilBookAdapter(book)
     assert adapter.text_file_inventory()[1].href == "Text/b.xhtml"
     assert tuple(adapter.selected_ids()) == ("b",)
-    assert tuple(adapter.text_files_for_targets(TargetSelection(Scope.SINGLE, ("b",)))) == (
+    assert tuple(adapter.text_files_for_targets(TargetSelection(Scope.SELECTED, ("b",)))) == (
         ("b", "Text/b.xhtml"),
     )
     assert book.reads == []
@@ -143,11 +141,9 @@ def test_single_scope_uses_one_row_selection_and_manual_selection_is_independent
         ("one",),
         "en",
         Translator("en"),
-        initial_scope=Scope.SINGLE,
         embedded=True,
     )
 
-    assert not hasattr(dialog, "single_radio")
     assert dialog.selected_radio.isChecked()
     assert (
         sum(
@@ -184,7 +180,6 @@ def test_single_initial_selection_accepts_as_selected_scope():
         ("one",),
         "en",
         Translator("en"),
-        initial_scope=Scope.SINGLE,
         embedded=True,
     )
 
@@ -355,7 +350,6 @@ def test_selected_file_count_remains_visible_when_filter_hides_it():
         ("a",),
         "en",
         Translator("en"),
-        initial_scope=Scope.SINGLE,
         embedded=True,
     )
     dialog.filter_edit.setText("nested/a.xhtml")

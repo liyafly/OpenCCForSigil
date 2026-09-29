@@ -90,7 +90,7 @@ def _patch_scoped_ui(monkeypatch, events=None):
             events.append("scope")
         return _scope_outcome(
             accepted=True,
-            selection=TargetSelection(Scope.SINGLE, ("b",)),
+            selection=TargetSelection(Scope.SELECTED, ("b",)),
             language=initial_language,
         )
 
@@ -108,7 +108,7 @@ def test_controller_runs_preview_stage_verify_commit(monkeypatch, tmp_path):
         "ui.preview_window.choose_scope",
         lambda adapter, initial_language, **_kwargs: _scope_outcome(
             accepted=True,
-            selection=TargetSelection(Scope.SINGLE, ("chapter",)),
+            selection=TargetSelection(Scope.SELECTED, ("chapter",)),
             language=initial_language,
         ),
     )
@@ -165,7 +165,7 @@ def test_post_preview_progress_covers_noncancellable_writeback(monkeypatch, tmp_
     monkeypatch.setattr(
         "ui.preview_window.choose_scope",
         lambda _adapter, initial_language, **_kwargs: _scope_outcome(
-            True, TargetSelection(Scope.SINGLE, ("chapter",)), initial_language
+            True, TargetSelection(Scope.SELECTED, ("chapter",)), initial_language
         ),
     )
     monkeypatch.setattr("ui.preview_window.show_preview", _accept_all_preview)
@@ -308,7 +308,7 @@ def test_future_profile_selection_is_not_cleared_by_a_completed_run(monkeypatch,
     monkeypatch.setattr(
         "ui.preview_window.choose_scope",
         lambda _adapter, initial_language, **_kwargs: _scope_outcome(
-            True, TargetSelection(Scope.SINGLE, ("chapter",)), initial_language
+            True, TargetSelection(Scope.SELECTED, ("chapter",)), initial_language
         ),
     )
     monkeypatch.setattr("ui.preview_window.show_preview", _accept_all_preview)
@@ -470,7 +470,7 @@ def test_returning_from_preview_reselects_scope_and_discards_old_plan(monkeypatc
         selected = "a" if len(scope_calls) == 1 else "c"
         return _scope_outcome(
             accepted=True,
-            selection=TargetSelection(Scope.SINGLE, (selected,)),
+            selection=TargetSelection(Scope.SELECTED, (selected,)),
             language=initial_language,
         )
 
@@ -500,7 +500,7 @@ def test_cancelling_preview_shows_cancelled_result_without_writing(monkeypatch, 
     monkeypatch.setattr(
         "ui.preview_window.choose_scope",
         lambda _adapter, initial_language, **_kwargs: _scope_outcome(
-            True, TargetSelection(Scope.SINGLE, ("chapter",)), initial_language
+            True, TargetSelection(Scope.SELECTED, ("chapter",)), initial_language
         ),
     )
     monkeypatch.setattr(
@@ -552,7 +552,7 @@ def test_noop_result_skips_preview_and_offers_scope_return(monkeypatch, tmp_path
     monkeypatch.setattr(
         "ui.preview_window.choose_scope",
         lambda _adapter, initial_language, **_kwargs: _scope_outcome(
-            True, TargetSelection(Scope.SINGLE, ("chapter",)), initial_language
+            True, TargetSelection(Scope.SELECTED, ("chapter",)), initial_language
         ),
     )
     monkeypatch.setattr(
@@ -615,7 +615,7 @@ def test_noop_return_to_scope_restarts_with_new_selection(monkeypatch, tmp_path)
         file_id = "a" if len(scopes) == 1 else "c"
         config_defaults.append(kwargs.get("default_config"))
         return _scope_outcome(
-            True, TargetSelection(Scope.SINGLE, (file_id,)), initial_language, config="s2tw"
+            True, TargetSelection(Scope.SELECTED, (file_id,)), initial_language, config="s2tw"
         )
 
     def show_result(**values):
@@ -678,7 +678,7 @@ def test_nav_preference_is_saved_while_nav_is_outside_scope(monkeypatch, tmp_pat
         nonlocal scope_number
         scope_number += 1
         selection = (
-            TargetSelection(Scope.SINGLE, ("chapter",))
+            TargetSelection(Scope.SELECTED, ("chapter",))
             if scope_number == 1
             else TargetSelection(Scope.SELECTED, ("chapter", "nav"))
         )

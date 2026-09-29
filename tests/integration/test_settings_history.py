@@ -37,7 +37,7 @@ def ui(monkeypatch, config="t2s"):
         "ui.preview_window.choose_scope",
         lambda *_args, **_kw: ScopeOutcome(
             True,
-            TargetSelection(Scope.SINGLE, ("a",)),
+            TargetSelection(Scope.SELECTED, ("a",)),
             "en",
             configuration=ConfigurationChoice(config, {}),
         ),
@@ -66,7 +66,7 @@ def test_back_to_settings_discards_old_plan_and_rebuilds(monkeypatch, tmp_path):
         "ui.preview_window.choose_scope",
         lambda _adapter, initial_language, **_kw: ScopeOutcome(
             True,
-            TargetSelection(Scope.SINGLE, ("a",)),
+            TargetSelection(Scope.SELECTED, ("a",)),
             initial_language,
             configuration=ConfigurationChoice(next(configs), {}),
         ),

@@ -46,6 +46,19 @@ def test_legacy_profile_field_names_remain_extras_and_round_trip(tmp_path: Path)
     assert ProfileStore(tmp_path).load("legacy").convert_nav is True
 
 
+def test_profile_still_loads_legacy_single_scope_string():
+    profile = Profile.from_dict({
+        "schema_version": 1,
+        "id": "single-scope",
+        "name": "Single scope",
+        "conversion": "s2t",
+        "segmentation": "mmseg",
+        "scope": "single",
+    })
+
+    assert profile.scope == "single"
+
+
 def test_profile_migration_and_actionable_failure(tmp_path: Path):
     with pytest.raises(ProfileValidationError, match="schema_version 0"):
         migrate_profile_payload(

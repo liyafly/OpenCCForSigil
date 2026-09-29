@@ -75,7 +75,6 @@ _I18N_REQUIRED_KEYS = frozenset(
         "recovery.rulesets_missing",
         "recovery.generic",
         "scope.title",
-        "scope.single",
         "scope.selected",
         "scope.all",
         "scope.selection_count",

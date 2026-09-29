@@ -39,7 +39,7 @@ def _plan(source, *, rules=(), quotation_mode="corner", detailed_classification=
     backend = OpenCCBackend("s2t")
     workflow = ConversionWorkflow(
         SigilBookAdapter(book), backend, request,
-        targets=TargetSelection(Scope.SINGLE, ("a",)),
+        targets=TargetSelection(Scope.SELECTED, ("a",)),
     )
     planned = workflow.plan()
     backend.close()

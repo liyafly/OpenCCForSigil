@@ -113,7 +113,7 @@ def test_probe_survives_settings_loop_and_preserves_jieba_choice(monkeypatch, tm
             assert set(JIEBA_CONFIGS) <= set(jieba_probe.available_configs_nonblocking())
             return ScopeOutcome(
                 True,
-                TargetSelection(Scope.SINGLE, ("a",)),
+                TargetSelection(Scope.SELECTED, ("a",)),
                 initial_language,
                 configuration=ConfigurationChoice("s2t_jieba", {}),
             )
@@ -164,7 +164,7 @@ def test_probe_is_shared_across_scope_return_settings_and_preview(monkeypatch, t
         if len(scope_calls) == 1:
             return ScopeOutcome(
                 True,
-                TargetSelection(Scope.SINGLE, ("a",)),
+                TargetSelection(Scope.SELECTED, ("a",)),
                 initial_language,
                 configuration=ConfigurationChoice("t2s", {}),
             )

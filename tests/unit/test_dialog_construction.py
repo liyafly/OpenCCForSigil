@@ -79,12 +79,10 @@ def test_scope_dialog_constructs_and_single_file_can_continue_after_row_change()
         ("a",),
         "en",
         Translator("en"),
-        initial_scope=Scope.SINGLE,
         embedded=True,
     )
 
     assert not hasattr(dialog, "analyze_button")
-    assert not hasattr(dialog, "single_radio")
     assert dialog.selected_radio.isChecked()
     assert dialog._selection_is_valid()
     assert dialog.selected_ids() == ("a",)

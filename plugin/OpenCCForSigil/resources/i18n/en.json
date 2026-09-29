@@ -77,7 +77,6 @@
   "scope.run_summary_risk_metadata": "metadata conversion",
   "scope.run_summary_risk_pivot_inactive": "forced pivot requested but inactive for this direction",
   "scope.run_summary_risk_metadata_inactive": "metadata conversion requested but unavailable",
-  "scope.single": "One file",
   "scope.selected": "Selected files",
   "scope.all": "All XHTML",
   "scope.navigation_suffix": "(navigation)",

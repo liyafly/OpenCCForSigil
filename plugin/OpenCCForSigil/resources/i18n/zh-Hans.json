@@ -77,7 +77,6 @@
   "scope.run_summary_risk_metadata": "转换元数据",
   "scope.run_summary_risk_pivot_inactive": "请求强制中转，但当前方向不支持",
   "scope.run_summary_risk_metadata_inactive": "请求转换元数据，但元数据不可用",
-  "scope.single": "单个文件",
   "scope.selected": "选择文件",
   "scope.all": "全部 XHTML",
   "scope.navigation_suffix": "（导航）",

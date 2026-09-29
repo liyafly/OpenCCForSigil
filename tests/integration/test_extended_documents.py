@@ -64,7 +64,7 @@ def workflow(book, *, extended=True, language=True):
     return ConversionWorkflow(
         SigilBookAdapter(book), Backend(),
         ConvertRequest('s2t', language_tag='zh-Hant' if language else None),
-        targets=TargetSelection(Scope.SINGLE, ('chapter',), include_ncx=extended,
+        targets=TargetSelection(Scope.SELECTED, ('chapter',), include_ncx=extended,
                                 include_metadata=extended, update_language=language),
     )
 

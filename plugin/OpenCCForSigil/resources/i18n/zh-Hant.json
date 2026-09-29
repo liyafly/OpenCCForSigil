@@ -77,7 +77,6 @@
   "scope.run_summary_risk_metadata": "轉換中繼資料",
   "scope.run_summary_risk_pivot_inactive": "要求強制中轉，但目前方向不支援",
   "scope.run_summary_risk_metadata_inactive": "要求轉換中繼資料，但中繼資料不可用",
-  "scope.single": "單一檔案",
   "scope.selected": "選取檔案",
   "scope.all": "全部 XHTML",
   "scope.navigation_suffix": "（導覽）",

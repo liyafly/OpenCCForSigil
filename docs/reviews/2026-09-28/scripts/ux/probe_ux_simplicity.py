@@ -120,7 +120,7 @@ def probe_merged(qt, app, language, out, selected, tag):
         report["default_button_text"] = [b.text() for b in buttons]
         report["default_button_enabled"] = [b.isEnabled() for b in buttons]
         report["checked_scope_radio"] = next(r.text() for r in (
-            scope.single_radio, scope.selected_radio, scope.spine_radio, scope.all_radio)
+        scope.selected_radio, scope.spine_radio, scope.all_radio)
             if r.isChecked())
         report["direction_default"] = config.combo.currentData()
         report["direction_count"] = sum(1 for i in range(config.combo.count())

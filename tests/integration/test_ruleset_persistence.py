@@ -666,7 +666,7 @@ def test_deleted_ruleset_is_reported_once_by_controller_and_not_planned(monkeypa
         notices.append(tuple(notice))
         return ScopeOutcome(
             True,
-            TargetSelection(Scope.SINGLE, ("a",)),
+            TargetSelection(Scope.SELECTED, ("a",)),
             initial_language,
             configuration=ConfigurationChoice("s2t", {}),
         )
