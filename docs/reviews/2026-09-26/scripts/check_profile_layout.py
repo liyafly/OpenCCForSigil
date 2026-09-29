@@ -177,13 +177,13 @@ def main():
     unavailable_manager = ProfileManagerDialog(
         qt, (unavailable_profile,), translator=translator,
         selected_id=unavailable_profile.id, current_profile=current,
-        available_configs=("s2t",), jieba_pending=True,
+        available_configs=("s2t",),
     )
     unavailable_text = unavailable_manager.summary.toPlainText()
     unavailable_view_kept = (
         unavailable_manager._current().conversion == "s2twp_jieba"
         and unavailable_manager.use_button.isEnabled()
-        and translator.text("profile.checking") in unavailable_text
+        and translator.text("profile.unavailable") in unavailable_text
     )
 
     screen = app.primaryScreen()
@@ -224,11 +224,14 @@ def main():
         json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report, ensure_ascii=False, indent=2))
     if options.verify:
+        expected_removed_fields = {"comparison_has_panel_option"}
         assert all(value for key, value in report.items()
                    if key not in {"PySide6", "python", "platform", "qpa_platform",
                                   "screen_geometry", "screen_device_pixel_ratio",
                                   "git_head", "requested_window", "profile_count",
-                                  "filter_count", "filtered_current_id"}), report
+                                  "filter_count", "filtered_current_id",
+                                  *expected_removed_fields}), report
+        assert report["comparison_has_panel_option"] is False, report
         assert filter_count == 1, report
         assert filtered_id == "profile-199", report
         assert filter_count < len(profiles), report

@@ -302,20 +302,17 @@ def exercise_group_actions(qt, app, language):
     dialog.dialog.activateWindow()
     dialog.dialog.raise_()
     app.processEvents()
-    assert dialog.accept_group_button.isVisible()
-    group_label = dialog.accept_group_button.text()
-    language_action = dialog._group_more_actions[0]
-    assert language_action.isVisible() and language_action.isEnabled()
-    language_action.trigger()
+    assert not hasattr(dialog, "accept_group_button")
+    assert not hasattr(dialog, "_group_more_actions")
+    selected_row = next(
+        index for index, (_preview, change) in enumerate(dialog._visible_entries_cache)
+        if change.change_id == "language-chapter")
+    dialog._set_current_row(selected_row)
+    dialog.accept_this_button.click()
     app.processEvents()
     assert all(previews[index].decision(change.change_id).value == "accept_this"
                for index, change in enumerate((language_changes[0], language_changes[1])))
     assert all(previews[0].decision(change.change_id) is None for change in rule_changes)
-    complete_batch_dialog(qt, app, translator, dialog, scope="file")
-    app.processEvents()
-    assert all(previews[0].decision(change.change_id).value == "accept_this"
-               for change in rule_changes)
-    dialog.dialog.hide()
 
     rule_plan = ConversionPlan(source_sha256="", file_id="chapter", changes=rule_changes)
     rule_only = _PreviewDialog(
@@ -328,11 +325,8 @@ def exercise_group_actions(qt, app, language):
     )
     rule_only.dialog.show()
     app.processEvents()
-    assert not rule_only.accept_group_button.isVisible()
-    assert not rule_only._group_more_actions[0].isVisible()
-    assert not rule_only._group_more_actions[0].isEnabled()
-    rule_only._group_more_actions[0].trigger()
-    app.processEvents()
+    assert not hasattr(rule_only, "accept_group_button")
+    assert not hasattr(rule_only, "_group_more_actions")
     assert all(rule_only._previews[0].decision(change.change_id) is None
                for change in rule_changes)
     complete_batch_dialog(qt, app, translator, rule_only, scope="file")
@@ -350,6 +344,20 @@ def exercise_group_actions(qt, app, language):
     assert all(rule_only._previews[0].decision(change.change_id).value == "accept_this"
                for change in rule_changes)
     rule_only.dialog.hide()
+
+    assert dialog.undo_button.isEnabled()
+    dialog.undo_button.click()
+    app.processEvents()
+    assert all(preview.decision(change.change_id) is None
+               for preview, change in zip(previews, language_changes))
+    assert dialog.redo_button.isEnabled()
+    dialog.redo_button.click()
+    app.processEvents()
+    assert all(previews[0].decision(change.change_id).value == "accept_this"
+               for change in language_changes[:1])
+    assert previews[1].decision(language_changes[1].change_id).value == "accept_this"
+    assert all(previews[0].decision(change.change_id) is None for change in rule_changes)
+    dialog.dialog.hide()
 
     filtered_previews = (PreviewSession(
         ConversionPlan(source_sha256="", file_id=file_id, changes=(change,)))
@@ -382,11 +390,10 @@ def exercise_group_actions(qt, app, language):
                for preview in filtered_previews)
     filtered.dialog.hide()
     return {
-        "language_group_label": group_label,
-        "language_group_accepts_both_files": True,
-        "language_button_leaves_rule_group_pending": True,
-        "file_batch_completes_local_rule_group": True,
-        "rule_only_language_button_hidden_and_inert": True,
+        "language_group_action_buttons_removed": True,
+        "language_item_action_decides_group_across_files_and_undoes_as_one": True,
+        "language_item_action_leaves_rule_group_pending": True,
+        "file_batch_action_still_accepts_rule_changes_and_undoes": True,
         "batch_hidden_group_summary_cancel_preserves_and_confirm_expands": True,
     }
 
