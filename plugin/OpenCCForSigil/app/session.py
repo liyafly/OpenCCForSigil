@@ -95,11 +95,6 @@ class Session:
                 to_state=target.value,
             )
 
-    def complete_noop(self) -> None:
-        """Complete a preflight-only run when a conversion adapter is unavailable."""
-
-        self.transition(SessionState.COMPLETED)
-
     def complete(self) -> None:
         """Complete a verified commit path."""
 

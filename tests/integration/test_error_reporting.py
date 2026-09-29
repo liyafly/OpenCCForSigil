@@ -107,6 +107,28 @@ def _assert_one_prewrite_error(monkeypatch, tmp_path, book, expected_code, *, pr
     return errors[0]
 
 
+def test_plugin_missing_book_apis_fails_with_localized_error(monkeypatch, tmp_path):
+    from plugin import run as run_plugin
+
+    class UnsupportedBook:
+        sigil_ui_lang = "zh-CN"
+
+    errors = []
+    monkeypatch.setattr("ui.qt.set_host_book", lambda _book: None)
+    monkeypatch.setattr("app.controller.resolve_user_data_dir", lambda _book: tmp_path)
+    monkeypatch.setattr(
+        "app.controller._show_error_safely",
+        lambda _logger, **values: errors.append(values),
+    )
+
+    status = run_plugin(UnsupportedBook())
+
+    assert status != 0
+    assert len(errors) == 1
+    assert errors[0]["summary"] == Translator("zh-Hans").text(
+        "error.book_api_unavailable")
+
+
 def test_verify_failure_reports_file_and_diagnostic_before_any_write(monkeypatch, tmp_path):
     error = _assert_one_prewrite_error(
         monkeypatch, tmp_path, Book(), "VERIFY_FAILED", verify_failure=True)

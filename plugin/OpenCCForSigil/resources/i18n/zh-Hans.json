@@ -42,6 +42,7 @@
   "recovery.rulesets_missing": "以下规则集不存在或已损坏，已跳过：{value}。",
   "common.close": "关闭",
   "error.title": "转换已停止",
+  "error.book_api_unavailable": "Sigil 未提供扫描书籍所需的 BookContainer text_iter() 和 readfile() 接口。",
   "error.rule_conflict": "本次选择的规则集存在阻断冲突（{rules}）。请先解决冲突，再开始分析。",
   "error.runtime_no_payload": "此安装包适用于 {package_runtimes}，当前 Sigil 运行在 {detected}。请下载 {recommended_asset}，或下载通用包 {fat_asset}。",
   "error.runtime_unsupported_platform": "当前平台暂不受支持：{detected}。{reason}",

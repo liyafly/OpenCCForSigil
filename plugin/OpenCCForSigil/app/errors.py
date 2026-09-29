@@ -11,6 +11,10 @@ class DependencyError(PluginError):
     code = "DEPENDENCY_ERROR"
 
 
+class BookContainerSupportError(PluginError):
+    code = "BOOK_API_UNAVAILABLE"
+
+
 class DataIntegrityError(PluginError):
     code = "DATA_INTEGRITY_ERROR"
 

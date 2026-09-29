@@ -8,7 +8,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from app.errors import RuleConflictError, UserCancelled
+from app.errors import BookContainerSupportError, RuleConflictError, UserCancelled
 from app.profiles import Profile
 from app.session import Session, SessionState
 from app.settings import RunSettings, profile_options, settings_hash, tokenizer_policy
@@ -105,8 +105,8 @@ class Controller:
             ) or backend
 
             if not _book_supports_conversion(self.bk):
-                return self._complete_noop(
-                    message="BookContainer text API unavailable; preflight-only run",
+                raise BookContainerSupportError(
+                    "BookContainer must provide callable text_iter() and readfile() APIs"
                 )
 
             from ui.preview_window import (
@@ -669,6 +669,8 @@ class Controller:
             }
             if isinstance(exc, RuleConflictError):
                 error_values["summary"] = _rule_conflict_summary(exc, translator)
+            if isinstance(exc, BookContainerSupportError):
+                error_values["summary"] = translator.text("error.book_api_unavailable")
             if isinstance(exc, RuntimeSelectionError):
                 error_values["summary"] = _runtime_selection_summary(exc, translator)
             _show_error_safely(
@@ -707,20 +709,6 @@ class Controller:
                     file=sys.stderr,
                 )
             return default
-
-    def _complete_noop(
-        self,
-        *,
-        message: str,
-    ) -> int:
-        self.session.transition(SessionState.ANALYZING)
-        self.session.transition(SessionState.PLANNED)
-        self.logger.event("skeleton_noop", message=message)
-        self.session.complete_noop()
-        self.logger.summary(
-            self._summary(status="success", files_scanned=0, changes=0, files_changed=0)
-        )
-        return 0
 
     def _record_history(self, planned, staged, backend):
         from core.staging import source_sha256

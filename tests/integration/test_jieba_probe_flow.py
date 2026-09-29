@@ -225,12 +225,20 @@ def test_cancel_before_text_ui_does_not_wait_for_daemon_probe(monkeypatch, tmp_p
 
             Thread(target=wait, daemon=True).start()
 
+        def available_configs_nonblocking(self):
+            return V1_CONFIGS
+
         def close(self):
             pass
 
     monkeypatch.setattr("app.controller.OpenCCBackend", SlowProbeBackend)
+    monkeypatch.setattr(
+        "ui.preview_window.choose_scope",
+        lambda _adapter, initial_language, **_kwargs: ScopeOutcome(
+            False, None, initial_language),
+    )
     try:
-        assert Controller(object(), data_dir=tmp_path).run() == 0
+        assert Controller(Book(), data_dir=tmp_path).run() == 1
         assert started.wait(timeout=1)
         assert not finished.is_set()
     finally:

@@ -42,6 +42,7 @@
   "recovery.rulesets_missing": "Unavailable or damaged rule sets were skipped: {value}.",
   "common.close": "Close",
   "error.title": "Conversion stopped",
+  "error.book_api_unavailable": "Sigil did not provide the BookContainer text_iter() and readfile() APIs required to scan the book.",
   "error.rule_conflict": "The selected rule sets have blocking conflicts ({rules}). Resolve them before analyzing.",
   "error.runtime_no_payload": "This package includes {package_runtimes}, but Sigil is running {detected}. Download {recommended_asset} or the universal package {fat_asset}.",
   "error.runtime_unsupported_platform": "The current platform is not supported: {detected}. {reason}",
