@@ -1157,7 +1157,7 @@ class RuleManagerDialog:
         except ValueError:
             self._warn(self._labels["invalid_ruleset"])
             return
-        if identifier in self._rulesets:
+        if identifier in self._rulesets or identifier in self._deleted:
             self._warn(self._labels["duplicate_ruleset"])
             return
         self._stash_ruleset()
@@ -1191,7 +1191,7 @@ class RuleManagerDialog:
         except ValueError:
             self._warn(self._labels["invalid_ruleset"])
             return
-        if identifier in self._rulesets:
+        if identifier in self._rulesets or identifier in self._deleted:
             self._warn(self._labels["duplicate_ruleset"])
             return
         self._stash_ruleset()

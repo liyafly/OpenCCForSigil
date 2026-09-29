@@ -230,6 +230,25 @@ def test_delete_ruleset_removes_profile_references_and_file(monkeypatch, tmp_pat
     assert settings.take_missing_rulesets_notice() == ()
 
 
+def test_edit_rules_never_deletes_a_ruleset_saved_in_same_result(monkeypatch, tmp_path):
+    profiles = ProfileStore(tmp_path / "profiles")
+    profiles.save(Profile(id="saved", name="Saved", ruleset_ids=("default", "X")))
+    rule = Rule(id="kept", source="术语", target="專有名詞", direction="s2t")
+    store = RuleStore(tmp_path / "rules")
+    settings = RunSettings(
+        Storage(tmp_path), SimpleNamespace(book_fingerprint=lambda: "book-hash"),
+        {"profile_id": "saved"}, language="en", session_id="test-session")
+    result = RuleWindowResult(
+        "X", (RuleSet("default"), RuleSet("X", (rule,))),
+        run_ruleset_ids=("default", "X"), deleted=("X",))
+    monkeypatch.setattr(
+        "ui.rules_window.show_rules_window", lambda *_args, **_kwargs: result)
+
+    settings.edit_rules("s2t", Translator(), RuleDialogQt, object())
+
+    assert store.load("X").rules == (rule,)
+
+
 def test_saved_profile_can_confirm_adding_ruleset(monkeypatch, tmp_path):
     settings, profiles = _saved_profile_settings(tmp_path)
     before = profiles.load("saved")

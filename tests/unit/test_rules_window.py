@@ -655,6 +655,29 @@ def test_cancel_after_delete_keeps_ruleset_file(monkeypatch, tmp_path):
     assert store.load("mine").id == "mine"
 
 
+def test_deleted_ruleset_id_cannot_be_reused_before_save(monkeypatch):
+    prompts = []
+    identifiers = iter(("mine", "mine"))
+    qt = make_with_table()
+    qt.QInputDialog = SimpleNamespace(
+        getText=lambda *_args, **_kwargs: (next(identifiers), True))
+    qt.QMessageBox.warning = lambda _parent, _title, message: prompts.append(message)
+    manager = RuleManagerDialog(
+        qt, (), translator=Translator("en"),
+        rulesets=(RuleSet("default"), RuleSet("mine")), ruleset_id="mine")
+    monkeypatch.setattr(rules_window, "ask_confirmation", lambda *_args, **_kwargs: True)
+
+    manager._delete_ruleset()
+    manager._new_ruleset()
+    assert "mine" not in manager._rulesets
+    assert prompts == [manager._labels["duplicate_ruleset"]]
+
+    manager._ruleset_id = "default"
+    manager._rename_ruleset()
+    assert "mine" not in manager._rulesets
+    assert prompts == [manager._labels["duplicate_ruleset"]] * 2
+
+
 def test_foreign_book_rule_is_labelled_other_book():
     rule = Rule(
         id="other-book", source="术语", target="专名", direction="s2t",

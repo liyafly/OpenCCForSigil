@@ -344,6 +344,8 @@ class RunSettings:
                 renamed = result.renamed
                 run_ruleset_ids = result.run_ruleset_ids
                 deleted = tuple(dict.fromkeys(result.deleted))
+            saved_ids = {item.id for item in result_sets}
+            deleted = tuple(item for item in deleted if item not in saved_ids)
             for item in result_sets:
                 old = previous.get(item.id)
                 if old != item and (item.id != "default" or item.rules or old is not None):
