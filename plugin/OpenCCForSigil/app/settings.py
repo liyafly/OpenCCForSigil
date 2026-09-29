@@ -328,20 +328,11 @@ class RunSettings:
             save_ui_preferences=self._store_ui_preferences,
         )
         if result is not None:
-            if isinstance(result, tuple):
-                # Keep compatibility with callers/tests that still provide the
-                # previous rules-only result shape.
-                selected_id = initial_id
-                result_sets = (RuleSet(selected_id, result, values[selected_id].name),)
-                renamed = ()
-                run_ruleset_ids = None
-                deleted = ()
-            else:
-                selected_id = result.selected_id
-                result_sets = result.rulesets
-                renamed = result.renamed
-                run_ruleset_ids = result.run_ruleset_ids
-                deleted = tuple(dict.fromkeys(result.deleted))
+            selected_id = result.selected_id
+            result_sets = result.rulesets
+            renamed = result.renamed
+            run_ruleset_ids = result.run_ruleset_ids
+            deleted = tuple(dict.fromkeys(result.deleted))
             saved_ids = {item.id for item in result_sets}
             deleted = tuple(item for item in deleted if item not in saved_ids)
             for item in result_sets:
@@ -361,13 +352,8 @@ class RunSettings:
             replacements = dict(renamed)
             previous_rule_ids = tuple(dict.fromkeys(
                 replacements.get(item, item) for item in self.active.ruleset_ids))
-            if run_ruleset_ids is None:
-                updated_rule_ids = tuple(
-                    item for item in dict.fromkeys((*previous_rule_ids, selected_id))
-                    if item not in deleted)
-            else:
-                updated_rule_ids = tuple(dict.fromkeys(
-                    identifier for identifier in run_ruleset_ids if identifier not in deleted))
+            updated_rule_ids = tuple(dict.fromkeys(
+                identifier for identifier in run_ruleset_ids if identifier not in deleted))
             updated = replace(self.active, ruleset_ids=updated_rule_ids)
             newly_added_ids = tuple(
                 identifier for identifier in updated_rule_ids

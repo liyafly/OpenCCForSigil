@@ -25,6 +25,12 @@ from ui.i18n import configuration_label
 from ui import rules_window
 
 
+def test_rule_window_result_run_ruleset_ids_defaults_to_empty_tuple():
+    result = RuleWindowResult("default", (RuleSet("default"),))
+
+    assert result.run_ruleset_ids == ()
+
+
 class Signal:
     def connect(self, _callback):
         return None

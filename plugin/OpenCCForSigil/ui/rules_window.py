@@ -43,7 +43,7 @@ class RuleWindowResult:
     selected_id: str
     rulesets: tuple[RuleSet, ...]
     renamed: tuple[tuple[str, str], ...] = ()
-    run_ruleset_ids: tuple[str, ...] | None = None
+    run_ruleset_ids: tuple[str, ...] = ()
     deleted: tuple[str, ...] = ()
 
 
@@ -325,8 +325,8 @@ def show_rules_window(
     jieba_pending: bool = False,
     ui_preferences=None,
     save_ui_preferences=None,
-) -> tuple[Rule, ...] | RuleWindowResult | None:
-    """Open the manager and return committed rules, or ``None`` on cancel."""
+) -> RuleWindowResult | None:
+    """Open the manager and return its committed result, or ``None`` on cancel."""
 
     qt = load_qt()
     active_translator = translator or Translator("en")
@@ -356,9 +356,7 @@ def show_rules_window(
     save_window_size(dialog.dialog, "rules_dialog_size", save_ui_preferences)
     if not dialog.accepted:
         return None
-    if dialog._managed:
-        return dialog.result
-    return tuple(dialog.rules)
+    return dialog.result
 
 
 class RuleManagerDialog:
@@ -388,7 +386,6 @@ class RuleManagerDialog:
         self._qt = qt_widgets
         self._translator = translator or Translator("en")
         self._labels = _labels(self._translator)
-        self._managed = rulesets is not None
         values = tuple(rulesets or (RuleSet(ruleset_id or "default", tuple(rules)),))
         if not values:
             values = (RuleSet(ruleset_id or "default", tuple(rules)),)
@@ -1261,8 +1258,6 @@ class RuleManagerDialog:
         self._deleted.append(identifier)
         self._run_ruleset_ids = tuple(
             item for item in self._run_ruleset_ids if item != identifier)
-        if not self._rulesets:
-            self._rulesets["default"] = RuleSet("default")
         self._ruleset_id = next(iter(self._rulesets))
         self.rules = list(self._rulesets[self._ruleset_id].rules)
         self._populate_rulesets()
@@ -2357,14 +2352,13 @@ class RuleManagerDialog:
                 return
         self._stash_ruleset()
         self.accepted = True
-        if self._managed:
-            self.result = RuleWindowResult(
-                self._ruleset_id,
-                tuple(self._rulesets.values()),
-                tuple(self._renamed),
-                run_ruleset_ids=self._run_ruleset_ids,
-                deleted=tuple(dict.fromkeys(self._deleted)),
-            )
+        self.result = RuleWindowResult(
+            self._ruleset_id,
+            tuple(self._rulesets.values()),
+            tuple(self._renamed),
+            run_ruleset_ids=self._run_ruleset_ids,
+            deleted=tuple(dict.fromkeys(self._deleted)),
+        )
         self.dialog.accept()
 
 

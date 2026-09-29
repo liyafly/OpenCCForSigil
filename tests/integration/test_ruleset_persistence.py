@@ -419,7 +419,8 @@ def test_clearing_persisted_default_ruleset_saves_empty_rules(monkeypatch, tmp_p
     )))
     monkeypatch.setattr(
         "ui.rules_window.show_rules_window",
-        lambda *_args, **_kwargs: RuleWindowResult("default", (RuleSet("default"),)),
+        lambda *_args, **_kwargs: RuleWindowResult(
+            "default", (RuleSet("default"),), run_ruleset_ids=("default",)),
     )
 
     settings.edit_rules("s2t", Translator(), RuleDialogQt, object())
@@ -440,7 +441,8 @@ def test_clearing_and_disabling_persisted_default_keeps_metadata(monkeypatch, tm
     monkeypatch.setattr(
         "ui.rules_window.show_rules_window",
         lambda *_args, **_kwargs: RuleWindowResult(
-            "default", (RuleSet("default", enabled=False),)),
+            "default", (RuleSet("default", enabled=False),),
+            run_ruleset_ids=("default",)),
     )
 
     settings.edit_rules("s2t", Translator(), RuleDialogQt, object())
@@ -473,6 +475,7 @@ def test_renamed_ruleset_id_can_be_reused_without_deleting_the_new_set(
                     "New A"),
         ),
         renamed=(("A", "B"),),
+        run_ruleset_ids=("default", "B", "A"),
     )
     RuleDialogQt.QMessageBox.response = True
     monkeypatch.setattr("ui.rules_window.show_rules_window",
