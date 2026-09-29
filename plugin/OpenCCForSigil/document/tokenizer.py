@@ -41,9 +41,6 @@ _CLOSING_TAG_PATTERNS: dict[str, re.Pattern[str]] = {}
 @dataclass(frozen=True)
 class TokenizerOptions:
     """Profile-controlled lexical target policy.
-
-    ``context_radius`` remains accepted for caller compatibility, but target
-    context is no longer retained in each plan.
     """
 
     protected_elements: Tuple[str, ...] = DEFAULT_PROTECTED_ELEMENTS
@@ -54,7 +51,6 @@ class TokenizerOptions:
     skip_foreign_lang: bool = True
     decode_numeric_cjk_refs: bool = False
     document_kind: str = "xhtml"
-    context_radius: int = 32
 
     def normalized(self) -> "TokenizerOptions":
         return TokenizerOptions(
@@ -66,7 +62,6 @@ class TokenizerOptions:
             skip_foreign_lang=self.skip_foreign_lang,
             decode_numeric_cjk_refs=self.decode_numeric_cjk_refs,
             document_kind=self.document_kind,
-            context_radius=max(0, self.context_radius),
         )
 
 
@@ -274,7 +269,6 @@ def _make_target(
         source_text=source[start:end],
         source_start=start,
         source_end=end,
-        context="",
         tag_name=tag_name,
         attribute_name=attribute_name,
         attribute_quote=attribute_quote,

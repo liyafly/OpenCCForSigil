@@ -29,7 +29,6 @@ class TextTarget:
     source_text: str
     source_start: int
     source_end: int
-    context: str = ""
     tag_name: Optional[str] = None
     attribute_name: Optional[str] = None
     attribute_quote: Optional[str] = None

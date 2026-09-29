@@ -26,6 +26,8 @@ and their limits are recorded in the [implementation results](reviews/2026-09-27
   the whitespace/punctuation-only source rejection of spec §11.8.3 applies to
   version 1 rules only. Scope precedence follows spec §11.2 (book > global >
   profile) for every rule.
+- `TextTarget` does not carry the `context` field listed in the spec §8 data
+  model; preview context is computed from the frozen source when displayed.
 - Native conversion cannot be forcibly interrupted mid-call. Worker cancellation
   is cooperative at target boundaries and never writes a partial plan.
 - The optional Jieba probe constructs and exercises only `s2t_jieba`; all

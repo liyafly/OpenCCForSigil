@@ -3,7 +3,7 @@ from dataclasses import replace
 import pytest
 
 from core.models import SourceSpan, TokenChange
-from document.tokenizer import TokenizerOptions, tokenize_xhtml
+from document.tokenizer import tokenize_xhtml
 from opencc_backend.configs import (
     JIEBA_CONFIGS,
     V1_CONFIGS,
@@ -34,14 +34,14 @@ def test_change_models_use_slots():
     assert updated.target == "改" and updated.span is change.span and not hasattr(updated, "__dict__")
 
 
-def test_tokenizer_does_not_copy_target_context():
+def test_text_target_does_not_carry_unused_context():
     source = "<p>文本目标</p>"
 
-    document = tokenize_xhtml(source, TokenizerOptions(context_radius=128))
+    document = tokenize_xhtml(source)
 
     assert len(document.targets) == 1
     assert document.targets[0].source_text == "文本目标"
-    assert document.targets[0].context == ""
+    assert not hasattr(document.targets[0], "context")
 
 
 def test_native_config_allowlist_and_comparison_metadata():
