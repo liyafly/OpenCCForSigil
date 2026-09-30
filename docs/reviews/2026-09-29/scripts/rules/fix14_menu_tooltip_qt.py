@@ -26,6 +26,13 @@ w.dialog.show(); app.processEvents()
 act = w._ruleset_menu_actions["delete"]
 print("delete action enabled:", act.isEnabled(), "| tooltip:", act.toolTip(),
       "| menu.toolTipsVisible():", w.ruleset_menu.toolTipsVisible())
+d = RuleManagerDialog(qt, (), translator=Translator("zh-Hans"), config="s2t", profile_id="P", book_fingerprint="B",
+    rulesets=(RuleSet("default"), RuleSet("A", (Rule(id="a1", source="软件", target="軟體", direction="s2t"),))),
+    ruleset_id="default", run_ruleset_ids=("default",))
+d.dialog.show(); app.processEvents()
+dact = d._ruleset_menu_actions["delete"]
+print("default set: delete action enabled:", dact.isEnabled(), "| tooltip:", dact.toolTip(),
+      "| menu.toolTipsVisible():", d.ruleset_menu.toolTipsVisible())
 print("menu actions:", [a.text() for a in w.ruleset_menu.actions()])
 print("ruleset row widgets:", [type(x).__name__ + ":" + (x.text() if hasattr(x, "text") else "")
       for x in (w.new_ruleset_button, w.rename_ruleset_button, w.ruleset_more_button,

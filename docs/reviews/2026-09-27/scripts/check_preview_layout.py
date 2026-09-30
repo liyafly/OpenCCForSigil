@@ -128,7 +128,10 @@ def exercise_batch_decisions(qt, app, language, output_dir):
     menu_labels = [action.text() for action in dialog.more_menu.actions()]
     assert translator.text("preview.batch_decide") in menu_labels
     assert menu_labels.count(translator.text("preview.batch_decide")) == 1
-    assert menu_labels.count(translator.text("preview.batch_decide")) == 1
+    assert not any(hasattr(dialog, name) for name in (
+        "accept_file_button", "reject_file_button", "accept_filter_button",
+        "reject_filter_button", "accept_all_button", "reject_all_button",
+    ))
     assert sum(action.isVisible() for action in dialog.more_menu.actions()) <= 4
     dialog.dialog.grab().save(str(output_dir / f"resolve-remaining-{language}.png"))
     resolve_details = {}
@@ -357,6 +360,10 @@ def exercise_group_actions(qt, app, language):
                for change in language_changes[:1])
     assert previews[1].decision(language_changes[1].change_id).value == "accept_this"
     assert all(previews[0].decision(change.change_id) is None for change in rule_changes)
+    complete_batch_dialog(qt, app, translator, dialog, scope="file")
+    app.processEvents()
+    assert all(previews[0].decision(change.change_id).value == "accept_this"
+               for change in rule_changes)
     dialog.dialog.hide()
 
     filtered_previews = (PreviewSession(
@@ -394,6 +401,7 @@ def exercise_group_actions(qt, app, language):
         "language_item_action_decides_group_across_files_and_undoes_as_one": True,
         "language_item_action_leaves_rule_group_pending": True,
         "file_batch_action_still_accepts_rule_changes_and_undoes": True,
+        "file_batch_completes_local_rule_group": True,
         "batch_hidden_group_summary_cancel_preserves_and_confirm_expands": True,
     }
 

@@ -226,15 +226,25 @@ def test_regex_search_timeout_is_per_call_not_cumulative(monkeypatch):
 
 
 def test_overlapping_regex_candidates_do_not_count_as_hits():
+    class CountingBudget(RegexBudget):
+        def __init__(self):
+            super().__init__()
+            self.fragment_counts = []
+
+        def note_regex_hit(self, rule, position, fragment_hits):
+            super().note_regex_hit(rule, position, fragment_hits)
+            self.fragment_counts.append(dict(fragment_hits))
+
     rule = _rule(id="overlap", source=r"\p{Han}+", target="X")
     regex = load_regex_module()
-    budget = RegexBudget()
+    budget = CountingBudget()
 
     result, hits = replace_stage(
         "你好世界再见", (rule,), {rule.id: regex.compile(rule.source, regex.VERSION1)}, budget)
 
     assert result == "X"
     assert len(hits) == 1
+    assert budget.fragment_counts == [{"overlap": 1}]
 
 
 def test_collapse_spaces_rule_plans_600_matches_across_60_files():

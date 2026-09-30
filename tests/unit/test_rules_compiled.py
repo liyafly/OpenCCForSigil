@@ -127,8 +127,6 @@ def _random_rules(rng, count, *, exclude=()):
 
 
 def test_compiled_lock_spans_matches_reference_ordering_for_300_random_snapshots():
-    from rules.matching import RegexBudget, source_matches
-
     rng = random.Random(20260923)
     alphabet = "词目汉字"
     for _ in range(300):
@@ -141,13 +139,8 @@ def test_compiled_lock_spans_matches_reference_ordering_for_300_random_snapshots
         config = rng.choice(("s2t", "t2s"))
         overlay = CompiledOverlay.build(
             snapshot, config=config, profile_id="profile", book_fingerprint="book")
-        expected = tuple(
-            LockedSpan(match.start, match.end, text[match.start:match.end],
-                       match.target, match.rule)
-            for match in source_matches(
-                text, overlay.source_rules, overlay.regex_patterns, RegexBudget())
-        )
-        assert lock_spans_compiled(text, overlay) == expected
+        assert lock_spans_compiled(text, overlay) == _reference_lock_spans(
+            text, snapshot, config=config, profile_id="profile", book_fingerprint="book")
 
 
 def test_rule_snapshot_is_validated_once_for_a_multi_file_plan(monkeypatch):

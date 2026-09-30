@@ -124,6 +124,7 @@ def test_file_batch_visits_only_that_file_and_incremental_counts_match_recompute
     apply_batch_decision(monkeypatch, dialog, scope="file")
 
     assert decision_calls <= 10_000
+    assert dialog._entries.visits <= 3 * changes_per_file + 50
     assert dialog._entries_by_file["chapter-0.xhtml"].visits <= 3 * changes_per_file + 50
     assert dialog._totals == {
         "total": file_count * changes_per_file,

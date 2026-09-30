@@ -142,6 +142,13 @@ def _run_summary(qt, app, language, output_dir, width, height):
                             "rules": rules_tooltip,
                         })
                         assert "a-long-rule-set-id" in rules_tooltip
+                        pivot_label = translator.text("options.force_pivot")
+                        pivot_row = next((row for row in range(table.rowCount())
+                                          if table.item(row, 0).text() == pivot_label), None)
+                        if pivot_row is not None:
+                            detail.setdefault("pivot_reason_tooltips", []).append((
+                                table.item(pivot_row, 3).toolTip(),
+                                table.item(pivot_row, 3).text()))
                         detail.setdefault("tables", []).append(rows)
                         detail["rows"] = rows
                         header = table.horizontalHeader()
@@ -239,6 +246,10 @@ def _run_summary(qt, app, language, output_dir, width, height):
                     detail["inactive_pivot_effective"] = detail["rows"][pivot_label][2]
                     assert translator.text("options.not_effective_reason").split("{")[0] in \
                         detail["inactive_pivot_effective"]
+                    pivot_tooltip, pivot_text = detail["pivot_reason_tooltips"][-1]
+                    assert pivot_tooltip == pivot_text
+                    assert translator.text("options.not_effective_reason").split("{")[0] \
+                        in pivot_tooltip
 
                     # Selecting the NAV item changes final XHTML count and inclusion.
                     tabs.setCurrentIndex(0)
