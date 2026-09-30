@@ -176,7 +176,7 @@ def probe_merged(qt, app, language, out, selected, tag):
                                    "tw2sp", "hk2s", "hk2sp", "t2tw", "t2hk", "tw2t", "hk2t",
                                    "t2jp", "jp2t"),
                 default_config="s2t", initial_options=profile_options(services.active),
-                services=services, metadata_available=True, nav_available=True,
+                services=services, metadata_available=True,
             )
     finally:
         preview_window._ScopeDialog, preview_window._ConversionConfigDialog = orig_scope, orig_config

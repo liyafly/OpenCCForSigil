@@ -159,8 +159,6 @@ def main() -> int:
         grouped_entries = {}
         grouped_file_ids = {}
         grouped_stats = {}
-        grouped_ids_by_file = {key: set(value)
-                               for key, value in dialog._group_ids_by_file.items()}
         for group_index in range(group_count):
             group_id = f"rules:benchmark-occurrence-{group_index}"
             first = group_index * 2
@@ -174,7 +172,6 @@ def main() -> int:
             file_id = pair[0][1].file_id
             grouped_file_ids[group_id] = frozenset((file_id,))
             grouped_stats[group_id] = (2, 1)
-            grouped_ids_by_file.setdefault(file_id, set()).add(group_id)
         dialog._entries = tuple(entries)
         dialog._entry_position = {
             (change.file_id, change.change_id): index
@@ -185,9 +182,6 @@ def main() -> int:
         dialog._group_entries_by_id.update(grouped_entries)
         dialog._group_file_ids.update(grouped_file_ids)
         dialog._group_stats.update(grouped_stats)
-        dialog._group_ids_by_file = {
-            key: frozenset(value) for key, value in grouped_ids_by_file.items()
-        }
         dialog.table_model.set_entries(dialog._entries)
         index = dialog.status_filter.findData("undecided")
         dialog.status_filter.setCurrentIndex(index)

@@ -195,7 +195,7 @@ def test_r12_lenient_json_import_keeps_valid_records_and_reports_bad_record():
         {**replacement(id="bad").to_dict(), "unknown_field": True},
         replacement(id="last", source="末尾", target="尾部").to_dict(),
     ]
-    result = import_rules(StringIO(json.dumps(payload)), format="json", strict=False)
+    result = import_rules(StringIO(json.dumps(payload)), format="json")
     assert [rule.id for rule in result.rules] == ["first", "last"]
     assert len(result.diagnostics) == 1
     assert result.diagnostics[0].severity == "error"

@@ -49,7 +49,7 @@ print("exact dup same target:", [c.kind for c in find_conflicts([Rule(id="1", di
                                                                     Rule(id="2", direction="s2t", source="发", target="髮")])])
 # TXT roundtrip with CRLF + BOM
 txt = "\ufeff软件\t軟體\r\n内存\t記憶體 內存\r\n"
-res = import_rules(txt.encode("utf-8"), format="txt", direction="s2t", strict=False)
+res = import_rules(txt.encode("utf-8"), format="txt", direction="s2t")
 print("TXT CRLF+BOM:", [(r.source, r.target) for r in res.rules], [d.message for d in res.diagnostics])
 rules = res.rules
 back = import_rules(export_rules(rules, format="tsv"), format="tsv")

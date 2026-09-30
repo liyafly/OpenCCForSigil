@@ -84,8 +84,7 @@ def probe_group_semantics():
     dialog, preview = dialog_for((
         change(0, "rules:occurrence-1"), change(1, "rules:occurrence-1"),
     ))
-    language_button_visible = dialog.accept_group_button.isVisible()
-    dialog.accept_group_button.click()
+    language_button_visible = hasattr(dialog, "accept_group_button")
     after_hidden_language_button = {
         item.change_id: preview.decision(item.change_id)
         for item in preview.changes
@@ -98,7 +97,11 @@ def probe_group_semantics():
     mixed, mixed_preview = dialog_for((
         change(0, "language_metadata", language=True), change(1, "rules:occurrence-2"),
     ))
-    mixed.accept_group_button.click()
+    language_row = next(
+        index for index, (_preview, item) in enumerate(mixed._visible_entries_cache)
+        if item.change_id == "change-0")
+    mixed._set_current_row(language_row)
+    mixed.accept_this_button.click()
     mixed_decisions = {
         item.change_id: mixed_preview.decision(item.change_id)
         for item in mixed_preview.changes

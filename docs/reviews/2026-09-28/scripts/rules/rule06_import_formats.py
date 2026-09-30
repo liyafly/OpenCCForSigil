@@ -13,7 +13,7 @@ from rules.models import Rule, canonical_rule_dict
 
 def show(label, text, **kw):
     try:
-        res = import_rules(text, strict=False, **kw)
+        res = import_rules(text, **kw)
         print(label, "rules=", [(r.direction, r.source, r.target) for r in res.rules],
               "diagnostics=", [(d.line, d.location, d.message) for d in res.diagnostics])
     except Exception as exc:

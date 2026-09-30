@@ -16,7 +16,7 @@ from rules.exporters import export_rules, export_warnings
 from rules.models import Rule
 
 def show(tag, text, **kw):
-    r = import_rules(text, strict=False, **kw)
+    r = import_rules(text, **kw)
     print(f"{tag}: rules={[(x.direction, x.source, x.target, x.comment) for x in r.rules]} diags={[(d.line, d.severity, d.message) for d in r.diagnostics]}")
 
 print("== RULE-06 header false positives (first data row dropped silently) ==")
@@ -32,7 +32,7 @@ for ch, name in (("\u2028", "U+2028"), ("\x85", "NEL U+0085"), ("\u2029", "U+202
     rule = Rule(id="r", direction="s2t", source="软件", target=f"軟{ch}體")
     exported = export_rules((rule,), format="tsv")
     lossy, skipped = export_warnings((rule,), format="tsv")
-    back = import_rules(exported, format="tsv", strict=False)
+    back = import_rules(exported, format="tsv")
     print(f"{name}: export_skipped={skipped} reimported={[(x.source, x.target) for x in back.rules]} diags={[(d.line, d.message[:50]) for d in back.diagnostics]}")
 
 print("\n== RULE-07 legacy exported TSV (csv.writer quoting) ==")
