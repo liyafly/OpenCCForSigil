@@ -1479,7 +1479,6 @@ class RuleManagerDialog:
                                   comment=previous.comment, source_note=previous.source_note)
         self._editing_rule_id = previous.id
         self._refresh()
-        self._reset_wildcard_direction()
         self._mark_editor_clean()
         self._mark_test_result_stale()
 

@@ -1680,3 +1680,21 @@ def test_protect_and_whitespace_targets_are_visually_distinct_from_deletion():
     assert manager.table.item(0, 3).text() == "term"
     assert "whitespace-only (2 chars): ␠␠" in manager.table.item(1, 3).text()
     assert "Whitespace-only targets: 1" in manager.target_warning_label.text()
+
+
+def test_updating_wildcard_rule_twice_keeps_wildcard_direction():
+    rule = Rule(id="w", source="里", target="裡", direction="*")
+    manager = RuleManagerDialog(
+        make_with_table(), (rule,), translator=Translator("en"), config="s2t",
+        rulesets=(RuleSet("default", (rule,)),), ruleset_id="default",
+        run_ruleset_ids=("default",))
+    manager.table.selectRow(0)
+    manager._load_selected()
+
+    manager.target_edit.setText("裏")
+    manager._update_selected()
+    assert manager.direction_combo.currentData() == "*"
+
+    manager.target_edit.setText("裡")
+    manager._update_selected()
+    assert manager.rules[0].direction == "*"
