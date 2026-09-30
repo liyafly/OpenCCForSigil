@@ -2,7 +2,7 @@
 
 ## 简体中文
 
-在转换设置中打开“规则 / 沙箱”，可以管理规则集并试跑规则。旧规则会保留原来的语义；新规则可选择动作、匹配方式和阶段。
+在转换设置中打开“规则与测试”，可以管理规则集并试跑规则。旧规则会保留原来的语义；新规则可选择动作、匹配方式和阶段。
 
 ### 批量粘贴
 
@@ -47,7 +47,7 @@ TSV 和 CSV 文件每行可写 `源文本<Tab>目标文本`、`源文本<Tab>目
 → 安迪·威尔（Andy Weir）◎著
 ```
 
-这些格式已内置，无需重复添加。若署名不含 `◎` 或其他稳定标记，请不要只保护单字“著”；应使用能唯一识别署名的较长字面文本，并把范围设为“当前书”，再用沙箱检查周围正文。若还要在当前书中保护 `【编者】`，添加以下规则：
+这些格式已内置，无需重复添加。若署名不含 `◎` 或其他稳定标记，请不要只保护单字“著”；应使用能唯一识别署名的较长字面文本，并把范围设为“当前书”，再在“测试”页检查周围正文。若还要在当前书中保护 `【编者】`，添加以下规则：
 
 | 字段 | 填写内容 |
 | --- | --- |
@@ -64,14 +64,14 @@ TSV 和 CSV 文件每行可写 `源文本<Tab>目标文本`、`源文本<Tab>目
 1. 选择要编辑的规则集。
 2. 填写类型、方向、源文本和范围。精确规则还要填写目标文本。
 3. 点击“添加”，确认规则出现在列表中。
-4. 在沙箱输入有代表性的文本，点击“测试”；同时检查应该保护的文字和周围仍应转换的文字。
+4. 在“测试”页输入有代表性的文本，点击“测试”；同时检查应该保护的文字和周围仍应转换的文字。
 5. 点击“保存”，并确认当前方案包含此规则集。
 
-升级后的旧 `exact` 规则仍是“指定最终写法”，旧 `protect` 仍保留原文；它们不会被自动改成前置替换。保存或导入时会检查正则语法与替换模板，分析时只执行当前方向和范围实际生效的规则。只读词典检查器用于查看 OpenCC 转换结果，不会修改词典。
+升级后的旧 `exact` 规则仍是“指定最终写法”，旧 `protect` 仍保留原文；它们不会被自动改成前置替换。保存或导入时会检查正则语法与替换模板，分析时只执行当前方向和范围实际生效的规则。“测试”页还会列出各 OpenCC 配置的比较结果，只用于查看，不会修改词典。
 
 ## 繁體中文
 
-在轉換設定中開啟「規則 / 沙箱」，即可管理規則集並試跑規則。舊規則會保留原有語義；新規則可選擇動作、比對方式和階段。
+在轉換設定中開啟「規則與測試」，即可管理規則集並試跑規則。舊規則會保留原有語義；新規則可選擇動作、比對方式和階段。
 
 ### 批次貼上
 
@@ -87,7 +87,7 @@ TSV 和 CSV 文件每行可写 `源文本<Tab>目标文本`、`源文本<Tab>目
 
 ### 匯入檔案
 
-TSV 和 CSV 檔案每列可寫 `來源文字<Tab>目標文字`、`來源文字<Tab>目標文字<Tab>備註`，或 `方向<Tab>來源文字<Tab>目標文字<Tab>備註`。前兩種格式使用匯入對話框中選擇的方向。若檔案首列有標題，該列必須同時包含來源文字和目標文字欄名，例如 `source` 和 `target`；只包含其中一類時會按資料列處理。
+TSV 和 CSV 檔案每列可寫 `來源文字<Tab>目標文字`、`來源文字<Tab>目標文字<Tab>備註`，或 `方向<Tab>來源文字<Tab>目標文字<Tab>備註`。前兩種格式使用匯入對話框中選擇的方向。若檔案第 1 列是表頭，該列必須同時包含來源文字和目標文字欄名，例如 `source` 和 `target`；只包含其中一類時會按資料列處理。
 
 ### 動作和比對方式
 
@@ -116,7 +116,7 @@ TSV 和 CSV 檔案每列可寫 `來源文字<Tab>目標文字`、`來源文字<T
 → 安迪·威尔（Andy Weir）◎著
 ```
 
-這些格式已內建，無需重複新增。若署名不含 `◎` 或其他穩定標記，請勿只保護單字「著」；應使用能唯一識別署名的較長字面文字，並將範圍設為「目前書籍」，再用沙箱檢查周圍正文。若要只在目前書籍保護 `【编者】`，可新增以下規則：
+這些格式已內建，無需重複新增。若署名不含 `◎` 或其他穩定標記，請勿只保護單字「著」；應使用能唯一識別署名的較長字面文字，並將範圍設為「目前書籍」，再在「測試」頁檢查周圍正文。若要只在目前書籍保護 `【编者】`，可新增以下規則：
 
 | 欄位 | 填寫內容 |
 | --- | --- |
@@ -133,14 +133,14 @@ TSV 和 CSV 檔案每列可寫 `來源文字<Tab>目標文字`、`來源文字<T
 1. 選擇要編輯的規則集。
 2. 填寫類型、方向、來源文字和範圍。精確規則還要填寫目標文字。
 3. 點擊「新增」，確認規則出現在清單中。
-4. 在沙箱輸入有代表性的文字，點擊「測試」；同時檢查應受保護的文字和周圍仍應轉換的文字。
+4. 在「測試」頁輸入有代表性的文字，點擊「測試」；同時檢查應受保護的文字和周圍仍應轉換的文字。
 5. 點擊「儲存」，並確認目前設定檔包含此規則集。
 
-升級後的舊 `exact` 規則仍是「指定最終寫法」，舊 `protect` 仍會保留原文；不會自動改成前置取代。儲存或匯入時會檢查正規表示式語法與取代範本，分析時只執行目前方向和範圍實際生效的規則。唯讀詞典檢查器用來查看 OpenCC 轉換結果，不會修改詞典。
+升級後的舊 `exact` 規則仍是「指定最終寫法」，舊 `protect` 仍會保留原文；不會自動改成前置取代。儲存或匯入時會檢查正規表示式語法與取代範本，分析時只執行目前方向和範圍實際生效的規則。「測試」頁還會列出各 OpenCC 設定的比較結果，只用於查看，不會修改詞典。
 
 ## English
 
-Open **Rules / sandbox** from the conversion settings to manage rule sets and try rules. Existing rules keep their semantics; new rules choose an action, match type, and stage.
+Open **Rules & test** from the conversion settings to manage rule sets and try rules. Existing rules keep their semantics; new rules choose an action, match type, and stage.
 
 ### Bulk paste
 
@@ -185,7 +185,7 @@ OpenCCForSigil protects `◎【著】`, `◎著`, and the common spaced forms `�
 → 安迪·威尔（Andy Weir）◎著
 ```
 
-These forms are built in; you do not need to add them. If the credit has no `◎` or other stable marker, do not protect bare `著`; use a longer literal that uniquely identifies the credit with **Current book** scope, then test nearby prose in the sandbox. To protect `【编者】` only in the current book, add:
+These forms are built in; you do not need to add them. If the credit has no `◎` or other stable marker, do not protect bare `著`; use a longer literal that uniquely identifies the credit with **Current book** scope, then check nearby prose on the **Test** page. To protect `【编者】` only in the current book, add:
 
 | Field | Value |
 | --- | --- |
@@ -202,7 +202,7 @@ Choose **Global** to apply the rule to every book, **Current profile** to apply 
 1. Select the rule set to edit.
 2. Fill in Type, Direction, Source, and Scope. Exact rules also need a Target.
 3. Select **Add** and check that the rule appears in the list.
-4. Enter representative text in the sandbox and select **Test**. Check both the protected text and nearby text that should still convert.
+4. On the **Test** page, enter representative text and select **Test**. Check both the protected text and nearby text that should still convert.
 5. Select **Save**, then make sure the active profile includes this rule set.
 
-Upgraded `exact` rules remain **Final wording** and `protect` rules still keep the original; they are not silently changed to pre-replacements. Saving or importing checks regex syntax and replacement templates. Analysis executes only rules enabled for the active direction and scope. The read-only dictionary inspector shows OpenCC output and does not edit its dictionaries.
+Upgraded `exact` rules remain **Final wording** and `protect` rules still keep the original; they are not silently changed to pre-replacements. Saving or importing checks regex syntax and replacement templates. Analysis executes only rules enabled for the active direction and scope. The **Test** page also lists OpenCC comparison output for reference; it does not edit dictionaries.

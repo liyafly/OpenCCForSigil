@@ -194,6 +194,7 @@ _I18N_REQUIRED_KEYS = frozenset(
         "result.status.partial",
         "result.status.skipped",
         "result.status.noop",
+        "result.status.cancelled_unchanged",
         "result.save_reminder",
         "result.view_report",
     }

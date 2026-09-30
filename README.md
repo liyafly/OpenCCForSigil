@@ -17,7 +17,7 @@ The V1 conversion workflow is connected end to end:
 - explicit single/selected/spine/all XHTML scope, with a frozen manifest-ID
   selection and opt-in NCX, whitelisted metadata, and Chinese language tags;
 - source-preserving exact/protect rules, profile and book scopes, import/export,
-  a text sandbox, and independent official-config inspection;
+  and a rule test page with official-config comparison;
 - saved profiles, optional quotation/horizontal-punctuation changes, mixed
   script diagnostics, and explicit high-risk pivot chains;
 - preview decisions by item, file, category, and risk, with status/source/text

@@ -2,7 +2,7 @@
 
 Rules are directional overlays; bundled official OpenCC dictionaries remain
 read-only. See [rules and profiles](rules-and-profiles.md) for stages,
-precedence, scopes, immutable snapshots, and the manager/sandbox/inspector.
+precedence, scopes, immutable snapshots, and the rule manager and its **Test** page.
 
 A rule carries `id`, `enabled`, `type`, `direction`, `source`, `target`, `scope`,
 `priority`, and optional profile/book ownership. V2 rules also carry `action`,
@@ -43,9 +43,9 @@ spaced forms `◎ 著` and `◎　著`, including when Jieba segmentation is sel
 If the text has no distinguishing marker and contains only `著`, it cannot be
 protected safely in every context: ordinary text such as `慰藉著` should
 convert to `慰藉着`. Use a longer, book-specific literal only when that full
-text uniquely identifies the credit, and test nearby prose in the sandbox.
+text uniquely identifies the credit, and check nearby prose on the **Test** page.
 
-To protect a different literal expression, open **Rules / sandbox** and add a
+To protect a different literal expression, open **Rules & test** and add a
 protect rule. For example, to keep `【编者】` only in one EPUB, use:
 
 | Field | Value |
@@ -57,7 +57,7 @@ protect rule. For example, to keep `【编者】` only in one EPUB, use:
 | Scope | `book` / Current book |
 
 Use `global` / Global for every book, or `profile` / Current profile to limit
-the rule to a named profile. Then enter representative text in the sandbox,
+the rule to a named profile. Then enter representative text on the **Test** page,
 select **Test**, and confirm both the protected phrase and neighboring text
 before saving. The detailed guide is also shipped at
 `OpenCCForSigil/resources/rule-guide.md` inside the installable ZIP.

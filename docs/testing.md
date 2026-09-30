@@ -9,7 +9,7 @@ official vendored payload manifest/hash = PASS
 official CLI/Python Binding differential smoke = 100% equality
 source-preserving plan/stage/verify integration = PASS
 preview acceptance/rejection integration = PASS
-preflight-only run = success with zero BookContainer writes when no text API exists
+missing BookContainer text API = localized error (error.book_api_unavailable) with zero writes
 ```
 
 Run locally with the pinned environment:

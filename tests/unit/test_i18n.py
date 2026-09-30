@@ -561,3 +561,10 @@ def test_result_dialog_explains_files_without_a_write(monkeypatch):
     assert lines[4] == "未写回：1 个文件"
     assert lines[5] == "全部跳过：1 个文件"
     assert lines[7] == "变更已交给 Sigil，请在 Sigil 中检查并保存 EPUB。"
+
+
+def test_rule_guide_uses_the_test_page_wording():
+    guide = (Path(__file__).resolve().parents[2] / "plugin" / "OpenCCForSigil"
+             / "resources" / "rule-guide.md").read_text(encoding="utf-8").casefold()
+    for term in ("沙箱", "sandbox", "词典检查器", "詞典檢查器", "dictionary inspector"):
+        assert term not in guide, term

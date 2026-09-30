@@ -62,10 +62,9 @@ position. Owners of separate profile/book scopes are independent.
 
 Import/export supports TSV, CSV, JSON, and OpenCC TXT. TXT import requires an
 explicit direction. Import diagnostics and conflicts are visible before
-saving. The text-only sandbox displays rule and conversion stages. The
-read-only inspector independently compares official configs on the original
-input and labels the result as comparative classification, never as an
-internal dictionary-hit trace.
+saving. The **Test** page displays rule and conversion stages, then compares
+official configs on the original input and labels the result as comparative
+classification, never as an internal dictionary-hit trace.
 
 Every plan freezes a rule hash, profile hash, backend provenance, and source
 hash. Stage replacements map final changes back to original source offsets;

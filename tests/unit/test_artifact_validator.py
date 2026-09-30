@@ -335,3 +335,7 @@ def test_zip_tree_hash_streams_sorted_members_without_archive_read():
         digest.update(b"\0")
 
     assert _zip_tree_hash(archive, "payload/") == digest.hexdigest()
+
+
+def test_required_i18n_keys_include_cancelled_unchanged_status():
+    assert "result.status.cancelled_unchanged" in _I18N_REQUIRED_KEYS
