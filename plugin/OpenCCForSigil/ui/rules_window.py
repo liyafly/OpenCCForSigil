@@ -1729,8 +1729,6 @@ class RuleManagerDialog:
                 f"{configuration_label(self._translator, name)}{separator}{value}"
                 for name, value in inspection.comparisons
             )
-            lines.append(
-                f"{self._labels['final_label']}{separator}{inspection.final}")
             attribution_key = (
                 "rules.attribution_opencc" if inspection.attribution.startswith("OpenCC")
                 else "rules.attribution_user"

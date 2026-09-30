@@ -1719,3 +1719,17 @@ def test_deleting_last_ruleset_after_renaming_default_recreates_empty_default(mo
     manager._apply()
     assert manager.result.deleted == ("X",)
     assert [ruleset.id for ruleset in manager.result.rulesets] == ["default"]
+
+
+def test_rule_test_output_lists_final_result_once():
+    rule = Rule(id="r1", source="软件", target="軟體", direction="s2t")
+    manager = RuleManagerDialog(
+        make_with_table(), (rule,), translator=Translator("zh-Hans"), config="s2t",
+        official_convert=lambda _config, text: text.replace("软件", "軟件"),
+        rulesets=(RuleSet("default", (rule,)),), ruleset_id="default",
+        run_ruleset_ids=("default",))
+    manager.test_input.setPlainText("软件")
+    manager._test()
+    final_label = Translator("zh-Hans").text("rules.final_label")
+    lines = manager.test_output.toPlainText().splitlines()
+    assert sum(line.startswith(final_label) for line in lines) == 1
