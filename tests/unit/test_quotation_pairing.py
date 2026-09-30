@@ -9,6 +9,7 @@ from opencc_backend.backend import OpenCCBackend
 from rules.models import Rule, RuleSnapshot as Rules
 from sigil.adapter import SigilBookAdapter
 from sigil.scope import Scope, TargetSelection
+from tests.support.performance import timing_budget
 
 
 class Book:
@@ -205,4 +206,4 @@ def test_entity_scan_is_not_quadratic():
     _book, _workflow, planned = _plan(source, quotation_mode="corner")
 
     assert planned
-    assert time.perf_counter() - started < 3
+    assert time.perf_counter() - started < timing_budget(3)

@@ -6,6 +6,7 @@ from core.models import ConversionPlan, SourceSpan, TextTarget, TokenChange
 from core.preview import PreviewSession
 from tests.support.fake_qt import make_with_table
 from tests.support.preview_batch import apply_batch_decision
+from tests.support.performance import timing_budget
 from ui.i18n import Translator
 from ui import preview_window
 from ui.preview_window import (
@@ -352,7 +353,7 @@ def test_three_hundred_thousand_preview_build_filter_and_batch_accept_stay_bound
     apply_batch_decision(monkeypatch, dialog, scope="all")
     accept_all_seconds = time.perf_counter() - started
 
-    assert build_seconds < 2.0
+    assert build_seconds < timing_budget(2.0)
     assert single_decision_seconds < 0.05
     assert filter_seconds < 1.0
     assert accept_all_seconds < 1.0
