@@ -1,0 +1,2 @@
+literal -> [('REGEX_ZERO_WIDTH_SKIPPED', 'rule z: skipped 1 zero-width match(es)')]
+numeric-ref -> []

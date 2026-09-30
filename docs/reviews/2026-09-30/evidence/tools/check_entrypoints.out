@@ -1,0 +1,8 @@
+probe_ux_simplicity exit=1 TypeError: choose_scope() got an unexpected keyword argument 'nav_available'
+benchmark_preview_ui_small exit=1 AttributeError: '_PreviewDialog' object has no attribute '_group_ids_by_file'
+probe_followup exit=1 AttributeError: '_PreviewDialog' object has no attribute 'accept_group_button'. Did you mean: 'accept_this_but
+a10_export_roundtrip exit=1 TypeError: import_rules() got an unexpected keyword argument 'strict'
+test_review_regressions exit=1 FAILED docs/reviews/2026-09-26/scripts/test_review_regressions.py::test_r12_lenient_json_import_keeps_valid_re
+rule06_import_formats exit=0 bad direction on physical line 6: TypeError import_rules() got an unexpected keyword argument 'strict'
+probe_edge_cases exit=1 TypeError: import_rules() got an unexpected keyword argument 'strict'
+fix07_fix08_import_edges exit=1 TypeError: import_rules() got an unexpected keyword argument 'strict'

@@ -1,0 +1,2 @@
+after rename: ['X'] | delete enabled: True
+EXCEPTION escapes _delete_ruleset: StopIteration  | rulesets left = []
