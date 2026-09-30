@@ -18,7 +18,7 @@
 - Keep regex execution timeouts per call while resetting hit and output limits
   for each text fragment.
 - Reduce language-tag choices to keeping existing tags or updating Chinese
-  tags, while preserving legacy saved-profile behavior.
+  tags. Saved "suggest" profiles load as "update".
 
 ### Fixed
 
@@ -31,6 +31,35 @@
   export order, and retain representable V2 rules in OpenCC TXT exports.
 - Keep profile summaries, import ownership, and zero-count feedback consistent
   with the selected conversion.
+
+### Removed
+
+- Regex rule templates in the rule editor.
+- The Checkpoint banner on the file-scope page. Applying changes still asks
+  for the Checkpoint confirmation.
+- The "Diagnose mixed scripts" and "Compare official configs to classify
+  changes" switches. Saved values are ignored.
+- The "Accept/Skip language tag group" buttons. Deciding one language tag
+  change still decides its whole group.
+- The strict rule-import mode. Invalid records are always skipped and
+  reported with their record numbers; a structurally broken JSON file still
+  fails.
+- "From current settings" in the profile window, the rule set default
+  direction and scope settings (new rules always start with the current
+  direction and Global scope), the Jieba "Details" button, and the
+  "Checking Jieba" notices in the rule and profile windows.
+- Profile summary and comparison rows for settings that have no effect.
+- The status filter in the history window.
+- The separate dictionary inspector. Its OpenCC comparison output is now
+  part of the rule **Test** page.
+- The "rules belong to another book or profile" banner. Such rules are still
+  labeled in the list.
+- The rule set settings dialog. Rule sets can no longer be disabled from the
+  window; a set that is already disabled shows a **Re-enable** button.
+- JSON rule field aliases `pattern` and `replacement`. Files that use them
+  now fail with an unknown-field error; use `source` and `target`.
+- The warning for legacy quoted TSV fields. Such fields are imported
+  unchanged.
 
 ## 0.2.10 - 2026-09-28
 
