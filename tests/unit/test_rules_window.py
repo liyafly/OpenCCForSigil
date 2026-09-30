@@ -1698,3 +1698,24 @@ def test_updating_wildcard_rule_twice_keeps_wildcard_direction():
     manager.target_edit.setText("裡")
     manager._update_selected()
     assert manager.rules[0].direction == "*"
+
+
+def test_deleting_last_ruleset_after_renaming_default_recreates_empty_default(monkeypatch):
+    qt = make_with_table()
+    qt.QInputDialog = SimpleNamespace(getText=lambda *_args, **_kwargs: ("X", True))
+    rule = Rule(id="d1", source="旧", target="舊", direction="s2t")
+    manager = RuleManagerDialog(
+        qt, (rule,), translator=Translator("en"), config="s2t",
+        rulesets=(RuleSet("default", (rule,)),), ruleset_id="default",
+        run_ruleset_ids=("default",))
+    manager._rename_ruleset()
+    monkeypatch.setattr(rules_window, "ask_confirmation", lambda *_args, **_kwargs: True)
+
+    manager._delete_ruleset()
+
+    assert list(manager._rulesets) == ["default"]
+    assert manager._ruleset_id == "default"
+    assert manager.rules == []
+    manager._apply()
+    assert manager.result.deleted == ("X",)
+    assert [ruleset.id for ruleset in manager.result.rulesets] == ["default"]

@@ -1077,6 +1077,8 @@ class RuleManagerDialog:
         self._deleted.append(identifier)
         self._run_ruleset_ids = tuple(
             item for item in self._run_ruleset_ids if item != identifier)
+        if not self._rulesets:
+            self._rulesets["default"] = RuleSet("default")
         self._ruleset_id = next(iter(self._rulesets))
         self.rules = list(self._rulesets[self._ruleset_id].rules)
         self._populate_rulesets()

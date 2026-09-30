@@ -694,3 +694,28 @@ def test_deleted_ruleset_is_reported_once_by_controller_and_not_planned(monkeypa
         for item in plans[0]
         for change in item.plan.changes
     )
+
+
+def test_deleting_renamed_default_keeps_an_empty_default_on_disk(monkeypatch, tmp_path):
+    profile_store = ProfileStore(tmp_path / "profiles")
+    profile = Profile(id="saved", name="Saved", ruleset_ids=("default",))
+    profile_store.save(profile)
+    rules = RuleStore(tmp_path / "rules")
+    rules.save(RuleSet("default", (Rule(id="d1", source="旧", target="舊", direction="s2t"),)))
+    settings = RunSettings(
+        Storage(tmp_path), SimpleNamespace(book_fingerprint=lambda: "book-hash"),
+        {"profile_id": "saved"}, language="en", session_id="test-session",
+    )
+    settings.bind_run(profile, SimpleNamespace(available_configs=lambda: {"s2t"}))
+    result = RuleWindowResult(
+        "default", (RuleSet("default"),), (("default", "X"),),
+        run_ruleset_ids=(), deleted=("X",),
+    )
+    RuleDialogQt.QMessageBox.response = True
+    monkeypatch.setattr("ui.rules_window.show_rules_window",
+                        lambda *_args, **_kwargs: result)
+
+    settings.edit_rules("s2t", Translator(), RuleDialogQt, object())
+
+    assert sorted(path.name for path in (tmp_path / "rules").iterdir()) == ["default.json"]
+    assert rules.load("default").rules == ()
