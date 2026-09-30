@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.12 - 2026-09-30
+
+### Fixed
+
+- Keep the `*` direction when updating an existing wildcard rule.
+- Recreate an empty `default` rule set after deleting the last set, including
+  when `default` was renamed first.
+- Report zero-width regex skips found inside decoded numeric character
+  references.
+- Show the final result only once on the rule Test page.
+- Align the rule guide with the current Test page and restore the missing
+  cancelled-unchanged status key in artifact validation.
+
 ## 0.2.11 - 2026-09-30
 
 ### Added

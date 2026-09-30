@@ -71,18 +71,18 @@ installable plugins. Older releases may have fewer package assets; use the
 assets actually attached to that release. Every package requires an exact
 supported CPython runtime and ABI.
 
-Current release: [v0.2.11](https://github.com/liyafly/OpenCCForSigil/releases/tag/v0.2.11).
+Current release: [v0.2.12](https://github.com/liyafly/OpenCCForSigil/releases/tag/v0.2.12).
 
 | Asset | Use it when |
 | --- | --- |
-| [OpenCCForSigil_0.2.11.zip](https://github.com/liyafly/OpenCCForSigil/releases/download/v0.2.11/OpenCCForSigil_0.2.11.zip) | Fat Plugin for the five CPython 3.14/cp314 runtimes. |
-| [OpenCCForSigil_0.2.11_macos-arm64.zip](https://github.com/liyafly/OpenCCForSigil/releases/download/v0.2.11/OpenCCForSigil_0.2.11_macos-arm64.zip) | Sigil runs as Apple Silicon. |
-| [OpenCCForSigil_0.2.11_macos-x86_64.zip](https://github.com/liyafly/OpenCCForSigil/releases/download/v0.2.11/OpenCCForSigil_0.2.11_macos-x86_64.zip) | Sigil runs as Intel, including under Rosetta. |
-| [OpenCCForSigil_0.2.11_windows-x86_64.zip](https://github.com/liyafly/OpenCCForSigil/releases/download/v0.2.11/OpenCCForSigil_0.2.11_windows-x86_64.zip) | Sigil runs as Windows x64. |
-| [OpenCCForSigil_0.2.11_linux-x86_64.zip](https://github.com/liyafly/OpenCCForSigil/releases/download/v0.2.11/OpenCCForSigil_0.2.11_linux-x86_64.zip) | Sigil runs CPython 3.14/cp314 and `uname -m` reports `x86_64`. |
-| [OpenCCForSigil_0.2.11_linux-x86_64-cp312.zip](https://github.com/liyafly/OpenCCForSigil/releases/download/v0.2.11/OpenCCForSigil_0.2.11_linux-x86_64-cp312.zip) | Linux x86_64 Sigil runs CPython 3.12/cp312, including Ubuntu 24.04's packaged Sigil. |
-| [OpenCCForSigil_0.2.11_linux-aarch64.zip](https://github.com/liyafly/OpenCCForSigil/releases/download/v0.2.11/OpenCCForSigil_0.2.11_linux-aarch64.zip) | Sigil runs CPython 3.14/cp314 and `uname -m` reports `aarch64`. |
-| [SHA256SUMS.txt](https://github.com/liyafly/OpenCCForSigil/releases/download/v0.2.11/SHA256SUMS.txt) | SHA-256 digest list for all seven ZIPs. |
+| [OpenCCForSigil_0.2.12.zip](https://github.com/liyafly/OpenCCForSigil/releases/download/v0.2.12/OpenCCForSigil_0.2.12.zip) | Fat Plugin for the five CPython 3.14/cp314 runtimes. |
+| [OpenCCForSigil_0.2.12_macos-arm64.zip](https://github.com/liyafly/OpenCCForSigil/releases/download/v0.2.12/OpenCCForSigil_0.2.12_macos-arm64.zip) | Sigil runs as Apple Silicon. |
+| [OpenCCForSigil_0.2.12_macos-x86_64.zip](https://github.com/liyafly/OpenCCForSigil/releases/download/v0.2.12/OpenCCForSigil_0.2.12_macos-x86_64.zip) | Sigil runs as Intel, including under Rosetta. |
+| [OpenCCForSigil_0.2.12_windows-x86_64.zip](https://github.com/liyafly/OpenCCForSigil/releases/download/v0.2.12/OpenCCForSigil_0.2.12_windows-x86_64.zip) | Sigil runs as Windows x64. |
+| [OpenCCForSigil_0.2.12_linux-x86_64.zip](https://github.com/liyafly/OpenCCForSigil/releases/download/v0.2.12/OpenCCForSigil_0.2.12_linux-x86_64.zip) | Sigil runs CPython 3.14/cp314 and `uname -m` reports `x86_64`. |
+| [OpenCCForSigil_0.2.12_linux-x86_64-cp312.zip](https://github.com/liyafly/OpenCCForSigil/releases/download/v0.2.12/OpenCCForSigil_0.2.12_linux-x86_64-cp312.zip) | Linux x86_64 Sigil runs CPython 3.12/cp312, including Ubuntu 24.04's packaged Sigil. |
+| [OpenCCForSigil_0.2.12_linux-aarch64.zip](https://github.com/liyafly/OpenCCForSigil/releases/download/v0.2.12/OpenCCForSigil_0.2.12_linux-aarch64.zip) | Sigil runs CPython 3.14/cp314 and `uname -m` reports `aarch64`. |
+| [SHA256SUMS.txt](https://github.com/liyafly/OpenCCForSigil/releases/download/v0.2.12/SHA256SUMS.txt) | SHA-256 digest list for all seven ZIPs. |
 
 Choose the Linux ZIP whose CPython ABI matches Sigil's plugin process. The
 standard Linux assets use CPython 3.14/cp314; the separate x86_64 asset uses
