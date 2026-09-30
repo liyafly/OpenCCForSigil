@@ -375,3 +375,19 @@ def test_optional_rule_trace_keeps_a_match_whose_target_is_unchanged():
 def test_malformed_rule_fields_are_reported_as_validation_errors():
     with pytest.raises(RuleValidationError, match="rule 0: action: action must be a string"):
         validate_rules(({"id": "bad", "action": [], "source": "x", "target": "y"},))
+
+
+def test_zero_width_skip_inside_numeric_reference_is_reported():
+    from document.tokenizer import TokenizerOptions
+
+    rule = _rule(id="z", source=r"(?<=中)[^」]*", target="…")
+    source = "<html><body><p>&#x4E2D;</p></body></html>"
+    planned = ConversionWorkflow(
+        SigilBookAdapter(_Book({"c": source})), _Backend(), _request((rule,)),
+        tokenizer_options=TokenizerOptions(decode_numeric_cjk_refs=True),
+    ).plan()
+
+    diagnostics = [diagnostic for item in planned for diagnostic in item.plan.diagnostics
+                   if diagnostic.code == "REGEX_ZERO_WIDTH_SKIPPED"]
+    assert len(diagnostics) == 1
+    assert "rule z" in diagnostics[0].message

@@ -137,7 +137,7 @@ def build_conversion_plan(
             result = ConvertResult(target.source_text, converted.target, (replace(
                 attribution, source=target.source_text, target=converted.target,
                 span=SourceSpan(0, len(target.source_text)), category="numeric_reference", risk="HIGH"),),
-                converted.diagnostics)
+                converted.diagnostics, zero_width_skips=converted.zero_width_skips)
 
         else:
             result = converter.convert(target.source_text, request, quotation_pairer=pairer)
