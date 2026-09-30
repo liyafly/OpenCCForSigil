@@ -194,3 +194,34 @@ Each item has its own commit on `main`; each commit records tests that failed be
 - `mise exec -- make check` at `6ff11aaeb69d93f37cfd4d20926b750d9ef3cb08`: **PASS** — Ruff; **861 passed, 1 skipped** (`tests/unit/test_rules_window.py:477`, fake Qt does not calculate widget layout sizes); official payload manifest valid; OpenCC differential **28/28**; Jieba differential **10/10**; plugin metadata valid (`0.2.10`).
 - Real Qt acceptance after the follow-up: **PASS**, all **13/13** scenarios. Evidence: `/tmp/opencc-postci-bulk-preview-ui/acceptance.json`; PySide6/Qt 6.11.2, 800×800 offscreen logical screen, requested geometry 960×640.
 - Follow-up GitHub Actions run [`36598487777`](https://github.com/liyafly/OpenCCForSigil/actions/runs/36598487777) on `6ff11aaeb69d93f37cfd4d20926b750d9ef3cb08`: **SUCCESS**. All six payload jobs, cross-platform Jieba comparison, plugin package assembly, and all six package smoke jobs passed. Tag-only attestation and GitHub Release jobs were skipped for this branch push.
+
+## 2026-09-30 corrections (append-only)
+
+The following corrections describe the state and evidence at baseline `3107f27`; see `docs/reviews/2026-09-30/01-acceptance-audit.md` for the item-by-item audit.
+
+1. **SIMP-18:** The reported test name `test_jieba_failure_reason_is_available_in_status_tooltip` does not exist. The two relevant tests did fail on the parent commit.
+2. **SIMP-23:** `test_converter_does_not_share_applied_output_limits_between_fragments` does not exist; the actual test is `test_selected_output_has_no_analysis_wide_limit`. Step 4, compiling each regex once, was not implemented or reported.
+3. **SIMP-28:** `test_profile_summary_uses_localized_direction_and_option_labels` passed before the product change; it was incorrectly described as a red test.
+4. **FIX-09:** Numeric character references did not pass `zero_width_skips` into `ConvertResult`, so their zero-width diagnostic was missing. FU-03 restores that propagation.
+5. **FIX-08:** The `OpenCC TXT` candidate separator change also means U+3000 and NBSP are retained in the target; the old record omitted this behavior change. FU-05 adds it to both release records.
+6. **FIX-07:** The two existing assertions changed during implementation; the old record did not say so.
+7. **FIX-14:** The reproduction script was changed to use a real `UserDataStore`; the old record omitted that change.
+8. **FIX-18.2, FIX-18.3, and `fdd2554`:** Their commit messages omitted the required pre-fix failing-test evidence.
+9. **Phase 7 and Phase 8:** Phase 7's statement that no assertions were weakened was false. Phase 8's “unrelated batch checks remain” was also false: `865c29f` had removed the mixed-dialog file-batch assertion. FU-07 restores checks for hidden controls and local rule-group completion.
+10. **Phase 9 gate:** `probe_ux_simplicity.py` was not rerun, so its broken entry point went unnoticed; `benchmark_preview_ui.py` was broken as well. FU-06 repairs both entry points.
+11. **`746771f`:** The all-scope preview optimization was outside the approved list and appeared only as a CI SHA in the old results. Per D19 it is retained and recorded separately below.
+
+### Process corrections
+
+- Ruff failed with F401 from `3eeb0e5` through `d100941` (five commits), and was fixed at `2d233a5`.
+- The real-Qt `check_run_summary.py` probe did not run successfully from SIMP-02 through SIMP-08; it remained hung for more than ten minutes at `d15c5d4`.
+- `ux04` had failed since `a1cba9b`, and `ux02` since `501192a`/`3eeb0e5`; both were fixed by `865c29f`.
+- These red gates were followed by additional changes, contrary to the rule that a failed batch gate stops progression.
+
+### Decisions retained or deferred
+
+- `746771f` is retained under D19; its pre-fix failing test is `test_all_scope_undecided_batch_reuses_entries_without_decision_scan`.
+- SIMP-23 step 4 is not done under D17; each regex is compiled three times, with at most 128 rules.
+- `LiteralPrefixIndex.single_char_buckets` is retained under D18 as a deviation from the original simplification intent; the recorded 13,440 fuzz cases and 300 independent comparisons found no mismatch, and measured speedup was 5–8%.
+- The explicit non-string backend-output check removed by SIMP-03 is not restored under D21; the official backend returns `str`, and `test_non_string_backend_output_is_rejected` currently passes through a `len(None)` failure in `core/diff.py:49`.
+- The 2026-09-23 round2 probes `s1_jieba_loop.py`, `s2_direction_reset.py`, `s3_commit_progress.py`, `s4_future_schema.py`, `s6_stale_prefs.py`, and `l07_eq.py` are retired under D20 because SIMP-01, SIMP-16, and SIMP-03 removed the behavior they exercise.
