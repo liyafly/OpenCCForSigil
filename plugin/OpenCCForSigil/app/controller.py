@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import json
 import sys
-from dataclasses import replace
+from dataclasses import dataclass, replace
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,57 @@ from sigil.adapter import SigilBookAdapter
 from sigil.storage import UserDataStore, resolve_user_data_dir
 from transforms.language_tags import target_language
 from ui.i18n import Translator, choose_language, rule_conflict_message
+
+
+@dataclass
+class _RunState:
+    """Mutable state shared by the phases of one Controller._run_once call.
+
+    The except/finally blocks of _run_once read the backend, adapter,
+    documents and counters from here, so every phase assigns them as soon as
+    they change rather than when the phase returns.
+    """
+
+    translator: Translator
+    backend: OpenCCBackend | None = None
+    adapter: SigilBookAdapter | None = None
+    planned: Any = ()
+    staged: Any = ()
+    planned_change_count: int = 0
+    files_without_changes: int = 0
+    files_all_skipped: int = 0
+    accepted_change_count: int = 0
+    skipped_change_count: int = 0
+    files_written: int = 0
+    checkpoint_notice_shown: bool = False
+    preferences: Any = None
+    ui_preferences: Any = None
+    language: str = "en"
+    default_config: str = ""
+    jieba_probe: Any = None
+    settings: RunSettings | None = None
+    targets: Any = None
+    pending_config_choice: Any = None
+    save_ui_preferences: Any = None
+    show_result_with_preferences: Any = None
+    # UI entry points, imported lazily once the backend self-test has passed.
+    choose_scope: Any = None
+    create_progress_reporter: Any = None
+    show_preview: Any = None
+    show_result: Any = None
+
+
+@dataclass
+class _Analysis:
+    """One planning pass: the frozen choices, its workflow and the preview."""
+
+    selected_config: str
+    active_profile: Profile
+    frozen_rules: Any
+    language_tag: Any
+    workflow: ConversionWorkflow
+    invalid_source_diagnostics: tuple[Any, ...] = ()
+    preview: Any = None
 
 
 class Controller:
@@ -53,622 +105,686 @@ class Controller:
         """Run preflight, preview, staging, verification, and commit."""
 
         self.logger.event("run_started", state=self.session.state.value)
-        backend: OpenCCBackend | None = None
-        adapter: SigilBookAdapter | None = None
-        planned = ()
-        staged = ()
-        planned_change_count = 0
-        files_without_changes = 0
-        files_all_skipped = 0
-        accepted_change_count = 0
-        skipped_change_count = 0
-        files_written = 0
-        translator = Translator("en")
+        run = _RunState(translator=Translator("en"))
         try:
-            preferences = self.storage.load_preferences(
-                default={
-                    "last_conversion_config": Profile().conversion,
-                    "ui": {},
-                }
-            )
-            preflight_ui = preferences.get("ui")
-            explicit_preflight_language = (
-                preflight_ui.get("language") if isinstance(preflight_ui, dict) else None
-            )
-            translator.set_language(
-                choose_language(
-                    explicit_preflight_language,
-                    getattr(self.bk, "sigil_ui_lang", None),
-                )
-            )
-
-            def update_preferences(changes):
-                nonlocal preferences
-                preferences = self.storage.update_preferences(changes)
-                return preferences
-
-            preference_recovery = self.storage.take_recovery_notice()
-            default_config = _preferred_config(preferences, Profile().conversion)
-            self.session.transition(SessionState.SCANNING)
-            # Always preflight the stable standard backend first. An optional
-            # Jieba preference is resolved only after the selected payload has
-            # advertised and verified the native plugin capability.
-            backend = OpenCCBackend("s2t")
-            self._run_backend_self_test(backend)
-            jieba_probe = backend.start_jieba_probe(
-                on_complete=lambda result: self.logger.event(
-                    "optional_jieba_probe",
-                    elapsed_ms=round(result[2], 1),
-                    result="available" if result[0] else "unavailable",
-                    reason=result[1],
-                )
-            ) or backend
-
-            if not _book_supports_conversion(self.bk):
-                raise BookContainerSupportError(
-                    "BookContainer must provide callable text_iter() and readfile() APIs"
-                )
-
-            from ui.preview_window import (
-                choose_scope,
-                create_progress_reporter,
-                show_result,
-                show_preview,
-            )
-
-            raw_ui_preferences = preferences.get("ui")
-            # Corrupt or legacy preference files must not make a conversion
-            # crash while merging the UI namespace.  Preserve valid unknown UI
-            # keys, but normalize every other value to an empty mapping.
-            ui_preferences = dict(raw_ui_preferences) if isinstance(raw_ui_preferences, dict) else {}
-
-            def save_run_ui_preferences(values):
-                nonlocal preferences, ui_preferences
-                ui_preferences = {**ui_preferences, **values}
-                preferences = update_preferences({"ui": values})
-                saved_ui = preferences.get("ui")
-                ui_preferences = (dict(saved_ui) if isinstance(saved_ui, dict)
-                                  else ui_preferences)
-
-            def show_result_with_preferences(**values):
-                return show_result(
-                    **values,
-                    ui_preferences=ui_preferences,
-                    save_ui_preferences=save_run_ui_preferences,
-                )
-
-            explicit_language = ui_preferences.get("language")
-            host_language = getattr(self.bk, "sigil_ui_lang", None)
-            language = choose_language(explicit_language, host_language)
-            translator.set_language(language)
-
-            adapter = SigilBookAdapter(self.bk)
-            settings = RunSettings(
-                self.storage, adapter, preferences, language=language,
-                session_id=self.session.session_id,
-            )
-            settings.bind_run(settings.active, backend)
-            settings.bind_ui_preferences(ui_preferences, save_run_ui_preferences)
-            if settings.clear_profile_preference:
-                update_preferences({"profile_id": None})
-            recovery_notices = []
-            if preference_recovery:
-                recovery_notices.append(preference_recovery)
-            recovery_notices.extend(settings.take_recovery_notices())
-            missing_rulesets = settings.take_missing_rulesets_notice()
-            if missing_rulesets:
-                recovery_notices.append(("rulesets_missing", ", ".join(missing_rulesets)))
-            def available_conversion_configs():
-                list_configs = getattr(jieba_probe, "available_configs_nonblocking", None)
-                return (list_configs() if callable(list_configs)
-                        else backend.available_configs_nonblocking())
-
-            def initial_run_options():
-                values = profile_options(settings.active)
-                previous = preferences.get("run_options")
-                if isinstance(previous, dict):
-                    previous = dict(previous)
-                    if settings.active_profile_is_saved:
-                        previous.pop("ruleset_ids", None)
-                    values.update(previous)
-                return values
-
-            def merged_dialog_options():
-                return {
-                    "available_configs": available_conversion_configs(),
-                    "default_config": default_config,
-                    "jieba_probe": jieba_probe,
-                    "initial_options": initial_run_options(),
-                    "metadata_available": adapter.metadata_supported(),
-                    "services": settings,
-                }
-
-            pending_config_choice = None
-            # Text-capable hosts always get an explicit scope chooser.  A host
-            # without selected_iter simply opens it with no initial checks; it
-            # must never silently widen the run to ALL_XHTML.
-            if recovery_notices:
-                scope_outcome = choose_scope(
-                    adapter,
-                    initial_language=language,
-                    translator=translator,
-                    notice=tuple(recovery_notices),
-                    ui_preferences=ui_preferences,
-                    save_ui_preferences=save_run_ui_preferences,
-                    **merged_dialog_options(),
-                )
-            else:
-                scope_outcome = choose_scope(
-                    adapter,
-                    initial_language=language,
-                    translator=translator,
-                    ui_preferences=ui_preferences,
-                    save_ui_preferences=save_run_ui_preferences,
-                    **merged_dialog_options(),
-                )
-            pending_config_choice = getattr(scope_outcome, "configuration", None)
-            checkpoint_notice_shown = False
-            language = scope_outcome.language
-            translator.set_language(language)
-            settings.language = language
-            if not scope_outcome.accepted or scope_outcome.selection is None:
-                update_preferences({"ui": {"language": language}})
-                self.session.cancel()
-                self.logger.summary(
-                    self._summary(status="cancelled", files_scanned=0, changes=0, files_changed=0)
-                )
+            preference_recovery = self._preflight(run)
+            recovery_notices = self._prepare_run_settings(run, preference_recovery)
+            if not self._choose_initial_scope(run, recovery_notices):
                 return 1
-            targets = scope_outcome.selection
-
-            def reselect_scope(previous_selection):
-                nonlocal language, preferences, ui_preferences, targets
-                nonlocal default_config
-                nonlocal pending_config_choice
-                preferences = self.storage.load_preferences()
-                default_config = _preferred_config(preferences, default_config)
-                saved_ui = preferences.get("ui")
-                ui_preferences = dict(saved_ui) if isinstance(saved_ui, dict) else {}
-                settings.bind_ui_preferences(ui_preferences, save_run_ui_preferences)
-                scope_outcome = choose_scope(
-                    adapter,
-                    initial_language=language,
-                    translator=translator,
-                    initial_selection=previous_selection,
-                    ui_preferences=ui_preferences,
-                    save_ui_preferences=save_run_ui_preferences,
-                    **merged_dialog_options(),
-                )
-                language = scope_outcome.language
-                translator.set_language(language)
-                settings.language = language
-                if not scope_outcome.accepted or scope_outcome.selection is None:
-                    update_preferences({"ui": {"language": language}})
-                    self.session.cancel()
-                    self.logger.summary(self._summary(
-                        status="cancelled", files_scanned=0, changes=0, files_changed=0))
-                    return False
-                targets = scope_outcome.selection
-                pending_config_choice = getattr(scope_outcome, "configuration", None)
-                return True
-
-            # The merged chooser freezes direction and options with the target
-            # selection, including on a first launch with no preference.
-            while True:
-                selected_config = pending_config_choice
-                pending_config_choice = None
-                assert selected_config is not None
-                options = dict(getattr(selected_config, "options", {}))
-                preference_options = dict(getattr(
-                    selected_config, "preference_options", options))
-                selected_config = str(selected_config)
-                language_tag = target_language(
-                    selected_config, options.get("language_metadata", "keep"),
-                    options.get("language_preset", "legacy"), options.get("language_region", ""),
-                )
-                targets = replace(targets, include_ncx=options.get("include_ncx", False),
-                                  include_metadata=options.get("include_metadata", False),
-                                  update_language=bool(language_tag))
-                active_profile = settings.current_profile(selected_config, options)
-                frozen_rules = settings.freeze_rules(active_profile)
-                profile_preference = (
-                    preferences.get("profile_id") if settings.preserve_profile_preference
-                    else active_profile.id if (
-                        settings.profiles.directory / f"{active_profile.id}.json").exists()
-                    else None
-                )
-                update_preferences({
-                    "profile_id": profile_preference,
-                    "last_conversion_config": selected_config,
-                    "run_options": preference_options,
-                    "ui": {"language": language},
-                })
-                if selected_config != backend.config:
-                    backend.close()
-                    backend = OpenCCBackend(selected_config, jieba_probe=jieba_probe)
-                    self._run_backend_self_test(backend)
-
-                settings.language = language
-                settings.bind_run(active_profile, backend)
-                self.session.metadata.update(config=selected_config, profile_id=active_profile.id,
-                                             profile_hash=settings_hash(active_profile),
-                                             rules_hash=frozen_rules.rules_hash)
-                self.session.transition(SessionState.ANALYZING)
-                workflow = ConversionWorkflow(
-                    adapter,
-                    backend,
-                    ConvertRequest(
-                        selected_config,
-                        segmentation="jieba" if is_jieba_config(selected_config) else "mmseg",
-                        language_tag=language_tag,
-                        rules_snapshot=frozen_rules,
-                        quotation_mode=active_profile.quotation_mode,
-                        punctuation_mode=active_profile.punctuation_mode,
-                        pivot_chain=active_profile.pivot_chain if active_profile.force_pivot else (),
-                        profile_id=active_profile.id,
-                        book_fingerprint=(settings.book_fingerprint if
-                            any(rule.scope == "book" for rule in frozen_rules.rules) else ""),
-                    ),
-                    scope=targets.scope,
-                    targets=targets,
-                    tokenizer_options=tokenizer_policy(active_profile),
-                    session_id=self.session.session_id,
-                    profile_id=active_profile.id,
-                    snapshot_guard=settings.snapshot_guard(),
-                )
-                progress = create_progress_reporter(
-                    len(targets.file_ids), translator=translator,
-                    ui_preferences=ui_preferences,
-                    save_ui_preferences=save_run_ui_preferences,
-                )
-                try:
-                    planned = workflow.plan_in_worker(
-                        lambda config: OpenCCBackend(config, jieba_probe=jieba_probe),
-                        progress=progress.update,
-                        cancelled=progress.cancelled,
-                    )
-                except WorkflowCancelled:
-                    self.session.cancel()
-                    self.logger.summary(
-                        self._summary(status="cancelled", files_scanned=0, changes=0, files_changed=0)
-                    )
-                    _show_result_safely(
-                        show_result_with_preferences, translator=translator,
-                        status="cancelled",
-                        files_scanned=0,
-                        files_changed=0,
-                        accepted_changes=0,
-                        skipped_changes=0,
-                    )
-                    return 1
-                finally:
-                    progress.close()
-                planned_change_count = sum(len(item.plan.changes) for item in planned)
-                files_without_changes = sum(not item.plan.changes for item in planned)
-                files_all_skipped = 0
-                self.logger.event(
-                    "plan_built",
-                    profile_id=active_profile.id,
-                    profile_hash=settings_hash(active_profile),
-                    rules_hash=frozen_rules.rules_hash,
-                    config=selected_config,
-                    files_scanned=len(planned),
-                    changes=planned_change_count,
-                    document_counts={kind: sum(item.source.document_kind == kind for item in planned)
-                                     for kind in ("xhtml", "nav", "ncx", "metadata")},
-                    language_tag=language_tag,
-                )
-                self.session.transition(SessionState.PLANNED)
-
-                invalid_source_diagnostics = tuple(
-                    (item.source.href, diagnostic.code, diagnostic.message)
-                    for item in planned
-                    for diagnostic in item.plan.diagnostics
-                    if diagnostic.code == "SOURCE_INVALID_XHTML"
-                )
-                if planned_change_count == 0:
-                    self.session.transition(SessionState.PREVIEWING)
-                    self.session.metadata["checkpoint_notice_shown"] = checkpoint_notice_shown
-                    result_action = _show_result_safely(
-                        show_result_with_preferences, translator=translator,
-                        status="success",
-                        files_scanned=len(planned),
-                        files_changed=0,
-                        accepted_changes=0,
-                        skipped_changes=0,
-                        files_not_written=len(planned),
-                        files_without_changes=files_without_changes,
-                        return_to_scope=True,
-                        diagnostics=invalid_source_diagnostics,
-                        diagnostic_documents=planned,
-                    )
-                    if result_action == "back_to_scope":
-                        if not reselect_scope(targets):
-                            return 1
-                        self.session.transition(SessionState.SCANNING)
-                        continue
-                    finalized = workflow.finalize(workflow.preview())
-                    self.session.transition(SessionState.APPLYING_TO_STAGE)
-                    staged = workflow.stage(finalized)
-                    self.session.transition(SessionState.VERIFYING)
-                    workflow.verify(staged)
-                    self.session.transition(SessionState.COMMITTING)
-                    workflow.commit(staged)
-                    self.session.complete()
-                    self.logger.summary(self._summary(
-                        status="success",
-                        files_scanned=len(planned),
-                        changes=0,
-                        files_changed=0,
-                        files_without_changes=files_without_changes,
-                    ))
-                    self._record_history(planned, staged, backend)
-                    return 0
-
-                self.session.transition(SessionState.PREVIEWING)
-                preview = show_preview(
-                    planned,
-                    translator=translator,
-                    services=settings,
-                    ui_preferences=ui_preferences,
-                    save_ui_preferences=save_run_ui_preferences,
-                )
-                files_all_skipped = _count_files_all_skipped(
-                    planned, getattr(preview, "previews", ()))
-                if getattr(preview, "back_to_settings", False):
-                    default_config = selected_config
-                    settings.bind_run(active_profile, backend)
-                    if not reselect_scope(targets):
-                        return 1
-                    self.session.transition(SessionState.SCANNING)
-                    continue
-                if not preview.accepted:
-                    self.session.cancel()
-                    self.logger.summary(
-                        self._summary(
-                            status="cancelled",
-                            files_scanned=len(planned),
-                            changes=planned_change_count,
-                            files_changed=0,
-                            files_without_changes=files_without_changes,
-                        )
-                    )
-                    _show_result_safely(
-                        show_result_with_preferences, translator=translator,
-                        status="cancelled",
-                        files_scanned=len(planned),
-                        files_changed=0,
-                        accepted_changes=0,
-                        skipped_changes=0,
-                        files_not_written=len(planned),
-                        files_without_changes=files_without_changes,
-                        files_all_skipped=files_all_skipped,
-                    )
-                    return 1
-
-                break
-
-            self.session.metadata["checkpoint_notice_shown"] = bool(
-                checkpoint_notice_shown or getattr(preview, "checkpoint_notice_shown", False))
-            finalized = workflow.finalize(preview.previews)
-            accepted_change_count = sum(len(plan.changes) for _, plan in finalized)
-            skipped_change_count = planned_change_count - accepted_change_count
-            self.logger.event(
-                "preview_completed",
-                accepted_changes=accepted_change_count,
-                planned_changes=planned_change_count,
-            )
-
-            self.session.transition(SessionState.APPLYING_TO_STAGE)
-            post_preview_progress = create_progress_reporter(
-                len(planned), translator=translator,
-                ui_preferences=ui_preferences,
-                save_ui_preferences=save_run_ui_preferences,
-            )
-            commit_succeeded = False
-            try:
-                # Staging and verification happen before the write boundary;
-                # keep the user informed without offering a cancellation
-                # action that cannot safely interrupt these phases.
-                disable_cancel = getattr(post_preview_progress, "disable_cancel", None)
-                if callable(disable_cancel):
-                    disable_cancel()
-                staged = workflow.stage(
-                    finalized,
-                    progress=post_preview_progress.update,
-                )
-                self.session.transition(SessionState.VERIFYING)
-                verification = workflow.verify(
-                    staged,
-                    progress=post_preview_progress.update,
-                )
-                self.logger.event(
-                    "verification_completed",
-                    files_verified=len(verification),
-                    passed=all(result.passed for result in verification),
-                )
-                self.session.transition(SessionState.COMMITTING)
-                workflow.commit(
-                    staged,
-                    progress=post_preview_progress.update,
-                    on_progress_failure=lambda phase, index, total, href, error: self.logger.event(
-                        "progress_failed",
-                        level="ERROR",
-                        phase=phase,
-                        index=index,
-                        total=total,
-                        href=href,
-                        error_type=type(error).__name__,
-                        error=str(error),
-                    ),
-                )
-                commit_succeeded = True
-            finally:
-                if commit_succeeded:
-                    self.session.complete()
-                    self._best_effort("progress_close", post_preview_progress.close)
-                else:
-                    post_preview_progress.close()
-            files_written = len(staged)
-            self._best_effort(
-                "commit_completed",
-                lambda: self.logger.event(
-                    "commit_completed",
-                    files_changed=len(staged),
-                    changes=accepted_change_count,
-                ),
-            )
-            self._best_effort(
-                "summary",
-                lambda: self.logger.summary(
-                    self._summary(
-                        status="success",
-                        files_scanned=len(planned),
-                        changes=accepted_change_count,
-                        files_changed=len(staged),
-                        files_without_changes=files_without_changes,
-                        skipped_changes=skipped_change_count,
-                    )
-                ),
-            )
-            report_text = self._best_effort(
-                "history", lambda: self._record_history(planned, staged, backend), default=None
-            )
-            _show_result_safely(
-                show_result_with_preferences, translator=translator,
-                status="success",
-                files_scanned=len(planned),
-                files_changed=len(staged),
-                accepted_changes=accepted_change_count,
-                skipped_changes=skipped_change_count,
-                files_not_written=max(0, len(planned) - len(staged)),
-                files_without_changes=files_without_changes,
-                files_all_skipped=files_all_skipped,
-                diagnostics=invalid_source_diagnostics,
-                report_text=report_text,
-            )
+            analysis = self._analyze_until_previewed(run)
+            if isinstance(analysis, int):
+                return analysis
+            self._stage_verify_commit(run, analysis)
+            self._report_success(run, analysis)
             return 0
         except WorkflowCommitError as exc:
-            if self.session.state not in {
-                SessionState.COMPLETED,
-                SessionState.CANCELLED,
-                SessionState.FAILED,
-            }:
-                self.session.transition(SessionState.FAILED)
-            committed = set(exc.committed_file_ids)
-            files_changed = len(committed)
-            accepted = sum(
-                len(item.plan.changes) for item in staged if item.file_id in committed
-            )
-            self.logger.exception("controller_commit_failed", exc)
-            self.logger.event(
-                "commit_partial_failure",
-                committed_file_ids=sorted(committed),
-                failed_file_id=exc.failed_file_id,
-            )
-            self.logger.summary(
-                self._summary(
-                    status="partial_failure",
-                    files_scanned=len(planned),
-                    changes=accepted,
-                    files_changed=files_changed,
-                    files_without_changes=files_without_changes,
-                    skipped_changes=max(0, planned_change_count - accepted),
-                    failed_file=exc.failed_file_id,
-                    committed_file_ids=sorted(committed),
-                )
-            )
-            _show_result_safely(
-                show_result_with_preferences, translator=translator,
-                status="partial_failure",
-                files_scanned=len(planned),
-                files_changed=files_changed,
-                accepted_changes=accepted,
-                skipped_changes=max(0, planned_change_count - accepted),
-                files_not_written=max(0, len(planned) - files_changed),
-                files_without_changes=files_without_changes,
-                files_all_skipped=files_all_skipped,
-                failed_file=exc.failed_file_id,
-            )
+            self._report_commit_failure(run, exc)
             raise
         except UserCancelled:
             raise
         except Exception as exc:
-            if self.session.state not in {
-                SessionState.COMPLETED,
-                SessionState.CANCELLED,
-                SessionState.FAILED,
-            }:
-                self.session.transition(SessionState.FAILED)
-            committed = set(adapter.committed_file_ids if adapter is not None else ())
-            if committed:
-                files_written = len(committed)
-                accepted = sum(
-                    len(item.plan.changes) for item in staged if item.file_id in committed
-                )
-                self.logger.exception("controller_failed_after_write", exc)
-                self.logger.event(
-                    "commit_partial_failure",
-                    committed_file_ids=sorted(committed),
-                    failed_file_id=getattr(exc, "failed_file_id", None),
-                )
-                self.logger.summary(
-                    self._summary(
-                        status="partial_failure",
-                        files_scanned=len(planned),
-                        changes=accepted,
-                        files_changed=files_written,
-                        files_without_changes=files_without_changes,
-                        skipped_changes=max(0, planned_change_count - accepted),
-                        committed_file_ids=sorted(committed),
-                    )
-                )
-                _show_result_safely(
-                    show_result_with_preferences,
-                    translator=translator,
-                    status="partial_failure",
-                    files_scanned=len(planned),
-                    files_changed=files_written,
-                    accepted_changes=accepted,
-                    skipped_changes=max(0, planned_change_count - accepted),
-                    files_not_written=max(0, len(planned) - files_written),
-                    files_without_changes=files_without_changes,
-                    files_all_skipped=files_all_skipped,
-                    failed_file=getattr(exc, "failed_file_id", None),
-                )
+            self._mark_session_failed()
+            if self._report_partial_write_failure(run, exc):
                 raise
-            self.logger.exception("controller_failed")
-            self.logger.summary(
-                self._summary(status="failed", files_scanned=0, changes=0, files_changed=0)
-            )
-            href_by_id = {item.source.file_id: item.source.href for item in planned}
-            affected_files = tuple(
-                (href_by_id.get(str(href), str(href)), tuple(codes))
-                for href, codes in getattr(exc, "affected_files", ())
-            )
-            error_values = {
-                "translator": translator,
-                "kind": _error_kind(exc),
-                "detail": type(exc).__name__,
-                "files_written": files_written,
-                "log_path": str(self.logger.log_path),
-                "affected_files": affected_files,
-            }
-            if isinstance(exc, RuleConflictError):
-                error_values["summary"] = _rule_conflict_summary(exc, translator)
-            if isinstance(exc, BookContainerSupportError):
-                error_values["summary"] = translator.text("error.book_api_unavailable")
-            if isinstance(exc, RuntimeSelectionError):
-                error_values["summary"] = _runtime_selection_summary(exc, translator)
-            _show_error_safely(
-                self.logger,
-                **error_values,
-            )
+            self._report_failure(run, exc)
             if isinstance(exc, RuntimeSelectionError):
                 return 2
             raise
         finally:
-            if backend is not None:
-                backend.close()
+            if run.backend is not None:
+                run.backend.close()
+
+    # -- preflight and run settings -------------------------------------------------
+
+    def _preflight(self, run: _RunState) -> Any:
+        """Load preferences, self-test the standard backend, then load the UI.
+
+        Returns the storage recovery notice taken while loading preferences.
+        """
+
+        run.preferences = self.storage.load_preferences(
+            default={
+                "last_conversion_config": Profile().conversion,
+                "ui": {},
+            }
+        )
+        preflight_ui = run.preferences.get("ui")
+        explicit_preflight_language = (
+            preflight_ui.get("language") if isinstance(preflight_ui, dict) else None
+        )
+        run.translator.set_language(
+            choose_language(
+                explicit_preflight_language,
+                getattr(self.bk, "sigil_ui_lang", None),
+            )
+        )
+
+        preference_recovery = self.storage.take_recovery_notice()
+        run.default_config = _preferred_config(run.preferences, Profile().conversion)
+        self.session.transition(SessionState.SCANNING)
+        # Always preflight the stable standard backend first. An optional
+        # Jieba preference is resolved only after the selected payload has
+        # advertised and verified the native plugin capability.
+        run.backend = OpenCCBackend("s2t")
+        self._run_backend_self_test(run.backend)
+        run.jieba_probe = run.backend.start_jieba_probe(
+            on_complete=lambda result: self.logger.event(
+                "optional_jieba_probe",
+                elapsed_ms=round(result[2], 1),
+                result="available" if result[0] else "unavailable",
+                reason=result[1],
+            )
+        ) or run.backend
+
+        if not _book_supports_conversion(self.bk):
+            raise BookContainerSupportError(
+                "BookContainer must provide callable text_iter() and readfile() APIs"
+            )
+
+        # The UI is imported only after the backend self-test has passed.
+        from ui.preview_window import (
+            choose_scope,
+            create_progress_reporter,
+            show_result,
+            show_preview,
+        )
+
+        run.choose_scope = choose_scope
+        run.create_progress_reporter = create_progress_reporter
+        run.show_result = show_result
+        run.show_preview = show_preview
+        return preference_recovery
+
+    def _prepare_run_settings(self, run: _RunState, preference_recovery: Any) -> list[Any]:
+        """Bind UI preferences, the book adapter and run settings.
+
+        Returns the recovery notices the scope chooser should show.
+        """
+
+        raw_ui_preferences = run.preferences.get("ui")
+        # Corrupt or legacy preference files must not make a conversion
+        # crash while merging the UI namespace.  Preserve valid unknown UI
+        # keys, but normalize every other value to an empty mapping.
+        run.ui_preferences = (
+            dict(raw_ui_preferences) if isinstance(raw_ui_preferences, dict) else {})
+        run.save_ui_preferences = partial(self._save_run_ui_preferences, run)
+
+        def show_result_with_preferences(**values):
+            return run.show_result(
+                **values,
+                ui_preferences=run.ui_preferences,
+                save_ui_preferences=run.save_ui_preferences,
+            )
+
+        run.show_result_with_preferences = show_result_with_preferences
+
+        explicit_language = run.ui_preferences.get("language")
+        host_language = getattr(self.bk, "sigil_ui_lang", None)
+        run.language = choose_language(explicit_language, host_language)
+        run.translator.set_language(run.language)
+
+        run.adapter = SigilBookAdapter(self.bk)
+        run.settings = RunSettings(
+            self.storage, run.adapter, run.preferences, language=run.language,
+            session_id=self.session.session_id,
+        )
+        run.settings.bind_run(run.settings.active, run.backend)
+        run.settings.bind_ui_preferences(run.ui_preferences, run.save_ui_preferences)
+        if run.settings.clear_profile_preference:
+            self._update_preferences(run, {"profile_id": None})
+        recovery_notices = []
+        if preference_recovery:
+            recovery_notices.append(preference_recovery)
+        recovery_notices.extend(run.settings.take_recovery_notices())
+        missing_rulesets = run.settings.take_missing_rulesets_notice()
+        if missing_rulesets:
+            recovery_notices.append(("rulesets_missing", ", ".join(missing_rulesets)))
+        return recovery_notices
+
+    def _update_preferences(self, run: _RunState, changes):
+        run.preferences = self.storage.update_preferences(changes)
+        return run.preferences
+
+    def _save_run_ui_preferences(self, run: _RunState, values) -> None:
+        run.ui_preferences = {**run.ui_preferences, **values}
+        run.preferences = self._update_preferences(run, {"ui": values})
+        saved_ui = run.preferences.get("ui")
+        run.ui_preferences = (dict(saved_ui) if isinstance(saved_ui, dict)
+                              else run.ui_preferences)
+
+    # -- scope and configuration chooser --------------------------------------------
+
+    def _merged_dialog_options(self, run: _RunState) -> dict[str, Any]:
+        list_configs = getattr(run.jieba_probe, "available_configs_nonblocking", None)
+        available_configs = (list_configs() if callable(list_configs)
+                             else run.backend.available_configs_nonblocking())
+        initial_options = profile_options(run.settings.active)
+        previous = run.preferences.get("run_options")
+        if isinstance(previous, dict):
+            previous = dict(previous)
+            if run.settings.active_profile_is_saved:
+                previous.pop("ruleset_ids", None)
+            initial_options.update(previous)
+        return {
+            "available_configs": available_configs,
+            "default_config": run.default_config,
+            "jieba_probe": run.jieba_probe,
+            "initial_options": initial_options,
+            "metadata_available": run.adapter.metadata_supported(),
+            "services": run.settings,
+        }
+
+    def _open_scope_chooser(self, run: _RunState, **extra: Any) -> Any:
+        """Show the merged scope/configuration chooser.
+
+        ``extra`` carries the call-specific ``notice=`` or
+        ``initial_selection=`` argument; it is passed only when given.
+        """
+
+        return run.choose_scope(
+            run.adapter,
+            initial_language=run.language,
+            translator=run.translator,
+            **extra,
+            ui_preferences=run.ui_preferences,
+            save_ui_preferences=run.save_ui_preferences,
+            **self._merged_dialog_options(run),
+        )
+
+    def _apply_scope_outcome(self, run: _RunState, scope_outcome: Any) -> bool:
+        """Adopt the chosen language and targets; record a cancelled run."""
+
+        run.language = scope_outcome.language
+        run.translator.set_language(run.language)
+        run.settings.language = run.language
+        if not scope_outcome.accepted or scope_outcome.selection is None:
+            self._update_preferences(run, {"ui": {"language": run.language}})
+            self.session.cancel()
+            self.logger.summary(
+                self._summary(status="cancelled", files_scanned=0, changes=0, files_changed=0)
+            )
+            return False
+        run.targets = scope_outcome.selection
+        return True
+
+    def _choose_initial_scope(self, run: _RunState, recovery_notices: list[Any]) -> bool:
+        # Text-capable hosts always get an explicit scope chooser.  A host
+        # without selected_iter simply opens it with no initial checks; it
+        # must never silently widen the run to ALL_XHTML.
+        notice = {"notice": tuple(recovery_notices)} if recovery_notices else {}
+        scope_outcome = self._open_scope_chooser(run, **notice)
+        run.pending_config_choice = getattr(scope_outcome, "configuration", None)
+        return self._apply_scope_outcome(run, scope_outcome)
+
+    def _reselect_scope(self, run: _RunState, previous_selection: Any) -> bool:
+        run.preferences = self.storage.load_preferences()
+        run.default_config = _preferred_config(run.preferences, run.default_config)
+        saved_ui = run.preferences.get("ui")
+        run.ui_preferences = dict(saved_ui) if isinstance(saved_ui, dict) else {}
+        run.settings.bind_ui_preferences(run.ui_preferences, run.save_ui_preferences)
+        scope_outcome = self._open_scope_chooser(run, initial_selection=previous_selection)
+        if not self._apply_scope_outcome(run, scope_outcome):
+            return False
+        run.pending_config_choice = getattr(scope_outcome, "configuration", None)
+        return True
+
+    # -- analysis and preview -------------------------------------------------------
+
+    def _analyze_until_previewed(self, run: _RunState) -> _Analysis | int:
+        """Plan and preview until the user accepts, or return an exit code."""
+
+        # The merged chooser freezes direction and options with the target
+        # selection, including on a first launch with no preference.
+        while True:
+            analysis = self._start_analysis(run)
+            if not self._plan_documents(run, analysis):
+                return 1
+            if run.planned_change_count == 0:
+                exit_code = self._finish_without_changes(run, analysis)
+                if exit_code is None:
+                    continue
+                return exit_code
+
+            self.session.transition(SessionState.PREVIEWING)
+            preview = analysis.preview = run.show_preview(
+                run.planned,
+                translator=run.translator,
+                services=run.settings,
+                ui_preferences=run.ui_preferences,
+                save_ui_preferences=run.save_ui_preferences,
+            )
+            run.files_all_skipped = _count_files_all_skipped(
+                run.planned, getattr(preview, "previews", ()))
+            if getattr(preview, "back_to_settings", False):
+                run.default_config = analysis.selected_config
+                run.settings.bind_run(analysis.active_profile, run.backend)
+                if not self._reselect_scope(run, run.targets):
+                    return 1
+                self.session.transition(SessionState.SCANNING)
+                continue
+            if not preview.accepted:
+                self.session.cancel()
+                self.logger.summary(
+                    self._summary(
+                        status="cancelled",
+                        files_scanned=len(run.planned),
+                        changes=run.planned_change_count,
+                        files_changed=0,
+                        files_without_changes=run.files_without_changes,
+                    )
+                )
+                _show_result_safely(
+                    run.show_result_with_preferences, translator=run.translator,
+                    status="cancelled",
+                    files_scanned=len(run.planned),
+                    files_changed=0,
+                    accepted_changes=0,
+                    skipped_changes=0,
+                    files_not_written=len(run.planned),
+                    files_without_changes=run.files_without_changes,
+                    files_all_skipped=run.files_all_skipped,
+                )
+                return 1
+
+            return analysis
+
+    def _start_analysis(self, run: _RunState) -> _Analysis:
+        """Freeze the chosen configuration, profile and rules into a workflow."""
+
+        selected_config = run.pending_config_choice
+        run.pending_config_choice = None
+        assert selected_config is not None
+        options = dict(getattr(selected_config, "options", {}))
+        preference_options = dict(getattr(
+            selected_config, "preference_options", options))
+        selected_config = str(selected_config)
+        language_tag = target_language(
+            selected_config, options.get("language_metadata", "keep"),
+            options.get("language_preset", "legacy"), options.get("language_region", ""),
+        )
+        run.targets = replace(run.targets, include_ncx=options.get("include_ncx", False),
+                              include_metadata=options.get("include_metadata", False),
+                              update_language=bool(language_tag))
+        settings = run.settings
+        active_profile = settings.current_profile(selected_config, options)
+        frozen_rules = settings.freeze_rules(active_profile)
+        profile_preference = (
+            run.preferences.get("profile_id") if settings.preserve_profile_preference
+            else active_profile.id if (
+                settings.profiles.directory / f"{active_profile.id}.json").exists()
+            else None
+        )
+        self._update_preferences(run, {
+            "profile_id": profile_preference,
+            "last_conversion_config": selected_config,
+            "run_options": preference_options,
+            "ui": {"language": run.language},
+        })
+        if selected_config != run.backend.config:
+            run.backend.close()
+            run.backend = OpenCCBackend(selected_config, jieba_probe=run.jieba_probe)
+            self._run_backend_self_test(run.backend)
+
+        settings.language = run.language
+        settings.bind_run(active_profile, run.backend)
+        self.session.metadata.update(config=selected_config, profile_id=active_profile.id,
+                                     profile_hash=settings_hash(active_profile),
+                                     rules_hash=frozen_rules.rules_hash)
+        self.session.transition(SessionState.ANALYZING)
+        workflow = ConversionWorkflow(
+            run.adapter,
+            run.backend,
+            ConvertRequest(
+                selected_config,
+                segmentation="jieba" if is_jieba_config(selected_config) else "mmseg",
+                language_tag=language_tag,
+                rules_snapshot=frozen_rules,
+                quotation_mode=active_profile.quotation_mode,
+                punctuation_mode=active_profile.punctuation_mode,
+                pivot_chain=active_profile.pivot_chain if active_profile.force_pivot else (),
+                profile_id=active_profile.id,
+                book_fingerprint=(settings.book_fingerprint if
+                    any(rule.scope == "book" for rule in frozen_rules.rules) else ""),
+            ),
+            scope=run.targets.scope,
+            targets=run.targets,
+            tokenizer_options=tokenizer_policy(active_profile),
+            session_id=self.session.session_id,
+            profile_id=active_profile.id,
+            snapshot_guard=settings.snapshot_guard(),
+        )
+        return _Analysis(selected_config, active_profile, frozen_rules, language_tag, workflow)
+
+    def _plan_documents(self, run: _RunState, analysis: _Analysis) -> bool:
+        """Plan the targets in the worker; False when the user cancelled."""
+
+        progress = run.create_progress_reporter(
+            len(run.targets.file_ids), translator=run.translator,
+            ui_preferences=run.ui_preferences,
+            save_ui_preferences=run.save_ui_preferences,
+        )
+        try:
+            run.planned = analysis.workflow.plan_in_worker(
+                lambda config: OpenCCBackend(config, jieba_probe=run.jieba_probe),
+                progress=progress.update,
+                cancelled=progress.cancelled,
+            )
+        except WorkflowCancelled:
+            self.session.cancel()
+            self.logger.summary(
+                self._summary(status="cancelled", files_scanned=0, changes=0, files_changed=0)
+            )
+            _show_result_safely(
+                run.show_result_with_preferences, translator=run.translator,
+                status="cancelled",
+                files_scanned=0,
+                files_changed=0,
+                accepted_changes=0,
+                skipped_changes=0,
+            )
+            return False
+        finally:
+            progress.close()
+        planned = run.planned
+        run.planned_change_count = sum(len(item.plan.changes) for item in planned)
+        run.files_without_changes = sum(not item.plan.changes for item in planned)
+        run.files_all_skipped = 0
+        self.logger.event(
+            "plan_built",
+            profile_id=analysis.active_profile.id,
+            profile_hash=settings_hash(analysis.active_profile),
+            rules_hash=analysis.frozen_rules.rules_hash,
+            config=analysis.selected_config,
+            files_scanned=len(planned),
+            changes=run.planned_change_count,
+            document_counts={kind: sum(item.source.document_kind == kind for item in planned)
+                             for kind in ("xhtml", "nav", "ncx", "metadata")},
+            language_tag=analysis.language_tag,
+        )
+        self.session.transition(SessionState.PLANNED)
+
+        analysis.invalid_source_diagnostics = tuple(
+            (item.source.href, diagnostic.code, diagnostic.message)
+            for item in planned
+            for diagnostic in item.plan.diagnostics
+            if diagnostic.code == "SOURCE_INVALID_XHTML"
+        )
+        return True
+
+    def _finish_without_changes(self, run: _RunState, analysis: _Analysis) -> int | None:
+        """Report a run with no proposed changes.
+
+        Returns None when the user went back to the scope chooser and picked a
+        new selection, otherwise the run's exit code.
+        """
+
+        self.session.transition(SessionState.PREVIEWING)
+        self.session.metadata["checkpoint_notice_shown"] = run.checkpoint_notice_shown
+        result_action = _show_result_safely(
+            run.show_result_with_preferences, translator=run.translator,
+            status="success",
+            files_scanned=len(run.planned),
+            files_changed=0,
+            accepted_changes=0,
+            skipped_changes=0,
+            files_not_written=len(run.planned),
+            files_without_changes=run.files_without_changes,
+            return_to_scope=True,
+            diagnostics=analysis.invalid_source_diagnostics,
+            diagnostic_documents=run.planned,
+        )
+        if result_action == "back_to_scope":
+            if not self._reselect_scope(run, run.targets):
+                return 1
+            self.session.transition(SessionState.SCANNING)
+            return None
+        workflow = analysis.workflow
+        finalized = workflow.finalize(workflow.preview())
+        self.session.transition(SessionState.APPLYING_TO_STAGE)
+        run.staged = workflow.stage(finalized)
+        self.session.transition(SessionState.VERIFYING)
+        workflow.verify(run.staged)
+        self.session.transition(SessionState.COMMITTING)
+        workflow.commit(run.staged)
+        self.session.complete()
+        self.logger.summary(self._summary(
+            status="success",
+            files_scanned=len(run.planned),
+            changes=0,
+            files_changed=0,
+            files_without_changes=run.files_without_changes,
+        ))
+        self._record_history(run.planned, run.staged, run.backend)
+        return 0
+
+    # -- stage, verify, commit and report -------------------------------------------
+
+    def _stage_verify_commit(self, run: _RunState, analysis: _Analysis) -> None:
+        preview = analysis.preview
+        workflow = analysis.workflow
+        self.session.metadata["checkpoint_notice_shown"] = bool(
+            run.checkpoint_notice_shown or getattr(preview, "checkpoint_notice_shown", False))
+        finalized = workflow.finalize(preview.previews)
+        run.accepted_change_count = sum(len(plan.changes) for _, plan in finalized)
+        run.skipped_change_count = run.planned_change_count - run.accepted_change_count
+        self.logger.event(
+            "preview_completed",
+            accepted_changes=run.accepted_change_count,
+            planned_changes=run.planned_change_count,
+        )
+
+        self.session.transition(SessionState.APPLYING_TO_STAGE)
+        post_preview_progress = run.create_progress_reporter(
+            len(run.planned), translator=run.translator,
+            ui_preferences=run.ui_preferences,
+            save_ui_preferences=run.save_ui_preferences,
+        )
+        commit_succeeded = False
+        try:
+            # Staging and verification happen before the write boundary;
+            # keep the user informed without offering a cancellation
+            # action that cannot safely interrupt these phases.
+            disable_cancel = getattr(post_preview_progress, "disable_cancel", None)
+            if callable(disable_cancel):
+                disable_cancel()
+            run.staged = workflow.stage(
+                finalized,
+                progress=post_preview_progress.update,
+            )
+            self.session.transition(SessionState.VERIFYING)
+            verification = workflow.verify(
+                run.staged,
+                progress=post_preview_progress.update,
+            )
+            self.logger.event(
+                "verification_completed",
+                files_verified=len(verification),
+                passed=all(result.passed for result in verification),
+            )
+            self.session.transition(SessionState.COMMITTING)
+            workflow.commit(
+                run.staged,
+                progress=post_preview_progress.update,
+                on_progress_failure=lambda phase, index, total, href, error: self.logger.event(
+                    "progress_failed",
+                    level="ERROR",
+                    phase=phase,
+                    index=index,
+                    total=total,
+                    href=href,
+                    error_type=type(error).__name__,
+                    error=str(error),
+                ),
+            )
+            commit_succeeded = True
+        finally:
+            if commit_succeeded:
+                self.session.complete()
+                self._best_effort("progress_close", post_preview_progress.close)
+            else:
+                post_preview_progress.close()
+        run.files_written = len(run.staged)
+
+    def _report_success(self, run: _RunState, analysis: _Analysis) -> None:
+        """Post-commit bookkeeping; nothing here may undo the completed write."""
+
+        self._best_effort(
+            "commit_completed",
+            lambda: self.logger.event(
+                "commit_completed",
+                files_changed=len(run.staged),
+                changes=run.accepted_change_count,
+            ),
+        )
+        self._best_effort(
+            "summary",
+            lambda: self.logger.summary(
+                self._summary(
+                    status="success",
+                    files_scanned=len(run.planned),
+                    changes=run.accepted_change_count,
+                    files_changed=len(run.staged),
+                    files_without_changes=run.files_without_changes,
+                    skipped_changes=run.skipped_change_count,
+                )
+            ),
+        )
+        report_text = self._best_effort(
+            "history", lambda: self._record_history(run.planned, run.staged, run.backend),
+            default=None,
+        )
+        _show_result_safely(
+            run.show_result_with_preferences, translator=run.translator,
+            status="success",
+            files_scanned=len(run.planned),
+            files_changed=len(run.staged),
+            accepted_changes=run.accepted_change_count,
+            skipped_changes=run.skipped_change_count,
+            files_not_written=max(0, len(run.planned) - len(run.staged)),
+            files_without_changes=run.files_without_changes,
+            files_all_skipped=run.files_all_skipped,
+            diagnostics=analysis.invalid_source_diagnostics,
+            report_text=report_text,
+        )
+
+    # -- failure reporting (called from _run_once's except blocks) -------------------
+
+    def _mark_session_failed(self) -> None:
+        if self.session.state not in {
+            SessionState.COMPLETED,
+            SessionState.CANCELLED,
+            SessionState.FAILED,
+        }:
+            self.session.transition(SessionState.FAILED)
+
+    def _report_commit_failure(self, run: _RunState, exc: WorkflowCommitError) -> None:
+        self._mark_session_failed()
+        committed = set(exc.committed_file_ids)
+        files_changed = len(committed)
+        accepted = sum(
+            len(item.plan.changes) for item in run.staged if item.file_id in committed
+        )
+        self.logger.exception("controller_commit_failed", exc)
+        self.logger.event(
+            "commit_partial_failure",
+            committed_file_ids=sorted(committed),
+            failed_file_id=exc.failed_file_id,
+        )
+        self.logger.summary(
+            self._summary(
+                status="partial_failure",
+                files_scanned=len(run.planned),
+                changes=accepted,
+                files_changed=files_changed,
+                files_without_changes=run.files_without_changes,
+                skipped_changes=max(0, run.planned_change_count - accepted),
+                failed_file=exc.failed_file_id,
+                committed_file_ids=sorted(committed),
+            )
+        )
+        _show_result_safely(
+            run.show_result_with_preferences, translator=run.translator,
+            status="partial_failure",
+            files_scanned=len(run.planned),
+            files_changed=files_changed,
+            accepted_changes=accepted,
+            skipped_changes=max(0, run.planned_change_count - accepted),
+            files_not_written=max(0, len(run.planned) - files_changed),
+            files_without_changes=run.files_without_changes,
+            files_all_skipped=run.files_all_skipped,
+            failed_file=exc.failed_file_id,
+        )
+
+    def _report_partial_write_failure(self, run: _RunState, exc: Exception) -> bool:
+        """Report a failure after some files were written; False if none were."""
+
+        committed = set(run.adapter.committed_file_ids if run.adapter is not None else ())
+        if not committed:
+            return False
+        run.files_written = len(committed)
+        accepted = sum(
+            len(item.plan.changes) for item in run.staged if item.file_id in committed
+        )
+        self.logger.exception("controller_failed_after_write", exc)
+        self.logger.event(
+            "commit_partial_failure",
+            committed_file_ids=sorted(committed),
+            failed_file_id=getattr(exc, "failed_file_id", None),
+        )
+        self.logger.summary(
+            self._summary(
+                status="partial_failure",
+                files_scanned=len(run.planned),
+                changes=accepted,
+                files_changed=run.files_written,
+                files_without_changes=run.files_without_changes,
+                skipped_changes=max(0, run.planned_change_count - accepted),
+                committed_file_ids=sorted(committed),
+            )
+        )
+        _show_result_safely(
+            run.show_result_with_preferences,
+            translator=run.translator,
+            status="partial_failure",
+            files_scanned=len(run.planned),
+            files_changed=run.files_written,
+            accepted_changes=accepted,
+            skipped_changes=max(0, run.planned_change_count - accepted),
+            files_not_written=max(0, len(run.planned) - run.files_written),
+            files_without_changes=run.files_without_changes,
+            files_all_skipped=run.files_all_skipped,
+            failed_file=getattr(exc, "failed_file_id", None),
+        )
+        return True
+
+    def _report_failure(self, run: _RunState, exc: Exception) -> None:
+        self.logger.exception("controller_failed")
+        self.logger.summary(
+            self._summary(status="failed", files_scanned=0, changes=0, files_changed=0)
+        )
+        href_by_id = {item.source.file_id: item.source.href for item in run.planned}
+        affected_files = tuple(
+            (href_by_id.get(str(href), str(href)), tuple(codes))
+            for href, codes in getattr(exc, "affected_files", ())
+        )
+        error_values = {
+            "translator": run.translator,
+            "kind": _error_kind(exc),
+            "detail": type(exc).__name__,
+            "files_written": run.files_written,
+            "log_path": str(self.logger.log_path),
+            "affected_files": affected_files,
+        }
+        if isinstance(exc, RuleConflictError):
+            error_values["summary"] = _rule_conflict_summary(exc, run.translator)
+        if isinstance(exc, BookContainerSupportError):
+            error_values["summary"] = run.translator.text("error.book_api_unavailable")
+        if isinstance(exc, RuntimeSelectionError):
+            error_values["summary"] = _runtime_selection_summary(exc, run.translator)
+        _show_error_safely(
+            self.logger,
+            **error_values,
+        )
 
     def _run_backend_self_test(self, backend: OpenCCBackend) -> None:
         self_test = backend.self_test(include_optional=False)

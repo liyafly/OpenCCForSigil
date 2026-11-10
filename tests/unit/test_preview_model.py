@@ -8,7 +8,7 @@ from tests.support.fake_qt import make_with_table
 from tests.support.preview_batch import apply_batch_decision
 from tests.support.performance import timing_budget
 from ui.i18n import Translator
-from ui import preview_window
+from ui import preview_table
 from ui.preview_window import (
     _PreviewDialog,
     _PreviewTableData,
@@ -252,13 +252,13 @@ def test_preview_table_data_formats_each_row_once_and_only_refreshes_status(monk
     changes = (_change(change_id="first"), _change(change_id="second", file_id="other"))
     preview = PreviewSession(ConversionPlan(source_sha256="", changes=changes))
     calls = []
-    original = preview_window.format_change_row
+    original = preview_table.format_change_row
 
     def count_format(*args):
         calls.append(args[0].change_id)
         return original(*args)
 
-    monkeypatch.setattr(preview_window, "format_change_row", count_format)
+    monkeypatch.setattr(preview_table, "format_change_row", count_format)
     rows = _PreviewTableData(
         tuple((preview, change) for change in changes), {}, Translator("en"),
         display_cache={},
@@ -287,13 +287,13 @@ def test_lazy_row_cache_survives_filters_and_single_decisions(monkeypatch):
     )
     preview = PreviewSession(ConversionPlan(source_sha256="", changes=changes))
     calls = []
-    original = preview_window.format_change_row
+    original = preview_table.format_change_row
 
     def count_format(*args):
         calls.append(args[0].change_id)
         return original(*args)
 
-    monkeypatch.setattr(preview_window, "format_change_row", count_format)
+    monkeypatch.setattr(preview_table, "format_change_row", count_format)
     planned = (SimpleNamespace(
         source=SimpleNamespace(file_id="chapter", href="Text/chapter.xhtml",
                                document_kind="xhtml"),

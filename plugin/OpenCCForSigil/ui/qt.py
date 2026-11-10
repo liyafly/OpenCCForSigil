@@ -11,6 +11,10 @@ _host_bk: Any = None
 _qt_base_translators: list[Any] = []
 
 
+class UIUnavailableError(RuntimeError):
+    """Raised when Sigil's bundled Qt runtime cannot be imported."""
+
+
 def set_host_book(bk: Any) -> None:
     """Remember Sigil's book for its PluginApplication bootstrap."""
 

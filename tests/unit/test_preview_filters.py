@@ -5,7 +5,7 @@ from core.preview import PreviewSession
 from tests.support.fake_qt import make_with_table
 from tests.unit.test_preview_group_scaling import VisitCountingEntries
 from ui.i18n import Translator
-from ui import preview_window
+from ui import preview_table
 from ui.preview_window import _PreviewDialog
 
 
@@ -267,9 +267,9 @@ def test_search_is_literal_and_does_not_search_context_or_format_every_row(monke
         plan=plan,
     ),)
     formatted = []
-    original = preview_window.format_change_row
+    original = preview_table.format_change_row
     monkeypatch.setattr(
-        preview_window, "format_change_row",
+        preview_table, "format_change_row",
         lambda *args, **kwargs: formatted.append(True) or original(*args, **kwargs),
     )
     dialog = _PreviewDialog(make_with_table(), planned, (preview,), Translator("en"))

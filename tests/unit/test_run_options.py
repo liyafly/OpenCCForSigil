@@ -568,7 +568,7 @@ def test_analyze_with_cross_ruleset_conflict_shows_localized_error(monkeypatch, 
         embedded=True,
     )
     shown = []
-    monkeypatch.setattr("ui.preview_window.show_error_details", lambda *args: shown.append(args[3]))
+    monkeypatch.setattr("ui.config_dialog.show_error_details", lambda *args: shown.append(args[3]))
 
     dialog._accept(close=False)
 
