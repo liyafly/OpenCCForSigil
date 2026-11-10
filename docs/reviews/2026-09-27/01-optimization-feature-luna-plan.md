@@ -273,7 +273,7 @@ P1 表示会影响用户决定或文档保护的已复现问题；P2 表示有�
 已核对到的差异：
 
 - `docs/README.md` 仍写五个平台包、六个包、七份资产；当前代码矩阵是一个 Fat + 六个平台 ZIP + 校验清单，共八份资产。
-- `docs/performance-interaction-followup.md` 的旧“后续专项”仍列后台分析、返回设置、大列表模型等；实际已经实现，末尾仅补了 worker 说明。
+- `docs/archive/performance-interaction-followup.md` 的旧“后续专项”仍列后台分析、返回设置、大列表模型等；实际已经实现，末尾仅补了 worker 说明。
 - 稳定规范 INVARIANTS 的 Python 运行时文字没有说明现有独立 Linux x86_64/cp312 例外。
 - 阶段清单把 regex 和数字中文字符引用仍列为后续功能；`docs/deviations.md` 的 MathML 总括也没有区分已存在的底层选项与未提供的完整 UI。
 

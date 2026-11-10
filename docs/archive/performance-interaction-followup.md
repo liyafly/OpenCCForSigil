@@ -42,7 +42,7 @@
 ## 原后续专项的当前状态（2026-09-27）
 
 本节只更新旧待办的状态，不改写上面的 2026-09-08 基准数据或历史结论。
-本轮实现与验证过程见 [`reviews/2026-09-27/02-implementation-results.md`](reviews/2026-09-27/02-implementation-results.md)。
+本轮实现与验证过程见 [`reviews/2026-09-27/02-implementation-results.md`](../reviews/2026-09-27/02-implementation-results.md)。
 
 | 原项目 | 当前状态 | 实际边界 |
 | --- | --- | --- |

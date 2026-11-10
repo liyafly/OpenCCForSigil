@@ -21,7 +21,9 @@ v1.4 is the only retained versioned specification. The current backend and
 package boundaries are described in [`native-backend.md`](native-backend.md)
 and [`release.md`](release.md).
 
-## Choose a guide
+## Maintained guides
+
+These guides describe current behavior and are kept up to date.
 
 | Need | Document |
 | --- | --- |
@@ -37,16 +39,36 @@ and [`release.md`](release.md).
 | Read the v0.2.12 release notes | [`releases/v0.2.12.md`](releases/v0.2.12.md) |
 | Record an implementation/specification deviation | [`deviations.md`](deviations.md) |
 | Read the project license and third-party license boundary | [`licensing.md`](licensing.md) |
-| Review the progress, packaging, and license changes | [`review-2026-09-08.md`](review-2026-09-08.md) |
-| Reproduce patch performance measurements and review remaining UI work | [`performance-interaction-followup.md`](performance-interaction-followup.md) |
-| Review the v0.0.2-beta UI acceptance record | [`release-review-v0.0.2-beta.md`](release-review-v0.0.2-beta.md) |
-| Read the scoped UI design decisions | [`ui-interaction-optimization-plan.md`](ui-interaction-optimization-plan.md) |
-| Reproduce the 2026-09-23 UI, logic, and packaging review | [`reviews/2026-09-23/README.md`](reviews/2026-09-23/README.md) |
-| Implement and verify the 2026-09-26 UI, rules, and regex review with Luna | [`reviews/2026-09-26/01-ui-rules-luna-plan.md`](reviews/2026-09-26/01-ui-rules-luna-plan.md) |
-| Plan the next preview optimizations, safety fixes, and features for Luna | [`reviews/2026-09-27/01-optimization-feature-luna-plan.md`](reviews/2026-09-27/01-optimization-feature-luna-plan.md) |
-| Review the implementation, test evidence, and acceptance limits for that plan | [`reviews/2026-09-27/02-implementation-results.md`](reviews/2026-09-27/02-implementation-results.md) |
-| Implement the post-v0.2.8 settings, preview, rules, profiles, and history UI workflow improvements with Luna | [`reviews/2026-09-27/ui-workflow/01-luna-plan.md`](reviews/2026-09-27/ui-workflow/01-luna-plan.md) |
-| Review the 2026-09-28 interaction, performance, and rules findings with reproduction evidence | [`reviews/2026-09-28/README.md`](reviews/2026-09-28/README.md) |
+
+## Historical records
+
+These are dated reviews, plans, and acceptance records. They are kept as
+evidence of what was decided and verified at the time and are not updated to
+match current behavior; use the maintained guides above for that.
+
+### Archived one-off records
+
+| Record | Document |
+| --- | --- |
+| 2026-09-07 scoped UI design plan (partially implemented in v0.0.2-beta) | [`archive/ui-interaction-optimization-plan.md`](archive/ui-interaction-optimization-plan.md) |
+| v0.0.2-beta UI acceptance record | [`archive/release-review-v0.0.2-beta.md`](archive/release-review-v0.0.2-beta.md) |
+| 2026-09-08 review of the v0.0.1-beta → HEAD findings and Luna plan | [`archive/review-v001-to-head-luna-plan.md`](archive/review-v001-to-head-luna-plan.md) |
+| 2026-09-08 progress, packaging, and license change review | [`archive/review-2026-09-08.md`](archive/review-2026-09-08.md) |
+| 2026-09-08 patch performance measurements and follow-up status | [`archive/performance-interaction-followup.md`](archive/performance-interaction-followup.md) |
+
+### Review rounds
+
+| Record | Document |
+| --- | --- |
+| 2026-09-23 UI, logic, and packaging review | [`reviews/2026-09-23/README.md`](reviews/2026-09-23/README.md) |
+| 2026-09-24 fix and release plan | [`reviews/2026-09-24/README.md`](reviews/2026-09-24/README.md) |
+| 2026-09-26 UI, rules, and regex review plan for Luna | [`reviews/2026-09-26/01-ui-rules-luna-plan.md`](reviews/2026-09-26/01-ui-rules-luna-plan.md) |
+| 2026-09-27 preview optimizations, safety fixes, and features plan for Luna | [`reviews/2026-09-27/01-optimization-feature-luna-plan.md`](reviews/2026-09-27/01-optimization-feature-luna-plan.md) |
+| 2026-09-27 implementation, test evidence, and acceptance limits for that plan | [`reviews/2026-09-27/02-implementation-results.md`](reviews/2026-09-27/02-implementation-results.md) |
+| Post-v0.2.8 settings, preview, rules, profiles, and history UI workflow plan for Luna | [`reviews/2026-09-27/ui-workflow/01-luna-plan.md`](reviews/2026-09-27/ui-workflow/01-luna-plan.md) |
+| 2026-09-28 interaction, performance, and rules findings with reproduction evidence | [`reviews/2026-09-28/README.md`](reviews/2026-09-28/README.md) |
+| 2026-09-29 acceptance audit, remaining fixes, and simplification | [`reviews/2026-09-29/README.md`](reviews/2026-09-29/README.md) |
+| 2026-09-30 acceptance audit and post-v0.2.11 fixes | [`reviews/2026-09-30/README.md`](reviews/2026-09-30/README.md) |
 
 ## Release artifacts
 
@@ -67,9 +89,8 @@ Normative specifications, testing guidance, and release notes remain in this
 repository under `docs/`. They are not copied into `dist/` or generated as a
 documentation ZIP.
 
-## Historical and implementation notes
+## Versioned specification
 
-The versioned specification directories are kept so an implementation or
-release can be compared with its recorded baseline. The short operational
-guides above are the maintained entry points; historical review material is
-linked explicitly instead of being duplicated in several documents.
+The versioned specification directory is kept so an implementation or release
+can be compared with its recorded baseline. Historical review material is
+linked from the tables above instead of being duplicated in several documents.

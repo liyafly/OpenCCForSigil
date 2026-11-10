@@ -670,7 +670,7 @@ cProfile（1976 条规则，100 节点）：约 57% 耗时在逐节点重复的 
 1. 预览对话框改用一个小的 QDialog 子类，覆盖 `reject()`：
    - 已有任何决定时，弹确认"放弃本次预览中的 N 项决定并退出？"，默认按钮"返回预览"；
    - 没有决定时直接退出。
-2. "返回设置"同样确认（与原设计文档 `ui-interaction-optimization-plan.md` 第 6 节一致）。
+2. "返回设置"同样确认（与原设计文档 `docs/archive/ui-interaction-optimization-plan.md` 第 6 节一致）。
 3. 预览取消后显示与分析取消一致的结果提示 `result.cancelled`。目前预览取消后没有任何提示（`controller.py:249-260`）。
 
 **验证（自动化）**：fake 测试。
@@ -915,7 +915,7 @@ cProfile（1976 条规则，100 节点）：约 57% 耗时在逐节点重复的 
    未写回：1 个文件（其中没有建议变更：1 个）
    ```
 
-   这样可以避免英文单复数和包含关系的歧义；数值字段与现有 summary 语义保持一致（见 `docs/review-v001-to-head-luna-plan.md` 的 A 批次）。
+   这样可以避免英文单复数和包含关系的歧义；数值字段与现有 summary 语义保持一致（见 `docs/archive/review-v001-to-head-luna-plan.md` 的 A 批次）。
 3. 提供"查看报告"按钮，打开本次会话的 Markdown 报告（复用 `settings.inspect_report`）。
 
 **验证（自动化）**：沿用 `tests/unit/test_result_counts.py`，改为逐行断言三语输出；partial/cancelled/noop 各一例。
