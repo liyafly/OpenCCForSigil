@@ -30,8 +30,11 @@ own official plugin.
 
 ## GitHub Actions without local Windows/Linux environments
 
-`.github/workflows/ci.yml` uses GitHub-hosted runners as the native build
-matrix:
+`.github/workflows/ci.yml` runs for pull requests, pushes to `main`, `v*`
+tags, and manual dispatch; other branch pushes rely on their pull request run
+so one commit is not built twice. A single `lint` job runs `make lint` once,
+and `build-packages` depends on it. The workflow uses GitHub-hosted runners as
+the native build matrix:
 
 ```text
 ubuntu-22.04-arm → linux-aarch64-cp314
@@ -165,8 +168,8 @@ deterministic ZIP with fixed member order, timestamps, and permissions. The
 same ZIP is then passed through `tools/validate_artifact.py --require-runtimes`,
 which recomputes every payload tree and data hash from the archive itself.
 
-To use it, push the branch or select **Actions → CI and plugin packages → Run
-workflow**. Download the artifact named
+To use it, open a pull request, push to `main`, or select **Actions → CI and
+plugin packages → Run workflow**. Download the artifact named
 `OpenCCForSigil-packages-<commit>` from the successful run. It contains all
 eight release assets after package validation. No local
 Windows/Linux installation is required; GitHub-hosted runner availability and

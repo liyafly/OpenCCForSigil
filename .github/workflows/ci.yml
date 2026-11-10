@@ -1,7 +1,13 @@
 name: CI and plugin packages
 
 on:
+  # Same-repository PR branches are covered by pull_request; push only runs for
+  # main and release tags so one commit is not built twice.
   push:
+    branches:
+      - main
+    tags:
+      - "v*"
   pull_request:
   workflow_dispatch:
 
@@ -13,6 +19,21 @@ permissions:
   contents: read
 
 jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install mise toolchain
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4
+
+      # Lint is platform-independent and vendored payloads are excluded by the
+      # Ruff config, so it runs once with the same command as `make lint`.
+      - name: Lint
+        run: make lint
+
   build-payload:
     name: Verify ${{ matrix.id }} payload
     strategy:
@@ -124,9 +145,6 @@ jobs:
 
       - name: Verify manifest and payload integrity
         run: mise exec -- uv run python tools/verify_vendor.py
-
-      - name: Lint
-        run: mise exec -- ruff check plugin tests tools
 
       - name: Test backend and plugin contracts
         run: mise exec -- uv run pytest
@@ -262,6 +280,7 @@ jobs:
   build-packages:
     name: Assemble and validate all Plugin packages
     needs:
+      - lint
       - build-payload
       - build-linux-cp312-payload
       - jieba-consistency
@@ -297,9 +316,6 @@ jobs:
       - name: Verify the merged manifests and every payload
         run: mise exec -- uv run python tools/verify_vendor.py --require-runtimes
 
-      - name: Lint the assembled source once
-        run: mise exec -- ruff check plugin tests tools
-
       - name: Run repository tests
         run: mise exec -- uv run pytest
 
@@ -317,20 +333,9 @@ jobs:
       - name: Revalidate the Fat Plugin ZIP
         run: mise exec -- uv run python tools/validate_artifact.py --require-runtimes --flavor fat "dist/OpenCCForSigil_${{ steps.package-version.outputs.version }}.zip"
 
-      - name: Build the six platform ZIPs
-        shell: bash
-        run: |
-          for runtime in \
-            linux-aarch64-cp314 \
-            linux-x86_64-cp314 \
-            linux-x86_64-cp312 \
-            macos-arm64-cp314 \
-            macos-x86_64-cp314 \
-            windows-x86_64-cp314; do
-            mise exec -- uv run python tools/build_plugin.py --flavor platform --runtime "$runtime"
-          done
-
-      - name: Revalidate each platform ZIP
+      # This list must match tools/runtime_matrix.py; the checksum step below
+      # (tools/release_assets.py) rejects a missing or extra platform ZIP.
+      - name: Build and revalidate the six platform ZIPs
         shell: bash
         env:
           PLUGIN_VERSION: ${{ steps.package-version.outputs.version }}
@@ -342,6 +347,7 @@ jobs:
             macos-arm64-cp314 \
             macos-x86_64-cp314 \
             windows-x86_64-cp314; do
+            mise exec -- uv run python tools/build_plugin.py --flavor platform --runtime "$runtime"
             if [[ "$runtime" == *-cp312 ]]; then
               suffix="$runtime"
             else
