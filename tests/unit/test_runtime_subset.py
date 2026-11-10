@@ -169,5 +169,5 @@ def test_runtime_subset_rejects_unknown_upstream_files(tmp_path: Path):
     source = tmp_path / "wheel"
     _source_tree(source, unknown=True)
 
-    with pytest.raises(RuntimeSubsetError, match="unreviewed OpenCC wheel files.*unknown-runtime.py"):
+    with pytest.raises(RuntimeSubsetError, match=r"unreviewed OpenCC wheel files.*unknown-runtime.py"):
         export_runtime_subset(source, tmp_path / "subset", plugin_dir=PLUGIN_DIR, library_path=LIBRARY_PATH)

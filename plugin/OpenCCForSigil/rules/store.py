@@ -8,7 +8,8 @@ import os
 from pathlib import Path
 import shutil
 import tempfile
-from typing import Any, Iterable, Mapping
+from typing import Any
+from collections.abc import Iterable, Mapping
 
 from .models import Rule, RuleSnapshot
 from .validators import RuleValidationError, validate_rules
@@ -36,7 +37,7 @@ class RuleSet:
     enabled: bool = True
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "RuleSet":
+    def from_dict(cls, payload: Mapping[str, Any]) -> RuleSet:
         payload = migrate_ruleset_payload(payload)
         _validate_ruleset_payload_metadata(payload)
         identifier = payload.get("id")

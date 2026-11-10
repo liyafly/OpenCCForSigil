@@ -103,12 +103,12 @@ def _verify_plan_boundaries(
                 "is outside the allowed spans"
             )
     if allowed_spans:
-        for span in plan.allowed_spans:
-            if span not in changed_spans:
-                diagnostics.append(
-                    f"UNPLANNED_CHANGE:{file_id} allowed span {span.start}:{span.end} "
-                    "has no planned change"
-                )
+        diagnostics.extend(
+            f"UNPLANNED_CHANGE:{file_id} allowed span {span.start}:{span.end} "
+            "has no planned change"
+            for span in plan.allowed_spans
+            if span not in changed_spans
+        )
 
     source_cursor = 0
     output_cursor = 0

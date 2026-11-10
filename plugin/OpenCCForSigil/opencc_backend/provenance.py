@@ -1,7 +1,6 @@
 """Official Python Binding provenance snapshots."""
 
 from dataclasses import dataclass
-from typing import Dict, Optional
 
 
 @dataclass(frozen=True)
@@ -18,19 +17,19 @@ class BackendProvenance:
     upstream_commit: str = "025f371dc76b598d77384fbdab90c937471844d8"
     import_path_id: str = ""
     wheel_filename: str = ""
-    wheel_sha256: Optional[str] = None
-    payload_sha256: Optional[str] = None
+    wheel_sha256: str | None = None
+    payload_sha256: str | None = None
     import_origin: str = ""
-    data_manifest_sha256: Optional[str] = None
-    config_sha256: Optional[str] = None
+    data_manifest_sha256: str | None = None
+    config_sha256: str | None = None
     config_name: str = ""
     tofu_policy: str = "native_default_include"
     segmentation: str = "mmseg"
-    native_plugin_name: Optional[str] = None
-    native_plugin_sha256: Optional[str] = None
-    native_plugin_resource_manifest_sha256: Optional[str] = None
+    native_plugin_name: str | None = None
+    native_plugin_sha256: str | None = None
+    native_plugin_resource_manifest_sha256: str | None = None
 
-    def as_dict(self) -> Dict[str, object]:
+    def as_dict(self) -> dict[str, object]:
         return {
             "backend_name": self.backend_name,
             "opencc_version": self.opencc_version,

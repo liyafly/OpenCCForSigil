@@ -1,11 +1,11 @@
 """Official OpenCC config families and comparison metadata."""
 
-from typing import Dict, Iterable, Tuple
+from collections.abc import Iterable
 
 from app.errors import DependencyError
 
 
-V1_CONFIGS: Tuple[str, ...] = (
+V1_CONFIGS: tuple[str, ...] = (
     "s2t",
     "t2s",
     "s2tw",
@@ -27,7 +27,7 @@ V1_CONFIGS: Tuple[str, ...] = (
 # These names are supplied by the official upstream native opencc-jieba
 # plugin.  They are intentionally separate from the standard config family:
 # their availability depends on the selected payload's native plugin record.
-JIEBA_CONFIGS: Tuple[str, ...] = (
+JIEBA_CONFIGS: tuple[str, ...] = (
     "s2t_jieba",
     "s2tw_jieba",
     "s2twp_jieba",
@@ -37,9 +37,9 @@ JIEBA_CONFIGS: Tuple[str, ...] = (
     "hk2sp_jieba",
 )
 
-SUPPORTED_CONFIGS: Tuple[str, ...] = V1_CONFIGS + JIEBA_CONFIGS
+SUPPORTED_CONFIGS: tuple[str, ...] = V1_CONFIGS + JIEBA_CONFIGS
 
-JIEBA_CONFIG_BY_BASE: Dict[str, str] = {
+JIEBA_CONFIG_BY_BASE: dict[str, str] = {
     "s2t": "s2t_jieba",
     "s2tw": "s2tw_jieba",
     "s2twp": "s2twp_jieba",
@@ -51,7 +51,7 @@ JIEBA_CONFIG_BY_BASE: Dict[str, str] = {
 BASE_CONFIG_BY_JIEBA = {value: key for key, value in JIEBA_CONFIG_BY_BASE.items()}
 
 
-_COMPARISON_CONFIGS: Dict[str, Tuple[str, ...]] = {
+_COMPARISON_CONFIGS: dict[str, tuple[str, ...]] = {
     "s2tw": ("s2t", "s2tw"),
     "s2hk": ("s2t", "s2hk"),
     "tw2s": ("tw2t", "tw2s"),
@@ -77,7 +77,7 @@ def base_config(config: str) -> str:
     return BASE_CONFIG_BY_JIEBA.get(config, config)
 
 
-def base_config_options(available_configs: Iterable[str] | None = None) -> Tuple[str, ...]:
+def base_config_options(available_configs: Iterable[str] | None = None) -> tuple[str, ...]:
     """Return standard directions represented by an available config set."""
 
     available = set(SUPPORTED_CONFIGS if available_configs is None else available_configs)
@@ -85,7 +85,7 @@ def base_config_options(available_configs: Iterable[str] | None = None) -> Tuple
     return tuple(config for config in V1_CONFIGS if config in bases)
 
 
-def comparison_configs(config: str) -> Tuple[str, ...]:
+def comparison_configs(config: str) -> tuple[str, ...]:
     """Return independent comparison configs for attribution only."""
 
     validate_config(config)

@@ -317,7 +317,7 @@ def test_history_operation_and_record_limits_evict_whole_oldest_operations(monke
 
 
 def test_history_clears_only_after_exit_is_confirmed_or_apply_succeeds(monkeypatch):
-    dialog, previews = _dialog((_change("one"),))
+    dialog, _previews = _dialog((_change("one"),))
     dialog._accept_this()
     dialog._confirm_discard_decisions = lambda: False
     assert dialog._guard_reject() is False
@@ -327,7 +327,7 @@ def test_history_clears_only_after_exit_is_confirmed_or_apply_succeeds(monkeypat
     assert dialog._guard_reject() is True
     assert not dialog._undo_stack and not dialog._redo_stack
 
-    applying, previews = _dialog((_change("apply"),))
+    applying, _previews = _dialog((_change("apply"),))
     apply_batch_decision(monkeypatch, applying, scope="all")
     applying._checkpoint_confirm = lambda: True
     applying._apply()

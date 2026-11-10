@@ -6,7 +6,6 @@ over the original source string.
 """
 
 from dataclasses import dataclass, field
-from typing import Optional, Tuple
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,12 +28,12 @@ class TextTarget:
     source_text: str
     source_start: int
     source_end: int
-    tag_name: Optional[str] = None
-    attribute_name: Optional[str] = None
-    attribute_quote: Optional[str] = None
+    tag_name: str | None = None
+    attribute_name: str | None = None
+    attribute_quote: str | None = None
     document_kind: str = "xhtml"
     convert: bool = True
-    skip_reason: Optional[str] = None
+    skip_reason: str | None = None
 
     def __post_init__(self) -> None:
         if self.source_start < 0 or self.source_end < self.source_start:
@@ -57,7 +56,7 @@ class RuleSnapshot:
 
     schema_version: int = 1
     rules_hash: str = ""
-    rules: Tuple[object, ...] = ()
+    rules: tuple[object, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -65,12 +64,12 @@ class ConvertRequest:
     config: str
     segmentation: str = "mmseg"
     rules_snapshot: RuleSnapshot = field(default_factory=RuleSnapshot)
-    language_tag: Optional[str] = None
+    language_tag: str | None = None
     profile_id: str = ""
     book_fingerprint: str = ""
     quotation_mode: str = "keep"
     punctuation_mode: str = "keep"
-    pivot_chain: Tuple[str, ...] = ()
+    pivot_chain: tuple[str, ...] = ()
     detailed_classification: bool = True
     diagnose_mixed: bool = True
     include_rule_trace: bool = False
@@ -87,9 +86,9 @@ class TokenChange:
     target_id: str = ""
     category: str = "opencc_change"
     risk: str = "LOW"
-    attribution_method: Optional[str] = None
-    comparison_stage: Optional[str] = None
-    attribution_confidence: Optional[str] = None
+    attribution_method: str | None = None
+    comparison_stage: str | None = None
+    attribution_confidence: str | None = None
     document_kind: str = "xhtml"
     group_id: str = ""
 
@@ -98,9 +97,9 @@ class TokenChange:
 class Diagnostic:
     code: str
     message: str
-    span: Optional[SourceSpan] = None
-    line: Optional[int] = None
-    column: Optional[int] = None
+    span: SourceSpan | None = None
+    line: int | None = None
+    column: int | None = None
 
 
 @dataclass(frozen=True)
@@ -131,14 +130,14 @@ class SkippedRuleTrace:
 class ConvertResult:
     source: str
     target: str
-    changes: Tuple[TokenChange, ...] = ()
-    diagnostics: Tuple[Diagnostic, ...] = ()
-    rule_trace: Tuple[RuleTrace, ...] = ()
+    changes: tuple[TokenChange, ...] = ()
+    diagnostics: tuple[Diagnostic, ...] = ()
+    rule_trace: tuple[RuleTrace, ...] = ()
     after_pre_rules: str = ""
     after_opencc: str = ""
     after_post_rules: str = ""
-    zero_width_skips: Tuple[Tuple[str, int], ...] = ()
-    skipped_rule_trace: Tuple[SkippedRuleTrace, ...] = ()
+    zero_width_skips: tuple[tuple[str, int], ...] = ()
+    skipped_rule_trace: tuple[SkippedRuleTrace, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -151,18 +150,18 @@ class ConversionPlan:
     """
 
     source_sha256: str
-    allowed_spans: Tuple[SourceSpan, ...] = ()
-    changes: Tuple[TokenChange, ...] = ()
+    allowed_spans: tuple[SourceSpan, ...] = ()
+    changes: tuple[TokenChange, ...] = ()
     config: str = "s2t"
     rules_snapshot: RuleSnapshot = field(default_factory=RuleSnapshot)
     session_id: str = ""
     profile_id: str = ""
     file_id: str = ""
     backend_provenance_hash: str = ""
-    targets: Tuple[TextTarget, ...] = ()
+    targets: tuple[TextTarget, ...] = ()
     source_length: int = 0
     document_kind: str = "xhtml"
-    diagnostics: Tuple[Diagnostic, ...] = ()
+    diagnostics: tuple[Diagnostic, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -171,12 +170,12 @@ class StagedFile:
     original: str
     converted: str
     plan: ConversionPlan
-    accepted_change_ids: Tuple[str, ...] = ()
+    accepted_change_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
 class VerificationResult:
     file_id: str
     passed: bool
-    diagnostics: Tuple[Diagnostic, ...] = ()
-    checked_change_ids: Tuple[str, ...] = ()
+    diagnostics: tuple[Diagnostic, ...] = ()
+    checked_change_ids: tuple[str, ...] = ()

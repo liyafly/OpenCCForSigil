@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Iterable, Mapping, Tuple
+from collections.abc import Iterable, Mapping
 
 
 class Scope(str, Enum):
@@ -24,7 +24,7 @@ class TargetSelection:
     """Frozen, ordered manifest ids used by one conversion invocation."""
 
     scope: Scope
-    file_ids: Tuple[str, ...]
+    file_ids: tuple[str, ...]
     include_ncx: bool = False
     include_metadata: bool = False
     update_language: bool = False

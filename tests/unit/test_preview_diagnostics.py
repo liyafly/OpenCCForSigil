@@ -155,7 +155,7 @@ def test_diagnostic_records_match_linear_reference_for_random_plans():
         source = "".join(rng.choice("甲乙丙丁\r\n") for _ in range(rng.randint(1, 80)))
         file_id = f"chapter-{plan_index}"
         changes = []
-        for change_index in range(rng.randint(0, 45)):
+        for _change_index in range(rng.randint(0, 45)):
             start = rng.randrange(len(source) + 1)
             end = rng.randrange(start, len(source) + 1)
             changes.append(TokenChange(

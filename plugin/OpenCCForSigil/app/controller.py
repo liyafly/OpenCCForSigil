@@ -6,7 +6,7 @@ import json
 import sys
 from dataclasses import replace
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 from app.errors import BookContainerSupportError, RuleConflictError, UserCancelled
 from app.profiles import Profile
@@ -28,7 +28,7 @@ from ui.i18n import Translator, choose_language, rule_conflict_message
 class Controller:
     """Coordinate one Sigil plugin invocation."""
 
-    def __init__(self, bk: Any, data_dir: Optional[Path] = None) -> None:
+    def __init__(self, bk: Any, data_dir: Path | None = None) -> None:
         self.bk = bk
         root = Path(data_dir) if data_dir is not None else resolve_user_data_dir(bk)
         self.storage = UserDataStore(root)
@@ -53,8 +53,8 @@ class Controller:
         """Run preflight, preview, staging, verification, and commit."""
 
         self.logger.event("run_started", state=self.session.state.value)
-        backend: Optional[OpenCCBackend] = None
-        adapter: Optional[SigilBookAdapter] = None
+        backend: OpenCCBackend | None = None
+        adapter: SigilBookAdapter | None = None
         planned = ()
         staged = ()
         planned_change_count = 0
@@ -686,7 +686,7 @@ class Controller:
 
         try:
             return action()
-        except Exception as error:  # noqa: BLE001 - bookkeeping must not undo a commit
+        except Exception as error:
             try:
                 self.logger.exception(f"post_commit_{label}_failed", error)
             except Exception:
@@ -748,10 +748,10 @@ class Controller:
         files_changed: int,
         files_without_changes: int = 0,
         skipped_changes: int = 0,
-        failed_file: Optional[str] = None,
-        committed_file_ids: Optional[list[str]] = None,
-    ) -> Dict[str, object]:
-        summary: Dict[str, object] = {
+        failed_file: str | None = None,
+        committed_file_ids: list[str] | None = None,
+    ) -> dict[str, object]:
+        summary: dict[str, object] = {
             "plugin_version": PLUGIN_VERSION,
             "session_id": self.session.session_id,
             **self.session.metadata,
@@ -879,6 +879,6 @@ def _show_error_safely(logger: SessionLogger, **values: object) -> None:
                      error_type=type(error).__name__)
 
 
-def _preferred_config(preferences: Dict[str, object], fallback: str) -> str:
+def _preferred_config(preferences: dict[str, object], fallback: str) -> str:
     candidate = preferences.get("last_conversion_config", fallback)
     return candidate if isinstance(candidate, str) and candidate in SUPPORTED_CONFIGS else fallback

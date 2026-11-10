@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from enum import Enum
 from types import MappingProxyType
-from typing import Dict, Mapping, Optional, Tuple
+from collections.abc import Mapping
 
 from core.models import ConversionPlan, TokenChange
 
@@ -45,10 +45,10 @@ def preview_group_kind(group_id: str) -> PreviewGroupKind:
 class PreviewFilter:
     """Optional scope for bulk decisions."""
 
-    file_id: Optional[str] = None
-    category: Optional[str] = None
-    risk: Optional[str] = None
-    rule_source: Optional[str] = None
+    file_id: str | None = None
+    category: str | None = None
+    risk: str | None = None
+    rule_source: str | None = None
 
     def matches(self, change: TokenChange) -> bool:
         return (
@@ -76,7 +76,7 @@ class PreviewSession:
 
     def __init__(self, plan: ConversionPlan) -> None:
         self.plan = plan
-        self._changes: Dict[str, TokenChange] = {}
+        self._changes: dict[str, TokenChange] = {}
         for index, change in enumerate(plan.changes):
             change_id = change.change_id or f"change-{index}"
             if change_id in self._changes:
@@ -84,7 +84,7 @@ class PreviewSession:
             if not change.change_id:
                 change = replace(change, change_id=change_id)
             self._changes[change_id] = change
-        self._decisions: Dict[str, PreviewDecision] = {}
+        self._decisions: dict[str, PreviewDecision] = {}
         self._snapshot_owner = object()
         self._decision_revision = 0
 
@@ -95,19 +95,19 @@ class PreviewSession:
         return self._decision_revision
 
     @property
-    def changes(self) -> Tuple[TokenChange, ...]:
+    def changes(self) -> tuple[TokenChange, ...]:
         return tuple(self._changes.values())
 
-    def decision(self, change_id: str) -> Optional[PreviewDecision]:
+    def decision(self, change_id: str) -> PreviewDecision | None:
         self._require_change(change_id)
         return self._decisions.get(change_id)
 
-    def decision_items(self) -> Tuple[Tuple[str, PreviewDecision], ...]:
+    def decision_items(self) -> tuple[tuple[str, PreviewDecision], ...]:
         """Return the current changed IDs and decisions without scanning the plan."""
 
         return tuple(self._decisions.items())
 
-    def undecided(self, scope: Optional[PreviewFilter] = None) -> Tuple[TokenChange, ...]:
+    def undecided(self, scope: PreviewFilter | None = None) -> tuple[TokenChange, ...]:
         return tuple(
             change
             for change in self._changes.values()
@@ -122,7 +122,7 @@ class PreviewSession:
         self._set(change_id, PreviewDecision.REJECT_THIS)
 
     def restore_decision(
-        self, change_id: str, decision: Optional[PreviewDecision],
+        self, change_id: str, decision: PreviewDecision | None,
     ) -> None:
         """Restore one decision, including returning a change to undecided."""
 
@@ -139,7 +139,7 @@ class PreviewSession:
             self._decision_revision += 1
 
     def restore_decisions(
-        self, change_ids, decision: Optional[PreviewDecision],
+        self, change_ids, decision: PreviewDecision | None,
     ) -> None:
         """Restore a set of decisions while advancing the revision once."""
 
@@ -184,7 +184,7 @@ class PreviewSession:
 
     def accept_all(
         self,
-        scope: Optional[PreviewFilter] = None,
+        scope: PreviewFilter | None = None,
         *,
         overwrite: bool = False,
     ) -> int:
@@ -199,7 +199,7 @@ class PreviewSession:
 
     def reject_all(
         self,
-        scope: Optional[PreviewFilter] = None,
+        scope: PreviewFilter | None = None,
         *,
         overwrite: bool = False,
     ) -> int:
@@ -233,7 +233,7 @@ class PreviewSession:
             allowed_spans=tuple(change.span for change in accepted),
         )
 
-    def summary(self) -> Dict[str, int]:
+    def summary(self) -> dict[str, int]:
         accepted = sum(
             decision in {PreviewDecision.ACCEPT_THIS, PreviewDecision.ACCEPT_ALL}
             for decision in self._decisions.values()
@@ -259,7 +259,7 @@ class PreviewSession:
     def _set_all(
         self,
         decision: PreviewDecision,
-        scope: Optional[PreviewFilter],
+        scope: PreviewFilter | None,
         *,
         overwrite: bool = False,
     ) -> int:

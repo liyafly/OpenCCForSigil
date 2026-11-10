@@ -7,7 +7,7 @@ import hashlib
 import json
 from pathlib import Path, PurePosixPath
 import shutil
-from typing import Iterable, Mapping
+from collections.abc import Iterable, Mapping
 
 
 SUBSET_RECIPE = "runtime-subset-v1"
@@ -92,17 +92,19 @@ def classify_path(relative: str, *, plugin_dir: str, library_path: str) -> str:
         return "keep"
     if relative.startswith("opencc-1.4.2.dist-info/licenses/"):
         return "keep"
-    if len(parts) == 3 and parts[:2] == ("opencc", "clib"):
-        if name.startswith("opencc_clib") and path.suffix.lower() in {".so", ".pyd"}:
-            return "keep"
-    if len(parts) == 5 and parts[:4] == (
-        "opencc",
-        "clib",
-        "share",
-        "opencc",
+    if (
+        len(parts) == 3
+        and parts[:2] == ("opencc", "clib")
+        and name.startswith("opencc_clib")
+        and path.suffix.lower() in {".so", ".pyd"}
     ):
-        if path.suffix.lower() in {".json", ".ocd2"}:
-            return "keep"
+        return "keep"
+    if (
+        len(parts) == 5
+        and parts[:4] == ("opencc", "clib", "share", "opencc")
+        and path.suffix.lower() in {".json", ".ocd2"}
+    ):
+        return "keep"
     if len(parts) == 6 and parts[:5] == (
         "opencc",
         "clib",

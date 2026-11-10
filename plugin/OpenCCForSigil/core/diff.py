@@ -13,7 +13,7 @@ exact backend result.
 """
 
 from difflib import SequenceMatcher
-from typing import Iterator
+from collections.abc import Iterator
 
 
 # The old matcher is useful for preview detail, but its worst case is

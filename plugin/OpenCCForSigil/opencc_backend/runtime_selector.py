@@ -1,5 +1,6 @@
 """Exact runtime detection, payload verification, and safe module import."""
 
+import contextlib
 from dataclasses import dataclass
 import hashlib
 from importlib import abc as importlib_abc
@@ -15,7 +16,7 @@ import sys
 import sysconfig
 from threading import RLock
 from types import ModuleType
-from typing import Callable, Optional, Tuple
+from collections.abc import Callable
 import weakref
 
 from app.errors import DataIntegrityError
@@ -115,10 +116,10 @@ def detect_runtime() -> RuntimeInfo:
 class RuntimeSelector:
     """Select one exact official wheel payload and import only from it."""
 
-    def __init__(self, manifest_path: Optional[Path] = None) -> None:
+    def __init__(self, manifest_path: Path | None = None) -> None:
         package_root = Path(__file__).resolve().parents[1]
         self.manifest_path = manifest_path or package_root / "vendor" / "opencc" / "manifest.json"
-        self._manifest: Optional[VendorManifest] = None
+        self._manifest: VendorManifest | None = None
 
     @property
     def manifest(self) -> VendorManifest:
@@ -129,7 +130,7 @@ class RuntimeSelector:
     def runtime(self) -> RuntimeInfo:
         return detect_runtime()
 
-    def select(self) -> Tuple[RuntimeInfo, PayloadRecord, Path]:
+    def select(self) -> tuple[RuntimeInfo, PayloadRecord, Path]:
         runtime = self.runtime()
         payload = self.manifest.select(runtime.key)
         root = self.manifest.payload_root(payload)
@@ -139,7 +140,7 @@ class RuntimeSelector:
         self._verify_native_plugins(payload, root)
         return runtime, payload, root
 
-    def import_opencc(self) -> Tuple[ModuleType, RuntimeInfo, PayloadRecord, Path, str]:
+    def import_opencc(self) -> tuple[ModuleType, RuntimeInfo, PayloadRecord, Path, str]:
         """Import the verified official module and return its relative origin."""
 
         runtime, payload, root = self.select()
@@ -373,10 +374,8 @@ def _purge_opencc_modules() -> None:
 
 
 def _remove_payload_finder(finder: "_PayloadImportFinder") -> None:
-    try:
+    with contextlib.suppress(ValueError):
         sys.meta_path.remove(finder)
-    except ValueError:
-        pass
 
 
 def _remove_payload_finders() -> None:
@@ -456,7 +455,7 @@ class _VerifiedExtensionLoader(machinery.ExtensionFileLoader):
         self.payload_root = payload_root.resolve()
         self._verify_payload = verify_payload
 
-    def create_module(self, spec: object) -> Optional[ModuleType]:
+    def create_module(self, spec: object) -> ModuleType | None:
         self._verify_payload()
         try:
             return super().create_module(spec)
@@ -494,9 +493,9 @@ class _PayloadImportFinder(importlib_abc.MetaPathFinder):
     def find_spec(
         self,
         fullname: str,
-        path: Optional[object] = None,
-        target: Optional[ModuleType] = None,
-    ) -> Optional[object]:
+        path: object | None = None,
+        target: ModuleType | None = None,
+    ) -> object | None:
         # The official package tries a historical top-level extension import
         # before its package-relative import.  Block that global fallback so a
         # host-installed opencc_clib can never satisfy the vendored package.
@@ -598,7 +597,7 @@ def _integrity_failure_spec(fullname: str, message: str) -> machinery.ModuleSpec
 _REQUIRED_OPENCC_MODULES = {"opencc.clib", "opencc.clib.opencc_clib"}
 
 
-def _extension_path(stem: Path) -> Optional[Path]:
+def _extension_path(stem: Path) -> Path | None:
     for suffix in machinery.EXTENSION_SUFFIXES:
         candidate = stem.parent / (stem.name + suffix)
         if candidate.is_file():

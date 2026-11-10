@@ -6,7 +6,8 @@ visible to tests and to the planner.
 """
 
 from dataclasses import dataclass
-from typing import Callable, Final, Sequence
+from typing import Final
+from collections.abc import Callable, Sequence
 
 
 OfficialConvert = Callable[..., str]

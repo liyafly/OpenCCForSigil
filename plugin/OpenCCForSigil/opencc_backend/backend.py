@@ -1,10 +1,10 @@
 """Production adapter for the vendored official `opencc` package."""
 
+import contextlib
 from dataclasses import dataclass
 from concurrent.futures import Future
 from threading import Thread
 from time import perf_counter
-from typing import Dict, Optional, Tuple
 
 from app.errors import DependencyError
 from opencc_backend.configs import (
@@ -23,8 +23,8 @@ from opencc_backend.runtime_selector import RuntimeSelector
 @dataclass(frozen=True)
 class SelfTestResult:
     passed: bool
-    checks: Dict[str, bool]
-    error: Optional[str] = None
+    checks: dict[str, bool]
+    error: str | None = None
 
 
 class JiebaProbe:
@@ -40,8 +40,8 @@ class JiebaProbe:
         self._identity = tuple(identity)
         self._future: Future | None = None
         self._checked = False
-        self._error: Optional[str] = None
-        self._elapsed_ms: Optional[float] = None
+        self._error: str | None = None
+        self._elapsed_ms: float | None = None
 
     @property
     def identity(self) -> tuple:
@@ -67,14 +67,12 @@ class JiebaProbe:
                 result = (False, str(exc), 0.0)
             future.set_result(result)
             if callable(on_complete):
-                try:
+                with contextlib.suppress(Exception):
                     on_complete(result)
-                except Exception:
-                    pass
 
         Thread(target=run, name="OpenCC-jieba-probe", daemon=True).start()
 
-    def state(self) -> tuple[str, Optional[str], Optional[float]]:
+    def state(self) -> tuple[str, str | None, float | None]:
         future = self._future
         if future is not None:
             if not future.done():
@@ -85,12 +83,12 @@ class JiebaProbe:
         state = "unavailable" if self._error else "available"
         return state, self._error, self._elapsed_ms
 
-    def jieba_probe_state(self) -> tuple[str, Optional[str], Optional[float]]:
+    def jieba_probe_state(self) -> tuple[str, str | None, float | None]:
         """Expose the same probe interface as OpenCCBackend for UI consumers."""
 
         return self.state()
 
-    def available_configs_nonblocking(self) -> Tuple[str, ...]:
+    def available_configs_nonblocking(self) -> tuple[str, ...]:
         if self.state()[0] == "available":
             return self._available_configs
         return self._standard_configs
@@ -118,7 +116,7 @@ class JiebaProbe:
         self._error = None if ok else str(error or "native Jieba is unavailable")
         self._elapsed_ms = elapsed_ms
 
-    def _probe_payload(self) -> tuple[bool, Optional[str], float]:
+    def _probe_payload(self) -> tuple[bool, str | None, float]:
         started = perf_counter()
         try:
             if self._native_plugin is None:
@@ -139,7 +137,7 @@ class OpenCCBackend:
     def __init__(
         self,
         config: str,
-        selector: Optional[RuntimeSelector] = None,
+        selector: RuntimeSelector | None = None,
         *,
         jieba_probe: JiebaProbe | None = None,
     ) -> None:
@@ -184,12 +182,12 @@ class OpenCCBackend:
                 f"official OpenCC could not construct config {self.config!r}"
             ) from exc
 
-    def available_configs(self) -> Tuple[str, ...]:
+    def available_configs(self) -> tuple[str, ...]:
         if self._jieba_probe.probe():
             return self._available_configs
         return tuple(config for config in self._available_configs if not is_jieba_config(config))
 
-    def available_configs_nonblocking(self) -> Tuple[str, ...]:
+    def available_configs_nonblocking(self) -> tuple[str, ...]:
         """Return verified capabilities without waiting for a background probe."""
 
         return self._jieba_probe.available_configs_nonblocking()
@@ -210,7 +208,7 @@ class OpenCCBackend:
         self._jieba_probe.start(on_complete=on_complete)
         return self._jieba_probe
 
-    def jieba_probe_state(self) -> tuple[str, Optional[str], Optional[float]]:
+    def jieba_probe_state(self) -> tuple[str, str | None, float | None]:
         """Return pending/available/unavailable and consume completed results on caller thread."""
 
         return self._jieba_probe.state()
@@ -221,7 +219,7 @@ class OpenCCBackend:
         return self._jieba_probe.probe()
 
     @property
-    def jieba_error(self) -> Optional[str]:
+    def jieba_error(self) -> str | None:
         """Optional capability failure; integrity failures still abort import."""
 
         return self._jieba_probe.state()[1]
@@ -297,8 +295,8 @@ class OpenCCBackend:
         )
 
     def self_test(self, *, include_optional: bool = True) -> SelfTestResult:
-        error: Optional[str] = None
-        checks: Dict[str, bool] = {
+        error: str | None = None
+        checks: dict[str, bool] = {
             "manifest": True,
             "payload": self._payload_root.is_dir(),
             "import_origin": bool(self._import_origin),
@@ -332,7 +330,7 @@ class OpenCCBackend:
         passed = all(checks.values())
         return SelfTestResult(passed=passed, checks=checks, error=None if passed else error)
 
-    def comparison_configs(self, config: str) -> Tuple[str, ...]:
+    def comparison_configs(self, config: str) -> tuple[str, ...]:
         return comparison_configs(config)
 
     def close(self) -> None:
@@ -349,7 +347,7 @@ class OpenCCBackend:
                 )
             raise DependencyError(f"selected wheel does not expose OpenCC config {self.config}")
 
-    def _native_plugin_for_config(self) -> Optional[NativePluginRecord]:
+    def _native_plugin_for_config(self) -> NativePluginRecord | None:
         if is_jieba_config(self.config) and self._jieba_plugin is not None:
             return self._jieba_plugin
         return None
@@ -370,7 +368,7 @@ def _jieba_payload_identity(payload: object, native_plugin: object) -> tuple:
     )
 
 
-def _config_data_hash(config_data: object) -> Optional[str]:
+def _config_data_hash(config_data: object) -> str | None:
     if not isinstance(config_data, dict):
         return None
     value = config_data.get("manifest_sha256")

@@ -7,12 +7,14 @@ that references it only after a new plan snapshot is created.
 
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass, field
 import json
 import os
 from pathlib import Path
 import tempfile
-from typing import Any, Mapping
+from typing import Any
+from collections.abc import Mapping
 import uuid
 
 CURRENT_PROFILE_SCHEMA = 1
@@ -96,7 +98,7 @@ class Profile:
     extras: tuple[tuple[str, Any], ...] = ()
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any], *, migrate: bool = True) -> "Profile":
+    def from_dict(cls, payload: Mapping[str, Any], *, migrate: bool = True) -> Profile:
         values = migrate_profile_payload(payload) if migrate else dict(payload)
         if "language_region" in values:
             values["language_region"] = {
@@ -334,10 +336,8 @@ class ProfileStore:
             )
             temporary.replace(path)
         except OSError as exc:
-            try:
+            with contextlib.suppress(OSError):
                 temporary.unlink(missing_ok=True)
-            except OSError:
-                pass
             raise ProfileValidationError(f"could not save profile {value.id}: {exc}") from exc
         return path
 

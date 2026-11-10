@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, Optional, Set, TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 from uuid import uuid4
 
 if TYPE_CHECKING:
@@ -25,7 +25,7 @@ class SessionState(str, Enum):
     FAILED = "failed"
 
 
-_ALLOWED_TRANSITIONS: Dict[SessionState, Set[SessionState]] = {
+_ALLOWED_TRANSITIONS: dict[SessionState, set[SessionState]] = {
     SessionState.IDLE: {SessionState.SCANNING, SessionState.FAILED},
     SessionState.SCANNING: {
         SessionState.ANALYZING,
@@ -72,10 +72,10 @@ _ALLOWED_TRANSITIONS: Dict[SessionState, Set[SessionState]] = {
 class Session:
     """A single auditable plugin run."""
 
-    logger: Optional["SessionLogger"] = None
+    logger: SessionLogger | None = None
     session_id: str = field(default_factory=lambda: str(uuid4()))
     state: SessionState = SessionState.IDLE
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def transition(self, target: SessionState) -> None:
         """Move to *target* if the state machine permits the transition."""

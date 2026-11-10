@@ -110,10 +110,10 @@ class OfficialBackendConverter:
             elif rewritten_quotes:
                 method = attribution_method or "OpenCC conversion"
                 attribution_method = f"{method}; includes QuotationTransform"
-            elif not request.pivot_chain and attribution is None:
-                if (request.punctuation_mode != "keep" and
-                      normalize_punctuation(source_part, request.punctuation_mode) == target_part):
-                    source_name, category = "PunctuationTransform", "punctuation"
+            elif (not request.pivot_chain and attribution is None
+                  and request.punctuation_mode != "keep"
+                  and normalize_punctuation(source_part, request.punctuation_mode) == target_part):
+                source_name, category = "PunctuationTransform", "punctuation"
             changes.append(TokenChange(
                 source=source_part, target=target_part, span=SourceSpan(i1, i2),
                 rule_source=source_name, category=category,
@@ -328,9 +328,7 @@ def _staged_segment_changes(
 ) -> list[TokenChange]:
     """Rebuild final patches against original offsets and retain rule groups."""
 
-    user_hits = []
-    for hit in pre_hits:
-        user_hits.append((hit.rule, hit.start, hit.end))
+    user_hits = [(hit.rule, hit.start, hit.end) for hit in pre_hits]
     for hit in post_hits:
         start, end = _map_generated_span(
             original, converted.target, hit.start, hit.end)

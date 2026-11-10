@@ -52,7 +52,7 @@ def _contains_hardcoded_words(node):
 
 def test_qt_text_arguments_use_translation_catalogs():
     root = Path(preview_window.__file__).parents[1]
-    paths = sorted((root / "ui").glob("*.py")) + [root / "app/settings.py"]
+    paths = [*sorted((root / "ui").glob("*.py")), root / "app/settings.py"]
     failures = []
     for path in paths:
         tree = ast.parse(path.read_text(encoding="utf-8"))

@@ -5,7 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import re
-from typing import Any, Mapping
+from typing import Any
+from collections.abc import Mapping
 
 from ui.qt import exec_dialog
 
@@ -216,17 +217,17 @@ def _validate_catalogs(catalogs: Mapping[str, Mapping[str, str]]) -> None:
 
 
 __all__ = [
-    "CatalogView",
     "SUPPORTED_LANGUAGES",
+    "CatalogView",
     "Translator",
     "choose_language",
     "configuration_label",
-    "profile_display_name",
+    "diagnostic_summary",
     "load_catalogs",
     "normalize_language",
-    "diagnostic_summary",
-    "rule_validation_message",
+    "profile_display_name",
     "rule_conflict_message",
+    "rule_validation_message",
     "settings_error_message",
     "show_error_details",
 ]

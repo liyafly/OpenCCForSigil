@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import contextlib
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from queue import Empty, Queue
 from threading import Event
-from typing import Callable, Iterable, Optional, Tuple
+from collections.abc import Callable, Iterable
 
 from core.models import ConversionPlan, ConvertRequest, Diagnostic
 from core.converter import OfficialBackendConverter
@@ -62,8 +63,8 @@ class PlannedDocument:
 
 
 def _report_progress(
-    progress: Optional[Callable[[str, int, int, str], None]],
-    cancelled: Optional[Callable[[], bool]],
+    progress: Callable[[str, int, int, str], None] | None,
+    cancelled: Callable[[], bool] | None,
     *,
     phase: str,
     index: int,
@@ -99,8 +100,8 @@ class ConversionWorkflow:
         request: ConvertRequest,
         *,
         scope: Scope = Scope.ALL_XHTML,
-        targets: Optional[TargetSelection] = None,
-        tokenizer_options: Optional[TokenizerOptions] = None,
+        targets: TargetSelection | None = None,
+        tokenizer_options: TokenizerOptions | None = None,
         session_id: str = "",
         profile_id: str = "",
         snapshot_guard=None,
@@ -114,8 +115,8 @@ class ConversionWorkflow:
         self.session_id = session_id
         self.profile_id = profile_id
         self.snapshot_guard = snapshot_guard
-        self._sources: Tuple[SourceDocument, ...] = ()
-        self._planned: Tuple[PlannedDocument, ...] = ()
+        self._sources: tuple[SourceDocument, ...] = ()
+        self._planned: tuple[PlannedDocument, ...] = ()
         self.staging = StagingArea()
         self._verification = ()
         self._verified_files = ()
@@ -123,9 +124,9 @@ class ConversionWorkflow:
     def scan(
         self,
         *,
-        progress: Optional[Callable[[str, int, int, str], None]] = None,
-        cancelled: Optional[Callable[[], bool]] = None,
-    ) -> Tuple[SourceDocument, ...]:
+        progress: Callable[[str, int, int, str], None] | None = None,
+        cancelled: Callable[[], bool] | None = None,
+    ) -> tuple[SourceDocument, ...]:
         target_files = tuple(
             self.adapter.conversion_inventory(self.targets)
             if self.targets is not None
@@ -170,9 +171,9 @@ class ConversionWorkflow:
     def plan(
         self,
         *,
-        progress: Optional[Callable[[str, int, int, str], None]] = None,
-        cancelled: Optional[Callable[[], bool]] = None,
-    ) -> Tuple[PlannedDocument, ...]:
+        progress: Callable[[str, int, int, str], None] | None = None,
+        cancelled: Callable[[], bool] | None = None,
+    ) -> tuple[PlannedDocument, ...]:
         if not self._sources:
             self.scan(progress=progress, cancelled=cancelled)
         planned = []
@@ -252,10 +253,8 @@ class ConversionWorkflow:
             future = pool.submit(work)
             try:
                 while not future.done():
-                    try:
+                    with contextlib.suppress(Empty):
                         last = updates.get(timeout=0.025)
-                    except Empty:
-                        pass
                     while True:
                         try:
                             last = updates.get_nowait()
@@ -279,7 +278,7 @@ class ConversionWorkflow:
         self._planned = result
         return result
 
-    def preview(self) -> Tuple[PreviewSession, ...]:
+    def preview(self) -> tuple[PreviewSession, ...]:
         if not self._planned:
             self.plan()
         return tuple(PreviewSession(item.plan) for item in self._planned)
@@ -289,7 +288,7 @@ class ConversionWorkflow:
         previews: Iterable[PreviewSession],
         *,
         require_explicit: bool = True,
-    ) -> Tuple[Tuple[PlannedDocument, ConversionPlan], ...]:
+    ) -> tuple[tuple[PlannedDocument, ConversionPlan], ...]:
         sessions = tuple(previews)
         if len(sessions) != len(self._planned):
             raise WorkflowError("preview session count does not match planned documents")
@@ -314,11 +313,11 @@ class ConversionWorkflow:
 
     def stage(
         self,
-        finalized: Iterable[Tuple[PlannedDocument, ConversionPlan]],
+        finalized: Iterable[tuple[PlannedDocument, ConversionPlan]],
         *,
-        progress: Optional[Callable[[str, int, int, str], None]] = None,
-        cancelled: Optional[Callable[[], bool]] = None,
-    ) -> Tuple[StagedFile, ...]:
+        progress: Callable[[str, int, int, str], None] | None = None,
+        cancelled: Callable[[], bool] | None = None,
+    ) -> tuple[StagedFile, ...]:
         finalized_files = tuple(finalized)
         staged = []
         total = len(finalized_files)
@@ -363,10 +362,10 @@ class ConversionWorkflow:
 
     def verify(
         self,
-        staged: Optional[Iterable[StagedFile]] = None,
+        staged: Iterable[StagedFile] | None = None,
         *,
-        progress: Optional[Callable[[str, int, int, str], None]] = None,
-        cancelled: Optional[Callable[[], bool]] = None,
+        progress: Callable[[str, int, int, str], None] | None = None,
+        cancelled: Callable[[], bool] | None = None,
     ):
         files = tuple(staged) if staged is not None else tuple(self.staging.values())
         planned_by_id = {item.source.file_id: item for item in self._planned}
@@ -428,12 +427,10 @@ class ConversionWorkflow:
 
     def commit(
         self,
-        staged: Optional[Iterable[StagedFile]] = None,
+        staged: Iterable[StagedFile] | None = None,
         *,
-        progress: Optional[Callable[[str, int, int, str], None]] = None,
-        on_progress_failure: Optional[
-            Callable[[str, int, int, str, BaseException], None]
-        ] = None,
+        progress: Callable[[str, int, int, str], None] | None = None,
+        on_progress_failure: Callable[[str, int, int, str, BaseException], None] | None = None,
     ) -> CommitResult:
         files = tuple(staged) if staged is not None else tuple(self.staging.values())
         if not files:
@@ -469,11 +466,9 @@ class ConversionWorkflow:
                 progress("committing", index, len(files), href)
             except Exception as exc:
                 if on_progress_failure is not None:
-                    try:
+                    # Logging a UI failure must not become another write failure.
+                    with contextlib.suppress(Exception):
                         on_progress_failure("committing", index, len(files), href, exc)
-                    except Exception:
-                        # Logging a UI failure must not become another write failure.
-                        pass
 
         def write_items():
             for index, staged_file in enumerate(files):
@@ -572,7 +567,7 @@ __all__ = [
     "ConversionWorkflow",
     "PlannedDocument",
     "SourceDocument",
-    "WorkflowError",
     "WorkflowCancelled",
     "WorkflowCommitError",
+    "WorkflowError",
 ]

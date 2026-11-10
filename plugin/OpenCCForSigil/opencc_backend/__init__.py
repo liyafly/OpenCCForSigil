@@ -5,8 +5,8 @@ from opencc_backend.configs import JIEBA_CONFIGS, SUPPORTED_CONFIGS, V1_CONFIGS
 
 __all__ = [
     "JIEBA_CONFIGS",
-    "OpenCCBackend",
-    "SelfTestResult",
     "SUPPORTED_CONFIGS",
     "V1_CONFIGS",
+    "OpenCCBackend",
+    "SelfTestResult",
 ]

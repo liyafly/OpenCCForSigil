@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Iterable, Optional, Sequence, Tuple
+from collections.abc import Iterable, Sequence
 
 from core.models import TextTarget
 
@@ -43,16 +43,16 @@ class TokenizerOptions:
     """Profile-controlled lexical target policy.
     """
 
-    protected_elements: Tuple[str, ...] = DEFAULT_PROTECTED_ELEMENTS
-    convert_attributes: Tuple[str, ...] = ("alt", "title")
-    protected_attributes: Tuple[str, ...] = DEFAULT_PROTECTED_ATTRIBUTES
+    protected_elements: tuple[str, ...] = DEFAULT_PROTECTED_ELEMENTS
+    convert_attributes: tuple[str, ...] = ("alt", "title")
+    protected_attributes: tuple[str, ...] = DEFAULT_PROTECTED_ATTRIBUTES
     svg_text: bool = False
     mathml: bool = False
     skip_foreign_lang: bool = True
     decode_numeric_cjk_refs: bool = False
     document_kind: str = "xhtml"
 
-    def normalized(self) -> "TokenizerOptions":
+    def normalized(self) -> TokenizerOptions:
         return TokenizerOptions(
             protected_elements=tuple(name.lower() for name in self.protected_elements),
             convert_attributes=tuple(name.lower() for name in self.convert_attributes),
@@ -70,7 +70,7 @@ class AttributeSpan:
     name: str
     value_start: int
     value_end: int
-    quote: Optional[str]
+    quote: str | None
 
 
 @dataclass(frozen=True)
@@ -80,17 +80,17 @@ class LexicalTag:
     name: str
     closing: bool
     self_closing: bool
-    attributes: Tuple[AttributeSpan, ...] = ()
+    attributes: tuple[AttributeSpan, ...] = ()
 
 
 @dataclass(frozen=True)
 class TokenizedDocument:
     source: str
-    targets: Tuple[TextTarget, ...]
-    tags: Tuple[LexicalTag, ...]
+    targets: tuple[TextTarget, ...]
+    tags: tuple[LexicalTag, ...]
 
     @property
-    def structural_signature(self) -> Tuple[Tuple[object, ...], ...]:
+    def structural_signature(self) -> tuple[tuple[object, ...], ...]:
         """Return tag structure while ignoring planned attribute values."""
 
         return tuple(
@@ -106,21 +106,19 @@ class TokenizedDocument:
     def protected_attribute_signature(
         self,
         names: Iterable[str] = DEFAULT_PROTECTED_ATTRIBUTES,
-    ) -> Tuple[Tuple[object, ...], ...]:
+    ) -> tuple[tuple[object, ...], ...]:
         protected = {name.lower() for name in names}
-        values = []
-        for tag_index, tag in enumerate(self.tags):
-            for attribute in tag.attributes:
-                if _is_protected_attribute(attribute.name, protected):
-                    values.append(
-                        (
-                            tag_index,
-                            tag.name,
-                            attribute.name,
-                            self.source[attribute.value_start : attribute.value_end],
-                        )
-                    )
-        return tuple(values)
+        return tuple(
+            (
+                tag_index,
+                tag.name,
+                attribute.name,
+                self.source[attribute.value_start : attribute.value_end],
+            )
+            for tag_index, tag in enumerate(self.tags)
+            for attribute in tag.attributes
+            if _is_protected_attribute(attribute.name, protected)
+        )
 
 
 def _is_protected_attribute(name: str, protected: set[str]) -> bool:
@@ -131,7 +129,7 @@ def _is_protected_attribute(name: str, protected: set[str]) -> bool:
     return name.startswith("aria-") and name != "aria-label"
 
 
-def tokenize_xhtml(source: str, options: Optional[TokenizerOptions] = None) -> TokenizedDocument:
+def tokenize_xhtml(source: str, options: TokenizerOptions | None = None) -> TokenizedDocument:
     """Tokenize *source* into safe text and explicitly allowed attributes."""
 
     if not isinstance(source, str):
@@ -140,7 +138,7 @@ def tokenize_xhtml(source: str, options: Optional[TokenizerOptions] = None) -> T
     targets = []
     tags = []
     stack = []
-    language_stack: list[Optional[str]] = []
+    language_stack: list[str | None] = []
     namespace_stack: list[dict[str, str | None]] = []
     target_ordinal = 0
     cursor = 0
@@ -256,9 +254,9 @@ def _make_target(
     ordinal: int,
     options: TokenizerOptions,
     *,
-    tag_name: Optional[str],
-    attribute_name: Optional[str] = None,
-    attribute_quote: Optional[str] = None,
+    tag_name: str | None,
+    attribute_name: str | None = None,
+    attribute_quote: str | None = None,
     numeric_reference: bool = False,
 ) -> TextTarget:
     kind = "attr" if attribute_name is not None else "text"
@@ -298,9 +296,9 @@ def _is_protected(
             if namespace_stack else None
         )
         math_text = (
-            math_namespace == _MATHML_NAMESPACE
-            and text_namespace == _MATHML_NAMESPACE
-            or math_namespace is None and text_namespace is None
+            (math_namespace == _MATHML_NAMESPACE
+            and text_namespace == _MATHML_NAMESPACE)
+            or (math_namespace is None and text_namespace is None)
         )
         if not math_text:
             return True
@@ -356,7 +354,7 @@ def _element_namespace(name: str, namespaces: dict[str, str | None]) -> str | No
 
 
 def _is_foreign_language(
-    language_stack: Sequence[Optional[str]], options: TokenizerOptions
+    language_stack: Sequence[str | None], options: TokenizerOptions
 ) -> bool:
     if not options.skip_foreign_lang or not language_stack:
         return False
@@ -367,8 +365,8 @@ def _is_foreign_language(
 def _language_for_tag(
     source: str,
     attributes: Sequence[AttributeSpan],
-    inherited_language: Optional[str],
-) -> Optional[str]:
+    inherited_language: str | None,
+) -> str | None:
     values = {
         attribute.name: source[attribute.value_start : attribute.value_end].strip()
         for attribute in attributes
@@ -385,7 +383,7 @@ def _local_name(name: str) -> str:
     return name.rsplit(":", 1)[-1]
 
 
-def _raw_protected_name(stack: Sequence[str], options: TokenizerOptions) -> Optional[str]:
+def _raw_protected_name(stack: Sequence[str], options: TokenizerOptions) -> str | None:
     if not stack:
         return None
     name = stack[-1]
@@ -441,7 +439,7 @@ def _looks_like_markup(source: str, start: int) -> bool:
 
 
 def _find_markup_end(source: str, start: int, bracket_aware: bool = False) -> int:
-    quote: Optional[str] = None
+    quote: str | None = None
     bracket_depth = 0
     cursor = start
     while cursor < len(source):
@@ -466,7 +464,7 @@ def _find_or_end(source: str, marker: str, start: int) -> int:
     return len(source) if found < 0 else found + len(marker)
 
 
-def _parse_tag(source: str, start: int, end: int) -> Optional[LexicalTag]:
+def _parse_tag(source: str, start: int, end: int) -> LexicalTag | None:
     cursor = start + 1
     closing = False
     if cursor < end and source[cursor] == "/":
@@ -513,7 +511,7 @@ def _parse_attributes(source: str, start: int, end: int) -> list[AttributeSpan]:
             cursor += 1
         if cursor >= end:
             break
-        quote: Optional[str] = None
+        quote: str | None = None
         if source[cursor] in {"\"", "'"}:
             quote = source[cursor]
             cursor += 1
@@ -534,7 +532,7 @@ def _parse_attributes(source: str, start: int, end: int) -> list[AttributeSpan]:
 
 def _pop_element_stacks(
     stack: list[str],
-    language_stack: list[Optional[str]],
+    language_stack: list[str | None],
     namespace_stack: list[dict[str, str | None]],
     name: str,
 ) -> None:
@@ -552,7 +550,7 @@ def _split_text_boundaries(
     end: int,
     *,
     decode_numeric_cjk_refs: bool,
-) -> Iterable[Tuple[int, int, bool]]:
+) -> Iterable[tuple[int, int, bool]]:
     """Split text around entities and optionally expose numeric Han refs."""
 
     cursor = start
@@ -584,7 +582,7 @@ def _split_attribute_boundaries(
     end: int,
     *,
     decode_numeric_cjk_refs: bool,
-) -> Iterable[Tuple[int, int, bool]]:
+) -> Iterable[tuple[int, int, bool]]:
     """Split every attribute entity so no rule can rewrite entity internals."""
 
     cursor = start

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Iterable
+from collections.abc import Iterable
 
 from opencc_backend.configs import base_config as _official_base_config
 from .models import Rule

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import fields
-from typing import Mapping
+from collections.abc import Mapping
 
 from app.profiles import Profile
 

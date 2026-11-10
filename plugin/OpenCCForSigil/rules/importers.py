@@ -8,7 +8,8 @@ import io
 import json
 from pathlib import Path
 import re
-from typing import Iterable, TextIO
+from typing import TextIO
+from collections.abc import Iterable
 
 from .conflicts import RuleConflict, find_conflicts
 from .models import Rule, SUPPORTED_DIRECTIONS, new_rule_id
@@ -166,10 +167,7 @@ def _delimited_rows(text: str, delimiter: str) -> list[tuple[int, list[str]]]:
             for line, row in enumerate(_physical_lines(text), 1)
         ]
     reader = csv.reader(io.StringIO(text), delimiter=delimiter)
-    result = []
-    for row in reader:
-        result.append((reader.line_num, list(row)))
-    return result
+    return [(reader.line_num, list(row)) for row in reader]
 
 
 def _rows_to_rules(

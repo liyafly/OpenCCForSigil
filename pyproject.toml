@@ -25,7 +25,34 @@ target-version = "py314"
 exclude = [
     "plugin/OpenCCForSigil/vendor",
     "native_build/OpenCC",
+    # Historical review scripts, kept verbatim (some carry their own ruff.toml).
+    "docs/reviews",
 ]
 
+[tool.ruff.per-file-target-version]
+# The plugin ships a Linux cp312 package and CI runs these tools under
+# CPython 3.12, so pyupgrade must not introduce 3.13+/3.14-only constructs
+# (e.g. unquoted forward references that rely on PEP 649 lazy annotations).
+"plugin/**/*.py" = "py312"
+"tools/**/*.py" = "py312"
+"native_build/**/*.py" = "py312"
+
 [tool.ruff.lint]
-select = ["E4", "E7", "E9", "F"]
+select = ["E4", "E7", "E9", "F", "UP", "B", "SIM", "RUF", "PERF"]
+ignore = [
+    # Full-width CJK punctuation in strings/comments is intentional here.
+    "RUF001",
+    "RUF002",
+    "RUF003",
+    # zip(strict=True) would raise where the code deliberately truncates, and
+    # strict=False everywhere adds noise without changing behaviour.
+    "B905",
+    # StrEnum changes str()/format() of members, which persisted values and UI
+    # text rely on.
+    "UP042",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Test fakes use class-level mutable fixtures, and failure-collecting loops are
+# clearer than nested comprehensions.
+"tests/**/*.py" = ["RUF012", "PERF401"]

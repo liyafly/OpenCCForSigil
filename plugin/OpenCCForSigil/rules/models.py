@@ -8,10 +8,11 @@ its working copy, and the canonical JSON hash makes a plan reproducible.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 import hashlib
 import json
-from typing import Any, Iterable, Mapping
+from typing import Any
+from collections.abc import Iterable, Mapping
 import uuid
 
 
@@ -45,7 +46,7 @@ SUPPORTED_SCOPES = frozenset({"global", "profile", "book", "builtin"})
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def new_rule_id() -> str:
@@ -101,7 +102,7 @@ class Rule:
         default_scope: str = "global",
         profile_id: str = "",
         book_fingerprint: str = "",
-    ) -> "Rule":
+    ) -> Rule:
         values = dict(payload)
         if default_direction and not values.get("direction"):
             values["direction"] = default_direction
@@ -218,7 +219,7 @@ class RuleSnapshot:
     @classmethod
     def freeze(
         cls, rules: Iterable[Rule | Mapping[str, Any]], *, schema_version: int = 1
-    ) -> "RuleSnapshot":
+    ) -> RuleSnapshot:
         normalized = tuple(
             item if isinstance(item, Rule) else Rule.from_dict(item) for item in rules
         )
@@ -238,7 +239,7 @@ class RuleSnapshot:
         }
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "RuleSnapshot":
+    def from_dict(cls, payload: Mapping[str, Any]) -> RuleSnapshot:
         if not isinstance(payload, Mapping) or not isinstance(payload.get("rules"), list):
             raise ValueError("rule snapshot must contain a rules array")
         rules = tuple(Rule.from_dict(item) for item in payload["rules"])
@@ -263,14 +264,14 @@ class RuleSnapshot:
 __all__ = [
     "RULE_SCHEMA_VERSION",
     "SUPPORTED_DIRECTIONS",
-    "SUPPORTED_RULE_TYPES",
-    "SUPPORTED_RULE_ACTIONS",
     "SUPPORTED_MATCH_TYPES",
+    "SUPPORTED_RULE_ACTIONS",
     "SUPPORTED_RULE_STAGES",
+    "SUPPORTED_RULE_TYPES",
     "SUPPORTED_SCOPES",
     "Rule",
     "RuleSnapshot",
-    "new_rule_id",
     "canonical_rule_dict",
     "canonical_rules_json",
+    "new_rule_id",
 ]

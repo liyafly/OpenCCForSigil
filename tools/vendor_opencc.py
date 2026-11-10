@@ -20,7 +20,8 @@ import subprocess
 import sys
 import tempfile
 from time import sleep
-from typing import Any, Iterable, Mapping
+from typing import Any
+from collections.abc import Iterable, Mapping
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 import uuid

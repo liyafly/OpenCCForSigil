@@ -439,7 +439,7 @@ class RunOptionsPanel:
         table.setWordWrap(True)
         header = table.horizontalHeader()
         resize_mode = getattr(self._qt.QHeaderView, "ResizeMode", self._qt.QHeaderView)
-        header.setSectionResizeMode(getattr(resize_mode, "Stretch"))
+        header.setSectionResizeMode(resize_mode.Stretch)
         from ui.profile_window import _PROFILE_SUMMARY_KEYS, _profile_summary_value
 
         no_edit = enum_value(self._qt.QAbstractItemView, "NoEditTriggers")

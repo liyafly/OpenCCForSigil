@@ -7,7 +7,7 @@ import hashlib
 import json
 from pathlib import Path
 import re
-from typing import Iterable, Mapping
+from collections.abc import Iterable, Mapping
 
 try:
     from runtime_matrix import (

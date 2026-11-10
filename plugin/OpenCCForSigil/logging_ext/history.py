@@ -7,12 +7,13 @@ an in-memory diff through :mod:`logging_ext.report`.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 import json
 from pathlib import Path
 import re
 import tempfile
-from typing import Any, Iterable, Mapping
+from typing import Any
+from collections.abc import Iterable, Mapping
 
 from logging_ext.report import _privacy_value
 
@@ -68,7 +69,7 @@ def _parse_time(value: Any, field: str) -> datetime:
         raise HistoryError(f"history {field} is not a valid ISO timestamp") from exc
     if parsed.tzinfo is None:
         raise HistoryError(f"history {field} must include a timezone")
-    return parsed.astimezone(timezone.utc)
+    return parsed.astimezone(UTC)
 
 
 def _validate_sha(value: Any, field: str) -> str:
@@ -203,7 +204,7 @@ class HistoryStore:
             {
                 "schema_version": HISTORY_SCHEMA_VERSION,
                 "session_id": session_id,
-                "recorded_at": (recorded_at or datetime.now(timezone.utc)).isoformat(),
+                "recorded_at": (recorded_at or datetime.now(UTC)).isoformat(),
                 "summary": dict(_privacy_value(summary)),
                 "commit_manifest": _validate_commit_manifest(commit_manifest, session_id),
                 "provenance": dict(_privacy_value(provenance)),

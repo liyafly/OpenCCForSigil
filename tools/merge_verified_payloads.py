@@ -9,7 +9,7 @@ import json
 from pathlib import Path
 import shutil
 import tempfile
-from typing import Iterable, Mapping
+from collections.abc import Iterable, Mapping
 import uuid
 
 try:

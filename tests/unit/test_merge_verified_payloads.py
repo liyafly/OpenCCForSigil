@@ -45,7 +45,7 @@ def test_merge_rejects_cross_payload_jieba_resource_hash_mismatch():
         config_data=config_data,
     )
 
-    with pytest.raises(SystemExit, match="Jieba resource hash mismatch.*idf.utf8"):
+    with pytest.raises(SystemExit, match=r"Jieba resource hash mismatch.*idf.utf8"):
         _validate_jieba_resource_consistency([existing, linux_record])
 
 

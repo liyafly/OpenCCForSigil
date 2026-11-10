@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -62,7 +62,7 @@ def test_history_persists_metadata_hashes_and_rejects_text(tmp_path: Path):
 
 def test_history_index_is_compact_and_round_trips(tmp_path: Path):
     store = HistoryStore(tmp_path / "history")
-    first_time = datetime(2026, 9, 28, 12, tzinfo=timezone.utc)
+    first_time = datetime(2026, 9, 28, 12, tzinfo=UTC)
     second_time = first_time + timedelta(minutes=1)
     first = store.record_session(
         SUMMARY, MANIFEST, PROVENANCE, recorded_at=first_time)
@@ -118,13 +118,13 @@ def test_retention_is_explicit_and_scoped_to_session_files(tmp_path: Path):
     old_id = "123e4567-e89b-12d3-a456-426614174001"
     old_summary = {**SUMMARY, "session_id": old_id}
     old_manifest = {**MANIFEST, "session_id": old_id}
-    old_time = datetime.now(timezone.utc) - timedelta(days=60)
+    old_time = datetime.now(UTC) - timedelta(days=60)
     store.record_session(old_summary, old_manifest, PROVENANCE, recorded_at=old_time)
     month = logs_root / old_time.strftime("%Y-%m")
     month.mkdir(parents=True)
     (month / f"{old_id}.jsonl").write_text("{}\n", encoding="utf-8")
     (month / "keep-me.txt").write_text("keep", encoding="utf-8")
-    result = cleanup(history_root, logs_root, now=datetime.now(timezone.utc))
+    result = cleanup(history_root, logs_root, now=datetime.now(UTC))
     assert old_id in result.removed_sessions
     assert not (month / f"{old_id}.jsonl").exists()
     assert (month / "keep-me.txt").exists()
@@ -133,7 +133,7 @@ def test_retention_is_explicit_and_scoped_to_session_files(tmp_path: Path):
 
 def test_retention_never_follows_log_directory_symlinks(tmp_path: Path):
     root = tmp_path / "history"
-    old = datetime.now(timezone.utc) - timedelta(days=60)
+    old = datetime.now(UTC) - timedelta(days=60)
     HistoryStore(root).record_session(SUMMARY, MANIFEST, PROVENANCE, recorded_at=old)
     outside = tmp_path / "outside"
     outside.mkdir()
@@ -315,7 +315,7 @@ def test_cleanup_confirmation_runs_dry_run_before_delete_and_respects_cancel(tmp
     logs_root = tmp_path / "logs"
     store = HistoryStore(history_root)
     old_id = "123e4567-e89b-12d3-a456-426614174002"
-    old_time = datetime.now(timezone.utc) - timedelta(days=60)
+    old_time = datetime.now(UTC) - timedelta(days=60)
     store.record_session({**SUMMARY, "session_id": old_id},
                          {**MANIFEST, "session_id": old_id}, PROVENANCE,
                          recorded_at=old_time)
@@ -329,7 +329,7 @@ def test_cleanup_confirmation_runs_dry_run_before_delete_and_respects_cancel(tmp
         history_root, logs_root,
         lambda result: prompts.append((len(result.removed_sessions),
                                        len(result.removed_log_files))) or False,
-        now=datetime.now(timezone.utc),
+        now=datetime.now(UTC),
     )
     assert not completed
     assert prompts == [(1, 1)]
@@ -337,7 +337,7 @@ def test_cleanup_confirmation_runs_dry_run_before_delete_and_respects_cancel(tmp
     assert log.exists()
 
     completed, result = cleanup_with_confirmation(
-        history_root, logs_root, lambda _preview: True, now=datetime.now(timezone.utc))
+        history_root, logs_root, lambda _preview: True, now=datetime.now(UTC))
     assert completed
     assert len(result.removed_sessions) == 1
     assert HistoryStore(history_root).load() == []

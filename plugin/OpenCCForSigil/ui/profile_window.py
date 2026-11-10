@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import fields, replace
-from typing import Any, Iterable
+from typing import Any
+from collections.abc import Iterable
 from uuid import uuid4
 
 from app.profiles import Profile, ProfileStore

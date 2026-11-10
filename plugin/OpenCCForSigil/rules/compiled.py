@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from hashlib import sha256
 from types import MappingProxyType
-from typing import Mapping
+from collections.abc import Mapping
 
 from .conflicts import validate_no_blocking_conflicts
 from .models import RULE_SCHEMA_VERSION, Rule, canonical_rules_json
@@ -65,7 +65,7 @@ class CompiledOverlay:
         config: str,
         profile_id: str | None = None,
         book_fingerprint: str | None = None,
-    ) -> "CompiledOverlay":
+    ) -> CompiledOverlay:
         """Validate a frozen snapshot once and prepare its applicable rules."""
 
         version = getattr(snapshot, "schema_version", RULE_SCHEMA_VERSION)

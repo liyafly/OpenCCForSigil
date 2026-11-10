@@ -6,7 +6,7 @@ import csv
 import io
 import json
 from pathlib import Path
-from typing import Iterable
+from collections.abc import Iterable
 
 from .models import Rule, RULE_SCHEMA_VERSION
 from .validators import validate_rules

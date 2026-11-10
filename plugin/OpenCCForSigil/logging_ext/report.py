@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 import json
 from pathlib import Path
 import tempfile
-from typing import Any, Mapping, Sequence
+from typing import Any
+from collections.abc import Mapping, Sequence
 
 
 REPORT_SCHEMA_VERSION = 1
@@ -91,7 +92,7 @@ def build_report(
         raise ReportError("full diff export requires an in-memory full_diff value")
     report = {
         "schema_version": REPORT_SCHEMA_VERSION,
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         **_metadata(summary, commit_manifest, provenance),
     }
     if include_full_diff:
@@ -164,16 +165,18 @@ def render_markdown(
         "## Provenance",
         "",
     ]
-    for key in (
-        "backend_name",
-        "opencc_version",
-        "python_abi",
-        "runtime_os",
-        "runtime_architecture",
-        "import_path_id",
-    ):
-        if key in cleaned_provenance:
-            lines.append(f"- {key}: `{cleaned_provenance[key]}`")
+    lines.extend(
+        f"- {key}: `{cleaned_provenance[key]}`"
+        for key in (
+            "backend_name",
+            "opencc_version",
+            "python_abi",
+            "runtime_os",
+            "runtime_architecture",
+            "import_path_id",
+        )
+        if key in cleaned_provenance
+    )
     files = cleaned_manifest.get("files", []) if isinstance(cleaned_manifest, Mapping) else []
     lines.extend(
         [

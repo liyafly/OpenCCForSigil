@@ -424,7 +424,7 @@ def test_preview_filters_use_minimum_contents_length():
 
 
 def test_preview_dialog_single_decisions_update_only_selected_row_and_summary():
-    dialog, preview, _model = _preview_dialog()
+    dialog, _preview, _model = _preview_dialog()
 
     dialog._accept_this()
     assert dialog._current_row() == 2
@@ -527,7 +527,7 @@ def test_apply_status_has_pending_ready_and_no_change_states_in_both_chinese_and
     monkeypatch,
 ):
     for language in ("en", "zh-Hans"):
-        dialog, preview, _model = _preview_dialog(change_count=2, current_row=0)
+        dialog, _preview, _model = _preview_dialog(change_count=2, current_row=0)
         dialog._translator = Translator(language)
         dialog._update_summary()
         assert dialog.apply_button.toolTip() == dialog._translator.text("preview.incomplete")

@@ -3,7 +3,8 @@
 from dataclasses import dataclass
 import json
 from pathlib import Path
-from typing import Any, Mapping, Optional, Tuple
+from typing import Any
+from collections.abc import Mapping
 
 from opencc_backend.errors import ManifestError, RuntimeSelectionError
 
@@ -47,7 +48,7 @@ class NativePluginRecord:
     plugin_dir: str
     library_path: str
     library_sha256: str
-    config_names: Tuple[str, ...]
+    config_names: tuple[str, ...]
     resource_hashes: Mapping[str, str]
     resource_manifest_sha256: str
     build_profile: str
@@ -190,11 +191,11 @@ class VendorManifest:
     upstream_commit: str
     tofu_policy: str
     provenance_source: str
-    payloads: Tuple[PayloadRecord, ...]
+    payloads: tuple[PayloadRecord, ...]
     config_data: Mapping[str, Any]
     python_compatibility: Mapping[str, Any]
     package_flavor: str
-    package_runtimes: Tuple[str, ...]
+    package_runtimes: tuple[str, ...]
 
     @classmethod
     def load(cls, path: Path) -> "VendorManifest":
@@ -345,8 +346,8 @@ class VendorManifest:
             raise ManifestError("payload_path escapes vendor directory")
         return root
 
-    def config_hash(self, payload: PayloadRecord, config: str) -> Optional[str]:
+    def config_hash(self, payload: PayloadRecord, config: str) -> str | None:
         return payload.config_hashes.get(config)
 
-    def native_plugin(self, payload: PayloadRecord, name: str) -> Optional[NativePluginRecord]:
+    def native_plugin(self, payload: PayloadRecord, name: str) -> NativePluginRecord | None:
         return payload.native_plugins.get(name)

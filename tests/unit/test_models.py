@@ -2,6 +2,7 @@ from dataclasses import replace
 
 import pytest
 
+from app.errors import DependencyError
 from core.models import SourceSpan, TokenChange
 from document.tokenizer import tokenize_xhtml
 from opencc_backend.configs import (
@@ -62,5 +63,5 @@ def test_native_config_allowlist_and_comparison_metadata():
     assert validate_config("s2t_jieba") == "s2t_jieba"
     assert comparison_configs("s2twp") == ("s2t", "s2tw", "s2twp")
     assert comparison_configs("s2twp_jieba") == ("s2twp", "s2twp_jieba")
-    with pytest.raises(Exception):
+    with pytest.raises(DependencyError):
         validate_config("not_an_opencc_config")

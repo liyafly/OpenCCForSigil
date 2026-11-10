@@ -1,13 +1,15 @@
 """User-data location and schema-aware storage helpers."""
 
+import contextlib
 from copy import deepcopy
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 import json
 import os
 from pathlib import Path
 import tempfile
-from typing import Any, Mapping, Optional
+from typing import Any
+from collections.abc import Mapping
 
 from app.errors import StorageError
 
@@ -77,7 +79,7 @@ class UserDataStore:
             directory.mkdir(parents=True, exist_ok=True)
         return self.paths
 
-    def load_preferences(self, default: Optional[Mapping[str, Any]] = None) -> dict:
+    def load_preferences(self, default: Mapping[str, Any] | None = None) -> dict:
         """Load schema version 1 preferences without silently resetting data."""
 
         if self.read_only_preferences and self._preferences_memory is not None:
@@ -161,7 +163,7 @@ class UserDataStore:
             raise StorageError("recovery files must be inside the plugin data directory") from exc
         if not resolved.is_file():
             raise StorageError("only plugin-owned files can be quarantined")
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
         destination = resolved.with_name(f"{resolved.name}.corrupt-{timestamp}")
         suffix = 1
         while destination.exists():
@@ -208,14 +210,10 @@ class UserDataStore:
                 os.fsync(handle.fileno())
             os.replace(temporary, path)
         except OSError as exc:
-            try:
+            with contextlib.suppress(OSError):
                 temporary.unlink(missing_ok=True)
-            except OSError:
-                pass
             raise StorageError(f"could not write JSON storage: {path}") from exc
         except BaseException:
-            try:
+            with contextlib.suppress(OSError):
                 temporary.unlink(missing_ok=True)
-            except OSError:
-                pass
             raise

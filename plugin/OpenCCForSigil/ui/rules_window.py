@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from pathlib import Path
-from typing import Any, Callable, Iterable
+from typing import Any
+from collections.abc import Callable, Iterable
 
 from rules.conflicts import blocking_conflicts, find_conflicts
 from rules.builtin import BUILTIN_RULES
@@ -1267,10 +1268,7 @@ class RuleManagerDialog:
 
     def _rule_is_active(self, rule: Rule) -> bool:
         ruleset = self._rulesets.get(self._ruleset_id)
-        if ruleset is None:
-            ruleset_enabled = True
-        else:
-            ruleset_enabled = ruleset.enabled
+        ruleset_enabled = True if ruleset is None else ruleset.enabled
         referenced = self._ruleset_id in getattr(self, "_run_ruleset_ids", ())
         return bool(
             ruleset_enabled and referenced and applies_to(
@@ -1333,7 +1331,7 @@ class RuleManagerDialog:
             updated = replace(rule, profile_id=self._profile_id, book_fingerprint="")
         else:
             return
-        updated_at = datetime.now(timezone.utc).isoformat(timespec="microseconds").replace(
+        updated_at = datetime.now(UTC).isoformat(timespec="microseconds").replace(
             "+00:00", "Z")
         self.rules[row] = replace(updated, updated_at=updated_at)
         self._editing_rule_id = rule.id
@@ -1474,7 +1472,7 @@ class RuleManagerDialog:
         candidate = self._rule_from_form(previous)
         if candidate is None:
             return
-        updated_at = datetime.now(timezone.utc).isoformat(timespec="microseconds").replace(
+        updated_at = datetime.now(UTC).isoformat(timespec="microseconds").replace(
             "+00:00", "Z")
         self.rules[row] = replace(candidate, id=previous.id,
                                   created_at=previous.created_at, updated_at=updated_at,
@@ -1712,13 +1710,16 @@ class RuleManagerDialog:
                 if hit.source == hit.target:
                     detail += " · " + self._labels["matched_no_change"]
                 lines.append(detail)
-            for rule_id, count in inspection.zero_width_skips:
-                lines.append(self._labels["zero_width_skipped"].format(
-                    id=rule_id, count=count))
-            for skipped in inspection.skipped_rule_trace:
-                lines.append(self._labels["rule_skipped_overlap"].format(
+            lines.extend(
+                self._labels["zero_width_skipped"].format(id=rule_id, count=count)
+                for rule_id, count in inspection.zero_width_skips
+            )
+            lines.extend(
+                self._labels["rule_skipped_overlap"].format(
                     id=skipped.rule_id, winner=skipped.winner_id,
-                    start=skipped.start, end=skipped.end))
+                    start=skipped.start, end=skipped.end)
+                for skipped in inspection.skipped_rule_trace
+            )
             if not trace:
                 lines.append(self._labels["no_hits"])
             separator = self._translator.text("common.label_separator")
@@ -1972,8 +1973,9 @@ class RuleManagerDialog:
                 book_fingerprint=self._book_fingerprint,
             )
             and (
-                rule.scope == "profile" and rule.profile_id != (self._profile_id or "")
-                or rule.scope == "book" and rule.book_fingerprint != (self._book_fingerprint or "")
+                (rule.scope == "profile" and rule.profile_id != (self._profile_id or ""))
+                or (rule.scope == "book"
+                    and rule.book_fingerprint != (self._book_fingerprint or ""))
             )
             for rule in review.additions
         )

@@ -6,7 +6,8 @@ from dataclasses import dataclass
 import os
 from pathlib import Path
 import tempfile
-from typing import Any, Callable, Mapping
+from typing import Any
+from collections.abc import Callable, Mapping
 
 from sigil.storage import UserDataStore
 

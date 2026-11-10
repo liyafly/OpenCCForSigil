@@ -84,7 +84,7 @@ def test_profile_migration_and_actionable_failure(tmp_path: Path):
                 "segmentation": "mmseg",
             }
         )
-    with pytest.raises(ProfileValidationError, match="V1.1"):
+    with pytest.raises(ProfileValidationError, match=r"V1.1"):
         Profile.from_dict(
             {
                 "schema_version": 1,

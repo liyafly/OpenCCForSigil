@@ -6,7 +6,8 @@ Only this adapter's commit method is allowed to call `bk.writefile()`.
 from dataclasses import dataclass
 from hashlib import sha256
 from xml.etree import ElementTree
-from typing import Any, Iterable, Iterator, Protocol, Tuple
+from typing import Any, Protocol
+from collections.abc import Iterable, Iterator
 
 from sigil.scope import Scope, TargetSelection, TextFile
 
@@ -21,7 +22,7 @@ class BookContainer(Protocol):
     def writefile(self, file_id: str, data: str) -> None:
         ...
 
-    def text_iter(self) -> Iterable[Tuple[str, str]]:
+    def text_iter(self) -> Iterable[tuple[str, str]]:
         ...
 
 
@@ -29,7 +30,7 @@ class BookContainer(Protocol):
 class CommitResult:
     """Files successfully handed to Sigil's write boundary."""
 
-    committed_file_ids: Tuple[str, ...] = ()
+    committed_file_ids: tuple[str, ...] = ()
 
 
 class CommitError(RuntimeError):
@@ -52,10 +53,10 @@ class SigilBookAdapter:
 
     def __init__(self, bk: Any) -> None:
         self._bk = bk
-        self._committed_file_ids: Tuple[str, ...] = ()
+        self._committed_file_ids: tuple[str, ...] = ()
 
     @property
-    def committed_file_ids(self) -> Tuple[str, ...]:
+    def committed_file_ids(self) -> tuple[str, ...]:
         """Return file ids successfully written by the latest commit attempt."""
 
         return self._committed_file_ids
@@ -125,7 +126,7 @@ class SigilBookAdapter:
                 raise ValueError("manifest ID conflicts with the metadata transaction ID")
             yield METADATA_ID, "OPF metadata", "metadata"
 
-    def text_files(self, scope: Scope = Scope.ALL_XHTML) -> Iterator[Tuple[str, str]]:
+    def text_files(self, scope: Scope = Scope.ALL_XHTML) -> Iterator[tuple[str, str]]:
         """Yield manifest id and href according to the selected scope."""
 
         if scope is Scope.ALL_XHTML:
@@ -146,7 +147,7 @@ class SigilBookAdapter:
             return
         raise ValueError(f"unsupported scope: {scope}")
 
-    def text_file_inventory(self) -> Tuple[TextFile, ...]:
+    def text_file_inventory(self) -> tuple[TextFile, ...]:
         """Return XHTML metadata in Sigil order without reading file bodies."""
 
         return tuple(TextFile(file_id, href) for file_id, href in self._bk.text_iter())
@@ -163,7 +164,7 @@ class SigilBookAdapter:
 
     def text_files_for_targets(
         self, selection: TargetSelection
-    ) -> Iterator[Tuple[str, str]]:
+    ) -> Iterator[tuple[str, str]]:
         """Yield only the frozen target ids, preserving inventory order."""
 
         by_id = {item.file_id: item for item in self.text_file_inventory()}
@@ -174,7 +175,7 @@ class SigilBookAdapter:
             item = by_id[file_id]
             yield item.file_id, item.href
 
-    def commit(self, staged_files: Iterable[Tuple[str, str]]) -> CommitResult:
+    def commit(self, staged_files: Iterable[tuple[str, str]]) -> CommitResult:
         committed: list[str] = []
         self._committed_file_ids = ()
         try:

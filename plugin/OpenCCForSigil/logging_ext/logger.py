@@ -1,11 +1,12 @@
 """Per-session JSONL logging with a conservative privacy default."""
 
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 import json
 from pathlib import Path
 from threading import Lock
 import traceback
-from typing import Any, Dict, Mapping, Optional
+from typing import Any
+from collections.abc import Mapping
 from uuid import uuid4
 
 from logging_ext.jsonl import append_jsonl
@@ -22,20 +23,20 @@ class SessionLogger:
         self,
         logs_root: Path,
         plugin_version: str,
-        session_id: Optional[str] = None,
+        session_id: str | None = None,
     ) -> None:
         self.session_id = session_id or str(uuid4())
         self.plugin_version = plugin_version
-        month_root = logs_root / datetime.now(timezone.utc).strftime("%Y-%m")
+        month_root = logs_root / datetime.now(UTC).strftime("%Y-%m")
         self.log_path = month_root / f"{self.session_id}.jsonl"
         self.summary_path = month_root / f"{self.session_id}.summary.json"
         self._event_lock = Lock()
 
-    def event(self, name: str, level: str = "INFO", **fields: Any) -> Dict[str, Any]:
+    def event(self, name: str, level: str = "INFO", **fields: Any) -> dict[str, Any]:
         """Record and return a structured event."""
 
-        event: Dict[str, Any] = {
-            "ts": datetime.now(timezone.utc).isoformat(),
+        event: dict[str, Any] = {
+            "ts": datetime.now(UTC).isoformat(),
             "level": level,
             "session_id": self.session_id,
             "event": name,
@@ -45,7 +46,7 @@ class SessionLogger:
             append_jsonl(self.log_path, event)
         return event
 
-    def exception(self, name: str, error: Optional[BaseException] = None) -> None:
+    def exception(self, name: str, error: BaseException | None = None) -> None:
         """Record exception type/message and a DEBUG traceback."""
 
         exc = error
@@ -60,7 +61,7 @@ class SessionLogger:
     def summary(self, values: Mapping[str, Any]) -> None:
         """Write the session summary atomically enough for Phase 0 use."""
 
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "schema_version": 1,
             "session_id": self.session_id,
             "plugin_version": self.plugin_version,

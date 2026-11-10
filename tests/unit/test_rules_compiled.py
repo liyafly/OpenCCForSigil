@@ -323,8 +323,9 @@ def test_prefix_indexed_replace_stage_equals_full_scan_for_random_rules():
             text = "".join(rng.choice(alphabet + "的")
                            for _ in range(rng.randint(0, 30)))
             fast_source = outcome(
-                lambda: lock_spans_compiled(text, overlay, RegexBudget()))
-            def full_source():
+                lambda text=text, overlay=overlay: lock_spans_compiled(
+                    text, overlay, RegexBudget()))
+            def full_source(text=text, overlay=overlay):
                 matches = source_matches(
                     text, overlay.source_rules, overlay.regex_patterns, RegexBudget())
                 return tuple(LockedSpan(
@@ -338,10 +339,14 @@ def test_prefix_indexed_replace_stage_equals_full_scan_for_random_rules():
                     "literal_index": getattr(overlay, f"{stage}_literal_index"),
                     "order": getattr(overlay, f"{stage}_rule_order"),
                 }
-                fast_stage = outcome(lambda: replace_stage(
-                    text, stage_rules, overlay.regex_patterns, RegexBudget(), **fast_kwargs))
-                full_stage = outcome(lambda: replace_stage(
-                    text, stage_rules, overlay.regex_patterns, RegexBudget()))
+                fast_stage = outcome(
+                    lambda text=text, stage_rules=stage_rules, overlay=overlay,
+                    fast_kwargs=fast_kwargs: replace_stage(
+                        text, stage_rules, overlay.regex_patterns, RegexBudget(),
+                        **fast_kwargs))
+                full_stage = outcome(
+                    lambda text=text, stage_rules=stage_rules, overlay=overlay: replace_stage(
+                        text, stage_rules, overlay.regex_patterns, RegexBudget()))
                 assert fast_stage == full_stage, (seed, stage, text)
 
 
@@ -359,11 +364,14 @@ def test_lock_spans_passes_only_prefix_candidates(monkeypatch):
         target="never",
         direction="s2t",
     )
-    rules = tuple(
-        Rule(id=f"literal-{index}", source=f"甲乙{index}", target="目标",
-             direction="s2t")
-        for index in range(2_000)
-    ) + (regex_rule,)
+    rules = (
+        *(
+            Rule(id=f"literal-{index}", source=f"甲乙{index}", target="目标",
+                 direction="s2t")
+            for index in range(2_000)
+        ),
+        regex_rule,
+    )
     overlay = CompiledOverlay.build(RuleSnapshot.freeze(rules), config="s2t")
     seen = []
     original_collect = matching.collect_matches
@@ -424,7 +432,7 @@ def test_compiled_overlay_rejects_mismatched_requested_hash():
 
     snapshot = RuleSnapshot.freeze((Rule(id="rule", source="词", target="詞",
                                          direction="s2t"),))
-    with pytest.raises(ValueError, match="^rule snapshot hash mismatch$"):
+    with pytest.raises(ValueError, match=r"^rule snapshot hash mismatch$"):
         CompiledOverlay.build(snapshot, expected_hash="0" * 64, config="s2t")
 
 
@@ -511,7 +519,7 @@ def test_converter_revalidates_a_different_rules_tuple_for_a_cached_hash():
     request_with_forged_cache_hit = ConvertRequest(
         "s2t", rules_snapshot=RequestRuleSnapshot(
             rules_hash=first.rules_hash, rules=second.rules))
-    with pytest.raises(ValueError, match="^rule snapshot hash mismatch$"):
+    with pytest.raises(ValueError, match=r"^rule snapshot hash mismatch$"):
         converter.convert("来源", request_with_forged_cache_hit)
 
 

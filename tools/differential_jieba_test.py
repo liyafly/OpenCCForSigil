@@ -10,7 +10,8 @@ import os
 from pathlib import Path
 import subprocess
 import sys
-from typing import Any, Iterable, Mapping
+from typing import Any
+from collections.abc import Iterable, Mapping
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -121,8 +122,7 @@ def run_cli(cli: Path, config: str, source: str, config_root: Path) -> str:
     result = subprocess.run(
         [str(cli), "--include-tofu-risk-dictionaries", "-c", str(config_path)],
         input=source.encode("utf-8"),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         env=environment,
         check=False,
     )

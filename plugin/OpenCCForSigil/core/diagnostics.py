@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 import re
-from typing import Callable
+from collections.abc import Callable
 
 
 OfficialConvert = Callable[..., str]

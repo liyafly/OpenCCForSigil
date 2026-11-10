@@ -99,7 +99,7 @@ def test_validator_rejects_corrupt_runtime_json(artifact: Path, tmp_path: Path):
     target = tmp_path / "corrupt.zip"
     _rewrite_archive(artifact, target, {name: b"{"})
 
-    with pytest.raises(SystemExit, match="invalid JSON resource.*en\\.json"):
+    with pytest.raises(SystemExit, match=r"invalid JSON resource.*en\.json"):
         validate_artifact(target)
 
 
@@ -111,7 +111,7 @@ def test_validator_rejects_i18n_key_mismatch(artifact: Path, tmp_path: Path):
     target = tmp_path / "i18n-key-mismatch.zip"
     _rewrite_archive(artifact, target, {name: json.dumps(catalog, ensure_ascii=False).encode("utf-8")})
 
-    with pytest.raises(SystemExit, match="i18n resource keys differ.*zh-Hans"):
+    with pytest.raises(SystemExit, match=r"i18n resource keys differ.*zh-Hans"):
         validate_artifact(target)
 
 
@@ -123,7 +123,7 @@ def test_validator_rejects_i18n_placeholder_mismatch(artifact: Path, tmp_path: P
     target = tmp_path / "i18n-placeholder-mismatch.zip"
     _rewrite_archive(artifact, target, {name: json.dumps(catalog, ensure_ascii=False).encode("utf-8")})
 
-    with pytest.raises(SystemExit, match="i18n resource placeholders differ.*scope.selection_count"):
+    with pytest.raises(SystemExit, match=r"i18n resource placeholders differ.*scope.selection_count"):
         validate_artifact(target)
 
 
@@ -279,7 +279,7 @@ def test_platform_validator_rejects_a_wrong_oslist(
         {name: plugin_xml.replace("<oslist>osx</oslist>", "<oslist>osx,unx,win</oslist>").encode("utf-8")},
     )
 
-    with pytest.raises(SystemExit, match="plugin.xml oslist differs from package runtimes"):
+    with pytest.raises(SystemExit, match=r"plugin.xml oslist differs from package runtimes"):
         validate_artifact(target, flavor="platform", runtime="macos-arm64-cp314")
 
 
@@ -323,7 +323,7 @@ class _StreamingArchive:
 
 def test_zip_tree_hash_streams_sorted_members_without_archive_read():
     members = {
-        "payload/z.txt": "终".encode("utf-8"),
+        "payload/z.txt": "终".encode(),
         "payload/a.txt": b"a" * 11,
     }
     archive = _StreamingArchive(members)

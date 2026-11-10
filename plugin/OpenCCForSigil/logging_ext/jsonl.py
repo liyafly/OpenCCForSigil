@@ -2,7 +2,8 @@
 
 import json
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
+from collections.abc import Mapping
 
 
 def append_jsonl(path: Path, value: Mapping[str, Any]) -> None:

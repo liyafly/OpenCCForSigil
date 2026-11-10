@@ -1,7 +1,7 @@
 """In-memory staging boundary; no Sigil writes occur here."""
 
 from hashlib import sha256
-from typing import Dict, Iterable, Sequence
+from collections.abc import Iterable, Sequence
 
 from core.models import ConversionPlan, StagedFile, TokenChange
 
@@ -14,7 +14,7 @@ class StagingArea:
     """Hold converted documents before verification and adapter commit."""
 
     def __init__(self) -> None:
-        self._files: Dict[str, StagedFile] = {}
+        self._files: dict[str, StagedFile] = {}
 
     def add(self, staged_file: StagedFile) -> None:
         self._files[staged_file.file_id] = staged_file

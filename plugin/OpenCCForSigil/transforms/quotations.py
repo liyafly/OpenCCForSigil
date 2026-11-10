@@ -47,7 +47,7 @@ class QuotationPairer:
     preserved while its quote marks still advance the pairing state.
     """
 
-    __slots__ = ("mode", "in_quote", "ascii_unbalanced", "last_changed_offsets")
+    __slots__ = ("ascii_unbalanced", "in_quote", "last_changed_offsets", "mode")
 
     def __init__(self, mode: str = "keep") -> None:
         self.mode = _canonical_mode(mode)
@@ -93,9 +93,9 @@ def _canonical_mode(mode: str) -> str:
 
 
 __all__ = [
+    "DOUBLE_QUOTE_CHARACTERS",
     "QUOTATION_MODES",
     "QUOTATION_PAIRS",
-    "DOUBLE_QUOTE_CHARACTERS",
     "QuotationPairer",
     "transform_quotations",
 ]

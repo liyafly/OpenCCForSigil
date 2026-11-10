@@ -8,7 +8,7 @@ import json
 import os
 from pathlib import Path
 import sys
-from typing import Mapping
+from collections.abc import Mapping
 
 
 ROOT = Path(__file__).resolve().parents[1]

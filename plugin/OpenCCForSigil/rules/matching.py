@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import re
-from typing import Mapping
+from collections.abc import Mapping
 
 from .models import Rule
 from .precedence import scope_rank, type_rank
@@ -391,11 +391,11 @@ def replace_stage(
 
 __all__ = [
     "REGEX_MATCH_TIMEOUT_SECONDS",
-    "REGEX_MAX_RULES",
-    "REGEX_MAX_PATTERN_CHARS",
-    "REGEX_MAX_HITS_PER_RULE",
     "REGEX_MAX_CANDIDATES_PER_FRAGMENT",
     "REGEX_MAX_CANDIDATE_OUTPUT_CHARS_PER_FRAGMENT",
+    "REGEX_MAX_HITS_PER_RULE",
+    "REGEX_MAX_PATTERN_CHARS",
+    "REGEX_MAX_RULES",
     "RegexBudget",
     "RuleExecutionError",
     "StageHit",

@@ -9,7 +9,6 @@ import re
 from document.diagnostics import inline_boundary_diagnostics
 import json
 from bisect import bisect_right
-from typing import Optional
 
 from core.converter import OfficialBackendConverter
 from core.models import (ConversionPlan, ConvertRequest, Diagnostic, SourceSpan, TextTarget,
@@ -21,8 +20,10 @@ from transforms.quotations import DOUBLE_QUOTE_CHARACTERS, QuotationPairer
 
 
 _BLOCK_LEVEL_ELEMENTS = frozenset(
-    "p div li h1 h2 h3 h4 h5 h6 blockquote td th dd dt figcaption section article "
-    "aside header footer body".split()
+    [
+        "p", "div", "li", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "td", "th",
+        "dd", "dt", "figcaption", "section", "article", "aside", "header", "footer", "body",
+    ]
 )
 _ENTITY_REFERENCE = re.compile(r"&[^;\s<>&]+;")
 
@@ -36,10 +37,10 @@ def build_conversion_plan(
     request: ConvertRequest,
     session_id: str = "",
     profile_id: str = "",
-    rules_snapshot_hash: Optional[str] = None,
+    rules_snapshot_hash: str | None = None,
     document_kind: str = "xhtml",
     check_cancel=None,
-    converter: Optional[OfficialBackendConverter] = None,
+    converter: OfficialBackendConverter | None = None,
 ) -> ConversionPlan:
     """Analyze writable targets and freeze their official OpenCC patches.
 
@@ -299,11 +300,11 @@ def _absolute_change(
     local_change: TokenChange,
     source: str,
     *,
-    cdata_ranges: Optional[tuple[tuple[int, int], ...]] = None,
-    cdata_starts: Optional[tuple[int, ...]] = None,
+    cdata_ranges: tuple[tuple[int, int], ...] | None = None,
+    cdata_starts: tuple[int, ...] | None = None,
     string_pool: dict[str, str],
     document_kind: str,
-    risk_override: Optional[str] = None,
+    risk_override: str | None = None,
 ) -> TokenChange:
     start = target.source_start + local_change.span.start
     end = target.source_start + local_change.span.end

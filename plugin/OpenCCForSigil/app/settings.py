@@ -1,5 +1,6 @@
 """Persistent profiles/rules and immutable run settings shared by the UI."""
 
+import contextlib
 from dataclasses import replace
 from hashlib import sha256
 import json
@@ -177,10 +178,8 @@ class RunSettings:
             except (OSError, ValueError):
                 backup_name = ""
                 if path.is_file():
-                    try:
+                    with contextlib.suppress(Exception):
                         backup_name = self.storage.quarantine(path).name
-                    except Exception:
-                        pass
                 if backup_name:
                     self._add_recovery_notice(("rulesets_recovered", backup_name))
                 self._pending_missing_rulesets = tuple(dict.fromkeys(
@@ -220,7 +219,7 @@ class RunSettings:
 
         draft = self.current_profile(config, options)
         existing, errors = self.profiles.load_all()
-        values = (draft,) + tuple(item for item in existing if item.id != draft.id)
+        values = (draft, *(item for item in existing if item.id != draft.id))
         rulesets, _rule_errors = self.rules.list()
 
         def profile_deleted(identifier):
@@ -434,10 +433,8 @@ class RunSettings:
                 path = self.rules.directory / f"{identifier}.json"
                 backup_name = ""
                 if path.is_file():
-                    try:
+                    with contextlib.suppress(Exception):
                         backup_name = self.storage.quarantine(path).name
-                    except Exception:
-                        pass
                 if backup_name:
                     self._add_recovery_notice(("rulesets_recovered", backup_name))
                 self._pending_missing_rulesets = tuple(dict.fromkeys(

@@ -1,7 +1,8 @@
 """Small helpers for restoring and persisting top-level dialog sizes."""
 
 from collections.abc import Mapping
-from typing import Any, Callable
+from typing import Any
+from collections.abc import Callable
 
 
 def _valid_size(value: Any) -> tuple[int, int] | None:

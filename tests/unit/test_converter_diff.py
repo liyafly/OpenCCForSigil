@@ -84,7 +84,7 @@ def test_random_inputs_reconstruct_without_overlapping_source_spans():
         opcodes = bounded_opcodes(source, target)
         assert _reconstruct(source, target, opcodes) == target
         previous_end = 0
-        for tag, i1, i2, j1, j2 in opcodes:
+        for _tag, i1, i2, j1, j2 in opcodes:
             assert i1 >= previous_end
             assert i1 <= i2 <= len(source)
             assert j1 <= j2 <= len(target)

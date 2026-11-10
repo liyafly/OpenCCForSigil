@@ -7,7 +7,8 @@ from collections import Counter
 from dataclasses import dataclass
 from html import unescape
 import re
-from typing import Any, Sequence, Tuple
+from typing import Any
+from collections.abc import Sequence
 
 from core.preview import (
     PreviewDecision,
@@ -59,7 +60,7 @@ class UIUnavailableError(RuntimeError):
 @dataclass(frozen=True)
 class PreviewOutcome:
     accepted: bool
-    previews: Tuple[PreviewSession, ...]
+    previews: tuple[PreviewSession, ...]
     back_to_settings: bool = False
     checkpoint_notice_shown: bool = False
 
@@ -75,7 +76,7 @@ class _DecisionHistoryChange:
 @dataclass(frozen=True, slots=True)
 class _DecisionHistoryOperation:
     sequence: int
-    changes: Tuple[_DecisionHistoryChange, ...]
+    changes: tuple[_DecisionHistoryChange, ...]
 
 
 
@@ -83,7 +84,7 @@ class _DecisionHistoryOperation:
 @dataclass(frozen=True, slots=True)
 class _ScopedBulkDecisionHistoryOperation:
     sequence: int
-    before_decisions: Tuple[Tuple[str, Tuple[str, ...], bytes], ...]
+    before_decisions: tuple[tuple[str, tuple[str, ...], bytes], ...]
     after: PreviewDecision
     change_count: int
 
@@ -101,7 +102,7 @@ class _DiagnosticRecord:
     description: str
     location: str
     excerpt: str
-    related_changes: Tuple[Tuple[str, str], ...]
+    related_changes: tuple[tuple[str, str], ...]
 
 
 @dataclass(frozen=True)
@@ -509,8 +510,8 @@ def create_progress_reporter(
 
 def _selected_xhtml_ids_and_ignored(
     adapter: Any,
-    inventory: Tuple[TextFile, ...],
-) -> Tuple[Tuple[str, ...], int]:
+    inventory: tuple[TextFile, ...],
+) -> tuple[tuple[str, ...], int]:
     selected_iter = getattr(adapter, "selected_ids", None)
     if not callable(selected_iter):
         return (), 0
@@ -522,7 +523,7 @@ def _selected_xhtml_ids_and_ignored(
     )
 
 
-def _spine_ids(adapter: Any) -> Tuple[str, ...]:
+def _spine_ids(adapter: Any) -> tuple[str, ...]:
     """Read the spine manifest ids without reading any document content."""
 
     text_files = getattr(adapter, "text_files", None)
@@ -534,18 +535,18 @@ def _spine_ids(adapter: Any) -> Tuple[str, ...]:
         return ()
 
 
-def _source_line_starts(source: str) -> Tuple[int, ...]:
+def _source_line_starts(source: str) -> tuple[int, ...]:
     """Index original-source lines, treating CRLF as one newline."""
 
     return (0, *(match.end() for match in _LINE_BREAK.finditer(source)))
 
 
-def _line_column_for_offset(starts: Tuple[int, ...], offset: int) -> Tuple[int, int]:
+def _line_column_for_offset(starts: tuple[int, ...], offset: int) -> tuple[int, int]:
     line_index = max(0, bisect_right(starts, offset) - 1)
     return line_index + 1, offset - starts[line_index] + 1
 
 
-def _index_change_spans(file_id: str, changes: Tuple[Any, ...]):
+def _index_change_spans(file_id: str, changes: tuple[Any, ...]):
     """Index eligible change spans while retaining plan order for review rows."""
 
     indexed = []
@@ -580,7 +581,7 @@ def _index_change_spans(file_id: str, changes: Tuple[Any, ...]):
 
 def _diagnostic_excerpt(
     source: str, start: int | None, end: int | None,
-    line: int | None, column: int | None, starts: Tuple[int, ...],
+    line: int | None, column: int | None, starts: tuple[int, ...],
 ) -> str:
     if not source:
         return ""
@@ -633,7 +634,7 @@ def _diagnostic_record_count(planned_documents: Sequence[PlannedDocument]) -> in
 
 def _diagnostic_records(
     planned_documents: Sequence[PlannedDocument], translator: Translator,
-) -> Tuple[_DiagnosticRecord, ...]:
+) -> tuple[_DiagnosticRecord, ...]:
     """Build review rows only from the immutable plan and source snapshot."""
 
     records = []
@@ -653,7 +654,7 @@ def _diagnostic_records(
         source = source_value if has_source else ""
         line_starts = None
 
-        def get_line_starts():
+        def get_line_starts(source=source):
             nonlocal line_starts
             if line_starts is None:
                 line_starts = _source_line_starts(source)
@@ -833,10 +834,10 @@ class _DiagnosticPanel:
         layout.addWidget(self.content)
         self.toggle.toggled.connect(self.set_expanded)
         self.set_expanded(False)
-        self._visible_records: Tuple[_DiagnosticRecord, ...] = ()
+        self._visible_records: tuple[_DiagnosticRecord, ...] = ()
         self._refresh()
 
-    def _unique_by_value(self, attribute: str) -> Tuple[_DiagnosticRecord, ...]:
+    def _unique_by_value(self, attribute: str) -> tuple[_DiagnosticRecord, ...]:
         selected = set()
         result = []
         for record in self._records:
@@ -951,7 +952,7 @@ def _show_diagnostics_dialog(
 
 def _ordered_scope_inventory(
     inventory: Sequence[TextFile], spine_ids: Sequence[str]
-) -> Tuple[TextFile, ...]:
+) -> tuple[TextFile, ...]:
     """Show spine resources in reading order and other XHTML paths afterward."""
 
     spine_order = {file_id: index for index, file_id in enumerate(spine_ids)}
@@ -1061,19 +1062,19 @@ def show_result(
     cancelled = status == "cancelled"
     if status == "partial_failure":
         status_line = translator.text("result.status.partial", file=failed_file or "?")
-        method = getattr(qt_widgets.QMessageBox, "warning")
+        method = qt_widgets.QMessageBox.warning
     elif status == "cancelled":
         status_line = translator.text("result.status.cancelled_unchanged")
-        method = getattr(qt_widgets.QMessageBox, "information")
+        method = qt_widgets.QMessageBox.information
     elif accepted_changes == 0 and skipped_changes:
         status_line = translator.text("result.status.skipped")
-        method = getattr(qt_widgets.QMessageBox, "information")
+        method = qt_widgets.QMessageBox.information
     elif accepted_changes == 0:
         status_line = translator.text("result.status.noop")
-        method = getattr(qt_widgets.QMessageBox, "information")
+        method = qt_widgets.QMessageBox.information
     else:
         status_line = translator.text("result.status.success")
-        method = getattr(qt_widgets.QMessageBox, "information")
+        method = qt_widgets.QMessageBox.information
     message = status_line if cancelled else status_line + "\n\n" + "\n".join(rows)
     if status == "success" and accepted_changes > 0:
         message += "\n\n" + translator.text("result.save_reminder")
@@ -1187,7 +1188,7 @@ def show_error(
     message_row = qt_widgets.QHBoxLayout()
     icon_label = qt_widgets.QLabel()
     style_type = getattr(qt_widgets.QStyle, "StandardPixmap", qt_widgets.QStyle)
-    warning_type = getattr(style_type, "SP_MessageBoxWarning")
+    warning_type = style_type.SP_MessageBoxWarning
     warning_icon = dialog.style().standardIcon(warning_type)
     icon_label.setPixmap(warning_icon.pixmap(24, 24))
     message_row.addWidget(icon_label)
@@ -1283,7 +1284,7 @@ def _single_line(value: object) -> str:
     return str(value).replace("\r\n", "\n").replace("\r", "\n").replace("\n", "↵").replace("\t", "⇥")
 
 
-def _text_context(change, targets_by_id) -> Tuple[str, str]:
+def _text_context(change, targets_by_id) -> tuple[str, str]:
     target = (targets_by_id or {}).get((change.file_id, change.target_id))
     if target is None:
         return "", ""
@@ -1301,7 +1302,7 @@ def _text_context(change, targets_by_id) -> Tuple[str, str]:
     return before, after
 
 
-def _source_context(change, sources_by_id) -> Tuple[str, str]:
+def _source_context(change, sources_by_id) -> tuple[str, str]:
     source = (sources_by_id or {}).get(change.file_id, "")
     start = max(0, min(change.span.start, len(source)))
     end = max(start, min(change.span.end, len(source)))
@@ -1310,7 +1311,7 @@ def _source_context(change, sources_by_id) -> Tuple[str, str]:
 
 def _format_change_row(
     change, href_by_id, translator, *, trim_context: bool, targets_by_id=None,
-) -> Tuple[str, ...]:
+) -> tuple[str, ...]:
     before, after = _text_context(change, targets_by_id)
     before = _single_line(before)
     after = _single_line(after)
@@ -1332,7 +1333,7 @@ def _format_change_row(
     return (file_name, f"{source_text} → {target_text}", source, target, category, risk)
 
 
-def format_change_row(change, href_by_id, translator, targets_by_id=None) -> Tuple[str, ...]:
+def format_change_row(change, href_by_id, translator, targets_by_id=None) -> tuple[str, ...]:
     """Return concise, plain, localized display values for one preview table row."""
 
     return _format_change_row(
@@ -1386,7 +1387,7 @@ class _PreviewTableData:
             return self.translator.text("preview.status.accepted")
         return self.translator.text("preview.status.skipped")
 
-    def _format(self, row: int) -> Tuple[str, ...]:
+    def _format(self, row: int) -> tuple[str, ...]:
         _preview, change = self.entries[row]
         values = list(format_change_row(
             change, self.href_by_id, self.translator, self.targets_by_id))
@@ -1397,7 +1398,7 @@ class _PreviewTableData:
                 marker_key, count=count, files=files)
         return tuple(values)
 
-    def tooltip_values(self, row: int) -> Tuple[str, ...]:
+    def tooltip_values(self, row: int) -> tuple[str, ...]:
         _preview, change = self.entries[row]
         values = _format_change_row(
             change, self.href_by_id, self.translator, trim_context=False,
@@ -1417,7 +1418,7 @@ class _PreviewTableData:
     def row_count(self) -> int:
         return len(self.entries)
 
-    def row_values(self, row: int) -> Tuple[str, ...]:
+    def row_values(self, row: int) -> tuple[str, ...]:
         preview, change = self.entries[row]
         values = self.display_cache.get(change.change_id)
         if values is None:
@@ -1560,7 +1561,7 @@ def _create_preview_table_model(
 
 class _PreviewDialog:
     def __init__(
-        self, qt_widgets: Any, planned, previews: Tuple[PreviewSession, ...],
+        self, qt_widgets: Any, planned, previews: tuple[PreviewSession, ...],
         translator: Translator, services: Any = None, *, ui_preferences=None,
     ) -> None:
         self._qt = qt_widgets
@@ -1573,7 +1574,7 @@ class _PreviewDialog:
         # cached change object avoids doing a linear ``next(...)`` lookup for
         # every row every time a bulk decision refreshes the list.
         preview_changes = tuple((preview, preview.changes) for preview in previews)
-        self._entries: Tuple[Tuple[PreviewSession, TokenChange], ...] = tuple(
+        self._entries: tuple[tuple[PreviewSession, TokenChange], ...] = tuple(
             (preview, change)
             for preview, changes in preview_changes
             for change in changes
@@ -2172,7 +2173,10 @@ class _PreviewDialog:
             layout.addLayout(buttons)
             cancel.clicked.connect(dialog.reject)
 
-            def build_plan():
+            def build_plan(
+                scope_combo=scope_combo, action_combo=action_combo,
+                only_check=only_check, current_file_id=current_file_id,
+            ):
                 visible = self._visible_entries_cache
                 return plan_batch_decision(
                     self._entries, self._group_entries_by_id, self._group_file_ids,
@@ -2186,7 +2190,10 @@ class _PreviewDialog:
 
             batch_plan = None
 
-            def refresh_batch_summary(*_args):
+            def refresh_batch_summary(
+                *_args, action_combo=action_combo, only_check=only_check,
+                summary=summary, confirm=confirm,
+            ):
                 nonlocal batch_plan
                 batch_plan = build_plan()
                 batch = batch_plan
@@ -2275,7 +2282,7 @@ class _PreviewDialog:
 
     @staticmethod
     def _populate_filter(
-        combo: Any, label: str, values: Sequence[Tuple[str, str]], translator: Translator,
+        combo: Any, label: str, values: Sequence[tuple[str, str]], translator: Translator,
     ) -> None:
         combo.addItem(
             f"{label}{translator.text('common.label_separator')}"
@@ -2337,7 +2344,7 @@ class _PreviewDialog:
             rule_source=data("source_filter"),
         )
 
-    def _visible_entries(self) -> Tuple[Tuple[PreviewSession, TokenChange], ...]:
+    def _visible_entries(self) -> tuple[tuple[PreviewSession, TokenChange], ...]:
         current = self._current_filter()
         status_combo = getattr(self, "status_filter", None)
         status = None
@@ -2774,7 +2781,7 @@ class _PreviewDialog:
         index = table.currentIndex()
         return index.row() if index.isValid() else -1
 
-    def _selected_change_identity(self) -> Tuple[str, str] | None:
+    def _selected_change_identity(self) -> tuple[str, str] | None:
         row = self._current_row()
         entries = self._visible_entries_cache
         if 0 <= row < len(entries):
@@ -2782,11 +2789,11 @@ class _PreviewDialog:
             return change.file_id, change.change_id
         return None
 
-    def _navigate_to_related_change(self, identity: Tuple[str, str]) -> None:
+    def _navigate_to_related_change(self, identity: tuple[str, str]) -> None:
         """Reveal a real related preview row without changing its decision."""
 
         self._clear_filters()
-        file_id, change_id = identity
+        file_id, _change_id = identity
         for index in range(self.file_filter.count()):
             if self.file_filter.itemData(index) == file_id:
                 self.file_filter.setCurrentIndex(index)
@@ -2813,7 +2820,7 @@ class _PreviewDialog:
         table.setCurrentIndex(self.table_model.index(row, 0))
         table.selectRow(row)
 
-    def _diagnostics_for_file(self, file_id: str | None = None) -> Tuple[str, ...]:
+    def _diagnostics_for_file(self, file_id: str | None = None) -> tuple[str, ...]:
         counts = Counter()
         for planned in getattr(self, "_planned", ()):
             plan = getattr(planned, "plan", None)
@@ -2828,7 +2835,7 @@ class _PreviewDialog:
             for code, count in sorted(counts.items())
         )
 
-    def _skipped_source_details(self) -> Tuple[str, ...]:
+    def _skipped_source_details(self) -> tuple[str, ...]:
         rows = []
         for planned in getattr(self, "_planned", ()):
             source = getattr(planned, "source", None)
@@ -3287,7 +3294,7 @@ class _ConversionConfigDialog:
     def __init__(
         self,
         qt_widgets: Any,
-        configs: Tuple[str, ...],
+        configs: tuple[str, ...],
         default_config: str,
         jieba_configs: dict[str, str],
         *,
@@ -3529,10 +3536,8 @@ class _ConversionConfigDialog:
     def _continue_is_allowed(self) -> bool:
         if self._preferred_jieba and self._probe_state in {"not_started", "pending"}:
             return False
-        if (self._preferred_jieba and self._probe_state == "unavailable"
-                and not self._direction_reselected):
-            return False
-        return True
+        return not (self._preferred_jieba and self._probe_state == "unavailable"
+                    and not self._direction_reselected)
 
 def _information_icon_label(qt_widgets: Any, parent: Any, translator: Translator) -> Any:
     label = qt_widgets.QLabel()
@@ -3591,13 +3596,13 @@ class _ScopeDialog:
     def __init__(
         self,
         qt_widgets: Any,
-        inventory: Tuple[TextFile, ...],
-        initial_ids: Tuple[str, ...],
+        inventory: tuple[TextFile, ...],
+        initial_ids: tuple[str, ...],
         language: str,
         translator: Translator,
         *,
         ignored_non_xhtml: int = 0,
-        spine_ids: Tuple[str, ...] = (),
+        spine_ids: tuple[str, ...] = (),
         nav_id: str | None = None,
         recovery_notices=(),
         initial_scope: Scope | None = None,
@@ -3811,7 +3816,7 @@ class _ScopeDialog:
             label += " " + self._translator.text("scope.navigation_suffix")
         return label
 
-    def _checked_ids(self) -> Tuple[str, ...]:
+    def _checked_ids(self) -> tuple[str, ...]:
         checked = self._qt.Qt.Checked
         return tuple(
             self.list_widget.item(index).data(self._qt.Qt.UserRole)
@@ -3819,7 +3824,7 @@ class _ScopeDialog:
             if self.list_widget.item(index).checkState() == checked
         )
 
-    def selected_ids(self) -> Tuple[str, ...]:
+    def selected_ids(self) -> tuple[str, ...]:
         if self.all_radio.isChecked():
             return tuple(item.file_id for item in self._inventory)
         if self.spine_radio.isChecked():

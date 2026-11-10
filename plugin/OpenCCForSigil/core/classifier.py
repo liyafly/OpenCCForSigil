@@ -5,7 +5,7 @@ selected official OpenCC conversion output.
 """
 
 from dataclasses import dataclass
-from typing import Callable
+from collections.abc import Callable
 
 from core.diff import bounded_opcodes
 from opencc_backend.configs import comparison_configs
@@ -214,7 +214,7 @@ def _project_target(
     projected_start: int | None = None
     projected_end: int | None = None
     stable = True
-    for tag, i1, i2, j1, j2 in opcodes:
+    for _tag, i1, i2, j1, j2 in opcodes:
         if i1 == i2:
             if source_start <= i1 <= source_end:
                 projected_start = j1 if projected_start is None else min(projected_start, j1)

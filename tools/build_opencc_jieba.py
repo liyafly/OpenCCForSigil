@@ -18,7 +18,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from typing import Any, Iterable, Mapping
+from typing import Any
+from collections.abc import Iterable, Mapping
 import uuid
 
 try:

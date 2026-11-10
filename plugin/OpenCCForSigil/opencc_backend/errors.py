@@ -1,6 +1,6 @@
 """Errors specific to the official Python Binding boundary."""
 
-from typing import Mapping, Sequence
+from collections.abc import Mapping, Sequence
 
 from app.errors import DataIntegrityError, DependencyError, PluginError
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 from bisect import bisect_left
 
 from core.models import Diagnostic, SourceSpan
@@ -45,7 +46,7 @@ def inline_boundary_diagnostics(
                            key=lambda target: target.source_start))
     tag_starts = [tag.start for tag in document.tags]
     diagnostics: list[Diagnostic] = []
-    for previous, following in zip(targets, targets[1:]):
+    for previous, following in itertools.pairwise(targets):
         if not _ends_with_han(previous.source_text) or not _starts_with_han(
             following.source_text
         ):

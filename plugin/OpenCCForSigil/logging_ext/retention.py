@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 from pathlib import Path
 import re
 from typing import Any
@@ -30,7 +30,7 @@ def _record_time(record: dict[str, Any]) -> datetime:
     value = record.get("recorded_at")
     if not isinstance(value, str):
         raise HistoryError("history recorded_at is missing")
-    return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc)
+    return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(UTC)
 
 
 def cleanup(
@@ -52,7 +52,7 @@ def cleanup(
         raise ValueError("retention limits must be non-negative")
     history = HistoryStore(Path(history_root))
     sessions = history.load()
-    cutoff = (now or datetime.now(timezone.utc)).astimezone(timezone.utc) - timedelta(
+    cutoff = (now or datetime.now(UTC)).astimezone(UTC) - timedelta(
         days=max_age_days
     )
     keep: list[dict[str, Any]] = []

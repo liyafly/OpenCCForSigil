@@ -66,12 +66,11 @@ def plan_batch_decision(
         decisions = tuple(preview.decision(change.change_id)
                           for preview, change in unit)
         buckets = tuple(_bucket(decision) for decision in decisions)
-        if undecided_only:
-            if any(bucket != "undecided" for bucket in buckets):
-                if any(bucket == "undecided" for bucket in buckets):
-                    excluded_mixed_changes += sum(bucket == "undecided" for bucket in buckets)
-                    excluded_mixed_groups += int(group_id is not None)
-                return
+        if undecided_only and any(bucket != "undecided" for bucket in buckets):
+            if any(bucket == "undecided" for bucket in buckets):
+                excluded_mixed_changes += sum(bucket == "undecided" for bucket in buckets)
+                excluded_mixed_groups += int(group_id is not None)
+            return
         changes = tuple(
             entry for entry, bucket in zip(unit, buckets) if bucket != target_bucket
         )

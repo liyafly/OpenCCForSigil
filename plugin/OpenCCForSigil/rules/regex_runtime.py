@@ -150,26 +150,27 @@ def load_regex_module() -> ModuleType:
 def _load_regex_module_locked() -> ModuleType:
 
     global _LOADED_MODULE, _LOADED_ROOT
-    record, payload_root = _selected_payload()
+    _record, payload_root = _selected_payload()
     existing = sys.modules.get("regex")
     if existing is not None:
         origin = getattr(existing, "__file__", None)
-        if origin is not None and Path(origin).resolve().is_relative_to(payload_root):
-            if getattr(existing, "__version__", None) == REGEX_VERSION:
-                for name, imported in tuple(sys.modules.items()):
-                    if name != "regex" and not name.startswith("regex."):
-                        continue
-                    module_origin = getattr(imported, "__file__", None)
-                    if (module_origin is not None
-                            and not Path(module_origin).resolve().is_relative_to(payload_root)):
-                        raise RegexRuntimeError(
-                            f"regex submodule was loaded outside its payload: {module_origin}")
-                _LOADED_MODULE, _LOADED_ROOT = existing, payload_root
-                return existing
+        if (origin is not None
+                and Path(origin).resolve().is_relative_to(payload_root)
+                and getattr(existing, "__version__", None) == REGEX_VERSION):
+            for name, imported in tuple(sys.modules.items()):
+                if name != "regex" and not name.startswith("regex."):
+                    continue
+                module_origin = getattr(imported, "__file__", None)
+                if (module_origin is not None
+                        and not Path(module_origin).resolve().is_relative_to(payload_root)):
+                    raise RegexRuntimeError(
+                        f"regex submodule was loaded outside its payload: {module_origin}")
+            _LOADED_MODULE, _LOADED_ROOT = existing, payload_root
+            return existing
         raise RegexRuntimeError(
             "another regex package is already loaded in this Sigil process: "
             f"{getattr(existing, '__version__', 'unknown')} at {origin or 'unknown location'}")
-    if _LOADED_MODULE is not None and _LOADED_ROOT == payload_root:
+    if _LOADED_MODULE is not None and payload_root == _LOADED_ROOT:
         sys.modules["regex"] = _LOADED_MODULE
         return _LOADED_MODULE
 

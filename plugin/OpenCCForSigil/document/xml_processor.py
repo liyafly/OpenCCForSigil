@@ -117,9 +117,9 @@ def tokenize_xml(
         for char in value:
             if char == "\n" and source.startswith("\r\n", cursor):
                 cursor += 2
-            elif char == "\n" and source.startswith("\r", cursor):
-                cursor += 1
-            elif cursor < len(source) and source[cursor] == char:
+            elif (char == "\n" and source.startswith("\r", cursor)) or (
+                cursor < len(source) and source[cursor] == char
+            ):
                 cursor += 1
             else:
                 raise source_error("XML text callback does not match its original source")

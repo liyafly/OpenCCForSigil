@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Mapping, Sequence
+from typing import Any
+from collections.abc import Callable, Mapping, Sequence
 
 from app.profiles import ProfileStore, ProfileValidationError
 from logging_ext.history import HistoryError, HistoryStore
@@ -178,7 +179,7 @@ def show_history(
     table.sortItems(0, _descending_order(qt_widgets))
     header = table.horizontalHeader()
     resize_mode = getattr(qt_widgets.QHeaderView, "ResizeMode", qt_widgets.QHeaderView)
-    header.setSectionResizeMode(getattr(resize_mode, "Stretch"))
+    header.setSectionResizeMode(resize_mode.Stretch)
     layout.addWidget(table)
     empty = qt_widgets.QLabel(translator.text("history.none"), dialog)
     empty.setVisible(not visible_records)

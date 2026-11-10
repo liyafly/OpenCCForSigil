@@ -287,7 +287,7 @@ def test_runaway_regex_in_one_fragment_still_stops(monkeypatch):
     rule = _rule(id="runaway", source=r"\p{Han}", target="X")
     regex = load_regex_module()
 
-    with pytest.raises(RuleExecutionError, match="runaway.*exceeded 3 hits"):
+    with pytest.raises(RuleExecutionError, match=r"runaway.*exceeded 3 hits"):
         replace_stage(
             "甲乙丙丁", (rule,), {rule.id: regex.compile(rule.source, regex.VERSION1)}, RegexBudget())
 
@@ -297,7 +297,7 @@ def test_single_regex_search_timeout_still_stops():
         id="evil", source=r"(a|aa)+$", target="x", direction="s2t")
     regex = load_regex_module()
 
-    with pytest.raises(RuleExecutionError, match="evil.*timed out"):
+    with pytest.raises(RuleExecutionError, match=r"evil.*timed out"):
         replace_stage(
             "a" * 40 + "b",
             (rule,),
@@ -311,7 +311,7 @@ def test_regex_candidate_budget_is_per_rule_and_fragment(monkeypatch):
     rule = _rule(id="candidates", source=r".", target="X")
     regex = load_regex_module()
 
-    with pytest.raises(RuleExecutionError, match="candidates.*more than 2 candidates"):
+    with pytest.raises(RuleExecutionError, match=r"candidates.*more than 2 candidates"):
         collect_matches(
             "abc", (rule,), {rule.id: regex.compile(rule.source, regex.VERSION1)}, RegexBudget())
 

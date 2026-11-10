@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Mapping, Sequence
+from collections.abc import Mapping, Sequence
 
 
 _OSLIST_BY_RUNTIME_OS = {"macos": "osx", "linux": "unx", "windows": "win"}
