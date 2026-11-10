@@ -58,6 +58,11 @@ match current behavior; use the maintained guides above for that.
 
 ### Review rounds
 
+Screenshot evidence (`*.png`) referenced by these records is no longer kept on
+`main`. It is preserved at commit `c9b288e` and on the
+`archive/review-evidence` branch; the JSON/log evidence and reproduction
+scripts remain in place.
+
 | Record | Document |
 | --- | --- |
 | 2026-09-23 UI, logic, and packaging review | [`reviews/2026-09-23/README.md`](reviews/2026-09-23/README.md) |
