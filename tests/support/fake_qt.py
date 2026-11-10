@@ -109,7 +109,8 @@ class Base:
         self._plain_text = ""
         self.calls = []
         self.args = args
-        for name in self._signals + (
+        for name in (
+            *self._signals,
             "clicked",
             "toggled",
             "stateChanged",
@@ -693,6 +694,9 @@ class TableWidget(Base):
         self._rows = max(0, rows)
         self._columns = max(0, columns)
         self._items = {}
+        # Upper bound on the row index of any stored item (-1 when empty), so
+        # appending a row past every item can skip re-keying the whole dict.
+        self._max_item_row = -1
         self._current_row = -1
         self._current_column = -1
 
@@ -701,6 +705,7 @@ class TableWidget(Base):
         self._items = {
             key: value for key, value in self._items.items() if key[0] < self._rows
         }
+        self._max_item_row = min(self._max_item_row, self._rows - 1)
         if self._current_row >= self._rows:
             self._current_row = -1
 
@@ -712,12 +717,17 @@ class TableWidget(Base):
 
     def insertRow(self, row):
         self._rows += 1
+        if row > self._max_item_row:
+            # No stored item sits at or below ``row``: nothing to shift.
+            return
         self._items = {
             (r + (r >= row), c): item for (r, c), item in self._items.items()
         }
+        self._max_item_row += 1
 
     def setItem(self, row, column, item):
         self._items[(row, column)] = item
+        self._max_item_row = max(self._max_item_row, row)
 
     def item(self, row, column):
         return self._items.get((row, column))
